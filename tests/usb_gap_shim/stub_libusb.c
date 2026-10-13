@@ -2,7 +2,8 @@
  *
  * Every libusb_bulk_transfer call appends "<handle name> <endpoint hex> <CLOCK_MONOTONIC ns>"
  * to the file named by STUB_LOG. Build with -DSTUB_NO_IDENTITY to leave out
- * libusb_get_device / libusb_get_device_descriptor (simulates a failed symbol lookup). */
+ * libusb_get_device / libusb_get_device_descriptor, or -DSTUB_NO_BULK to leave out
+ * libusb_bulk_transfer (simulates a failed symbol lookup in the shim). */
 #define _GNU_SOURCE
 #include <stdint.h>
 #include <stdio.h>
@@ -16,6 +17,7 @@
 #define OFFSET_VENDOR 8
 #define OFFSET_PRODUCT 10
 
+#ifndef STUB_NO_BULK
 int libusb_bulk_transfer(struct stub_handle *h, unsigned char ep, unsigned char *data, int len,
                          int *transferred, unsigned int timeout) {
     (void)data;
@@ -34,6 +36,7 @@ int libusb_bulk_transfer(struct stub_handle *h, unsigned char ep, unsigned char 
     if (transferred) *transferred = len;
     return 0;
 }
+#endif
 
 void libusb_close(struct stub_handle *h) {
     (void)h;

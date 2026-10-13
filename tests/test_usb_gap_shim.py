@@ -13,6 +13,7 @@ import os
 import shutil
 import subprocess
 import sys
+from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -30,7 +31,10 @@ pytestmark = [
 
 GAP_ENV = "FF680W_USB_GAP_US"
 DEFAULT_GAP_MS = 2.0
+DEFAULT_GAP_SLACK_MS = 150
 NS_PER_MS = 1_000_000
+# Legitimate runs take well under 2 s; a shim that sleeps for ever must fail, not hang the suite.
+RUN_TIMEOUT_S = 6
 
 
 @dataclass(frozen=True)
@@ -48,13 +52,25 @@ def ms_between(first: Call, second: Call) -> float:
     return (second.t_ns - first.t_ns) / NS_PER_MS
 
 
+def run_checked(
+    cmd: list[str], *, env: dict[str, str] | None = None, timeout: float | None = None
+) -> subprocess.CompletedProcess[str]:
+    """Run ``cmd``; on failure or timeout fail the test with the command's own diagnostics."""
+    try:
+        return subprocess.run(
+            cmd, env=env, check=True, capture_output=True, text=True, timeout=timeout
+        )
+    except subprocess.CalledProcessError as exc:
+        pytest.fail(f"{exc.cmd}\nexit {exc.returncode}\n{exc.stdout}\n{exc.stderr}")
+    except subprocess.TimeoutExpired as exc:
+        pytest.fail(f"timed out after {exc.timeout} s: {exc.cmd}")
+
+
 def gcc(*args: str | Path) -> None:
-    subprocess.run(
-        [GCC, "-Wall", "-Wextra", "-Werror", *map(str, args)],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
+    compiler = shutil.which("gcc")
+    if compiler is None:
+        pytest.skip("gcc not found; needed to build the shim and stubs")
+    run_checked([compiler, "-Wall", "-Wextra", "-Werror", *map(str, args)])
 
 
 class Harness:
@@ -64,11 +80,11 @@ class Harness:
         self.root = root
         self.shim = root / "ff680w_usb_gap.so"
         self.driver = root / "driver"
-        self.libdirs = {"full": root / "full", "noident": root / "noident"}
+        self.libdirs = {name: root / name for name in ("full", "noident", "nobulk")}
         self._runs = 0
 
     def build(self) -> None:
-        # -Werror applies to the shim (and, harmlessly, to the test C code).
+        # The shim and the test C code are all built with -Wall -Wextra -Werror.
         gcc(
             "-shared",
             "-fPIC",
@@ -79,10 +95,16 @@ class Harness:
             "-ldl",
         )
         stub = SUPPORT_DIR / "stub_libusb.c"
-        for variant, extra in (("full", []), ("noident", ["-DSTUB_NO_IDENTITY"])):
+        variants = (
+            ("full", []),
+            ("noident", ["-DSTUB_NO_IDENTITY"]),
+            ("nobulk", ["-DSTUB_NO_BULK"]),
+        )
+        for variant, extra in variants:
             self.libdirs[variant].mkdir()
             gcc("-shared", "-fPIC", *extra, "-o", self.libdirs[variant] / "libstubusb.so", stub)
         gcc(
+            "-pthread",
             SUPPORT_DIR / "driver.c",
             "-o",
             self.driver,
@@ -90,22 +112,23 @@ class Harness:
             "-lstubusb",
         )
 
-    def run(
+    def execute(
         self,
         script: list[str],
         *,
         gap_us: int | str | None = None,
         env: dict[str, str] | None = None,
         variant: str = "shim",
-    ) -> list[Call]:
-        """Replay ``script`` and return the logged bulk calls.
+    ) -> tuple[subprocess.CompletedProcess[str], list[Call]]:
+        """Replay ``script``; return the driver's result and the logged bulk calls.
 
         variant: "shim" = shim preloaded; "bare" = no shim; "noident" = shim preloaded and the
-        stub lacks the descriptor functions (symbol lookup fails inside the shim).
+        stub lacks the descriptor functions (symbol lookup fails inside the shim); "nobulk" = shim
+        preloaded and the stub lacks libusb_bulk_transfer.
         """
         self._runs += 1
         log = self.root / f"run{self._runs}.log"
-        libdir = self.libdirs["noident" if variant == "noident" else "full"]
+        libdir = self.libdirs["full" if variant in ("shim", "bare") else variant]
         run_env = {
             "PATH": os.environ.get("PATH", ""),
             "LD_LIBRARY_PATH": str(libdir),
@@ -116,14 +139,23 @@ class Harness:
         if gap_us is not None:
             run_env[GAP_ENV] = str(gap_us)
         run_env.update(env or {})
-        subprocess.run(
-            [str(self.driver), *script], env=run_env, check=True, capture_output=True, text=True
-        )
+        result = run_checked([str(self.driver), *script], env=run_env, timeout=RUN_TIMEOUT_S)
         calls = []
-        for line in log.read_text().splitlines():
+        for line in log.read_text().splitlines() if log.exists() else []:
             handle, endpoint, t_ns = line.split()
             calls.append(Call(handle, int(endpoint, 16), int(t_ns)))
-        return calls
+        return result, calls
+
+    def run(
+        self,
+        script: list[str],
+        *,
+        gap_us: int | str | None = None,
+        env: dict[str, str] | None = None,
+        variant: str = "shim",
+    ) -> list[Call]:
+        """Like ``execute`` but return only the logged bulk calls."""
+        return self.execute(script, gap_us=gap_us, env=env, variant=variant)[1]
 
 
 @pytest.fixture(scope="session")
@@ -147,17 +179,23 @@ def test_out_after_in_is_delayed_by_the_configured_gap(harness: Harness) -> None
     assert gap_ms <= delta < gap_ms + 150, f"OUT came {delta:.1f} ms after IN"
 
 
+def assert_default_gap(calls: list[Call]) -> None:
+    for i, o in zip(calls[0::2], calls[1::2], strict=True):
+        delta = ms_between(i, o)
+        assert DEFAULT_GAP_MS <= delta < DEFAULT_GAP_MS + DEFAULT_GAP_SLACK_MS, f"{delta:.2f} ms"
+
+
 def test_default_gap_is_two_milliseconds(harness: Harness) -> None:
-    calls = harness.run(["in:A", "out:A"] * 5)
-    for i, o in zip(calls[0::2], calls[1::2], strict=True):
-        assert ms_between(i, o) >= DEFAULT_GAP_MS
+    assert_default_gap(harness.run(["in:A", "out:A"] * 5))
 
 
-@pytest.mark.parametrize("value", ["", "abc", "12x", "-5"])
+@pytest.mark.parametrize(
+    "value",
+    ["", "abc", "12x", "-5", "99999999999999999999", "10000001"],
+    ids=["empty", "word", "trailing-junk", "negative", "out-of-range", "above-10s-cap"],
+)
 def test_unusable_gap_value_falls_back_to_the_default(harness: Harness, value: str) -> None:
-    calls = harness.run(["in:A", "out:A"] * 5, gap_us=value)
-    for i, o in zip(calls[0::2], calls[1::2], strict=True):
-        assert ms_between(i, o) >= DEFAULT_GAP_MS
+    assert_default_gap(harness.run(["in:A", "out:A"] * 5, gap_us=value))
 
 
 def test_zero_gap_disables_the_delay(harness: Harness) -> None:
@@ -195,15 +233,15 @@ def test_unresolvable_device_identity_still_applies_the_gap(harness: Harness) ->
 
 
 def test_in_after_out_is_not_delayed(harness: Harness) -> None:
-    gap_ms = 100
+    gap_ms = 300
     calls = harness.run(["in:A", "out:A", "in:A"], gap_us=gap_ms * 1000)
-    assert ms_between(calls[1], calls[2]) < gap_ms / 2
+    assert ms_between(calls[1], calls[2]) < gap_ms / 3
 
 
 def test_out_after_out_is_not_delayed(harness: Harness) -> None:
-    gap_ms = 100
+    gap_ms = 300
     calls = harness.run(["in:A", "out:A", "out:A"], gap_us=gap_ms * 1000)
-    assert ms_between(calls[1], calls[2]) < gap_ms / 2
+    assert ms_between(calls[1], calls[2]) < gap_ms / 3
 
 
 def test_out_without_a_previous_in_is_not_delayed(harness: Harness) -> None:
@@ -256,6 +294,43 @@ def test_closed_handle_address_reuse_resolves_identity_again(harness: Harness) -
     assert ms_between(second_in, second_out) >= gap_ms, "FF-680W reusing the address not delayed"
 
 
+def test_busy_handle_keeps_its_timestamp_when_the_table_overflows(harness: Harness) -> None:
+    """The tracking table holds 16 handles; a 17th must evict the least recently active one."""
+    gap_ms = 50
+    script = ["in:H0", *(f"in:H{n}" for n in range(1, 16)), "in:H0", "in:H16", "out:H0"]
+    calls = harness.run(script, gap_us=gap_ms * 1000)
+    last_in_h0, out_h0 = calls[-3], calls[-1]
+    assert (last_in_h0.handle, last_in_h0.is_in) == ("H0", True)
+    assert ms_between(last_in_h0, out_h0) >= gap_ms, "H0 lost its last-IN time to the 17th handle"
+
+
+def test_handles_are_serviced_concurrently_and_independently(harness: Harness) -> None:
+    """8 threads, one handle each: every OUT keeps its own gap and no thread blocks another."""
+    threads, pairs = 8, 200
+    calls = harness.run([f"threads:{threads}:{pairs}"])
+    assert len(calls) == threads * pairs * 2
+    by_handle = defaultdict(list)
+    for call in sorted(calls, key=lambda c: c.t_ns):
+        by_handle[call.handle].append(call)
+    assert len(by_handle) == threads
+    for handle, own in by_handle.items():
+        assert [c.is_in for c in own] == [True, False] * pairs, handle
+        for i, o in zip(own[0::2], own[1::2], strict=True):
+            assert ms_between(i, o) >= DEFAULT_GAP_MS, f"{handle}: OUT only {ms_between(i, o)} ms"
+    span_ms = (max(c.t_ns for c in calls) - min(c.t_ns for c in calls)) / NS_PER_MS
+    # Each thread needs about pairs * 2 ms = 400 ms. Sleeping while holding a lock would
+    # serialise the threads (about 8x as long).
+    assert span_ms < 2000, f"{threads} threads took {span_ms:.0f} ms"
+
+
+def test_missing_libusb_bulk_transfer_returns_an_error_instead_of_crashing(
+    harness: Harness,
+) -> None:
+    result, calls = harness.execute(["in:A", "out:A"], variant="nobulk")
+    assert calls == []
+    assert result.stdout.splitlines() == ["A ep=82 rc=-5", "A ep=01 rc=-5"]
+
+
 def test_makefile_builds_the_shim(tmp_path: Path) -> None:
     makefile = SHIM_DIR / "Makefile"
     assert makefile.is_file(), "tools/usb-gap-shim/Makefile is missing"
@@ -263,9 +338,9 @@ def test_makefile_builds_the_shim(tmp_path: Path) -> None:
         pytest.skip("make not found")
     for name in ("Makefile", "ff680w_usb_gap.c"):
         shutil.copy(SHIM_DIR / name, tmp_path / name)
-    result = subprocess.run(
-        ["make", "-C", str(tmp_path)], check=True, capture_output=True, text=True
-    )
+    result = run_checked(["make", "-C", str(tmp_path)])
     assert (tmp_path / "ff680w_usb_gap.so").is_file()
     assert "gcc " in result.stdout, result.stdout
-    assert "-Werror" in result.stdout, result.stdout
+    assert "-Wall -Wextra" in result.stdout, result.stdout
+    # Users' compilers may warn about things we have not seen; only the tests build with -Werror.
+    assert "-Werror" not in result.stdout, result.stdout

@@ -97,6 +97,12 @@ def test_frame_without_a_tail_is_handled() -> None:
     assert_box_matches(find_photo_box(frame, 150), expected, 150)
 
 
+@pytest.mark.parametrize("side", SIDES)
+def test_long_white_tail_is_not_mistaken_for_the_photo(side: str) -> None:
+    frame, expected = make_frame(dpi=75, photo_mm=(60, 40), side=side, tail_mm=250)
+    assert_box_matches(find_photo_box(frame, 75), expected, 75)
+
+
 def test_find_photo_box_does_not_mutate_its_input() -> None:
     frame, _ = make_frame(side="back", writing=True)
     snapshot = frame.copy()

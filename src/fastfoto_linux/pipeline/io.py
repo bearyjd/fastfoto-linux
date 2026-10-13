@@ -3,8 +3,32 @@
 from pathlib import Path
 
 import numpy as np
+from PIL import Image
+
+
+def _file_dpi(info: dict) -> int | None:
+    raw = info.get("dpi")
+    if raw is None:
+        return None
+    x_dpi, y_dpi = round(raw[0]), round(raw[1])
+    if x_dpi != y_dpi:
+        raise ValueError(f"non-square pixels are not supported: dpi {raw[0]} x {raw[1]}")
+    return x_dpi
 
 
 def load_frame(path: str | Path, dpi: int | None = None) -> tuple[np.ndarray, int]:
-    """Read an RGB frame and return ``(array, dpi)``."""
-    raise NotImplementedError
+    """Read an RGB frame and return ``(array, dpi)``.
+
+    The resolution comes from the PNG ``pHYs`` chunk, rounded to a whole dpi (scanimage writes
+    599.9988 for 600 dpi). An explicit ``dpi`` argument takes precedence over the file; if neither
+    is available a ``ValueError`` is raised.
+    """
+    with Image.open(path) as image:
+        if image.mode != "RGB":
+            raise ValueError(f"{path}: expected an RGB image, got mode {image.mode}")
+        resolved = dpi if dpi is not None else _file_dpi(image.info)
+        if resolved is None:
+            raise ValueError(f"{path}: file has no dpi metadata; pass dpi explicitly")
+        if resolved <= 0:
+            raise ValueError(f"{path}: dpi must be positive, got {resolved}")
+        return np.array(image), resolved

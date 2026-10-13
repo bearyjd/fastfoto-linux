@@ -29,7 +29,7 @@ class UsbScanner:
         return f"epsonds:libusb:{self.bus:0{width}d}:{self.device:0{width}d}"
 
 
-def find_usb_scanners(sysfs_root: Path = DEFAULT_SYSFS_ROOT) -> list[UsbScanner]:
+def find_usb_scanners(sysfs_root: Path = DEFAULT_SYSFS_ROOT) -> tuple[UsbScanner, ...]:
     """All FF-680W entries under ``sysfs_root``, ordered by bus then device number.
 
     Entries that are not USB devices (interfaces), belong to other hardware, or have missing or
@@ -39,9 +39,9 @@ def find_usb_scanners(sysfs_root: Path = DEFAULT_SYSFS_ROOT) -> list[UsbScanner]
         entries = sorted(sysfs_root.iterdir())
     except OSError as exc:
         logger.debug("cannot list %s: %s", sysfs_root, exc)
-        return []
+        return ()
     scanners = [scanner for entry in entries if (scanner := _read_scanner(entry)) is not None]
-    return sorted(scanners, key=lambda scanner: (scanner.bus, scanner.device))
+    return tuple(sorted(scanners, key=lambda scanner: (scanner.bus, scanner.device)))
 
 
 def _read_scanner(entry: Path) -> UsbScanner | None:

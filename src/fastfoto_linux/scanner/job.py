@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+from fastfoto_linux.scanner.errors import InvalidShimPathError
+
 SUPPORTED_DPI = (50, 75, 100, 150, 200, 240, 300, 360, 400, 600)
 MAX_LENGTH_MM = 393.7
 DEFAULT_RESOLUTION_DPI = 600
@@ -14,6 +16,7 @@ DEFAULT_FILE_PREFIX = "page"
 
 _FILE_PREFIX = re.compile(r"[A-Za-z0-9_-]+")
 _LD_PRELOAD_SEPARATORS = re.compile(r"[\s:]")
+_SANE_CONFIG_DIR_ENV = "SANE_CONFIG_DIR"
 
 
 class Source(StrEnum):
@@ -85,6 +88,16 @@ def build_argv(job: ScanJob, scanimage: str = "scanimage") -> tuple[str, ...]:
     )
 
 
+def validate_shim_path(shim: Path) -> Path:
+    """Return ``shim`` if it can be named in ``LD_PRELOAD``, whose entries split on ``:``/space."""
+    if _LD_PRELOAD_SEPARATORS.search(str(shim)):
+        raise InvalidShimPathError(
+            f"shim path cannot be used in LD_PRELOAD (whitespace or ':' separate entries); "
+            f"move the library to a path without them: {str(shim)!r}"
+        )
+    return shim
+
+
 def build_env(
     base_env: Mapping[str, str],
     *,
@@ -93,24 +106,23 @@ def build_env(
 ) -> dict[str, str]:
     """A new environment for scanimage; ``base_env`` is never modified.
 
-    ``shim`` is prepended to ``LD_PRELOAD``; ``sane_config_dir`` becomes ``SANE_CONFIG_DIR``
-    (no trailing colon, so SANE does not also search the system config directory).
+    ``shim`` is prepended to ``LD_PRELOAD``. ``sane_config_dir`` becomes ``SANE_CONFIG_DIR``
+    (no trailing colon, so SANE does not also search the system config directory); when it is
+    None any inherited ``SANE_CONFIG_DIR`` is removed, so a USB scan never silently uses a
+    stale network config.
     """
     env = dict(base_env)
     if shim is not None:
-        env["LD_PRELOAD"] = _with_preloaded(env.get("LD_PRELOAD", ""), shim)
-    if sane_config_dir is not None:
-        env["SANE_CONFIG_DIR"] = str(sane_config_dir)
+        env["LD_PRELOAD"] = _with_preloaded(env.get("LD_PRELOAD", ""), validate_shim_path(shim))
+    if sane_config_dir is None:
+        env.pop(_SANE_CONFIG_DIR_ENV, None)
+    else:
+        env[_SANE_CONFIG_DIR_ENV] = str(sane_config_dir)
     return env
 
 
 def _with_preloaded(existing: str, shim: Path) -> str:
-    shim_path = str(shim)
-    if _LD_PRELOAD_SEPARATORS.search(shim_path):
-        raise ValueError(
-            f"shim path cannot be used in LD_PRELOAD (whitespace or ':'): {shim_path!r}"
-        )
     libraries = existing.split()
-    if shim_path in libraries:
+    if str(shim) in libraries:
         return existing
-    return " ".join([shim_path, *libraries])
+    return " ".join([str(shim), *libraries])

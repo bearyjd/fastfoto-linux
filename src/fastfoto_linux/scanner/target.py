@@ -6,8 +6,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from fastfoto_linux.scanner.errors import ScannerNotFoundError, ShimMissingError
+from fastfoto_linux.scanner.job import build_env, validate_shim_path
 from fastfoto_linux.scanner.network import (
     sane_net_device_name,
+    validate_config_dir,
     validate_host,
     write_sane_net_config,
 )
@@ -30,7 +32,8 @@ class ScanTarget:
     sane_config_dir: Path | None = None
 
     def env(self, base_env: Mapping[str, str]) -> dict[str, str]:
-        raise NotImplementedError
+        """A new environment for scanimage: shim preloaded and/or private SANE config set."""
+        return build_env(base_env, shim=self.shim, sane_config_dir=self.sane_config_dir)
 
 
 def default_shim_candidates(
@@ -38,14 +41,16 @@ def default_shim_candidates(
 ) -> tuple[Path, ...]:
     """Where to look for the USB gap shim, best first.
 
-    ``$FF680W_SHIM``, then ``~/.local/lib/fastfoto-linux/``, then the in-repo build (only listed
-    when it exists, so an installed package does not point at some unrelated directory).
+    ``$FF680W_SHIM`` (a leading ``~`` or ``~/`` is expanded from ``$HOME``; ``~user`` is not),
+    then ``~/.local/lib/fastfoto-linux/``, then the in-repo build (only listed when it exists,
+    so an installed package does not point at some unrelated directory).
     """
     home = env.get("HOME")
     candidates: list[Path] = []
     if env.get(SHIM_ENV_VAR):
         raw = env[SHIM_ENV_VAR]
-        candidates.append(Path(home + raw[1:] if home and raw.startswith("~") else raw))
+        expand = home and (raw == "~" or raw.startswith("~/"))
+        candidates.append(Path(home + raw[1:] if expand else raw))
     if home:
         candidates.append(Path(home) / ".local" / "lib" / "fastfoto-linux" / SHIM_FILENAME)
     in_repo = repo_root / "tools" / "usb-gap-shim" / SHIM_FILENAME
@@ -64,19 +69,23 @@ def resolve_target(
     """USB (needs the shim) if the scanner is plugged in, else the network host.
 
     ``config_dir`` is where the private SANE config for a network target is written; it is
-    required whenever ``net_host`` is given.
+    required whenever ``net_host`` is given, must not contain ``:``, and should be a directory
+    only this user can write to (``tempfile.mkdtemp()`` or under ``$XDG_RUNTIME_DIR``).
     """
     if net_host is not None:
         validate_host(net_host)
         if config_dir is None:
             raise ValueError("config_dir is required when net_host is given")
+        validate_config_dir(config_dir)
     scanners = find_usb_scanners(sysfs_root)
     if scanners:
         if len(scanners) > 1:
             logger.warning("%d FF-680W scanners on USB; using the first", len(scanners))
         shim = _first_existing(shim_candidates)
         if shim is not None:
-            return ScanTarget(device=scanners[0].sane_usb_device_name(), shim=shim)
+            return ScanTarget(
+                device=scanners[0].sane_usb_device_name(), shim=validate_shim_path(shim)
+            )
         if net_host is None:
             raise ShimMissingError(_shim_missing_message(shim_candidates))
         logger.warning("FF-680W found on USB but the gap shim is missing; using the network")

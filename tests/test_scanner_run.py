@@ -473,6 +473,18 @@ def test_timeout_terminates_gracefully_and_raises_scan_error_with_the_pages_so_f
     assert marker.read_text() == "terminated"
 
 
+def test_scanimage_that_closes_stderr_but_keeps_running_still_times_out(
+    job: ScanJob, bin_dir: Path, tmp_path: Path
+) -> None:
+    marker = tmp_path / "sigterm-marker"
+    env = fake_env(bin_dir, close_stderr=True, hang=True, sigterm_marker=str(marker))
+
+    with pytest.raises(ScanError, match="timed out"):
+        run_scan(job, env=env, timeout_s=1.0)
+
+    assert marker.read_text() == "terminated"
+
+
 def test_scanimage_that_ignores_sigterm_is_killed_after_the_grace_period(
     job: ScanJob, bin_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

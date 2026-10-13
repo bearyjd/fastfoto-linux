@@ -10,10 +10,10 @@ Spec keys (all optional): ``pages`` (int) or ``numbers`` (list of page numbers),
 ``stderr_lines`` (extra lines at the end), ``stderr_hex`` (raw bytes written last),
 ``page_delay_s``, ``rename_delay_s`` (gap between "Scanned page" and the rename),
 ``split_lines`` (write the "Scanned page" line in two pieces), ``fail_last_page_status``
-(report the last page as failed with this status), ``hang`` (sleep after the pages until
-signalled), ``ignore_sigterm``, ``sigterm_marker`` (file created when SIGTERM arrives, then exit
-with status 2 like scanimage does), ``record_to`` (file that receives argv, LD_PRELOAD and
-whether stdin was at EOF).
+(report the last page as failed with this status), ``close_stderr`` (close fd 2 after the pages),
+``hang`` (sleep after the pages until signalled), ``ignore_sigterm``, ``sigterm_marker`` (file
+created when SIGTERM arrives, then exit with status 2 like scanimage does), ``record_to`` (file
+that receives argv, the FAKE_PROBE variable and whether stdin was at EOF).
 """
 
 import json
@@ -75,6 +75,8 @@ _SCRIPT = textwrap.dedent(
         if not failed:
             os.rename(part, batch % n)
 
+    if spec.get("close_stderr"):
+        os.close(2)
     if spec.get("hang"):
         time.sleep(600)
     for text in spec.get("stderr_lines", []):

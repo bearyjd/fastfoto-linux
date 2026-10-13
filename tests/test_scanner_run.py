@@ -2,9 +2,12 @@
 
 import json
 import os
+import resource
 import signal
 import subprocess
 import threading
+import time
+from collections.abc import Iterator
 from dataclasses import FrozenInstanceError
 from pathlib import Path
 from typing import Any
@@ -30,6 +33,9 @@ SANE_STATUS_JAMMED = 6
 SANE_STATUS_IO_ERROR = 9
 OUT_OF_DOCS = "scanimage: sane_start: Document feeder out of documents"
 IS_ROOT = hasattr(os, "geteuid") and os.geteuid() == 0
+# Long enough for a loaded CI runner to start the fake and write a page, short enough to wait.
+SHORT_TIMEOUT_S = 2.5
+SELECT_FD_LIMIT = 1024
 
 
 class RecordingPopen:
@@ -466,7 +472,7 @@ def test_timeout_terminates_gracefully_and_raises_scan_error_with_the_pages_so_f
     env = fake_env(bin_dir, pages=1, hang=True, sigterm_marker=str(marker))
 
     with pytest.raises(ScanError, match="timed out") as excinfo:
-        run_scan(job, env=env, timeout_s=1.0)
+        run_scan(job, env=env, timeout_s=SHORT_TIMEOUT_S)
 
     assert names(excinfo.value.pages) == ["page-0001.png"]
     assert excinfo.value.returncode is None
@@ -480,7 +486,7 @@ def test_scanimage_that_closes_stderr_but_keeps_running_still_times_out(
     env = fake_env(bin_dir, close_stderr=True, hang=True, sigterm_marker=str(marker))
 
     with pytest.raises(ScanError, match="timed out"):
-        run_scan(job, env=env, timeout_s=1.0)
+        run_scan(job, env=env, timeout_s=SHORT_TIMEOUT_S)
 
     assert marker.read_text() == "terminated"
 
@@ -496,7 +502,135 @@ def test_scanimage_that_ignores_sigterm_is_killed_after_the_grace_period(
             job,
             env=fake_env(bin_dir, hang=True, ignore_sigterm=True),
             popen=popen,
-            timeout_s=1.0,
+            timeout_s=SHORT_TIMEOUT_S,
         )
 
     assert popen.procs[0].returncode == -signal.SIGKILL
+
+
+# --- second review: fds, exit detection, tails, session, Ctrl-C ------------------------------
+
+
+@pytest.fixture
+def fds_above_select_limit() -> Iterator[None]:
+    """Fill the fd table so that the next pipes get numbers >= 1024, which select() cannot hold."""
+    wanted = SELECT_FD_LIMIT + 200
+    soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+    if hard != resource.RLIM_INFINITY and hard < wanted:
+        pytest.skip(f"RLIMIT_NOFILE hard limit {hard} is below {wanted}")
+    if soft != resource.RLIM_INFINITY and soft < wanted:
+        resource.setrlimit(resource.RLIMIT_NOFILE, (wanted, hard))
+    held: list[int] = []
+    try:
+        while not held or held[-1] <= SELECT_FD_LIMIT:
+            held.append(os.dup(0))
+        yield
+    finally:
+        for fd in held:
+            os.close(fd)
+        resource.setrlimit(resource.RLIMIT_NOFILE, (soft, hard))
+
+
+def test_a_scan_works_when_the_stderr_pipe_has_a_file_descriptor_above_1024(
+    job: ScanJob, bin_dir: Path, fds_above_select_limit: None
+) -> None:
+    popen = RecordingPopen()
+
+    result = run_scan(job, env=fake_env(bin_dir, pages=2), popen=popen)
+
+    assert popen.procs[0].stderr is not None
+    assert len(result.pages) == 2
+
+
+def test_exit_is_noticed_even_if_a_grandchild_keeps_stderr_open(
+    job: ScanJob, bin_dir: Path
+) -> None:
+    started = time.monotonic()
+
+    result = run_scan(job, env=fake_env(bin_dir, pages=1, grandchild=True), timeout_s=8.0)
+
+    assert time.monotonic() - started < 4.0
+    assert names(result.pages) == ["page-0001.png"]
+
+
+def test_cancel_is_honoured_while_waiting_for_a_process_that_closed_stderr(
+    job: ScanJob, bin_dir: Path, tmp_path: Path
+) -> None:
+    marker = tmp_path / "sigterm-marker"
+    cancel = threading.Event()
+    timer = threading.Timer(0.7, cancel.set)
+    timer.start()
+    env = fake_env(bin_dir, pages=1, close_stderr=True, hang=True, sigterm_marker=str(marker))
+    started = time.monotonic()
+
+    try:
+        with pytest.raises(ScanCancelledError):
+            run_scan(job, env=env, cancel=cancel, timeout_s=20.0)
+    finally:
+        timer.cancel()
+
+    assert time.monotonic() - started < 6.0
+    assert marker.read_text() == "terminated"
+
+
+def test_scanimage_runs_in_its_own_session_so_a_terminal_ctrl_c_does_not_reach_it(
+    job: ScanJob, bin_dir: Path, tmp_path: Path
+) -> None:
+    record = tmp_path / "record.json"
+    popen = RecordingPopen()
+
+    run_scan(job, env=fake_env(bin_dir, pages=1, record_to=str(record)), popen=popen)
+
+    assert popen.calls[0][1]["start_new_session"] is True
+    assert json.loads(record.read_text())["session_leader"] is True
+
+
+def test_keyboard_interrupt_stops_scanimage_gracefully_and_propagates(
+    job: ScanJob, bin_dir: Path, tmp_path: Path
+) -> None:
+    marker = tmp_path / "sigterm-marker"
+    env = fake_env(bin_dir, pages=1, hang=True, sigterm_marker=str(marker))
+    interrupt = threading.Timer(0.3, os.kill, (os.getpid(), signal.SIGINT))
+
+    def on_progress(page: int) -> None:
+        interrupt.start()  # the child is now idle in its hang; Ctrl-C reaches us shortly
+
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            run_scan(job, env=env, on_progress=on_progress)
+    finally:
+        interrupt.cancel()
+
+    assert marker.read_text() == "terminated"
+
+
+def test_timeout_error_includes_what_scanimage_last_said(job: ScanJob, bin_dir: Path) -> None:
+    env = fake_env(bin_dir, pages=1, hang=True)
+
+    with pytest.raises(ScanError, match="timed out") as excinfo:
+        run_scan(job, env=env, timeout_s=SHORT_TIMEOUT_S)
+
+    assert "Scanned page 1" in str(excinfo.value)
+
+
+def test_cancel_error_includes_what_scanimage_last_said(job: ScanJob, bin_dir: Path) -> None:
+    cancel = threading.Event()
+    env = fake_env(bin_dir, pages=1, hang=True)
+
+    with pytest.raises(ScanCancelledError) as excinfo:
+        run_scan(job, env=env, on_progress=lambda page: cancel.set(), cancel=cancel)
+
+    assert "Scanned page 1" in str(excinfo.value)
+
+
+def test_a_huge_unterminated_stderr_line_is_capped_keeping_its_end(
+    job: ScanJob, bin_dir: Path
+) -> None:
+    env = fake_env(bin_dir, exit_code=SANE_STATUS_IO_ERROR, unterminated_stderr_bytes=300_000)
+
+    with pytest.raises(ScanError) as excinfo:
+        run_scan(job, env=env)
+
+    message = str(excinfo.value)
+    assert message.endswith("END")
+    assert len(message) < 100_000

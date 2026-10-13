@@ -4,16 +4,20 @@
 environment whose PATH is only that directory and whose ``FAKE_SCANIMAGE_SPEC`` tells the script
 what to do. The script mimics the parts of the real batch mode that the runner relies on: it
 writes ``<pattern>.part`` files, renames them when a page is done, and prints "Scanning page N" /
-"Scanned page N. (scanner status = S)" on stderr.
+"Scanned page N. (scanner status = S)" on stderr (scanimage.c prints both in batch mode; the runner
+only reads the second).
 
 Spec keys (all optional): ``pages`` (int) or ``numbers`` (list of page numbers), ``exit_code``,
 ``stderr_lines`` (extra lines at the end), ``stderr_hex`` (raw bytes written last),
 ``page_delay_s``, ``rename_delay_s`` (gap between "Scanned page" and the rename),
 ``split_lines`` (write the "Scanned page" line in two pieces), ``fail_last_page_status``
 (report the last page as failed with this status), ``close_stderr`` (close fd 2 after the pages),
-``hang`` (sleep after the pages until signalled), ``ignore_sigterm``, ``sigterm_marker`` (file
-created when SIGTERM arrives, then exit with status 2 like scanimage does), ``record_to`` (file
-that receives argv, the FAKE_PROBE variable and whether stdin was at EOF).
+``hang`` (sleep up to 30 s after the pages, or until signalled), ``ignore_sigterm``,
+``sigterm_marker`` (file created when SIGTERM arrives, then exit with status 2 like scanimage
+does), ``record_to`` (file
+that receives argv, the FAKE_PROBE variable, whether stdin was at EOF and whether the
+script is a session leader), ``grandchild`` (start a process that inherits stderr and outlives the
+script), ``unterminated_stderr_bytes`` (write this many bytes, then "END", without a newline).
 """
 
 import json
@@ -43,7 +47,8 @@ _SCRIPT = textwrap.dedent(
 
     if spec.get("record_to"):
         record = {{"argv": argv, "probe": os.environ.get("FAKE_PROBE"),
-                   "stdin_eof": sys.stdin.read() == ""}}
+                   "stdin_eof": sys.stdin.read() == "",
+                   "session_leader": os.getsid(0) == os.getpid()}}
         open(spec["record_to"], "w").write(json.dumps(record))
 
     if spec.get("ignore_sigterm"):
@@ -53,6 +58,13 @@ _SCRIPT = textwrap.dedent(
             open(spec["sigterm_marker"], "w").write("terminated")
             os._exit(2)
         signal.signal(signal.SIGTERM, on_term)
+
+    if spec.get("grandchild"):
+        import subprocess
+        code = "import time; time.sleep(10)"
+        subprocess.Popen(
+            [sys.executable, "-c", code], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL
+        )
 
     numbers = spec.get("numbers") or list(range(1, spec.get("pages", 0) + 1))
     for index, n in enumerate(numbers):
@@ -75,10 +87,13 @@ _SCRIPT = textwrap.dedent(
         if not failed:
             os.rename(part, batch % n)
 
+    if spec.get("unterminated_stderr_bytes"):
+        err.write(b"x" * spec["unterminated_stderr_bytes"] + b"END")
+        err.flush()
     if spec.get("close_stderr"):
         os.close(2)
     if spec.get("hang"):
-        time.sleep(600)
+        time.sleep(30)
     for text in spec.get("stderr_lines", []):
         say(text + "\\n")
     if spec.get("stderr_hex"):

@@ -13,9 +13,12 @@ from fastfoto_linux.scanner import (
 )
 
 LIST_OPTIONS_TIMEOUT_S = 60
+# pytest-timeout must not fire before the subprocess timeout does.
+HARDWARE_TEST_TIMEOUT_S = LIST_OPTIONS_TIMEOUT_S + 30
 
 
 @pytest.mark.hardware
+@pytest.mark.timeout(HARDWARE_TEST_TIMEOUT_S)
 def test_scanimage_lists_options_on_the_real_scanner_through_the_shim() -> None:
     try:
         target = resolve_target(shim_candidates=default_shim_candidates(os.environ))

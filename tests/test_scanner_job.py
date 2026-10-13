@@ -150,6 +150,12 @@ def test_unsupported_resolution_is_rejected(tmp_path: Path, dpi: int) -> None:
         make_job(tmp_path, resolution=dpi)
 
 
+@pytest.mark.parametrize("dpi", [600.0, True])
+def test_non_integer_resolution_is_rejected(tmp_path: Path, dpi: float) -> None:
+    with pytest.raises(ValueError, match="resolution"):
+        make_job(tmp_path, resolution=dpi)
+
+
 @pytest.mark.parametrize("prefix", ["", "a b", "a/b", "../x", "page%d", "päge", "a.b", "new\nline"])
 def test_unsafe_file_prefix_is_rejected(tmp_path: Path, prefix: str) -> None:
     with pytest.raises(ValueError, match="file_prefix"):

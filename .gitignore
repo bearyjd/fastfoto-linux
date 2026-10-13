@@ -1,0 +1,25 @@
+# Private / local-only — never publish
+test-scans/
+captures/
+*.pcap
+*.pcapng
+.omc/
+*.log
+
+# Build artifacts
+*.so
+*.o
+build/
+dist/
+*.egg-info/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/

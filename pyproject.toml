@@ -16,9 +16,6 @@ dependencies = [
     "pillow>=11.0",
 ]
 
-[project.scripts]
-ffscan = "fastfoto_linux.cli:main"
-
 [dependency-groups]
 dev = [
     "pytest>=8.3",

@@ -9,7 +9,8 @@ from pathlib import Path
 
 import pytest
 
-REAL_SCANS_DIR = Path(os.environ.get("FASTFOTO_REAL_SCANS", Path(__file__).parent.parent / "test-scans"))
+_DEFAULT_SCANS = Path(__file__).parent.parent / "test-scans"
+REAL_SCANS_DIR = Path(os.environ.get("FASTFOTO_REAL_SCANS", _DEFAULT_SCANS))
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:

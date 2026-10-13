@@ -23,3 +23,11 @@ venv/
 .coverage
 coverage.xml
 htmlcov/
+
+# More private scan/image formats and local config
+*.tif
+*.tiff
+*.jpg
+*.jpeg
+.env*
+.claude/

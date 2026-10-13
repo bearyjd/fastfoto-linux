@@ -1,5 +1,5 @@
 [build-system]
-requires = ["hatchling>=1.25"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
@@ -12,7 +12,7 @@ license-files = ["LICENSE"]
 requires-python = ">=3.13"
 dependencies = [
     "numpy>=2.1",
-    "opencv-python-headless>=4.10",
+    "opencv-python-headless>=5.0",
     "pillow>=11.0",
 ]
 
@@ -48,4 +48,6 @@ target-version = "py313"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "PL", "RUF"]
-ignore = ["PLR2004"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["PLR2004"]

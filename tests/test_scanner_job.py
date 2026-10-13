@@ -5,6 +5,7 @@ from types import MappingProxyType
 
 import pytest
 
+from fastfoto_linux.scanner.errors import InvalidShimPathError, ScannerError
 from fastfoto_linux.scanner.job import (
     MAX_LENGTH_MM,
     SUPPORTED_DPI,
@@ -244,8 +245,13 @@ def test_build_env_leaves_ld_preload_alone_without_a_shim() -> None:
 
 @pytest.mark.parametrize("bad", ["/opt/my shim/gap.so", "/opt/a:b/gap.so", "/opt/tab\t/gap.so"])
 def test_build_env_rejects_shim_paths_that_ld_preload_would_split(bad: str) -> None:
-    with pytest.raises(ValueError, match="LD_PRELOAD"):
+    with pytest.raises(InvalidShimPathError, match="LD_PRELOAD"):
         build_env({}, shim=Path(bad))
+
+
+def test_invalid_shim_path_error_is_a_scanner_error_and_a_value_error() -> None:
+    assert issubclass(InvalidShimPathError, ScannerError)
+    assert issubclass(InvalidShimPathError, ValueError)
 
 
 def test_build_env_sets_sane_config_dir_without_trailing_colon() -> None:
@@ -254,10 +260,16 @@ def test_build_env_sets_sane_config_dir_without_trailing_colon() -> None:
     assert env["SANE_CONFIG_DIR"] == "/tmp/cfg"
 
 
-def test_build_env_keeps_an_existing_sane_config_dir_when_none_is_requested() -> None:
-    env = build_env({"SANE_CONFIG_DIR": "/etc/sane.d"}, shim=SHIM)
+def test_build_env_drops_an_inherited_sane_config_dir_when_none_is_requested() -> None:
+    base = {"SANE_CONFIG_DIR": "/stale/network-config", "PATH": "/usr/bin"}
 
-    assert env["SANE_CONFIG_DIR"] == "/etc/sane.d"
+    with_shim = build_env(base, shim=SHIM)
+    plain = build_env(base)
+
+    assert "SANE_CONFIG_DIR" not in with_shim
+    assert "SANE_CONFIG_DIR" not in plain
+    assert plain["PATH"] == "/usr/bin"
+    assert base["SANE_CONFIG_DIR"] == "/stale/network-config"
 
 
 def test_build_env_overrides_sane_config_dir_when_one_is_requested() -> None:

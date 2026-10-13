@@ -16,11 +16,35 @@ class ShimMissingError(ScannerError):
 
 
 class InvalidHostError(ScannerError, ValueError):
-    """A network host is not a plain IPv4/IPv6 address or hostname."""
+    """A network host is not a plain IPv4 address or hostname."""
+
+
+class InvalidConfigDirError(ScannerError, ValueError):
+    """A SANE config directory path cannot be used in ``SANE_CONFIG_DIR``."""
+
+
+class InvalidShimPathError(ScannerError, ValueError):
+    """The USB gap shim path cannot be used in ``LD_PRELOAD``."""
+
+
+class OutputDirError(ScannerError, OSError):
+    """The output directory cannot be created, listed or written to."""
+
+
+class OutputNotEmptyError(ScannerError, FileExistsError):
+    """The output directory already holds pages for this job's file prefix."""
 
 
 class NoDocumentsError(ScannerError):
     """The document feeder was empty, so no page was scanned."""
+
+
+class ScanCancelledError(ScannerError):
+    """The scan was cancelled by the caller; ``pages`` are the pages finished before that."""
+
+    def __init__(self, message: str, *, pages: tuple[Path, ...] = ()) -> None:
+        super().__init__(message)
+        self.pages = pages
 
 
 class ScanError(ScannerError):

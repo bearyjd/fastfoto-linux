@@ -1,8 +1,13 @@
 """Scanner transport: find the FF-680W (USB first, network fallback) and run scan jobs."""
 
 from fastfoto_linux.scanner.errors import (
+    InvalidConfigDirError,
     InvalidHostError,
+    InvalidShimPathError,
     NoDocumentsError,
+    OutputDirError,
+    OutputNotEmptyError,
+    ScanCancelledError,
     ScanError,
     ScannerError,
     ScannerNotFoundError,
@@ -29,9 +34,14 @@ from fastfoto_linux.scanner.usb import UsbScanner, find_usb_scanners
 __all__ = [
     "MAX_LENGTH_MM",
     "SUPPORTED_DPI",
+    "InvalidConfigDirError",
     "InvalidHostError",
+    "InvalidShimPathError",
     "Mode",
     "NoDocumentsError",
+    "OutputDirError",
+    "OutputNotEmptyError",
+    "ScanCancelledError",
     "ScanError",
     "ScanJob",
     "ScanResult",

@@ -29,6 +29,9 @@ class ScanTarget:
     shim: Path | None = None
     sane_config_dir: Path | None = None
 
+    def env(self, base_env: Mapping[str, str]) -> dict[str, str]:
+        raise NotImplementedError
+
 
 def default_shim_candidates(
     env: Mapping[str, str], *, repo_root: Path = _PACKAGE_REPO_ROOT

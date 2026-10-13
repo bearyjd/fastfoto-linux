@@ -8,7 +8,6 @@ import pytest
 from fastfoto_linux.scanner import (
     ScannerNotFoundError,
     ShimMissingError,
-    build_env,
     default_shim_candidates,
     resolve_target,
 )
@@ -22,7 +21,7 @@ def test_scanimage_lists_options_on_the_real_scanner_through_the_shim() -> None:
         target = resolve_target(shim_candidates=default_shim_candidates(os.environ))
     except (ScannerNotFoundError, ShimMissingError) as exc:
         pytest.skip(f"no usable FF-680W: {exc}")
-    env = build_env(os.environ, shim=target.shim, sane_config_dir=target.sane_config_dir)
+    env = target.env(os.environ)
 
     proc = subprocess.run(  # no shell; "-A" opens the device and prints options, no scan
         ["scanimage", "-d", target.device, "-A"],

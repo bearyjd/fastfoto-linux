@@ -26,24 +26,31 @@ def test_ids_and_default_root_match_the_ff680w() -> None:
     assert Path("/sys/bus/usb/devices") == DEFAULT_SYSFS_ROOT
 
 
-def test_no_scanner_returns_empty_list(root: Path) -> None:
-    assert find_usb_scanners(root) == []
+def test_no_scanner_returns_empty_tuple(root: Path) -> None:
+    assert find_usb_scanners(root) == ()
+    assert isinstance(find_usb_scanners(root), tuple)
 
 
 def test_missing_sysfs_root_returns_empty_list(tmp_path: Path) -> None:
-    assert find_usb_scanners(tmp_path / "does-not-exist") == []
+    assert find_usb_scanners(tmp_path / "does-not-exist") == ()
 
 
 def test_sysfs_root_that_is_a_file_returns_empty_list(tmp_path: Path) -> None:
     not_a_dir = tmp_path / "file"
     not_a_dir.write_text("")
-    assert find_usb_scanners(not_a_dir) == []
+    assert find_usb_scanners(not_a_dir) == ()
 
 
 def test_one_scanner_reports_bus_device_and_sysfs_path(root: Path) -> None:
     entry = add_usb_device(root, "3-1", busnum="3", devnum="15")
 
-    assert find_usb_scanners(root) == [UsbScanner(bus=3, device=15, sysfs_path=entry)]
+    assert find_usb_scanners(root) == (UsbScanner(bus=3, device=15, sysfs_path=entry),)
+
+
+def test_scanners_are_returned_as_an_immutable_tuple(root: Path) -> None:
+    add_usb_device(root, "3-1")
+
+    assert isinstance(find_usb_scanners(root), tuple)
 
 
 def test_two_scanners_are_sorted_by_bus_then_device_not_by_directory_name(root: Path) -> None:
@@ -73,7 +80,7 @@ def test_hex_ids_are_case_insensitive_and_tolerate_whitespace(root: Path) -> Non
 def test_other_usb_devices_are_ignored(root: Path, vendor: str, product: str) -> None:
     add_usb_device(root, "usb1", vendor=vendor, product=product)
 
-    assert find_usb_scanners(root) == []
+    assert find_usb_scanners(root) == ()
 
 
 def test_interface_entries_without_idvendor_are_skipped(root: Path) -> None:
@@ -110,7 +117,7 @@ def test_malformed_entries_are_skipped_and_do_not_hide_good_ones(
     add_usb_device(root, "1-bad", **overrides)
     good = add_usb_device(root, "2-good", busnum="2", devnum="7")
 
-    assert find_usb_scanners(root) == [UsbScanner(bus=2, device=7, sysfs_path=good)]
+    assert find_usb_scanners(root) == (UsbScanner(bus=2, device=7, sysfs_path=good),)
 
 
 def test_unreadable_attribute_is_skipped(root: Path) -> None:

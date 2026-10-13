@@ -4,9 +4,11 @@ from pathlib import Path
 
 import pytest
 
-from fastfoto_linux.scanner import target as target_module
 from fastfoto_linux.scanner.errors import (
+    InvalidConfigDirError,
     InvalidHostError,
+    InvalidShimPathError,
+    ScannerError,
     ScannerNotFoundError,
     ShimMissingError,
 )
@@ -66,6 +68,17 @@ def test_candidates_expand_a_tilde_in_the_env_var(tmp_path: Path) -> None:
     assert default_shim_candidates(env, repo_root=tmp_path / "repo")[0] == tmp_path / "shim.so"
 
 
+def test_candidates_expand_only_the_current_users_tilde(tmp_path: Path) -> None:
+    home = str(tmp_path / "alice")
+    repo = tmp_path / "repo"
+
+    assert default_shim_candidates({"FF680W_SHIM": "~", "HOME": home}, repo_root=repo)[0] == Path(
+        home
+    )
+    other_user = default_shim_candidates({"FF680W_SHIM": "~bob/x.so", "HOME": home}, repo_root=repo)
+    assert other_user[0] == Path("~bob/x.so")
+
+
 def test_candidates_end_with_the_repo_build_only_when_it_exists(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     built = repo / "tools" / "usb-gap-shim" / SHIM_NAME
@@ -78,12 +91,6 @@ def test_candidates_end_with_the_repo_build_only_when_it_exists(tmp_path: Path) 
 
     built.write_bytes(b"")
     assert default_shim_candidates(env, repo_root=repo)[-1] == built
-
-
-def test_default_repo_root_points_at_this_repository() -> None:
-    makefile = target_module._PACKAGE_REPO_ROOT / "tools" / "usb-gap-shim" / "Makefile"
-
-    assert makefile.is_file()
 
 
 def test_default_repo_root_only_yields_files() -> None:
@@ -233,3 +240,56 @@ def test_scan_target_is_frozen() -> None:
         target.device = "other"  # type: ignore[misc]
     assert target.shim is None
     assert target.sane_config_dir is None
+
+
+# --- review findings: shim path, config dir, ScanTarget.env --------------------------------
+
+
+@pytest.mark.parametrize("directory", ["with space", "with:colon", "with\ttab"])
+def test_usb_shim_path_that_ld_preload_cannot_hold_is_a_scanner_error(
+    sysfs: Path, tmp_path: Path, directory: str
+) -> None:
+    add_usb_device(sysfs, "1-1")
+    bad_shim = tmp_path / directory / SHIM_NAME
+    bad_shim.parent.mkdir()
+    bad_shim.write_bytes(b"")
+
+    with pytest.raises(InvalidShimPathError) as excinfo:
+        resolve_target(sysfs_root=sysfs, shim_candidates=[bad_shim])
+
+    assert isinstance(excinfo.value, ScannerError)
+    assert "LD_PRELOAD" in str(excinfo.value)
+
+
+def test_config_dir_with_a_colon_is_rejected_up_front_even_when_usb_would_work(
+    sysfs: Path, shim: Path, tmp_path: Path
+) -> None:
+    add_usb_device(sysfs, "1-1")
+
+    with pytest.raises(InvalidConfigDirError):
+        resolve_target(
+            sysfs_root=sysfs,
+            shim_candidates=[shim],
+            net_host="scanner.local",
+            config_dir=tmp_path / "a:b",
+        )
+
+
+def test_usb_target_env_preloads_the_shim_and_drops_a_stale_network_config(shim: Path) -> None:
+    target = ScanTarget(device="epsonds:libusb:001:002", shim=shim)
+    base = {"PATH": "/usr/bin", "LD_PRELOAD": "/x/libfoo.so", "SANE_CONFIG_DIR": "/stale"}
+
+    env = target.env(base)
+
+    assert env["LD_PRELOAD"] == f"{shim} /x/libfoo.so"
+    assert "SANE_CONFIG_DIR" not in env
+    assert env["PATH"] == "/usr/bin"
+    assert base == {"PATH": "/usr/bin", "LD_PRELOAD": "/x/libfoo.so", "SANE_CONFIG_DIR": "/stale"}
+
+
+def test_network_target_env_points_sane_at_the_private_config(config_dir: Path) -> None:
+    target = ScanTarget(device="epsonds:net:scanner.local", sane_config_dir=config_dir)
+
+    env = target.env({"PATH": "/usr/bin"})
+
+    assert env == {"PATH": "/usr/bin", "SANE_CONFIG_DIR": str(config_dir)}

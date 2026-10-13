@@ -553,6 +553,15 @@ def test_exit_is_noticed_even_if_a_grandchild_keeps_stderr_open(
     assert names(result.pages) == ["page-0001.png"]
 
 
+def test_exit_is_noticed_even_if_a_grandchild_floods_stderr(job: ScanJob, bin_dir: Path) -> None:
+    started = time.monotonic()
+
+    result = run_scan(job, env=fake_env(bin_dir, pages=1, grandchild="flood"), timeout_s=8.0)
+
+    assert time.monotonic() - started < 4.0
+    assert names(result.pages) == ["page-0001.png"]
+
+
 def test_cancel_is_honoured_while_waiting_for_a_process_that_closed_stderr(
     job: ScanJob, bin_dir: Path, tmp_path: Path
 ) -> None:

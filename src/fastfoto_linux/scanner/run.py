@@ -1,13 +1,12 @@
 """Run a scanimage batch job, stream its progress and collect the pages it wrote."""
 
+import contextlib
 import logging
 import os
 import re
-import select
 import subprocess
 import threading
 import time
-from collections import deque
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from enum import Enum, auto
@@ -22,6 +21,7 @@ from fastfoto_linux.scanner.errors import (
     ScanError,
 )
 from fastfoto_linux.scanner.job import ScanJob, build_argv
+from fastfoto_linux.scanner.stderr_monitor import StderrMonitor
 
 logger = logging.getLogger(__name__)
 
@@ -30,15 +30,8 @@ DEFAULT_TIMEOUT_S = 30 * 60.0
 TERMINATE_GRACE_S = 10.0
 # How often stderr reading wakes up to check the cancel event, the timeout and finished pages.
 POLL_INTERVAL_S = 0.1
-READ_CHUNK_BYTES = 4096
-STDERR_TAIL_LINES = 5
-# SANE_Status values (sane/sane.h); scanimage passes the status straight to exit().
-SANE_STATUS_GOOD = 0
-SANE_STATUS_EOF = 5
+# SANE_Status value (sane/sane.h); scanimage passes the status straight to exit().
 SANE_STATUS_NO_DOCS = 7
-_PAGE_DONE_STATUSES = frozenset({SANE_STATUS_GOOD, SANE_STATUS_EOF})
-# Printed by scanimage.c in batch mode, e.g. "Scanned page 3. (scanner status = 0)".
-_SCANNED_PAGE = re.compile(r"Scanned page ([0-9]+)\. \(scanner status = ([0-9]+)\)")
 
 PopenFactory = Callable[..., "subprocess.Popen[bytes]"]
 ProgressCallback = Callable[[int], None]
@@ -69,11 +62,17 @@ def run_scan(  # noqa: PLR0913
 ) -> ScanResult:
     """Run ``job`` with scanimage and return the pages it produced.
 
-    ``on_progress(page_number)`` is called, in order and from the calling thread, once a page is
-    finished and its file exists; an exception from it stops scanimage and propagates. Setting
-    ``cancel`` (from any thread) or exceeding ``timeout_s`` stops scanimage with SIGTERM, so it
-    can cancel the scanner cleanly, and SIGKILL only if it does not exit within
-    ``TERMINATE_GRACE_S``.
+    ``on_progress(page_number)`` is called in page order, on the thread that called ``run_scan``
+    (the one supervising scanimage), once a page is finished and its file exists. It must be
+    fast and must not block: scanimage is not watched while it runs, so a slow callback delays
+    cancel and timeout handling. An exception from it stops scanimage and propagates. Pages that
+    finish while scanimage is being stopped (cancel, timeout) are not announced; they are in
+    ``pages`` of the raised error.
+
+    Setting ``cancel`` (from any thread) or exceeding ``timeout_s`` stops scanimage with SIGTERM,
+    so it can cancel the scanner cleanly, and SIGKILL only if it does not exit within
+    ``TERMINATE_GRACE_S``. scanimage runs in its own session, so a terminal Ctrl-C reaches only
+    this process, whose KeyboardInterrupt handling stops scanimage the same way.
 
     Raises OutputDirError / OutputNotEmptyError before anything is started, NoDocumentsError if
     the feeder was empty, ScanCancelledError after a cancel and ScanError for every other
@@ -82,112 +81,80 @@ def run_scan(  # noqa: PLR0913
     if cancel is not None and cancel.is_set():
         raise ScanCancelledError("scan cancelled before it started")
     _prepare_output_dir(job)
+    proc = _start(popen, build_argv(job, scanimage), env)
+    deadline = None if timeout_s is None else time.monotonic() + timeout_s
+    stderr_fd = cast("IO[bytes]", proc.stderr).fileno()  # stderr=PIPE was requested
+    with proc, StderrMonitor(job, on_progress, stderr_fd) as monitor:
+        outcome = _supervise(proc, monitor, deadline, cancel)
+    pages = _find_pages(job)
+    if outcome is _Outcome.CANCELLED:
+        raise ScanCancelledError(_with_output("scan cancelled", monitor.tail_text), pages=pages)
+    if outcome is _Outcome.TIMED_OUT:
+        message = _with_output(f"scanimage timed out after {timeout_s:g} s", monitor.tail_text)
+        raise ScanError(message, pages=pages)
+    return _interpret(pages, proc.returncode, monitor.tail_text)
+
+
+def _start(
+    popen: PopenFactory, argv: tuple[str, ...], env: Mapping[str, str]
+) -> "subprocess.Popen[bytes]":
     try:
-        proc = popen(
-            build_argv(job, scanimage),
+        return popen(
+            argv,
             env=env,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
+            start_new_session=True,
         )
     except OSError as exc:
         raise ScanError(f"could not start scanimage: {exc}") from exc
-    monitor = _StderrMonitor(job, on_progress)
-    deadline = None if timeout_s is None else time.monotonic() + timeout_s
-    with proc:
-        outcome = _supervise(proc, monitor, deadline, cancel)
-    pages = _find_pages(job)
-    if outcome is _Outcome.CANCELLED:
-        raise ScanCancelledError("scan cancelled", pages=pages)
-    if outcome is _Outcome.TIMED_OUT:
-        raise ScanError(f"scanimage timed out after {timeout_s:g} s", pages=pages)
-    monitor.finish()
-    return _interpret(pages, proc.returncode, monitor.tail)
-
-
-class _StderrMonitor:
-    """Splits scanimage's stderr into lines, keeps the tail and announces finished pages."""
-
-    def __init__(self, job: ScanJob, on_progress: ProgressCallback | None) -> None:
-        self._job = job
-        self._on_progress = on_progress
-        self._partial = b""
-        self._pending_pages: deque[int] = deque()
-        self.tail: deque[str] = deque(maxlen=STDERR_TAIL_LINES)
-
-    def feed(self, data: bytes) -> None:
-        *lines, self._partial = (self._partial + data).split(b"\n")
-        for raw in lines:
-            self._take_line(raw)
-
-    def finish(self) -> None:
-        """Handle a last line that had no newline, then announce what is already on disk."""
-        if self._partial:
-            self._take_line(self._partial)
-            self._partial = b""
-        self.announce_finished_pages()
-
-    def announce_finished_pages(self) -> None:
-        """Call ``on_progress`` for finished pages whose file exists (renamed after the line)."""
-        while self._pending_pages and _page_path(self._job, self._pending_pages[0]).is_file():
-            page = self._pending_pages.popleft()
-            if self._on_progress is not None:
-                self._on_progress(page)
-
-    def _take_line(self, raw: bytes) -> None:
-        line = raw.decode("utf-8", errors="replace").strip()
-        if not line:
-            return
-        self.tail.append(line)
-        match = _SCANNED_PAGE.search(line)
-        if match and int(match.group(2)) in _PAGE_DONE_STATUSES:
-            self._pending_pages.append(int(match.group(1)))
 
 
 def _supervise(
     proc: "subprocess.Popen[bytes]",
-    monitor: _StderrMonitor,
+    monitor: StderrMonitor,
     deadline: float | None,
     cancel: threading.Event | None,
 ) -> _Outcome:
     try:
         outcome = _watch(proc, monitor, deadline, cancel)
-    except BaseException:
+    except BaseException:  # incl. KeyboardInterrupt and a failing on_progress
         _stop(proc)
         raise
-    if outcome is not _Outcome.EXITED:
+    if outcome is _Outcome.EXITED:
+        monitor.finish()
+    else:
         _stop(proc)
+        monitor.drain()  # what scanimage said while it was stopping
     return outcome
 
 
 def _watch(
     proc: "subprocess.Popen[bytes]",
-    monitor: _StderrMonitor,
+    monitor: StderrMonitor,
     deadline: float | None,
     cancel: threading.Event | None,
 ) -> _Outcome:
-    stderr = cast("IO[bytes]", proc.stderr)  # stderr=PIPE was requested
+    """Pump stderr until the process exits, the cancel event is set or the deadline passes.
+
+    Exit is detected with ``poll()`` and not by stderr EOF: a grandchild that inherited the
+    pipe keeps it open after scanimage is gone.
+    """
     while True:
-        readable, _, _ = select.select([stderr], [], [], POLL_INTERVAL_S)
-        if readable:
-            chunk = os.read(stderr.fileno(), READ_CHUNK_BYTES)
-            if not chunk:  # EOF: scanimage has closed stderr, i.e. exited
-                return _await_exit(proc, deadline)
-            monitor.feed(chunk)
+        if monitor.at_eof:  # stderr closed; wait for the exit in short slices
+            with contextlib.suppress(subprocess.TimeoutExpired):
+                proc.wait(timeout=POLL_INTERVAL_S)
+        else:
+            monitor.read(POLL_INTERVAL_S)
         monitor.announce_finished_pages()
+        if proc.poll() is not None:
+            monitor.drain()
+            return _Outcome.EXITED
         if cancel is not None and cancel.is_set():
             return _Outcome.CANCELLED
         if deadline is not None and time.monotonic() >= deadline:
             return _Outcome.TIMED_OUT
-
-
-def _await_exit(proc: "subprocess.Popen[bytes]", deadline: float | None) -> _Outcome:
-    remaining = None if deadline is None else max(deadline - time.monotonic(), 0.0)
-    try:
-        proc.wait(timeout=remaining)
-    except subprocess.TimeoutExpired:
-        return _Outcome.TIMED_OUT
-    return _Outcome.EXITED
 
 
 def _stop(proc: "subprocess.Popen[bytes]") -> None:
@@ -201,7 +168,7 @@ def _stop(proc: "subprocess.Popen[bytes]") -> None:
         proc.wait()
 
 
-def _interpret(pages: tuple[Path, ...], returncode: int, tail: deque[str]) -> ScanResult:
+def _interpret(pages: tuple[Path, ...], returncode: int, tail: str) -> ScanResult:
     logger.debug("scanimage exited %d with %d page(s)", returncode, len(pages))
     if pages and returncode in (0, SANE_STATUS_NO_DOCS):
         return ScanResult(pages=pages)  # 7 after pages: the feeder emptied, end of the stack
@@ -210,10 +177,14 @@ def _interpret(pages: tuple[Path, ...], returncode: int, tail: deque[str]) -> Sc
     if returncode == 0:
         raise ScanError("scanimage exited successfully but wrote no pages", returncode=0)
     raise ScanError(
-        f"scanimage failed (exit status {returncode}): {' | '.join(tail) or 'no error output'}",
+        f"scanimage failed (exit status {returncode}): {tail or 'no error output'}",
         returncode=returncode,
         pages=pages,
     )
+
+
+def _with_output(message: str, tail: str) -> str:
+    return f"{message} (scanimage said: {tail})" if tail else message
 
 
 def _prepare_output_dir(job: ScanJob) -> None:
@@ -231,10 +202,6 @@ def _prepare_output_dir(job: ScanJob) -> None:
             f"{directory} already contains {job.file_prefix}-NNNN.png files; "
             "refusing to overwrite them"
         )
-
-
-def _page_path(job: ScanJob, number: int) -> Path:
-    return job.output_dir / f"{job.file_prefix}-{number:04d}.png"
 
 
 def _find_pages(job: ScanJob) -> tuple[Path, ...]:

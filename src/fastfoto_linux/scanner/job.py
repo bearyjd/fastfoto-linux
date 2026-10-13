@@ -61,6 +61,10 @@ class ScanJob:
         if _FILE_PREFIX.fullmatch(self.file_prefix) is None:
             raise ValueError(f"file_prefix must match [A-Za-z0-9_-]+, got {self.file_prefix!r}")
 
+    def page_path(self, number: int) -> Path:
+        """File scanimage writes page ``number`` to (the ``--batch`` pattern, filled in)."""
+        return self.output_dir / f"{self.file_prefix}-{number:04d}.png"
+
 
 def batch_pattern(job: ScanJob) -> str:
     """The ``--batch`` printf pattern; a literal ``%`` in the directory must be doubled."""

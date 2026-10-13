@@ -49,8 +49,9 @@ def default_shim_candidates(
     candidates: list[Path] = []
     if env.get(SHIM_ENV_VAR):
         raw = env[SHIM_ENV_VAR]
-        expand = home and (raw == "~" or raw.startswith("~/"))
-        candidates.append(Path(home + raw[1:] if expand else raw))
+        if home and (raw == "~" or raw.startswith("~/")):
+            raw = home + raw[1:]
+        candidates.append(Path(raw))
     if home:
         candidates.append(Path(home) / ".local" / "lib" / "fastfoto-linux" / SHIM_FILENAME)
     in_repo = repo_root / "tools" / "usb-gap-shim" / SHIM_FILENAME

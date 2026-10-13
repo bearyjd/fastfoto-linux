@@ -14,10 +14,10 @@ Spec keys (all optional): ``pages`` (int) or ``numbers`` (list of page numbers),
 (report the last page as failed with this status), ``close_stderr`` (close fd 2 after the pages),
 ``hang`` (sleep up to 30 s after the pages, or until signalled), ``ignore_sigterm``,
 ``sigterm_marker`` (file created when SIGTERM arrives, then exit with status 2 like scanimage
-does), ``record_to`` (file
-that receives argv, the FAKE_PROBE variable, whether stdin was at EOF and whether the
-script is a session leader), ``grandchild`` (start a process that inherits stderr and outlives the
-script), ``unterminated_stderr_bytes`` (write this many bytes, then "END", without a newline).
+does), ``record_to`` (file that receives argv, the FAKE_PROBE variable, whether stdin was at
+EOF and whether the script is a session leader), ``grandchild`` (start a process that inherits
+stderr and outlives the script; "flood" makes it write to stderr non-stop until the pipe closes),
+``unterminated_stderr_bytes`` (write this many bytes, then "END", without a newline).
 """
 
 import json
@@ -61,7 +61,10 @@ _SCRIPT = textwrap.dedent(
 
     if spec.get("grandchild"):
         import subprocess
-        code = "import time; time.sleep(10)"
+        if spec["grandchild"] == "flood":
+            code = "import os\\nwhile True: os.write(2, b'x' * 4096)"
+        else:
+            code = "import time; time.sleep(10)"
         subprocess.Popen(
             [sys.executable, "-c", code], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL
         )

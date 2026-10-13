@@ -1,8 +1,17 @@
 """Minimal ESC/I-2 USB probe for the FF-680W (diagnostics only).
 
-Usage: esci2_probe.py <gap_s> [write_timeout_ms]
+Usage: esci2_probe.py [gap_s [write_timeout_ms]]
+  gap_s             seconds to sleep before each command (optional, default 0)
+  write_timeout_ms  bulk OUT timeout (optional, default 10000)
+
 Flushes stale IN data, then runs LOCK, INFO, CAPA, INFO, FIN with a fixed
 gap between commands, timing how long each OUT transfer blocks.
+
+WARNING: it first sends a stale-session FIN, which ends the scanner session of
+any other process (SANE, a scan in progress, ...). Do not run it while another
+program is using the scanner. If a command fails the probe sends a FIN before it
+exits so the scanner is not left locked.
+
 Needs pyusb (not a project dependency): pip install pyusb
 """
 
@@ -36,6 +45,15 @@ def send(dev, data: bytes, timeout_ms: int) -> None:
 
 def recv(dev, size: int) -> bytes:
     return bytes(dev.read(EP_IN, size, timeout=READ_TIMEOUT_MS))
+
+
+def end_session(dev) -> None:
+    """Best-effort FIN so a failed run does not leave the scanner locked."""
+    try:
+        send(dev, b"FIN x0000000", 2000)
+        print(f"  FIN reply: {recv(dev, 512)[:16]!r}")
+    except usb.core.USBError as exc:
+        print(f"  FIN after failure: {exc}")
 
 
 def command(dev, name: str, timeout_ms: int) -> None:
@@ -72,7 +90,12 @@ def main() -> int:
                 command(dev, name, write_timeout)
             except usb.core.USBError as exc:
                 print(f"  {name} FAILED: {exc}")
+                end_session(dev)
                 return 2
+            except (ValueError, IndexError) as exc:
+                print(f"  {name} reply header garbled: {exc!r}")
+                end_session(dev)
+                return 3
         print("RESULT: all commands OK")
     finally:
         usb.util.release_interface(dev, 0)

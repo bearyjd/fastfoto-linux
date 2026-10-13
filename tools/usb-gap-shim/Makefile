@@ -1,7 +1,8 @@
 # Builds the FF-680W USB gap shim with gcc (override with `make CC=...`).
 CC = gcc
 CFLAGS = -O2
-WARNINGS = -Wall -Wextra -Werror
+# No -Werror here: a newer compiler's extra warnings must not break a user's build.
+WARNINGS = -Wall -Wextra
 
 all: ff680w_usb_gap.so
 

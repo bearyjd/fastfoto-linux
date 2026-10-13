@@ -1,7 +1,8 @@
 /* LD_PRELOAD shim: the Epson FF-680W (04b8:016b) ignores a bulk OUT that arrives back-to-back
  * with the end of its previous bulk IN reply. Enforce a small gap before such an OUT.
  *
- *   FF680W_USB_GAP_US   gap in microseconds (non-negative integer, default 2000, 0 = off)
+ *   FF680W_USB_GAP_US   gap in microseconds: an integer from 0 to 10000000 (10 s), default 2000,
+ *                       0 = off. Anything else (junk, negative, out of range) means the default.
  *
  * Timestamps are kept per device handle and the gap is only applied to the FF-680W. If the
  * device's VID/PID cannot be looked up (libusb symbols not found, or the call fails) the gap is
@@ -19,6 +20,7 @@
 #define FF680W_VID 0x04b8
 #define FF680W_PID 0x016b
 #define DEFAULT_GAP_US 2000L
+#define MAX_GAP_US 10000000L
 #define MAX_HANDLES 16
 #define ENDPOINT_IN 0x80
 #define LIBUSB_ERROR_NOT_FOUND (-5)
@@ -58,8 +60,8 @@ static long gap_us = DEFAULT_GAP_US;
 static pthread_once_t init_once = PTHREAD_ONCE_INIT;
 
 /* Per-handle state, guarded by table_lock. A handle is identified by its pointer and forgotten
- * in libusb_close(). If more than MAX_HANDLES handles are live at once, the oldest slots are
- * recycled round-robin; an evicted handle simply loses its last-IN time. */
+ * in libusb_close(). If more than MAX_HANDLES handles are live at once, the slot whose last IN
+ * is oldest (or that never saw an IN) is recycled; an evicted handle loses its last-IN time. */
 struct slot {
     libusb_device_handle *handle; /* NULL = free */
     int gap_applies;
@@ -67,7 +69,6 @@ struct slot {
     struct timespec last_in;
 };
 static struct slot table[MAX_HANDLES];
-static unsigned next_victim;
 static pthread_mutex_t table_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static void *lookup(const char *name) {
@@ -79,8 +80,10 @@ static void init(void) {
     const char *env = getenv("FF680W_USB_GAP_US");
     if (env) {
         char *end;
+        errno = 0;
         long value = strtol(env, &end, 10);
-        if (end != env && *end == '\0' && value >= 0) gap_us = value;
+        if (end != env && *end == '\0' && errno != ERANGE && value >= 0 && value <= MAX_GAP_US)
+            gap_us = value;
     }
     real_bulk = (bulk_fn)dlsym(RTLD_NEXT, "libusb_bulk_transfer");
     real_close = (close_fn)dlsym(RTLD_NEXT, "libusb_close");
@@ -95,15 +98,22 @@ static int gap_applies_to(libusb_device_handle *h) {
     return desc.idVendor == FF680W_VID && desc.idProduct == FF680W_PID;
 }
 
+static int older_in(const struct slot *a, const struct slot *b) {
+    if (a->last_in.tv_sec != b->last_in.tv_sec) return a->last_in.tv_sec < b->last_in.tv_sec;
+    return a->last_in.tv_nsec < b->last_in.tv_nsec;
+}
+
 /* Caller holds table_lock. Returns the slot for h, creating it (and resolving the device's
- * VID/PID, once) if needed. */
+ * VID/PID, once) if needed. A slot that never saw an IN has a zero last_in and goes first. */
 static struct slot *slot_for(libusb_device_handle *h) {
     struct slot *free_slot = NULL;
+    struct slot *oldest = &table[0];
     for (int i = 0; i < MAX_HANDLES; i++) {
         if (table[i].handle == h) return &table[i];
         if (!table[i].handle && !free_slot) free_slot = &table[i];
+        if (older_in(&table[i], oldest)) oldest = &table[i];
     }
-    struct slot *s = free_slot ? free_slot : &table[next_victim++ % MAX_HANDLES];
+    struct slot *s = free_slot ? free_slot : oldest;
     memset(s, 0, sizeof *s);
     s->handle = h;
     s->gap_applies = gap_applies_to(h);

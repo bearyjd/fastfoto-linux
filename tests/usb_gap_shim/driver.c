@@ -7,6 +7,8 @@
  *   close:NAME        libusb_close(handle NAME); the handle keeps its address
  *   open:NAME:VID:PID (re)initialise handle NAME as device VID:PID (hex); same address as before
  *   threads:N:M       N threads, each on its own handle (T0..), doing M x (IN then OUT)
+ *   bg:NAME           start a background thread doing one IN then one OUT on handle NAME
+ *   join:all          wait for every background thread started so far
  * Handles are created on first use with the identity from STUB_VID / STUB_PID. */
 #define _GNU_SOURCE
 #include <pthread.h>
@@ -49,6 +51,9 @@ static int bulk(struct stub_handle *h, unsigned char ep) {
     return libusb_bulk_transfer(h, ep, buf, sizeof buf, &transferred, 1000);
 }
 
+static pthread_t threads[MAX_THREADS];
+static int thread_count;
+
 static void *thread_main(void *arg) {
     for (int i = 0; i < thread_iterations; i++) {
         bulk(arg, EP_IN);
@@ -57,23 +62,29 @@ static void *thread_main(void *arg) {
     return NULL;
 }
 
-static void run_threads(int count, int iterations) {
-    pthread_t threads[MAX_THREADS];
-    char name[16];
-
-    if (count < 1 || count > MAX_THREADS) {
-        fprintf(stderr, "driver: bad thread count\n");
+static void start_thread(struct stub_handle *h) {
+    if (thread_count == MAX_THREADS ||
+        pthread_create(&threads[thread_count], NULL, thread_main, h) != 0) {
+        fprintf(stderr, "driver: cannot start another thread\n");
         exit(2);
     }
+    thread_count++;
+}
+
+static void join_threads(void) {
+    for (int i = 0; i < thread_count; i++) pthread_join(threads[i], NULL);
+    thread_count = 0;
+}
+
+static void run_threads(int count, int iterations) {
+    char name[16];
+
     thread_iterations = iterations;
     for (int i = 0; i < count; i++) {
         snprintf(name, sizeof name, "T%d", i);
-        if (pthread_create(&threads[i], NULL, thread_main, handle_named(name)) != 0) {
-            fprintf(stderr, "driver: pthread_create failed\n");
-            exit(2);
-        }
+        start_thread(handle_named(name));
     }
-    for (int i = 0; i < count; i++) pthread_join(threads[i], NULL);
+    join_threads();
 }
 
 static void run(char *command) {
@@ -100,6 +111,11 @@ static void run(char *command) {
         const char *pid = strtok(NULL, ":");
         h->vid = vid ? strtol(vid, NULL, 16) : -1;
         h->pid = pid ? strtol(pid, NULL, 16) : -1;
+    } else if (strcmp(verb, "bg") == 0) {
+        thread_iterations = 1;
+        start_thread(handle_named(name));
+    } else if (strcmp(verb, "join") == 0) {
+        join_threads();
     } else if (strcmp(verb, "threads") == 0) {
         const char *iterations = strtok(NULL, ":");
         run_threads(atoi(name), iterations ? atoi(iterations) : 1);

@@ -86,6 +86,7 @@ class Harness:
     def build(self) -> None:
         # The shim and the test C code are all built with -Wall -Wextra -Werror.
         gcc(
+            "-O2",  # the Makefile's optimisation level; some warnings only appear with it
             "-shared",
             "-fPIC",
             "-pthread",
@@ -318,9 +319,18 @@ def test_handles_are_serviced_concurrently_and_independently(harness: Harness) -
         for i, o in zip(own[0::2], own[1::2], strict=True):
             assert ms_between(i, o) >= DEFAULT_GAP_MS, f"{handle}: OUT only {ms_between(i, o)} ms"
     span_ms = (max(c.t_ns for c in calls) - min(c.t_ns for c in calls)) / NS_PER_MS
-    # Each thread needs about pairs * 2 ms = 400 ms. Sleeping while holding a lock would
-    # serialise the threads (about 8x as long).
+    # Sanity bound: each thread needs about pairs * 2 ms = 400 ms.
     assert span_ms < 2000, f"{threads} threads took {span_ms:.0f} ms"
+
+
+def test_an_out_waiting_for_its_gap_does_not_block_other_handles(harness: Harness) -> None:
+    """The table lock must not be held while sleeping."""
+    gap_ms = 300
+    calls = harness.run(["bg:A", "sleep:50", "out:B", "join:all"], gap_us=gap_ms * 1000)
+    in_a, out_b, out_a = sorted(calls, key=lambda c: c.t_ns)
+    assert (in_a.handle, out_b.handle, out_a.handle) == ("A", "B", "A")
+    assert ms_between(in_a, out_b) < gap_ms / 2, "B waited for A's sleep"
+    assert ms_between(in_a, out_a) >= gap_ms
 
 
 def test_missing_libusb_bulk_transfer_returns_an_error_instead_of_crashing(

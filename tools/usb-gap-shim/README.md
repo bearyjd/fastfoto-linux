@@ -13,18 +13,34 @@ the OUT always works, a gap of 0 always fails.
 The shim wraps `libusb_bulk_transfer` and, before an OUT transfer, waits until the configured
 gap has passed since the last IN transfer on the same device handle finished.
 
+Status: with this shim preloaded, `scanimage -d epsonds:libusb:BBB:DDD -A` (open plus the option
+query, i.e. the INFO and CAPA exchanges) succeeds on a real FF-680W; without it the same command
+fails with "Error during device I/O". A full scan has not been tried with the shim yet.
+
 ## Build and use
 
-    make                                   # builds ff680w_usb_gap.so with gcc -Wall -Wextra -Werror
-    LD_PRELOAD=$PWD/ff680w_usb_gap.so scanimage -L
+From the repository root:
 
-Needs only gcc and glibc; no libusb headers. `make clean` removes the library.
+    make -C tools/usb-gap-shim             # builds ff680w_usb_gap.so with gcc -Wall -Wextra
+    LD_PRELOAD=$PWD/tools/usb-gap-shim/ff680w_usb_gap.so scanimage -L
+
+Needs only gcc and glibc; no libusb headers. `make -C tools/usb-gap-shim clean` removes the
+library.
+
+To address the scanner directly, find its bus and device numbers (BBB:DDD) with
+`lsusb -d 04b8:016b`; they change every time the scanner is re-plugged:
+
+    LD_PRELOAD=$PWD/tools/usb-gap-shim/ff680w_usb_gap.so scanimage -d epsonds:libusb:BBB:DDD -A
+
+`LD_PRELOAD` has to be set in the environment of the process that actually loads libsane and talks
+to the scanner: `scanimage` itself, but also `saned`, a GUI front end (XSane, Simple Scan, ...) or
+the front end inside a Flatpak sandbox. Setting it in a different shell does not help.
 
 ## Environment
 
 | Variable | Meaning |
 | --- | --- |
-| `FF680W_USB_GAP_US` | Gap in microseconds. Non-negative integer, default `2000`. `0` turns the shim into a pass-through. Anything that is not a non-negative integer falls back to the default. Read once, when the first transfer happens. |
+| `FF680W_USB_GAP_US` | Gap in microseconds: an integer from `0` to `10000000` (10 s), default `2000`. `0` turns the shim into a pass-through. Anything else (not a number, negative, or above 10 s) falls back to the default. Read once, when the first transfer happens. |
 
 ## Behaviour
 
@@ -39,16 +55,16 @@ Needs only gcc and glibc; no libusb headers. `make clean` removes the library.
   delay wedges this scanner.
 - `libusb_close` is wrapped to forget the handle, so a device opened later at a recycled handle
   address is identified afresh.
-- At most 16 handles are tracked at once; beyond that the oldest slots are recycled and an evicted
-  handle just loses its last-IN time.
+- At most 16 handles are tracked at once. A 17th evicts the handle whose last IN is oldest (or that
+  never had one), so busy handles keep their timestamps; an evicted handle loses its last-IN time.
 - If the real `libusb_bulk_transfer` cannot be found the shim returns `LIBUSB_ERROR_NOT_FOUND`
   instead of crashing.
 
 ## Tests
 
 `tests/test_usb_gap_shim.py` builds the shim, a stub libusb and a small driver with `gcc`, replays
-IN/OUT sequences with the shim preloaded and checks the logged timestamps (it is skipped when
-`gcc` is missing). Run it with `uv run pytest tests/test_usb_gap_shim.py`.
+IN/OUT sequences (including 8 concurrent threads) with the shim preloaded and checks the logged
+timestamps (it is skipped when `gcc` is missing). Run it with `uv run pytest tests/test_usb_gap_shim.py`.
 
 ## The proper fix
 

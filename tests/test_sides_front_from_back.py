@@ -31,9 +31,10 @@ def _detection(w_mm: float, h_mm: float, *, plausible: bool = True, dpi: int = 1
 
 
 def test_mirrored_box_flips_x_adds_the_offset_and_keeps_y_and_size() -> None:
+    # 1.2 mm is 7 px at 150 dpi; the literal keeps the test independent of the shipped constant
+    assert FRONT_FROM_BACK_X_OFFSET_MM == 1.2
     box = mirrored_front_box(Box(100, 10, 800, 600), (1500, 1200, 3), 150)
-    shift = mm_to_px(FRONT_FROM_BACK_X_OFFSET_MM, 150)
-    assert box == Box(1200 - 900 + shift, 10, 800, 600)
+    assert box == Box(1200 - 900 + 7, 10, 800, 600)
 
 
 def test_mirrored_box_is_clamped_to_the_front_frame() -> None:
@@ -41,8 +42,9 @@ def test_mirrored_box_is_clamped_to_the_front_frame() -> None:
     assert at_left.x + at_left.w <= 1000
     short = mirrored_front_box(Box(300, 100, 600, 700), (600, 1000, 3), 150)
     assert short.y + short.h <= 600
-    off_left = mirrored_front_box(Box(300, 0, 700, 500), (600, 1000, 3), 150)
-    assert off_left.x >= 0
+    off_left = mirrored_front_box(Box(300, 0, 800, 500), (600, 1000, 3), 150)
+    assert off_left.x == 0
+    assert off_left.x + off_left.w <= 1000
 
 
 @pytest.mark.parametrize("dpi", [150, 300])

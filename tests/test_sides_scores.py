@@ -4,6 +4,7 @@ import cv2
 import numpy as np
 import pytest
 
+from fastfoto_linux.pipeline import sides
 from fastfoto_linux.pipeline.geometry import mm_to_px
 from fastfoto_linux.pipeline.sides import (
     HANDWRITING_MIN_CANDIDATES,
@@ -98,9 +99,15 @@ def test_blank_back_has_no_writing() -> None:
 
 
 def test_imprint_beside_handwriting_does_not_add_candidates() -> None:
-    plain = cropped_back(300, writing=True, imprint=False, rng_seed=5)
-    marked = cropped_back(300, writing=True, imprint=True, rng_seed=5)
-    assert handwriting_candidates(marked, 300) == handwriting_candidates(plain, 300)
+    dpi = 300
+    plain = cropped_back(dpi, writing=True, imprint=False, rng_seed=5)
+    marked = plain.copy()  # the same writing plus a faint dot-matrix line below it
+    dot, pitch = mm_to_px(0.6, dpi), mm_to_px(1.4, dpi)
+    row = plain.shape[0] // 2
+    for x in range(mm_to_px(15, dpi), mm_to_px(70, dpi), pitch):
+        marked[row : row + dot, x : x + dot] = 200
+    assert (marked != plain).any()
+    assert handwriting_candidates(marked, dpi) == handwriting_candidates(plain, dpi)
 
 
 @pytest.mark.parametrize("dpi", [150, 300, 450, 600])
@@ -115,6 +122,30 @@ def test_candidate_counts_agree_between_300_and_600_dpi() -> None:
     low = cropped_back(300, writing=True, photo_mm=SMALL_BACK_MM, rng_seed=2)
     high = cv2.resize(low, None, fx=2, fy=2, interpolation=cv2.INTER_LINEAR)
     assert abs(handwriting_candidates(high, 600) - handwriting_candidates(low, 300)) <= 2
+
+
+def _analysed_width(monkeypatch: pytest.MonkeyPatch, back: np.ndarray, dpi: int) -> int:
+    """Width in pixels of the ink mask the blob counter actually receives."""
+    seen: list[int] = []
+    real = cv2.connectedComponentsWithStats
+
+    def spy(mask: np.ndarray, *args, **kwargs):
+        seen.append(mask.shape[1])
+        return real(mask, *args, **kwargs)
+
+    monkeypatch.setattr(sides.cv2, "connectedComponentsWithStats", spy)
+    handwriting_candidates(back, dpi)
+    return seen[0]
+
+
+def test_sharp_backs_are_analysed_at_about_300_dpi(monkeypatch: pytest.MonkeyPatch) -> None:
+    sharp = cropped_back(600, writing=True, photo_mm=SMALL_BACK_MM)
+    plain = cropped_back(300, writing=True, photo_mm=SMALL_BACK_MM)
+    inset = 2 * mm_to_px(4, 300)
+    assert _analysed_width(monkeypatch, sharp, 600) == pytest.approx(
+        sharp.shape[1] // 2 - inset, abs=2
+    )
+    assert _analysed_width(monkeypatch, plain, 300) == plain.shape[1] - inset  # not resampled
 
 
 def _with_dark(back: np.ndarray, dpi: int, rows: slice, cols: slice) -> np.ndarray:

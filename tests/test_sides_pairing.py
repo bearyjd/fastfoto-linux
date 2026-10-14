@@ -232,6 +232,12 @@ def test_sheet_without_any_photo_is_an_error_naming_the_sheet() -> None:
         assemble_photos(pages, duplex=True, loader=lambda _: (blank, DPI))
 
 
+def test_simplex_page_without_a_photo_is_an_error_naming_the_page() -> None:
+    blank = background_only(DPI)
+    with pytest.raises(BatchError, match=r"page-001\.png.*no photo"):
+        assemble_photos([Path("page-001.png")], duplex=False, loader=lambda _: (blank, DPI))
+
+
 def test_pages_of_one_sheet_must_share_a_resolution() -> None:
     sheet = _sheets(BLANK)[0]
     (front, _), (back, _) = sheet

@@ -1,9 +1,12 @@
 """``process_pages``: one bad sheet never loses the others; inputs are validated up front."""
 
+import errno
+
 import numpy as np
 import pytest
 
 from fastfoto_linux.output import OutputRootMissingError
+from fastfoto_linux.pipeline import process
 from fastfoto_linux.pipeline.process import ProcessSettings, SheetIssue, process_pages
 from fastfoto_linux.pipeline.sides import BackPolicy, BatchError
 from tests.process_helpers import (
@@ -34,40 +37,26 @@ def test_an_unreadable_sheet_is_reported_and_the_others_are_written(tmp_path) ->
     assert page_name(3) in issue.reason
 
 
-def test_a_failing_enhancer_loses_only_its_own_photo(tmp_path) -> None:
+def test_a_failing_writer_loses_only_its_own_sheet(tmp_path, monkeypatch) -> None:
     raw, out = workspace(tmp_path)
     pages = write_sheets(raw, [plain_sheet(0), plain_sheet(1), plain_sheet(2)])
+    real_write = process.write_photo
     calls = []
 
-    def flaky(img: np.ndarray, dpi: int) -> np.ndarray:
+    def flaky_write(*args, **kwargs):
         calls.append(1)
         if len(calls) == 2:
-            raise ValueError("enhancer exploded")
-        return img
+            raise OSError(errno.ENOSPC, "No space left on device")
+        return real_write(*args, **kwargs)
 
-    result = process_pages(pages, settings_for(out, enhancers=(flaky,)))
+    monkeypatch.setattr(process, "write_photo", flaky_write)
+    result = process_pages(pages, settings_for(out))
     assert result.photos == 2
-    assert jpeg_names(out) == [
-        "FastFoto_0001.jpg",
-        "FastFoto_0001_a.jpg",
-        "FastFoto_0002.jpg",
-        "FastFoto_0002_a.jpg",
-    ]
+    assert result.degraded == ()
     (issue,) = result.failed
-    assert issue == SheetIssue(2, (page_name(3), page_name(4)), "enhancer exploded")
-
-
-def test_a_failing_orienter_is_reported_the_same_way(tmp_path) -> None:
-    raw, out = workspace(tmp_path)
-    pages = write_sheets(raw, [plain_sheet(0), plain_sheet(1)])
-
-    def broken(img: np.ndarray, dpi: int) -> np.ndarray:
-        raise RuntimeError
-
-    result = process_pages(pages, settings_for(out, orienter=broken))
-    assert result.photos == 0
-    assert [issue.sheet for issue in result.failed] == [1, 2]
-    assert all(issue.reason for issue in result.failed)  # never an empty message
+    assert (issue.sheet, issue.pages) == (2, (page_name(3), page_name(4)))
+    assert "No space left" in issue.reason
+    assert jpeg_names(out) == ["FastFoto_0001.jpg", "FastFoto_0002.jpg"]
 
 
 def test_ctrl_c_is_not_swallowed(tmp_path) -> None:
@@ -88,6 +77,7 @@ def test_an_uncertain_sheet_keeps_its_back_whatever_the_policy_and_is_listed(tmp
     result = process_pages(pages, settings_for(out, back_policy=BackPolicy.NEVER))
     assert result.failed == ()
     assert [(i.sheet, i.pages) for i in result.uncertain] == [(2, (page_name(3), page_name(4)))]
+    assert "told apart" in result.uncertain[0].reason
     assert [w.back is not None for w in result.written] == [False, True]
     assert result.backs_kept == 1
 

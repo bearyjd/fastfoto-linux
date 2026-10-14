@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from fastfoto_linux.cli import main
 from tests._output_helpers import names
 from tests.cli.fakes import write_dummy_page
@@ -40,7 +42,7 @@ def test_sheets_are_processed_and_summarised(tmp_path, out, capsys) -> None:
     stdout = capsys.readouterr().out
     assert "photos written: 2" in stdout
     assert "backs kept: 1" in stdout
-    assert "enhanced copies: 0" in stdout
+    assert "enhanced: 0" in stdout
 
 
 def test_the_default_chain_orients_and_restores_into_an_enhanced_copy(
@@ -49,7 +51,7 @@ def test_the_default_chain_orients_and_restores_into_an_enhanced_copy(
     pages = write_sheets(tmp_path / "raw", [plain_sheet()])
     assert main(["process", *map(str, pages), "--out", str(out)]) == 0
     assert names(out) == ["FastFoto_0001.jpg", "FastFoto_0001_a.jpg"]
-    assert "enhanced copies: 1" in capsys.readouterr().out
+    assert "enhanced: 1" in capsys.readouterr().out
 
 
 def test_face_up_loading_reads_the_first_page_of_a_sheet_as_the_front(tmp_path, out) -> None:
@@ -82,7 +84,7 @@ def test_uncertain_sheets_are_listed_in_the_summary(tmp_path, out, capsys) -> No
     pages = write_sheets(tmp_path / "raw", [plain_sheet(), tie])
     assert process(out, pages, "--backs", "never") == 0
     stdout = capsys.readouterr().out
-    assert "uncertain" in stdout
+    assert "told apart" in stdout
     assert page_name(3) in stdout
     assert page_name(1) not in stdout
     assert "FastFoto_0002_b.jpg" in names(out)
@@ -129,3 +131,56 @@ def test_an_output_folder_that_cannot_be_made_is_exit_1(tmp_path, spy, capsys) -
     assert process(blocker / "album", [page], "--mkdir") == 1
     assert "cannot create" in capsys.readouterr().err
     assert spy == []
+
+
+def test_backs_dropped_for_lack_of_writing_are_reported_with_their_pages(
+    tmp_path, out, capsys
+) -> None:
+    pages = write_sheets(tmp_path / "raw", [plain_sheet(0), written_sheet(1), plain_sheet(2)])
+    assert process(out, pages) == 0
+    stdout = capsys.readouterr().out
+    assert "backs dropped: 2 (no writing detected; use --backs always to keep them)" in stdout
+    assert page_name(1) in stdout
+    assert page_name(5) in stdout
+    assert page_name(3) not in stdout  # the written back of sheet 2 was kept
+
+
+@pytest.mark.parametrize("policy", ["always", "never"])
+def test_nothing_is_reported_dropped_when_the_policy_decides(tmp_path, out, capsys, policy) -> None:
+    pages = write_sheets(tmp_path / "raw", [plain_sheet(0)])
+    assert process(out, pages, "--backs", policy) == 0
+    assert "backs dropped" not in capsys.readouterr().out
+
+
+def test_enhancements_that_changed_nothing_are_counted(tmp_path, out, capsys, monkeypatch) -> None:
+    monkeypatch.setattr("fastfoto_linux.cli.options.restore_colour", lambda img, dpi: img)
+    pages = write_sheets(tmp_path / "raw", [plain_sheet()])
+    assert main(["process", *map(str, pages), "--out", str(out), "--no-orient"]) == 0
+    assert names(out) == ["FastFoto_0001.jpg"]
+    assert "enhanced: 0 (1 unchanged)" in capsys.readouterr().out
+
+
+def test_a_degraded_sheet_is_exit_1_keeps_the_original_and_is_named(
+    tmp_path, out, capsys, monkeypatch
+) -> None:
+    def boom(img, dpi):
+        raise ValueError("restore exploded")
+
+    monkeypatch.setattr("fastfoto_linux.cli.options.restore_colour", boom)
+    pages = write_sheets(tmp_path / "raw", [plain_sheet()])
+    assert main(["process", *map(str, pages), "--out", str(out), "--no-orient"]) == 1
+    assert names(out) == ["FastFoto_0001.jpg"]
+    err = capsys.readouterr().err
+    assert "sheet 1" in err
+    assert "enhancer" in err
+    assert "restore exploded" in err
+    assert "Traceback" not in err
+
+
+def test_an_incomplete_last_sheet_is_listed_in_the_summary(tmp_path, out, capsys) -> None:
+    pages = write_sheets(tmp_path / "raw", [plain_sheet(0), plain_sheet(1)])[:3]
+    assert process(out, pages) == 0
+    stdout = capsys.readouterr().out
+    assert "incomplete sheet" in stdout
+    assert page_name(3) in stdout
+    assert "told apart" not in stdout

@@ -26,7 +26,9 @@ def fixed_stamp(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def scan(out: Path, *extra: str) -> int:
-    return main(["scan", "--out", str(out), *FAST, *extra])
+    """``ffscan scan`` that discards its raw pages unless a test is about them (test_scan_raw)."""
+    raw_option = [] if {"--keep-raw", "--discard-raw"} & set(extra) else ["--discard-raw"]
+    return main(["scan", "--out", str(out), *FAST, *raw_option, *extra])
 
 
 def test_scan_processes_the_pages_and_leaves_no_raw_files(out, transport, capsys) -> None:
@@ -96,17 +98,30 @@ def test_pages_scanned_before_a_scanner_failure_are_still_processed(out, transpo
     transport.pages_before_failure = 4
     transport.failure = lambda pages: ScanError("paper jam", returncode=1, pages=pages)
     assert scan(out) == 1
-    assert names(out) == ["FastFoto_0001.jpg", "FastFoto_0002.jpg"]
+    assert [n for n in names(out) if n.endswith(".jpg")] == [
+        "FastFoto_0001.jpg",
+        "FastFoto_0002.jpg",
+    ]
     assert "paper jam" in capsys.readouterr().err
 
 
-def test_a_scanner_failure_with_no_pages_loses_nothing_and_leaves_nothing(
-    out, transport, capsys
-) -> None:
+def test_a_scanner_failure_before_any_page_leaves_nothing(out, transport, capsys) -> None:
     transport.failure = lambda pages: ScanError("could not start scanimage", pages=pages)
     assert scan(out) == 1
     assert names(out) == []
     assert "could not start scanimage" in capsys.readouterr().err
+
+
+def test_a_scanner_failure_with_no_pages_reported_loses_no_file_found_on_disk(
+    out, transport, capsys
+) -> None:
+    transport.sheets = [plain_sheet()]
+    transport.failure = lambda pages: ScanError("could not start scanimage", pages=pages)
+    assert scan(out) == 1
+    kept = out / ".raw" / STAMP
+    assert sorted(p.name for p in kept.iterdir()) == [page_name(1), page_name(2)]
+    assert [n for n in names(out) if n.endswith(".jpg")] == []
+    assert str(kept) in capsys.readouterr().err
 
 
 def test_scanner_not_found_is_exit_3(out, transport, capsys) -> None:
@@ -179,6 +194,7 @@ BAD_ARGUMENTS = [
     ["--feed", "sideways"],
     ["--net", "not a host"],
     ["--keep-original", "--enhanced-only"],
+    ["--keep-raw", "--discard-raw"],
 ]
 
 

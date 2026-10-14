@@ -45,7 +45,8 @@ class FakeTransport:
 
     ``sheets`` are written as the scanned pages (back page first unless ``front_first``);
     ``front_pages`` are single-sided pages for a simplex scan.
-    ``failure`` builds the exception raised once ``pages_before_failure`` pages are on disk.
+    ``failure`` builds the exception raised once ``pages_before_failure`` pages are on disk;
+    ``keep_on_disk`` cuts the files down to the first pages first (a scan that stopped part-way).
     """
 
     sheets: Sequence[Sheet] = ()
@@ -55,6 +56,7 @@ class FakeTransport:
     failure: Callable[[tuple[Path, ...]], BaseException] | None = None
     resolve_error: Exception | None = None
     corrupt_page: int | None = None
+    keep_on_disk: int | None = None
     resolve_calls: list[dict[str, Any]] = field(default_factory=list)
     config_dir_existed: list[bool] = field(default_factory=list)
     jobs: list[ScanJob] = field(default_factory=list)
@@ -81,6 +83,9 @@ class FakeTransport:
         for number in range(1, len(pages) + 1):
             if on_progress is not None:
                 on_progress(number)
+        if self.keep_on_disk is not None:
+            for page in pages[self.keep_on_disk :]:
+                page.unlink()
         if self.failure is not None:
             raise self.failure(tuple(pages[: self.pages_before_failure]))
         return ScanResult(pages=tuple(pages))

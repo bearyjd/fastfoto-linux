@@ -95,5 +95,15 @@ def original_date(path: Path) -> str | None:
         return image.getexif().get_ifd(ExifTags.IFD.Exif).get(ExifTags.Base.DateTimeOriginal)
 
 
+def digitized_date(path: Path) -> str | None:
+    with Image.open(path) as image:
+        return image.getexif().get_ifd(ExifTags.IFD.Exif).get(ExifTags.Base.DateTimeDigitized)
+
+
+def invert(img: np.ndarray, dpi: int) -> np.ndarray:
+    """An enhancer that really changes the picture (unlike an identity one, which writes no _a)."""
+    return 255 - img
+
+
 def jpeg_names(directory: Path) -> list[str]:
     return sorted(p.name for p in directory.glob("*.jpg"))

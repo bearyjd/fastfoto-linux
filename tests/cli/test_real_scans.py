@@ -1,6 +1,9 @@
 """``ffscan process`` over the private 8-page duplex batch. Counts and booleans only (never CI)."""
 
+import contextlib
+import io
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -17,15 +20,28 @@ DATE = "1975-06"
 EXIF_DATE = "1975:06:01 00:00:00"
 ORIGINAL = re.compile(r"FastFoto_(\d{4})\.jpg")
 BACK = re.compile(r"FastFoto_(\d{4})_b\.jpg")
+ENHANCED = re.compile(r"FastFoto_(\d{4})_a\.jpg")
+SUMMARY_ENHANCED = re.compile(r"^enhanced: (\d+)(?: \((\d+) unchanged\))?$", re.MULTILINE)
+FRONTS = 4
+BACKS = 2
+
+
+@dataclass(frozen=True)
+class Album:
+    code: int
+    out: Path
+    summary: str
 
 
 @pytest.fixture(scope="module")
-def album(tmp_path_factory) -> tuple[int, Path]:
+def album(tmp_path_factory) -> Album:
     pages = sorted(REAL_SCANS_DIR.glob("photo-*.png"))
     assert len(pages) == EXPECTED_PAGES, f"expected {EXPECTED_PAGES} pages, found {len(pages)}"
     out = tmp_path_factory.mktemp("album")
-    code = main(["process", *map(str, pages), "--out", str(out), "--date", DATE])
-    return code, out
+    stdout = io.StringIO()
+    with contextlib.redirect_stdout(stdout):
+        code = main(["process", *map(str, pages), "--out", str(out), "--date", DATE])
+    return Album(code, out, stdout.getvalue())
 
 
 def _numbers(out: Path, pattern: re.Pattern[str]) -> list[str]:
@@ -33,27 +49,46 @@ def _numbers(out: Path, pattern: re.Pattern[str]) -> list[str]:
 
 
 def test_the_run_succeeds(album) -> None:
-    assert album[0] == 0
+    assert album.code == 0
 
 
 def test_four_fronts_are_written_and_named(album) -> None:
-    assert _numbers(album[1], ORIGINAL) == ["0001", "0002", "0003", "0004"]
+    assert _numbers(album.out, ORIGINAL) == ["0001", "0002", "0003", "0004"]
 
 
 def test_only_the_handwritten_backs_of_sheets_3_and_4_are_kept(album) -> None:
-    assert _numbers(album[1], BACK) == ["0003", "0004"]
+    assert _numbers(album.out, BACK) == ["0003", "0004"]
+
+
+def test_the_summary_reports_the_two_dropped_backs(album) -> None:
+    assert "backs dropped: 2 (" in album.summary
+
+
+def test_every_front_has_an_enhanced_copy_or_is_reported_unchanged(album) -> None:
+    match = SUMMARY_ENHANCED.search(album.summary)
+    assert match is not None, "the summary has no 'enhanced: N' line"
+    enhanced, unchanged = _numbers(album.out, ENHANCED), int(match.group(2) or 0)
+    assert len(enhanced) == int(match.group(1))
+    assert set(enhanced) <= set(_numbers(album.out, ORIGINAL))
+    assert len(enhanced) + unchanged == FRONTS
+
+
+def test_the_album_holds_exactly_the_expected_files(album) -> None:
+    enhanced = _numbers(album.out, ENHANCED)
+    jpegs = sorted(album.out.glob("*.jpg"))
+    assert len(jpegs) == FRONTS + BACKS + len(enhanced)
 
 
 def test_the_front_of_page_2_is_turned_upright(album) -> None:
     sizes = {}
     for number in ("0001", "0002", "0003", "0004"):
-        with Image.open(album[1] / f"FastFoto_{number}.jpg") as image:
+        with Image.open(album.out / f"FastFoto_{number}.jpg") as image:
             sizes[number] = image.size
     portrait = {n for n, (width, height) in sizes.items() if height > width}
     assert portrait == {"0001"}  # page 2 is scanned sideways; the others are upright
 
 
 def test_every_jpeg_carries_the_date(album) -> None:
-    jpegs = sorted(album[1].glob("*.jpg"))
-    assert len(jpegs) >= 6
+    jpegs = sorted(album.out.glob("*.jpg"))
+    assert jpegs
     assert {original_date(p) for p in jpegs} == {EXIF_DATE}

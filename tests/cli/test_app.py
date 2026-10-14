@@ -86,3 +86,33 @@ def test_main_leaves_the_logging_set_up_as_it_found_it(tmp_path, out) -> None:
         assert main(["process", *map(str, pages), "--out", str(out), *FAST, "--debug"]) == 0
     assert package.handlers == handlers
     assert package.level == level
+
+
+def test_verbose_can_come_before_the_command(tmp_path, out, capsys) -> None:
+    pages = write_sheets(tmp_path / "raw", [plain_sheet()])
+    assert main(["-v", "process", *map(str, pages), "--out", str(out), *FAST]) == 0
+    assert "wrote" in capsys.readouterr().err
+
+
+def test_debug_can_come_before_the_command(tmp_path, out, monkeypatch, capsys) -> None:
+    page = write_dummy_page(tmp_path / "raw", "page-1.png")
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("fastfoto_linux.cli.cmd_process.process_pages", boom)
+    assert main(["--debug", "process", str(page), "--out", str(out)]) == 1
+    assert "Traceback" in capsys.readouterr().err
+
+
+def test_the_same_option_before_and_after_the_command_is_fine(tmp_path, out, capsys) -> None:
+    pages = write_sheets(tmp_path / "raw", [plain_sheet()])
+    assert main(["-v", "process", *map(str, pages), "--out", str(out), *FAST, "-v"]) == 0
+    assert "wrote" in capsys.readouterr().err
+
+
+def test_the_help_of_the_command_line_lists_the_log_options(capsys) -> None:
+    assert main(["--help"]) == 0
+    out = capsys.readouterr().out
+    assert "--verbose" in out
+    assert "--debug" in out

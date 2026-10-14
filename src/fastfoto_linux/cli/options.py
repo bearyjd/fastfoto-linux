@@ -119,8 +119,14 @@ def add_scan_options(parser: argparse.ArgumentParser) -> None:
         "--dpi", type=int, choices=SUPPORTED_DPI, default=DEFAULT_DPI, help="scan resolution"
     )
     scanning.add_argument("--net", type=host, metavar="HOST", help="use a Wi-Fi scanner at HOST")
-    scanning.add_argument(
+    raw = scanning.add_mutually_exclusive_group()
+    raw.add_argument(
         "--keep-raw", action="store_true", help="keep the raw pages in DIR/.raw/<UTC time>/"
+    )
+    raw.add_argument(
+        "--discard-raw",
+        action="store_true",
+        help="delete the raw pages after a clean run even if backs with no writing were dropped",
     )
 
 

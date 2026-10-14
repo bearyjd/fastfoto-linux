@@ -96,6 +96,9 @@ class ProcessResult:
     written: tuple[WrittenFiles, ...] = ()
     failed: tuple[SheetIssue, ...] = ()
     uncertain: tuple[SheetIssue, ...] = ()
+    degraded: tuple[SheetIssue, ...] = ()
+    dropped_backs: tuple[str, ...] = ()
+    unchanged: int = 0
 
     @property
     def photos(self) -> int:
@@ -108,6 +111,14 @@ class ProcessResult:
     @property
     def enhanced(self) -> int:
         return sum(files.enhanced is not None for files in self.written)
+
+    @property
+    def backs_dropped(self) -> int:
+        return len(self.dropped_backs)
+
+    @property
+    def ok(self) -> bool:
+        return not self.failed and not self.degraded
 
 
 def process_pages(pages: Sequence[Path], settings: ProcessSettings) -> ProcessResult:

@@ -96,13 +96,21 @@ def test_a_photo_within_the_working_size_is_detected_in_one_pass() -> None:
 
 
 def _refining_stub(coarse: Face, refined_full_res: tuple[Face, ...]) -> StubDetector:
-    """Answers the whole-image call with ``coarse``; crops get ``refined_full_res`` cut to fit."""
+    """Answers the whole-image call with ``coarse``; a crop gets the faces it fully contains."""
 
     def respond(call: int, img: np.ndarray) -> tuple[Face, ...]:
         if call == 0:
             return (coarse,)
         left, top = _crop_origin(img)
-        return tuple(_shifted(face, -left, -top) for face in refined_full_res)
+        height, width = img.shape[:2]
+        return tuple(
+            _shifted(face, -left, -top)
+            for face in refined_full_res
+            if face.x >= left
+            and face.y >= top
+            and face.x + face.width <= left + width
+            and face.y + face.height <= top + height
+        )
 
     return StubDetector(respond)
 
@@ -123,7 +131,7 @@ def test_a_face_is_redetected_on_a_full_resolution_crop() -> None:
 def test_the_redetected_face_nearest_the_original_is_chosen() -> None:
     coarse = _face((460.0, 400.0), (500.0, 402.0), (440.0, 370.0, 90.0, 100.0), COARSE_SCORE)
     truth = _face((692.25, 601.5), (751.75, 604.0), (660.0, 560.0, 140.0, 150.0), REFINED_SCORE)
-    neighbour = _shifted(truth, 90.0, 0.0)
+    neighbour = _shifted(truth, 20.0, 0.0)  # also inside the original box, but further out
     stub = _refining_stub(coarse, (neighbour, truth))
     faces = detect_faces_full_res(_coded_image(1200, 1500), _as_detector(stub))
     assert faces[0].landmarks[0] == pytest.approx(truth.landmarks[0], abs=TOLERANCE)
@@ -132,7 +140,8 @@ def test_the_redetected_face_nearest_the_original_is_chosen() -> None:
 def test_a_crop_without_a_matching_face_keeps_the_coarse_one() -> None:
     coarse = _face((460.0, 400.0), (500.0, 402.0), (440.0, 370.0, 90.0, 100.0), COARSE_SCORE)
     elsewhere = _face((100.0, 100.0), (140.0, 100.0), (80.0, 70.0, 90.0, 100.0), REFINED_SCORE)
-    for answers in ((), (elsewhere,)):
+    beside = _face((812.0, 610.0), (832.0, 612.0), (800.0, 600.0, 60.0, 70.0), REFINED_SCORE)
+    for answers in ((), (elsewhere,), (beside,)):
         stub = _refining_stub(coarse, answers)
         faces = detect_faces_full_res(_coded_image(1200, 1500), _as_detector(stub))
         assert len(faces) == 1
@@ -146,3 +155,11 @@ def test_a_face_filling_the_photo_is_redetected_on_a_crop_within_the_working_siz
     detect_faces_full_res(np.zeros((2400, 3000, 3), np.uint8), _as_detector(stub))
     assert len(stub.shapes) == 2
     assert all(max(shape[:2]) <= MAX_INPUT_LONG_SIDE for shape in stub.shapes)
+
+
+def test_a_face_outside_the_photo_is_not_redetected() -> None:
+    stray = _face((5000.0, 400.0), (5040.0, 402.0), (4980.0, 370.0, 90.0, 100.0), COARSE_SCORE)
+    stub = StubDetector(lambda call, _img: (stray,) if call == 0 else ())
+    faces = detect_faces_full_res(np.zeros((1200, 1500, 3), np.uint8), _as_detector(stub))
+    assert len(stub.shapes) == 1
+    assert faces[0].score == COARSE_SCORE

@@ -14,14 +14,13 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 
-from fastfoto_linux.enhance.faces import Face, FaceDetector, default_detector, ensure_rgb_uint8
+from fastfoto_linux.enhance.faces import Face, FaceDetector, ensure_rgb_uint8
+from fastfoto_linux.enhance.fullres import detect_faces_full_res
 
 logger = logging.getLogger(__name__)
 
 MM_PER_INCH = 25.4
-# Detector working size in pixels (not a physical length): faces are found on this copy.
-DETECT_LONG_SIDE_PX = 1000
-MIN_FACE_SCORE = 0.8
+MIN_FACE_SCORE = 0.9
 # Faces whose eyes are closer than this are too small for a pupil to be told from noise.
 MIN_INTEROCULAR_MM = 2.0
 # Geometry is relative to the inter-ocular distance, so it holds at any scan resolution.
@@ -42,18 +41,22 @@ PUPIL_RADIUS_FRACTION = 0.1
 MIN_AREA_FRACTION = 0.01
 MIN_COMPONENT_PIXELS = 4
 MAX_AREA_FRACTION = 0.10
-MAX_ASPECT_RATIO = 2.0
-MIN_FILL_RATIO = 0.4
+# Photos are upright by now, so lash and lid lines are wide: a pupil is never wider than tall.
+MAX_WIDTH_OVER_HEIGHT = 1.25
+MAX_HEIGHT_OVER_WIDTH = 2.0
+MIN_FILL_RATIO = 0.5
 MIN_RING_CONTRAST = 20
 RING_INNER_FRACTION = 0.5
 RING_OUTER_FRACTION = 2.0
 # Pupils are small and round: grow the mask and feather it in proportion to the pupil radius.
-GROW_FRACTION = 0.25
-FEATHER_FRACTION = 0.3
+GROW_FRACTION = 0.1
+FEATHER_FRACTION = 0.15
 MIN_FEATHER_SIGMA_PX = 0.5
 # Pixels with both G and B at least this bright are specular highlights and stay as they are.
 HIGHLIGHT_MIN_LEVEL = 200
-DARKEN = 0.9
+# Corrected pupils are a neutral dark grey: half the blue-green level, never above this.
+DARKEN = 0.5
+PUPIL_MAX_LEVEL = 40
 LANDMARKS_PER_FACE = 2  # right eye, left eye: the first two YuNet landmarks
 MAX_LEVEL = 255
 
@@ -76,42 +79,39 @@ class EyeFix:
     mask: np.ndarray
     center: tuple[float, float]
 
+    def __post_init__(self) -> None:
+        x0, y0, x1, y1 = self.roi
+        if x0 < 0 or y0 < 0 or x1 <= x0 or y1 <= y0:
+            raise ValueError(
+                f"ROI must be a non-empty box with non-negative origin, got {self.roi}"
+            )
+        shape = (y1 - y0, x1 - x0)
+        if self.mask.dtype != bool or self.mask.shape != shape:
+            raise ValueError(
+                f"mask must be a boolean array of the ROI's shape {shape}, "
+                f"got {self.mask.dtype} {self.mask.shape}"
+            )
+
 
 def _mm_to_px(mm: float, dpi: int) -> float:
     return mm * dpi / MM_PER_INCH
 
 
+def _eye_points(face: Face) -> tuple[tuple[float, float], ...]:
+    """The two eye landmarks of ``face``; ``ValueError`` if they are missing or not finite."""
+    eyes = face.landmarks[:LANDMARKS_PER_FACE]
+    if len(eyes) < LANDMARKS_PER_FACE:
+        raise ValueError(
+            f"a face needs {LANDMARKS_PER_FACE} eye landmarks, got {len(face.landmarks)}"
+        )
+    if not all(math.isfinite(v) for point in eyes for v in point):
+        raise ValueError(f"eye landmarks must be finite, got {eyes}")
+    return eyes
+
+
 def _interocular(face: Face) -> float:
-    (x0, y0), (x1, y1) = face.landmarks[:LANDMARKS_PER_FACE]
+    (x0, y0), (x1, y1) = _eye_points(face)
     return math.hypot(x1 - x0, y1 - y0)
-
-
-def _scale_face(face: Face, scale_x: float, scale_y: float) -> Face:
-    return Face(
-        x=face.x * scale_x,
-        y=face.y * scale_y,
-        width=face.width * scale_x,
-        height=face.height * scale_y,
-        landmarks=tuple((x * scale_x, y * scale_y) for x, y in face.landmarks),
-        score=face.score,
-    )
-
-
-def detect_faces_full_res(
-    img: np.ndarray, detector: FaceDetector | None = None
-) -> tuple[Face, ...]:
-    """Faces found on a downscaled copy of ``img``, mapped back to ``img`` pixel coordinates."""
-    ensure_rgb_uint8(img)
-    active = default_detector() if detector is None else detector
-    height, width = img.shape[:2]
-    long_side = max(height, width)
-    if long_side <= DETECT_LONG_SIDE_PX:
-        return active.detect(img)
-    scale = DETECT_LONG_SIDE_PX / long_side
-    size = (max(1, round(width * scale)), max(1, round(height * scale)))
-    small = cv2.resize(img, size, interpolation=cv2.INTER_AREA)
-    scale_x, scale_y = width / size[0], height / size[1]
-    return tuple(_scale_face(face, scale_x, scale_y) for face in active.detect(small))
 
 
 def _roi_box(
@@ -164,11 +164,14 @@ def _touches_edge(component: np.ndarray) -> bool:
 
 
 def _is_round(component: np.ndarray) -> bool:
-    """True if the blob's bounding box is close to square and well filled (a disc fills ~0.79)."""
+    """True if the blob is no wider than tall, not far taller, and well filled (a disc: ~0.79)."""
     ys, xs = np.nonzero(component)
     width, height = int(xs.max() - xs.min()) + 1, int(ys.max() - ys.min()) + 1
-    aspect = max(width, height) / min(width, height)
-    return aspect <= MAX_ASPECT_RATIO and int(ys.size) / (width * height) >= MIN_FILL_RATIO
+    return (
+        width / height <= MAX_WIDTH_OVER_HEIGHT
+        and height / width <= MAX_HEIGHT_OVER_WIDTH
+        and int(ys.size) / (width * height) >= MIN_FILL_RATIO
+    )
 
 
 def _redness(patch: np.ndarray) -> np.ndarray:
@@ -176,8 +179,8 @@ def _redness(patch: np.ndarray) -> np.ndarray:
     return levels[..., 0] - np.maximum(levels[..., 1], levels[..., 2])
 
 
-def _ring_contrast(patch: np.ndarray, component: np.ndarray) -> float | None:
-    """Mean redness of the blob minus the median redness of the ring around it (None: no ring)."""
+def _ring_contrast(patch: np.ndarray, component: np.ndarray) -> float:
+    """Mean redness of the blob minus the median redness of the ring around it (0: no ring)."""
     radius = math.sqrt(int(component.sum()) / math.pi)
     mask = component.astype(np.uint8)
     inner, outer = (
@@ -192,7 +195,7 @@ def _ring_contrast(patch: np.ndarray, component: np.ndarray) -> float | None:
     )
     ring = outer & ~inner
     if not ring.any():
-        return None
+        return 0.0
     redness = _redness(patch)
     return float(redness[component].mean() - np.median(redness[ring]))
 
@@ -208,8 +211,7 @@ def _rejection(patch: np.ndarray, component: np.ndarray, roi_area: float) -> str
         return _REASON_AT_EDGE
     if not _is_round(component):
         return _REASON_NOT_ROUND
-    contrast = _ring_contrast(patch, component)
-    if contrast is None or contrast < MIN_RING_CONTRAST:
+    if _ring_contrast(patch, component) < MIN_RING_CONTRAST:
         return _REASON_NOT_RED_ENOUGH
     return None
 
@@ -246,9 +248,9 @@ def find_red_eyes(img: np.ndarray, faces: Sequence[Face]) -> tuple[EyeFix, ...]:
     ensure_rgb_uint8(img)
     fixes: list[EyeFix] = []
     for face in faces:
+        iod = _interocular(face)
         if face.score < MIN_FACE_SCORE:
             continue
-        iod = _interocular(face)
         for centre in face.landmarks[:LANDMARKS_PER_FACE]:
             fix = _find_pupil(img, centre, iod)
             if fix is not None:
@@ -259,7 +261,7 @@ def find_red_eyes(img: np.ndarray, faces: Sequence[Face]) -> tuple[EyeFix, ...]:
 def _feathered_alpha(patch: np.ndarray, mask: np.ndarray) -> np.ndarray:
     """Blend weights in [0, 1]: the mask grown a little, softened, and zero on highlights."""
     radius = math.sqrt(int(mask.sum()) / math.pi)
-    grow = max(1, round(GROW_FRACTION * radius))
+    grow = round(GROW_FRACTION * radius)
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * grow + 1, 2 * grow + 1))
     grown = cv2.dilate(mask.astype(np.uint8), kernel).astype(np.float32)
     sigma = max(MIN_FEATHER_SIGMA_PX, FEATHER_FRACTION * radius)
@@ -272,7 +274,8 @@ def _feathered_alpha(patch: np.ndarray, mask: np.ndarray) -> np.ndarray:
 def _corrected_patch(patch: np.ndarray, mask: np.ndarray) -> np.ndarray:
     source = patch.astype(np.float32)
     neutral = (source[..., 1] + source[..., 2]) / 2
-    fixed = np.repeat(np.minimum(source[..., 0], neutral)[..., np.newaxis], 3, axis=2) * DARKEN
+    level = np.minimum(np.minimum(source[..., 0], neutral) * DARKEN, PUPIL_MAX_LEVEL)
+    fixed = np.repeat(level[..., np.newaxis], 3, axis=2)
     alpha = _feathered_alpha(patch, mask)[..., np.newaxis]
     blended = source + alpha * (fixed - source)
     return np.clip(np.rint(blended), 0, MAX_LEVEL).astype(np.uint8)
@@ -282,8 +285,11 @@ def apply_fixes(img: np.ndarray, fixes: Sequence[EyeFix]) -> np.ndarray:
     """A new array: ``img`` with every fix applied; pixels outside the fixes' ROIs are untouched."""
     ensure_rgb_uint8(img)
     result = img.copy()
+    height, width = img.shape[:2]
     for fix in fixes:
         x0, y0, x1, y1 = fix.roi
+        if x1 > width or y1 > height:
+            raise ValueError(f"fix ROI {fix.roi} lies outside the {width}x{height} image")
         result[y0:y1, x0:x1] = _corrected_patch(result[y0:y1, x0:x1], fix.mask)
     return result
 
@@ -294,8 +300,8 @@ def remove_red_eye(img: np.ndarray, dpi: int, detector: FaceDetector | None = No
     ``img`` is an upright RGB uint8 array and is not modified. Faces whose eyes are closer than
     ``MIN_INTEROCULAR_MM`` at ``dpi`` are skipped.
     """
-    if dpi <= 0:
-        raise ValueError(f"dpi must be positive, got {dpi}")
+    if isinstance(dpi, bool) or not math.isfinite(dpi) or dpi <= 0:
+        raise ValueError(f"dpi must be a positive finite number, got {dpi!r}")
     ensure_rgb_uint8(img)
     min_iod = _mm_to_px(MIN_INTEROCULAR_MM, dpi)
     faces = tuple(f for f in detect_faces_full_res(img, detector) if _interocular(f) >= min_iod)

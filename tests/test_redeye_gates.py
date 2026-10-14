@@ -12,6 +12,7 @@ from fastfoto_linux.enhance.faces import Face, FaceDetector
 from fastfoto_linux.enhance.redeye import (
     ROI_HALF_FRACTION,
     EyeFix,
+    _grow_pupil,
     _ring_contrast,
     apply_fixes,
     find_red_eyes,
@@ -33,6 +34,7 @@ CORE_RADIUS_PX = 1
 # Surroundings that are not loosely red but almost as red as the disc, or plainly neutral.
 REDDISH_SKIN = (200, 150, 145)
 NEUTRAL_SKIN = (200, 190, 185)
+MODERATE_SKIN = (200, 165, 160)  # redness 35: the blob still stands out by about 28
 BIG_BLOB_RADIUS_FRACTION = 0.18  # inside the ROI (half-size 0.25) but far wider than a pupil
 # Reds that are not saturated enough for a pupil: flushed skin, and dark brown lashes or brows.
 NOT_PUPIL_COLOURS = {"flushed skin": (230, 150, 140), "dark brown": (110, 45, 35)}
@@ -120,7 +122,7 @@ def test_a_two_pixel_speck_is_noise_even_in_a_tiny_face(portrait: np.ndarray) ->
         score=0.9,
     )
     specked = portrait.copy()
-    specked[100, 100:102] = RED
+    specked[100:102, 100] = RED
     assert find_red_eyes(specked, (tiny,)) == ()
 
 
@@ -175,7 +177,8 @@ def _blocks(portrait: np.ndarray, face: Face, width: int, height: int) -> np.nda
 
 def test_a_blob_wider_than_tall_is_not_a_pupil(portrait: np.ndarray, face: Face) -> None:
     assert len(find_red_eyes(_blocks(portrait, face, 8, 8), (face,))) == 2
-    assert find_red_eyes(_blocks(portrait, face, 12, 8), (face,)) == ()
+    assert len(find_red_eyes(_blocks(portrait, face, 10, 8), (face,))) == 2
+    assert find_red_eyes(_blocks(portrait, face, 11, 8), (face,)) == ()
 
 
 def test_a_blob_somewhat_taller_than_wide_is_still_a_pupil(
@@ -254,3 +257,85 @@ def test_fixes_must_lie_inside_the_image(portrait: np.ndarray) -> None:
 def test_dpi_must_be_a_positive_finite_number(portrait: np.ndarray, dpi: float) -> None:
     with pytest.raises(ValueError, match="dpi"):
         remove_red_eye(portrait, dpi)  # type: ignore[arg-type]
+
+
+def test_a_dot_far_smaller_than_the_roi_is_noise(portrait: np.ndarray, face: Face) -> None:
+    assert len(find_red_eyes(_blocks(portrait, face, 2, 2), (face,))) == 0
+    assert len(find_red_eyes(_blocks(portrait, face, 5, 5), (face,))) == 2
+
+
+def test_a_blob_moderately_redder_than_its_surroundings_is_a_pupil(
+    portrait: np.ndarray, face: Face
+) -> None:
+    assert len(find_red_eyes(_core_on_loose_red(portrait, face, MODERATE_SKIN), (face,))) == 2
+
+
+def test_the_roi_is_a_square_centred_on_the_eye(portrait: np.ndarray, face: Face) -> None:
+    half = round(ROI_HALF_FRACTION * _interocular(face))
+    fixes = find_red_eyes(_blocks(portrait, face, 8, 8), (face,))
+    assert [fix.roi for fix in fixes] == [
+        (x - half, y - half, x + half + 1, y + half + 1) for x, y in _eyes(face)
+    ]
+    assert [fix.center for fix in fixes] == list(face.landmarks[:2])
+
+
+GROW_SIZE = 41
+GROW_CENTRE = GROW_SIZE // 2
+GROW_IOD = 60.0  # the growth reach is 0.1 x 60 = 6 px
+
+
+def _seed_patch(surroundings: tuple[int, int, int]) -> tuple[np.ndarray, np.ndarray]:
+    patch = np.full((GROW_SIZE, GROW_SIZE, 3), NEUTRAL_SKIN, dtype=np.uint8)
+    seed = np.zeros((GROW_SIZE, GROW_SIZE), dtype=bool)
+    seed[GROW_CENTRE - 1 : GROW_CENTRE + 2, GROW_CENTRE - 1 : GROW_CENTRE + 2] = True
+    patch[seed] = RED
+    patch[GROW_CENTRE - 3 : GROW_CENTRE + 4, GROW_CENTRE - 3 : GROW_CENTRE + 4][
+        ~seed[GROW_CENTRE - 3 : GROW_CENTRE + 4, GROW_CENTRE - 3 : GROW_CENTRE + 4]
+    ] = surroundings
+    return patch, seed
+
+
+def test_growth_stops_at_the_pupil_radius() -> None:
+    patch, seed = _seed_patch(LOOSE_RED)
+    patch[GROW_CENTRE - 1 : GROW_CENTRE + 2, GROW_CENTRE:] = LOOSE_RED  # a tail to the right edge
+    grown = _grow_pupil(patch, seed, GROW_IOD)
+    xs = np.nonzero(grown)[1]
+    assert xs.max() <= GROW_CENTRE + 6
+    assert xs.max() > GROW_CENTRE + 3
+
+
+def test_growth_only_takes_pixels_connected_to_the_seed() -> None:
+    patch, seed = _seed_patch(LOOSE_RED)
+    patch[GROW_CENTRE, GROW_CENTRE + 5 : GROW_CENTRE + 7] = LOOSE_RED  # beyond a one-pixel gap
+    patch[GROW_CENTRE, GROW_CENTRE + 4] = NEUTRAL_SKIN
+    grown = _grow_pupil(patch, seed, GROW_IOD)
+    assert not grown[GROW_CENTRE, GROW_CENTRE + 5 : GROW_CENTRE + 7].any()
+    assert grown[GROW_CENTRE - 2 : GROW_CENTRE + 3, GROW_CENTRE - 2 : GROW_CENTRE + 3].all()
+
+
+@pytest.mark.parametrize(("redness", "taken"), [(40, True), (30, False)])
+def test_growth_needs_loose_redness(redness: int, taken: bool) -> None:
+    surroundings = (100 + redness - 30, 70, 70)  # ratio 1.43..1.57, R >= 90
+    patch, seed = _seed_patch(surroundings)
+    grown = _grow_pupil(patch, seed, GROW_IOD)
+    assert bool(grown.sum() > seed.sum()) is taken
+
+
+def _crosses(portrait: np.ndarray, face: Face, size: int, arm: int) -> np.ndarray:
+    """A red plus sign inside a ``size`` x ``size`` box on each eye, arms ``arm`` pixels thick."""
+    painted = portrait.copy()
+    for x, y in _eyes(face):
+        left, top = x - size // 2, y - size // 2
+        offset = (size - arm) // 2
+        cv2.rectangle(
+            painted, (left, top + offset), (left + size - 1, top + offset + arm - 1), RED, -1
+        )
+        cv2.rectangle(
+            painted, (left + offset, top), (left + offset + arm - 1, top + size - 1), RED, -1
+        )
+    return painted
+
+
+def test_a_ragged_blob_is_not_a_pupil_but_a_plump_one_is(portrait: np.ndarray, face: Face) -> None:
+    assert find_red_eyes(_crosses(portrait, face, 11, 3), (face,)) == ()  # fills 0.47 of its box
+    assert len(find_red_eyes(_crosses(portrait, face, 11, 5), (face,))) == 2  # fills 0.70

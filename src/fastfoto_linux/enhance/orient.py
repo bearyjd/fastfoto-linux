@@ -9,6 +9,7 @@ are rotated; the EXIF Orientation tag is neither read nor written.
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
+from types import MappingProxyType
 
 import cv2
 import numpy as np
@@ -24,11 +25,13 @@ CONFIDENCE_FLOOR = 0.8
 MIN_BEST_SCORE = 0.1
 MIN_RUNNER_UP_RATIO = 1.5
 
-_CV2_ROTATION_CODE = {
-    90: cv2.ROTATE_90_CLOCKWISE,
-    180: cv2.ROTATE_180,
-    270: cv2.ROTATE_90_COUNTERCLOCKWISE,
-}
+_CV2_ROTATION_CODE = MappingProxyType(
+    {
+        90: cv2.ROTATE_90_CLOCKWISE,
+        180: cv2.ROTATE_180,
+        270: cv2.ROTATE_90_COUNTERCLOCKWISE,
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -62,9 +65,11 @@ def apply_rotation(img: np.ndarray, rotation: int) -> np.ndarray:
 
 
 def _working_copy(img: np.ndarray) -> np.ndarray:
-    scale = WORKING_LONG_SIDE_PX / max(img.shape[:2])
+    height, width = img.shape[:2]
+    scale = WORKING_LONG_SIDE_PX / max(height, width)
+    size = (max(1, round(width * scale)), max(1, round(height * scale)))  # thin images keep 1 px
     interpolation = cv2.INTER_AREA if scale < 1 else cv2.INTER_CUBIC
-    return cv2.resize(img, None, fx=scale, fy=scale, interpolation=interpolation)
+    return cv2.resize(img, size, interpolation=interpolation)
 
 
 def _rotation_score(detector: FaceDetector, working: np.ndarray, rotation: int) -> float:

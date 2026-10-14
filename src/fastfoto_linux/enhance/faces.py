@@ -1,11 +1,13 @@
 """YuNet face detection (OpenCV ``FaceDetectorYN``) with an integrity-checked vendored model.
 
 The ONNX model ships as package data (``fastfoto_linux/models``); its sha256 is verified on every
-load and it is never downloaded. Detector instances keep OpenCV state between calls, so share one
-per thread rather than across threads.
+load and it is never downloaded. OpenCV's detector keeps per-call state (the input size), so each
+``FaceDetector`` serialises its own calls with a lock: one instance, including the shared
+``default_detector()``, is safe to use from several threads, though they then take turns.
 """
 
 import hashlib
+import threading
 from dataclasses import dataclass
 from functools import cache
 from importlib import resources
@@ -24,6 +26,8 @@ TOP_K = 5000
 INITIAL_INPUT_SIZE = (320, 320)
 RGB_NDIM = 3
 RGB_CHANNELS = 3
+
+_DEFAULT_DETECTOR_LOCK = threading.Lock()
 
 # One YuNet row: x, y, w, h, five (x, y) landmarks, score.
 _BOX = slice(0, 4)
@@ -47,7 +51,9 @@ class Face:
 
 
 def ensure_rgb_uint8(img: np.ndarray) -> None:
-    """Raise ``ValueError`` unless ``img`` is a non-empty height x width x 3 uint8 array."""
+    """Raise ``TypeError`` unless ``img`` is an array, ``ValueError`` unless H x W x 3 uint8."""
+    if not isinstance(img, np.ndarray):
+        raise TypeError(f"expected a numpy array, got {type(img).__name__}")
     if (
         img.ndim != RGB_NDIM
         or img.shape[2] != RGB_CHANNELS
@@ -117,18 +123,25 @@ class FaceDetector:
             NMS_THRESHOLD,
             TOP_K,
         )
+        self._lock = threading.Lock()
 
     def detect(self, img_rgb: np.ndarray) -> tuple[Face, ...]:
         """Return every face scoring at least the threshold, in ``img_rgb`` pixel coordinates."""
         ensure_rgb_uint8(img_rgb)
         height, width = img_rgb.shape[:2]
         bgr = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
-        self._net.setInputSize((width, height))
-        _, rows = self._net.detect(bgr)
+        with self._lock:
+            self._net.setInputSize((width, height))
+            _, rows = self._net.detect(bgr)
         return () if rows is None else tuple(_face_from_row(row) for row in rows)
 
 
 @cache
-def default_detector() -> FaceDetector:
-    """The shared detector over the vendored model, created on first use."""
+def _create_default_detector() -> FaceDetector:
     return FaceDetector()
+
+
+def default_detector() -> FaceDetector:
+    """The shared detector over the vendored model, created once on first use (thread-safe)."""
+    with _DEFAULT_DETECTOR_LOCK:
+        return _create_default_detector()

@@ -41,3 +41,10 @@ jobs:
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - run: uv sync --locked --python ${{ matrix.python }}
       - run: uv run --no-sync pytest --cov --cov-report=term-missing
+      - name: Wheel ships the face model and its licence
+        run: |
+          uv build --wheel --out-dir "$RUNNER_TEMP/wheel"
+          python3 -m zipfile -l "$RUNNER_TEMP"/wheel/*.whl | tee "$RUNNER_TEMP/wheel-files.txt"
+          grep -q 'fastfoto_linux/models/face_detection_yunet_2023mar\.onnx' "$RUNNER_TEMP/wheel-files.txt"
+          grep -q 'fastfoto_linux/models/LICENSE-YuNet' "$RUNNER_TEMP/wheel-files.txt"
+          grep -q 'dist-info/licenses/.*LICENSE-YuNet' "$RUNNER_TEMP/wheel-files.txt"

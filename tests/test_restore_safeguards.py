@@ -13,10 +13,12 @@ from tests._restore_synth import (
     clipped_fractions,
     fade_with_cast,
     grey_of,
+    lab,
     make_natural,
     make_night_scene,
     make_reference,
     mean_abs_change,
+    uniform_with_chroma,
 )
 
 HIGH_DPI = 600
@@ -139,6 +141,17 @@ def test_channel_gain_is_capped() -> None:
     assert span_after <= DEFAULT.max_gain * span_before + 2  # ...but not beyond the cap
 
 
+def test_relative_gain_between_channels_is_bounded() -> None:
+    img = make_reference()
+    img[..., 0] = np.rint(100 + img[..., 0] / 255.0 * 40).astype(np.uint8)  # red: 40 levels
+    img[..., 1] = np.rint(30 + img[..., 1] / 255.0 * 200).astype(np.uint8)  # green: 200 levels
+    span_before = int(img[..., 0].max()) - int(img[..., 0].min())
+    out = restore_colour(img, DPI, RestoreSettings(saturation_gain=1.0))
+    span_after = int(out[..., 0].max()) - int(out[..., 0].min())
+    # balance (<= max_gain) times the common move (<= max_gain)
+    assert span_after <= DEFAULT.max_gain**2 * span_before + 2
+
+
 def test_default_gain_cap_is_conservative() -> None:
     assert DEFAULT.max_gain == pytest.approx(2.0)
 
@@ -149,3 +162,27 @@ def test_channel_already_spanning_the_full_scale_is_left_alone() -> None:
     out = restore_colour(img, DPI, RestoreSettings(saturation_gain=1.0))
     assert np.array_equal(out[..., 0], img[..., 0])  # red spans 0-255: not touched
     assert not np.array_equal(out[..., 1], img[..., 1])  # green was compressed: stretched
+
+
+def test_a_dark_image_with_a_bright_highlight_is_not_stretched() -> None:
+    rng = np.random.default_rng(SEED)
+    grey = np.clip(rng.normal(30.0, 8.0, (120, 160)), 12, 60)
+    grey[rng.random(grey.shape) < 0.02] = 250  # lights: the white point is already there
+    img = np.repeat(np.rint(grey).astype(np.uint8)[..., None], 3, axis=2)
+    assert np.array_equal(restore_colour(img, DPI), img)
+
+
+def test_two_opposite_colours_without_any_mean_colour_are_not_flattened() -> None:
+    img = np.concatenate([uniform_with_chroma(20.0, 0.0), uniform_with_chroma(20.0, 180.0)], axis=1)
+    out = restore_colour(img, DPI)
+    assert out.shape == img.shape
+    left, right = lab(out)[:, :80, 1].mean(), lab(out)[:, 80:, 1].mean()
+    assert left > 0 > right  # still a red half and a green half
+
+
+def test_a_thin_line_on_a_large_frame_does_not_crash_and_leaves_the_frame_alone() -> None:
+    img = np.full((600, 1000, 3), FULL_SCALE, dtype=np.uint8)
+    img[:, 500] = 100
+    out = restore_colour(img, DPI)
+    assert out.shape == img.shape
+    assert np.array_equal(out[:, :500], img[:, :500])

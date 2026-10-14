@@ -1,5 +1,6 @@
 """Tone-preserving behaviour: sepia, black and white, dominant colours and saturation recovery."""
 
+import dataclasses
 import math
 
 import numpy as np
@@ -117,13 +118,16 @@ def test_a_natural_photo_is_not_boosted() -> None:
 
 
 def test_boost_grows_with_the_chroma_deficit_and_never_exceeds_the_gain() -> None:
-    # Isolate the saturation stage: max_gain=1 makes the contrast stretch the identity.
-    settings = RestoreSettings(saturation_gain=1.3, max_gain=1.0)
+    settings = RestoreSettings(saturation_gain=1.3)
+    unboosted = dataclasses.replace(settings, saturation_gain=1.0)  # same stretch, no recovery
     natural = make_natural()
     ratios = []
     for keep in (0.6, 0.35, 0.15):  # mean chroma about 10.7, 6.2 and 2.7
         dull = desaturate(natural, keep)
-        ratios.append(mean_chroma(restore_colour(dull, DPI, settings)) / mean_chroma(dull))
+        ratios.append(
+            mean_chroma(restore_colour(dull, DPI, settings))
+            / mean_chroma(restore_colour(dull, DPI, unboosted))
+        )
     assert 1.0 <= ratios[0] < ratios[1] < ratios[2] <= settings.saturation_gain + 0.03
     assert ratios[2] > 1.1  # a really dull image is clearly recovered
     assert ratios[2] - ratios[1] > MIN_BOOST_STEP  # ...and a mildly dull one gets less

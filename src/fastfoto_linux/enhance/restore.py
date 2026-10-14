@@ -14,16 +14,23 @@ Deterministic and classic (no machine learning), in three stages:
 
 Safeguards keep unusual images from being damaged:
 
-* Run this on the cropped photo. Pixels that are nearly black or nearly white in all three
-  channels (a scanner border or background; JPEG scans never hold exact 0 / 255) are ignored
-  when measuring, so a frame cannot pin the percentiles, and they are left untouched.
+* Run this on the cropped photo. Rows and columns along the image edge that are (nearly) all
+  white or black (a scanner border or background, any JPEG-noisy 248-255 or 0-6) form a frame:
+  it is ignored when measuring and left untouched. Only whole edge lines count, so bright or
+  dark pixels inside the photo (highlights, shadows) are measured like any other.
 * A channel that already spans nearly the full scale, or is flat, is left alone.
-* A monochrome print (black and white, sepia, any single-hue tone) is stretched with ONE shared
-  curve so its tone is kept. It is recognised by an almost zero hue scatter around its mean
-  colour. A colour cast shifts the mean but leaves the scene's scatter, so a cast print is never
-  taken for a tone: when in doubt, the cast is removed.
-* The common move never pushes the median below a fixed fraction of the scale or brightens a
-  low-key image by more than a small gain, so night scenes are not crushed or washed out.
+* A monochrome print (black and white, sepia, any single-hue tone) is recognised by an almost
+  zero hue scatter around its mean colour and gets a luminance-only stretch: the colour
+  offsets of every pixel stay as they are, so the tone is neither neutralised nor amplified.
+  A colour cast shifts the mean but leaves the scene's scatter, so a cast print is never taken
+  for a tone: when in doubt, the cast is removed.
+* The common move is skipped for near-white pages (print backs), never pushes the median below
+  a fixed fraction of the scale and brightens a low-key image only a little.
+* Trade-off: casts are removed by aligning the channels' black points and matching their
+  gains. No channel is stretched more than ``MAX_CHANNEL_GAIN_RATIO`` times the widest one,
+  which keeps most of the colour of a scene that is mostly one hue (lawn, open sea) and fully
+  removes any cast that needs a smaller mismatch; a cast that needs a larger channel-gain
+  mismatch is only partly corrected in the highlights.
 
 The input array is never modified.
 """
@@ -45,19 +52,22 @@ RGB_NDIM = 3
 RGB_CHANNELS = 3
 LAB_NEUTRAL = 128.0  # 8-bit OpenCV LAB stores a* and b* offset by this value
 
-FRAME_BLACK_MAX = 2  # pixels with every channel <= this ...
-FRAME_WHITE_MIN = 253  # ... or every channel >= this are scanner border/background
+FRAME_BLACK_MAX = 6  # edge lines whose pixels have every channel <= this ...
+FRAME_WHITE_MIN = 248  # ... or every channel >= this are scanner border/background
+FRAME_LINE_FRACTION = 0.95  # share of a line that must be frame-coloured (dust, noise tolerated)
 MAX_CLIP_PCT = 50.0  # each tail must stay below the median
 MAX_SATURATION_GAIN = 3.0
 SKIP_RANGE_FRACTION = 0.95  # a channel spanning this much of the scale needs no stretch
 MIN_RANGE_LEVELS = 8  # a channel narrower than this is flat: stretching it would be noise
 MIN_OUTPUT_MEDIAN_FRACTION = 0.2  # the common move may not push the median below this of the scale
+NEAR_WHITE_MEDIAN_FRACTION = 0.97  # a median this close to white: a page, not a photo
+MAX_CHANNEL_GAIN_RATIO = 1.5  # no channel is stretched more than this times the widest one
 LOW_KEY_FULL_GAIN_MEDIAN = 96.0  # at and above this median the full gain cap applies; below, less
 STAT_MAX_PIXELS = 250_000  # colour statistics use a block-averaged copy of about this size
 NEUTRAL_MEAN_CHROMA = 3.0  # mean LAB chroma below this: a black-and-white print
+TRIM_PCT = 1.0  # percent trimmed from each end of a spread measurement
 NO_DIRECTION_LENGTH = 1e-6  # a mean colour this short has no direction
-TONE_MAX_HUE_SCATTER = 0.8  # std of a*, b* across the mean colour's direction: below = one tone
-SHARED_MIN_SPAN_FRACTION = 0.6  # shared stretch only if tonal range, not channel offsets, dominates
+TONE_MAX_HUE_SCATTER = 0.7  # trimmed std of a*, b* across the mean colour's direction
 DESATURATED_MEAN_CHROMA = 10.0  # saturation recovery fades out as mean chroma reaches this
 CLAHE_CLIP_LIMIT = 1.5  # subtle: close to plain histogram equalisation's lower bound
 CLAHE_TILE_MM = 25.0
@@ -69,11 +79,10 @@ class RestoreSettings:
     """Tunable knobs for :func:`restore_colour`.
 
     ``low_clip_pct`` / ``high_clip_pct``: percent of pixels clipped at each end of every channel
-    before stretching. ``max_gain``: cap on the contrast gain of the common move and on the
-    relative gain between channels. ``saturation_gain``:
-    chroma multiplier reached by a fully desaturated image (1.0 disables recovery; images with
-    mean chroma of ``DESATURATED_MEAN_CHROMA`` or more are never boosted). ``clahe``: add mild
-    local contrast on lightness.
+    before stretching. ``max_gain``: cap on the contrast gain of the common move.
+    ``saturation_gain``: chroma multiplier reached by a fully desaturated image (1.0 disables
+    recovery; images with mean chroma of ``DESATURATED_MEAN_CHROMA`` or more are never boosted).
+    ``clahe``: add mild local contrast on lightness.
     """
 
     low_clip_pct: float = 0.5
@@ -113,8 +122,9 @@ def restore_colour(img: np.ndarray, dpi: float, settings: RestoreSettings = DEFA
     _require_rgb_uint8(img)
     if not (math.isfinite(dpi) and dpi > 0):
         raise ValueError(f"dpi must be a positive finite number, got {dpi}")
-    out = _stretch_channels(img, settings)
-    out = _recover_saturation(out, settings.saturation_gain)
+    box = _frame_box(img)
+    out = _stretch_channels(img, box, settings)
+    out = _recover_saturation(out, settings.saturation_gain, box)
     if settings.clahe:
         out = _local_contrast(out, dpi)
     return out
@@ -136,37 +146,45 @@ def _require_rgb_uint8(img: np.ndarray) -> None:
         )
 
 
-def _frame_mask(img: np.ndarray) -> np.ndarray:
-    """255 where a pixel is (nearly) black or white in all channels: scanner border/background."""
-    black = cv2.inRange(img, (0,) * RGB_CHANNELS, (FRAME_BLACK_MAX,) * RGB_CHANNELS)
-    white = cv2.inRange(img, (FRAME_WHITE_MIN,) * RGB_CHANNELS, (FULL_SCALE,) * RGB_CHANNELS)
-    return black | white
+def _inner_span(is_frame: np.ndarray) -> tuple[int, int]:
+    """Start and stop of the lines left once frame lines are peeled off both ends."""
+    content = np.flatnonzero(~is_frame)
+    return (int(content[0]), int(content[-1]) + 1) if len(content) else (0, 0)
 
 
-def _histograms(img: np.ndarray, frame: np.ndarray) -> np.ndarray:
-    """Exact per-channel 256-bin histograms of the pixels outside the frame."""
-    hists = np.stack(
-        [np.bincount(img[..., c].ravel(), minlength=LUT_SIZE) for c in range(RGB_CHANNELS)]
+def _frame_box(img: np.ndarray) -> tuple[int, int, int, int] | None:
+    """(top, bottom, left, right) of the photo inside its scanner frame, ``None`` if all frame.
+
+    A frame is made of whole rows/columns along the image edge that are (nearly) all white or
+    black, so highlights and shadows inside the photo are never mistaken for it.
+    """
+    framed = cv2.inRange(img, (FRAME_WHITE_MIN,) * RGB_CHANNELS, (FULL_SCALE,) * RGB_CHANNELS)
+    framed |= cv2.inRange(img, (0,) * RGB_CHANNELS, (FRAME_BLACK_MAX,) * RGB_CHANNELS)
+    width = framed.shape[1]
+    top, bottom = _inner_span(np.count_nonzero(framed, axis=1) >= FRAME_LINE_FRACTION * width)
+    if top >= bottom:
+        return None
+    rows = framed[top:bottom]
+    left, right = _inner_span(
+        np.count_nonzero(rows, axis=0) >= FRAME_LINE_FRACTION * (bottom - top)
     )
-    inside = frame.astype(bool)
-    if inside.any():
-        hists -= np.stack(
-            [np.bincount(img[..., c][inside], minlength=LUT_SIZE) for c in range(RGB_CHANNELS)]
-        )
-    return hists
+    return None if left >= right else (top, bottom, left, right)
 
 
-def _channel_stats(
-    hist: np.ndarray, settings: RestoreSettings
-) -> tuple[float, float, float] | None:
-    """Black point, white point and median of one channel, or ``None`` without pixels.
+def _histograms(inner: np.ndarray) -> np.ndarray:
+    """Exact per-channel 256-bin histograms."""
+    return np.stack(
+        [np.bincount(inner[..., c].ravel(), minlength=LUT_SIZE) for c in range(RGB_CHANNELS)]
+    )
+
+
+def _channel_stats(hist: np.ndarray, settings: RestoreSettings) -> tuple[float, float, float]:
+    """Black point, white point and median of one histogram.
 
     At most ``low_clip_pct`` / ``high_clip_pct`` of the pixels lie at or beyond the black/white
     point, so clipping can never exceed what the settings say.
     """
     total = int(hist.sum())
-    if total == 0:
-        return None
     cdf = np.cumsum(hist)
     low = max(int(np.searchsorted(cdf, total * settings.low_clip_pct / 100.0, "right")) - 1, 0)
     reach = total * (1.0 - settings.high_clip_pct / 100.0)
@@ -187,6 +205,8 @@ def _common_move(low: float, high: float, median: float, max_gain: float) -> tup
     the median stays above ``MIN_OUTPUT_MEDIAN_FRACTION`` of the scale, and the gain is capped
     (less for low-key images) by blending with the identity.
     """
+    if median >= NEAR_WHITE_MEDIAN_FRACTION * FULL_SCALE:  # a page, not a photo: already white
+        return 1.0, 0.0
     ceiling = (median - MIN_OUTPUT_MEDIAN_FRACTION * high) / (1.0 - MIN_OUTPUT_MEDIAN_FRACTION)
     black = min(low, max(ceiling, 0.0))
     span = high - black
@@ -200,66 +220,71 @@ def _common_move(low: float, high: float, median: float, max_gain: float) -> tup
     return cap, -weight * full_gain * black
 
 
-def _sample_ab(img: np.ndarray, frame: np.ndarray) -> np.ndarray:
-    """LAB a*, b* offsets (N, 2) of a block-averaged copy, blocks touching the frame excluded.
-
-    Averaging blocks of pixels removes scan noise from the colour statistics.
-    """
+def _sample_ab(img: np.ndarray) -> np.ndarray:
+    """LAB a*, b* offsets (N, 2) of a block-averaged copy: averaging removes scan noise."""
     height, width = img.shape[:2]
     scale = min(1.0, math.sqrt(STAT_MAX_PIXELS / (height * width)))
     if scale < 1.0:
         size = (max(1, round(width * scale)), max(1, round(height * scale)))
         img = cv2.resize(img, size, interpolation=cv2.INTER_AREA)
-        frame = cv2.resize(frame, size, interpolation=cv2.INTER_AREA)
-    lab = cv2.cvtColor(img, cv2.COLOR_RGB2LAB)
-    return lab[frame == 0][:, 1:].astype(np.float32) - LAB_NEUTRAL
+    lab = cv2.cvtColor(np.ascontiguousarray(img), cv2.COLOR_RGB2LAB)
+    return lab[..., 1:].reshape(-1, 2).astype(np.float32) - LAB_NEUTRAL
 
 
 def _mean_chroma(ab: np.ndarray) -> float:
-    return float(np.hypot(ab[:, 0], ab[:, 1]).mean()) if len(ab) else 0.0
+    return float(np.hypot(ab[:, 0], ab[:, 1]).mean())
+
+
+def _trimmed_std(values: np.ndarray) -> float:
+    """Std after dropping the most extreme ``TRIM_PCT`` percent at each end (a little ink)."""
+    low, high = np.percentile(values, [TRIM_PCT, 100.0 - TRIM_PCT])
+    return float(values[(values >= low) & (values <= high)].std())
 
 
 def _hue_scatter(ab: np.ndarray) -> float:
-    """Std of a*, b* across the direction of the mean colour (all directions if it is neutral).
+    """Spread of a*, b* across the direction of the mean colour (all directions if neutral).
 
     Variation along the mean colour's direction is only chroma changing with lightness, as in
-    sepia; variation across it is a different colour.
+    sepia; variation across it is a different colour. A trimmed std ignores a few outliers (ink)
+    but, unlike a median-based spread, not a large coloured part of the scene.
     """
-    mean = ab.mean(axis=0)
-    deviation = ab - mean
-    length = float(np.hypot(*mean))
+    center = ab.mean(axis=0)
+    deviation = ab - center
+    length = float(np.hypot(*center))
     if length < NO_DIRECTION_LENGTH:
-        return float(np.sqrt((deviation**2).sum(axis=1).mean()))
-    across = deviation @ np.array([-mean[1], mean[0]]) / length
-    return float(across.std())
+        return math.hypot(_trimmed_std(deviation[:, 0]), _trimmed_std(deviation[:, 1]))
+    return _trimmed_std(deviation @ np.array([-center[1], center[0]]) / length)
 
 
 def _is_single_tone(ab: np.ndarray) -> bool:
     """True for black and white, sepia and other prints whose colour is a single tone."""
-    if not len(ab):
-        return False
     return _mean_chroma(ab) < NEUTRAL_MEAN_CHROMA or _hue_scatter(ab) < TONE_MAX_HUE_SCATTER
 
 
-def _shared_luts(
-    stats: list[tuple[float, float, float]], max_gain: float
-) -> list[np.ndarray] | None:
-    """One curve for all channels (keeps the tone), or ``None`` if channel offsets dominate.
+def _stretch_luminance(inner: np.ndarray, settings: RestoreSettings) -> np.ndarray:
+    """Common move on the luminance only: every pixel keeps its own colour offsets."""
+    luma = cv2.transform(inner, np.full((1, RGB_CHANNELS), 1.0 / RGB_CHANNELS, np.float32))
+    low, high, median = _channel_stats(np.bincount(luma.ravel(), minlength=LUT_SIZE), settings)
+    if high - low < MIN_RANGE_LEVELS:
+        return inner.copy()
+    lut = _affine_lut(*_common_move(low, high, median, settings.max_gain))
+    delta = lut[luma].astype(np.int16) - luma
+    return np.clip(inner.astype(np.int16) + delta[..., None], 0, FULL_SCALE).astype(np.uint8)
 
-    A flat coloured image has tiny tonal range in every channel but large differences between
-    channels; a shared stretch would read those differences as range and wreck the colour.
+
+def _balances(spans: list[float], reference: float) -> list[float]:
+    """Per-channel gains matching each span to ``reference``, narrow channels capped.
+
+    No channel is stretched more than ``MAX_CHANNEL_GAIN_RATIO`` times the gain of the widest
+    one, so a scene that is mostly one hue (lawn, sea) is not neutralised.
     """
-    low = min(lo for lo, _, _ in stats)
-    high = max(hi for _, hi, _ in stats)
-    widest = max(hi - lo for lo, hi, _ in stats)
-    if high - low < MIN_RANGE_LEVELS or widest < SHARED_MIN_SPAN_FRACTION * (high - low):
-        return None
-    median = sum(m for _, _, m in stats) / len(stats)
-    return [_affine_lut(*_common_move(low, high, median, max_gain))] * RGB_CHANNELS
+    gains = [reference / span for span in spans]
+    ceiling = min(gains) * MAX_CHANNEL_GAIN_RATIO
+    return [min(gain, ceiling) for gain in gains]
 
 
 def _balanced_luts(stats: list[tuple[float, float, float]], max_gain: float) -> list[np.ndarray]:
-    """Per-channel curves: balance every channel onto a common range, then one common move."""
+    """Per-channel curves: black points aligned, gains balanced, then one common move."""
     luts = [_affine_lut(1.0, 0.0)] * RGB_CHANNELS
     active = [
         i
@@ -272,37 +297,39 @@ def _balanced_luts(stats: list[tuple[float, float, float]], max_gain: float) -> 
     ref_high = sum(stats[i][1] for i in active) / len(active)
     ref_median = sum(stats[i][2] for i in active) / len(active)
     gain, offset = _common_move(ref_low, ref_high, ref_median, max_gain)
-    ref_mid = (ref_low + ref_high) / 2.0
-    for i in active:
-        low, high, _ = stats[i]
-        balance = min(max((ref_high - ref_low) / (high - low), 1.0 / max_gain), max_gain)
-        shift = ref_mid - (low + high) / 2.0 * balance
+    balances = _balances([stats[i][1] - stats[i][0] for i in active], ref_high - ref_low)
+    for i, balance in zip(active, balances, strict=True):
+        shift = ref_low - stats[i][0] * balance
         luts[i] = _affine_lut(gain * balance, gain * shift + offset)
     return luts
 
 
-def _stretch_channels(img: np.ndarray, settings: RestoreSettings) -> np.ndarray:
-    frame = _frame_mask(img)
-    stats = [_channel_stats(h, settings) for h in _histograms(img, frame)]
-    if any(st is None for st in stats):  # nothing but frame: nothing to measure
-        return img.copy()
+def _stretch_channels(
+    img: np.ndarray, box: tuple[int, int, int, int] | None, settings: RestoreSettings
+) -> np.ndarray:
+    out = img.copy()
+    if box is None:  # nothing but frame: nothing to measure
+        return out
+    top, bottom, left, right = box
+    inner = img[top:bottom, left:right]
+    if _is_single_tone(_sample_ab(inner)):
+        out[top:bottom, left:right] = _stretch_luminance(inner, settings)
+        return out
+    stats = [_channel_stats(h, settings) for h in _histograms(inner)]
     _LOG.debug("restore: channel black/white/median %s", stats)
-    luts = None
-    if _is_single_tone(_sample_ab(img, frame)):
-        luts = _shared_luts(stats, settings.max_gain)
-    if luts is None:
-        luts = _balanced_luts(stats, settings.max_gain)
-    out = cv2.LUT(img, np.stack(luts, axis=-1).reshape(LUT_SIZE, 1, RGB_CHANNELS))
-    inside = frame.astype(bool)
-    out[inside] = img[inside]  # the frame is never touched
+    luts = np.stack(_balanced_luts(stats, settings.max_gain), axis=-1)
+    out[top:bottom, left:right] = cv2.LUT(inner, luts.reshape(LUT_SIZE, 1, RGB_CHANNELS))
     return out
 
 
-def _recover_saturation(img: np.ndarray, gain: float) -> np.ndarray:
+def _recover_saturation(
+    img: np.ndarray, gain: float, box: tuple[int, int, int, int] | None
+) -> np.ndarray:
     """Scale LAB chroma up in proportion to the measured desaturation; neutrals stay neutral."""
-    if gain == 1.0:
+    if gain == 1.0 or box is None:
         return img
-    deficit = 1.0 - _mean_chroma(_sample_ab(img, _frame_mask(img))) / DESATURATED_MEAN_CHROMA
+    top, bottom, left, right = box
+    deficit = 1.0 - _mean_chroma(_sample_ab(img[top:bottom, left:right])) / DESATURATED_MEAN_CHROMA
     if deficit <= 0.0:
         return img
     scale = 1.0 + (gain - 1.0) * deficit

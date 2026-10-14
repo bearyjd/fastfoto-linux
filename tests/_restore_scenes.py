@@ -18,7 +18,7 @@ from tests._restore_synth import (
 
 PAPER_LEVEL = 251  # a near-white print back: neutral paper, light scan noise
 PAPER_NOISE = 1
-TEXT_FRACTION = 0.03
+TEXT_FRACTION = 0.08  # dense enough that no row of the page is mistaken for frame
 TEXT_LEVELS = (60, 140)
 SEPIA_INK = (40, 60, 170)  # blue ink pen: a different colour on a toned print
 

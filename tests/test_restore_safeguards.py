@@ -22,11 +22,12 @@ from tests._restore_synth import (
 )
 
 HIGH_DPI = 600
-MAX_CHANNEL_GAIN_RATIO = 1.3
+MAX_CHANNEL_GAIN_RATIO = 1.5
 CLIP_PCT = 0.5
 CLIP_TOLERANCE = 0.001  # fraction of pixels: quantisation of a continuous tail
 BALANCED_MAX_MEAN_CHANGE = 3.5
 FRAME_PX = 20
+DUST_FRACTION = 0.01
 FRAME_CAST_REDUCTION = 0.5
 FRAME_INTERIOR_MAX_CHANGE = 1.0
 NIGHT_MIN_P1_KEPT = 0.75  # fraction of the original 1st percentile that must survive
@@ -92,6 +93,18 @@ def test_a_black_and_white_frame_does_not_pin_the_percentiles(black: int, white:
     ring = np.ones(framed.shape[:2], dtype=bool)
     ring[2 * FRAME_PX : -2 * FRAME_PX, 2 * FRAME_PX : -2 * FRAME_PX] = False
     assert np.array_equal(out[ring], framed[ring])  # the frame itself is untouched
+
+
+def test_a_dusty_frame_is_still_a_frame() -> None:
+    faded = fade_with_cast(make_reference())
+    framed = _with_scanner_frame(faded, 5, 250)
+    rng = np.random.default_rng(SEED)
+    specks = rng.random(framed.shape[:2]) < DUST_FRACTION
+    specks[2 * FRAME_PX : -2 * FRAME_PX, 2 * FRAME_PX : -2 * FRAME_PX] = False  # frame only
+    framed[specks] = 120  # dust on the scanner glass
+    inside = restore_colour(framed, DPI)[2 * FRAME_PX : -2 * FRAME_PX, 2 * FRAME_PX : -2 * FRAME_PX]
+    before = np.hypot(*measure_cast(faded[RAMP_ROWS]))
+    assert np.hypot(*measure_cast(inside[RAMP_ROWS])) <= FRAME_CAST_REDUCTION * before
 
 
 def test_an_image_that_is_entirely_frame_is_returned_unchanged() -> None:

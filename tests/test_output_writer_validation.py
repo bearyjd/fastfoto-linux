@@ -21,7 +21,10 @@ from tests._output_helpers import DPI, HEIGHT, WIDTH, rgb
     [
         ({"album": ""}, InvalidAlbumError),
         ({"album": ".."}, InvalidAlbumError),
-        ({"prefix": "!!!"}, InvalidPrefixError),
+        ({"prefix": ".."}, InvalidPrefixError),
+        ({"prefix": ""}, InvalidPrefixError),
+        ({"prefix": "/"}, InvalidPrefixError),
+        ({"prefix": "../.."}, InvalidPrefixError),
         ({"notes": "x" * (MAX_NOTES_CHARS + 1)}, InvalidNotesError),
         ({"dpi": 0}, ValueError),
         ({"dpi": -300}, ValueError),

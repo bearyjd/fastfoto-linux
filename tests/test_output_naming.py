@@ -7,6 +7,7 @@ from fastfoto_linux.output.naming import (
     DEFAULT_PREFIX,
     MAX_ALBUM_CHARS,
     MAX_COMPONENT_BYTES,
+    MAX_PREFIX_BYTES,
     album_dir,
     default_prefix,
     next_index,
@@ -101,36 +102,61 @@ def test_sanitise_album_restrips_after_truncating() -> None:
         ("1983_June_lake-trip", "1983_June_lake-trip"),
         ("a__b_-c", "a__b_-c"),
         ("_x_", "_x_"),
-        ("Grandma 1970s", "Grandma_1970s"),
-        ("Caf\u00e9", "Cafe"),
-        ("a/b\\c", "a_b_c"),
-        ("(x)", "x"),
+        ("Grandma 1970s", "Grandma 1970s"),
+        ("  Grandma   1970s  ", "Grandma 1970s"),
+        ("Mom & Dad (1970s)", "Mom & Dad (1970s)"),
+        ("Smith, J. + Co. 'Trip' #2", "Smith, J. + Co. 'Trip' #2"),
+        ("Caf\u00e9 \u7956\u6bcd", "Caf\u00e9 \u7956\u6bcd"),
+        ("Cafe\u0301", "Caf\u00e9"),
+        ("a/b\\c", "a b c"),
         ("../x", "x"),
-        ("a  !! b", "a_b"),
-        ("Zo\u00eb & Ren\u00e9", "Zoe_Rene"),
+        ("../../escape", "escape"),
+        ("..hidden", "hidden"),
+        ("nul\x00byte", "nul byte"),
+        ("tab\tnew\nline", "tab new line"),
+        ("\u202eevil", "evil"),
     ],
 )
 def test_sanitise_prefix_table(raw: str, expected: str) -> None:
     assert sanitise_prefix(raw) == expected
 
 
-def test_sanitise_prefix_truncates_to_the_album_limit() -> None:
+def test_sanitise_prefix_truncates_to_the_character_limit() -> None:
     assert sanitise_prefix("a" * 500) == "a" * MAX_ALBUM_CHARS
 
 
-@pytest.mark.parametrize("raw", ["", "!!!", "\u7956\u6bcd", "  ", "../.."])
+def test_sanitise_prefix_truncates_to_the_byte_limit_on_a_codepoint_boundary() -> None:
+    stem = sanitise_prefix("\U0001f600" * MAX_ALBUM_CHARS)
+
+    assert stem == "\U0001f600" * (MAX_PREFIX_BYTES // 4)
+    assert len(stem.encode()) <= MAX_PREFIX_BYTES
+
+
+def test_the_longest_prefix_still_makes_a_legal_file_name() -> None:
+    stem = sanitise_prefix("\U0001f600" * MAX_ALBUM_CHARS)
+    longest = f"{stem}_{'9' * 10}_a.jpg"
+
+    assert len(longest.encode()) <= MAX_COMPONENT_BYTES
+    assert len(f".{longest}.deadbeef.tmp".encode()) <= MAX_COMPONENT_BYTES
+
+
+@pytest.mark.parametrize(
+    "raw", ["", "   ", ".", "..", "...", " . . ", "/", "\\", "\x00", "\n", "../..", "/../"]
+)
 def test_sanitise_prefix_rejects_names_with_nothing_usable(raw: str) -> None:
     with pytest.raises(InvalidPrefixError):
         sanitise_prefix(raw)
 
 
 @pytest.mark.parametrize("raw", ADVERSARIAL_ALBUMS)
-def test_sanitise_prefix_output_is_idempotent_and_filename_safe(raw: str) -> None:
-    try:
-        once = sanitise_prefix(raw)
-    except InvalidPrefixError:
-        return
-    assert all(ch.isascii() and (ch.isalnum() or ch in "_-") for ch in once)
+def test_sanitise_prefix_yields_one_safe_idempotent_component(raw: str) -> None:
+    once = sanitise_prefix(raw)
+
+    assert Path(once).name == once
+    assert not once.startswith(".")
+    assert not any(ch in once for ch in "/\\\x00")
+    assert once.isprintable()
+    assert len(once.encode()) <= MAX_PREFIX_BYTES
     assert sanitise_prefix(once) == once
 
 
@@ -138,13 +164,15 @@ def test_sanitise_prefix_output_is_idempotent_and_filename_safe(raw: str) -> Non
     ("album", "expected"),
     [
         (None, DEFAULT_PREFIX),
-        ("Grandma 1970s", "Grandma_1970s"),
+        ("Grandma 1970s", "Grandma 1970s"),
         ("1983_June_lake-trip", "1983_June_lake-trip"),
-        ("\u7956\u6bcd", DEFAULT_PREFIX),
-        ("Caf\u00e9", "Cafe"),
+        ("Mom & Dad (1970s)", "Mom & Dad (1970s)"),
+        ("\u7956\u6bcd", "\u7956\u6bcd"),
+        ("Caf\u00e9", "Caf\u00e9"),
+        ("../../x", "x"),
     ],
 )
-def test_default_prefix_follows_the_album_name(album: str | None, expected: str) -> None:
+def test_default_prefix_is_the_album_folder_name(album: str | None, expected: str) -> None:
     assert default_prefix(album) == expected
 
 
@@ -153,10 +181,11 @@ def test_default_prefix_still_rejects_an_unusable_album() -> None:
         default_prefix("..")
 
 
-def test_default_prefix_of_a_folder_name_continues_that_folders_numbering() -> None:
-    folder = sanitise_album("1983_June_lake-trip")
+@pytest.mark.parametrize("album", ["1983_June_lake-trip", "Mom & Dad (1970s)", "Smith, J. + Co."])
+def test_default_prefix_equals_the_sanitised_folder_name(album: str) -> None:
+    folder = sanitise_album(album)
 
-    assert default_prefix(folder) == folder
+    assert default_prefix(album) == folder
 
 
 def test_album_dir_without_album_is_the_resolved_root(tmp_path: Path) -> None:
@@ -278,6 +307,13 @@ def test_next_index_treats_prefix_characters_literally(tmp_path: Path) -> None:
     touch(tmp_path, "a-b_0003.jpg", "aXb_0009.jpg")
 
     assert next_index(tmp_path, "a-b") == 4
+
+
+def test_next_index_matches_a_prefix_with_punctuation_exactly(tmp_path: Path) -> None:
+    touch(tmp_path, "Mom & Dad (1970s)_0012_a.jpg", "Mom & Dad (1970s)_0012_b.jpg")
+    touch(tmp_path, "Mom & Dad X1970sX_0099.jpg", "Mom + Dad (1970s)_0050.jpg")
+
+    assert next_index(tmp_path, "Mom & Dad (1970s)") == 13
 
 
 def test_photo_paths_follow_the_fastfoto_convention(tmp_path: Path) -> None:

@@ -19,10 +19,10 @@ def test_defaults_write_one_original_named_after_the_album(tmp_path: Path) -> No
     result = write_photo(rgb(), dpi=DPI, output_root=tmp_path, album="Grandma 1970s")
 
     folder = tmp_path / "Grandma 1970s"
-    assert names(folder) == ["Grandma_1970s_0001.jpg"]
+    assert names(folder) == ["Grandma 1970s_0001.jpg"]
     assert result.directory == folder.resolve()
     assert result.index == 1
-    assert result.original == folder.resolve() / "Grandma_1970s_0001.jpg"
+    assert result.original == folder.resolve() / "Grandma 1970s_0001.jpg"
     assert result.enhanced is None
     assert result.back is None
     assert result.paths == (result.original,)
@@ -45,7 +45,7 @@ def test_the_root_and_album_folders_are_created_on_demand(tmp_path: Path) -> Non
 def test_an_explicit_prefix_overrides_the_album_name(tmp_path: Path) -> None:
     write_photo(rgb(), dpi=DPI, output_root=tmp_path, album="Trip", prefix="Roll 7!")
 
-    assert names(tmp_path / "Trip") == ["Roll_7_0001.jpg"]
+    assert names(tmp_path / "Trip") == ["Roll 7!_0001.jpg"]
 
 
 def test_the_enhanced_copy_is_written_only_when_supplied(tmp_path: Path) -> None:
@@ -120,6 +120,15 @@ def test_numbering_continues_in_a_folder_that_holds_only_enhanced_and_back_files
     assert (folder / "1983_June_lake-trip_0007_a.jpg").read_bytes() == b"old"
 
 
+def test_an_album_with_punctuation_keeps_it_in_the_file_names(tmp_path: Path) -> None:
+    album = "Mom & Dad (1970s)"
+
+    result = write_photo(rgb(), dpi=DPI, output_root=tmp_path, album=album)
+
+    assert names(tmp_path / album) == ["Mom & Dad (1970s)_0001.jpg"]
+    assert result.original == (tmp_path / album).resolve() / "Mom & Dad (1970s)_0001.jpg"
+
+
 def test_numbering_continues_in_a_folder_whose_name_has_punctuation(tmp_path: Path) -> None:
     album = "Mom & Dad (1970s)"
     folder = tmp_path / album
@@ -130,7 +139,7 @@ def test_numbering_continues_in_a_folder_whose_name_has_punctuation(tmp_path: Pa
     result = write_photo(rgb(), dpi=DPI, output_root=tmp_path, album=album, enhanced=rgb())
 
     assert result.index == 13
-    assert result.enhanced == folder.resolve() / "Mom_Dad_1970s_0013_a.jpg"
+    assert result.enhanced == folder.resolve() / "Mom & Dad (1970s)_0013_a.jpg"
     assert (folder / f"{album}_0012_a.jpg").read_bytes() == b"old"
 
 
@@ -273,6 +282,21 @@ def test_path_traversal_in_the_album_stays_inside_the_output_root(
 
     assert result.directory.parent == root.resolve()
     assert names(tmp_path) == ["out"]
+
+
+@pytest.mark.parametrize("prefix", ["../../escape", "/tmp/escape", "..\\..\\escape"])
+def test_path_traversal_in_the_prefix_stays_inside_the_album_folder(
+    tmp_path: Path, prefix: str
+) -> None:
+    root = tmp_path / "out"
+
+    result = write_photo(rgb(), dpi=DPI, output_root=root, album="Trip", prefix=prefix)
+
+    assert result.directory == (root / "Trip").resolve()
+    assert result.original is not None
+    assert result.original.parent == result.directory
+    assert names(tmp_path) == ["out"]
+    assert names(root) == ["Trip"]
 
 
 def test_an_album_symlink_pointing_outside_the_root_is_refused(tmp_path: Path) -> None:

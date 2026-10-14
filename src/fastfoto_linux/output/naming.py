@@ -11,13 +11,15 @@ DEFAULT_PREFIX = "FastFoto"
 MAX_ALBUM_CHARS = 120
 MAX_COMPONENT_BYTES = 255
 INDEX_WIDTH = 4
+# Room kept free after the stem: "_" + up to 10 digits + "_a.jpg", and the 14 extra bytes of
+# the ".<name>.<token>.tmp" staging name used while a file is being written.
+FILE_SUFFIX_RESERVE_BYTES = 32
+MAX_PREFIX_BYTES = MAX_COMPONENT_BYTES - FILE_SUFFIX_RESERVE_BYTES
 
 _PATH_SEPARATORS = "/\\"
 _STRIPPED_EDGES = ". "
 # Control, format (e.g. bidi overrides), surrogate and line/paragraph separator characters.
 _UNSAFE_CATEGORIES = frozenset({"Cc", "Cf", "Cs", "Zl", "Zp"})
-_PREFIX_INVALID_RUN = re.compile(r"[^A-Za-z0-9_-]+")
-_PREFIX_INVALID_EDGES = re.compile(r"^[^A-Za-z0-9_-]+|[^A-Za-z0-9_-]+$")
 
 
 @dataclass(frozen=True)
@@ -33,51 +35,53 @@ def _is_unsafe(char: str) -> bool:
     return char in _PATH_SEPARATORS or unicodedata.category(char) in _UNSAFE_CATEGORIES
 
 
-def _fit_component(name: str) -> str:
-    """Trim ``name`` to the character and byte limits, on a codepoint boundary."""
-    name = name[:MAX_ALBUM_CHARS]
+def _clean_component(text: str, max_bytes: int) -> str:
+    """Reduce ``text`` to one safe path component, or "" if nothing usable is left.
+
+    Path separators, control and format characters become spaces, whitespace is collapsed,
+    and leading or trailing dots are dropped, so the result can never be ``.``, ``..`` or
+    hidden. It is cut to ``MAX_ALBUM_CHARS`` characters and ``max_bytes`` UTF-8 bytes, on a
+    codepoint boundary. Punctuation and non-ASCII letters are kept.
+    """
+    spaced = "".join(
+        " " if _is_unsafe(char) else char for char in unicodedata.normalize("NFC", text)
+    )
+    name = " ".join(spaced.split())[:MAX_ALBUM_CHARS]
     encoded = name.encode()
-    if len(encoded) > MAX_COMPONENT_BYTES:
-        name = encoded[:MAX_COMPONENT_BYTES].decode("utf-8", errors="ignore")
+    if len(encoded) > max_bytes:
+        name = encoded[:max_bytes].decode("utf-8", errors="ignore")
     return name.strip(_STRIPPED_EDGES)
 
 
 def sanitise_album(album: str) -> str:
-    """Turn user text into one safe folder name; raise InvalidAlbumError if nothing is left.
-
-    Path separators, control and format characters become spaces, whitespace is collapsed, and
-    leading or trailing dots are dropped, so the result can never be ``.``, ``..`` or hidden.
-    """
-    text = unicodedata.normalize("NFC", album)
-    spaced = "".join(" " if _is_unsafe(char) else char for char in text)
-    name = _fit_component(" ".join(spaced.split()).strip(_STRIPPED_EDGES))
+    """Turn user text into one safe folder name; raise InvalidAlbumError if nothing is left."""
+    name = _clean_component(album, MAX_COMPONENT_BYTES)
     if not name:
         raise InvalidAlbumError(f"album {album!r} has no usable characters for a folder name")
     return name
 
 
 def sanitise_prefix(prefix: str) -> str:
-    """Reduce ``prefix`` to ``[A-Za-z0-9_-]``; raise InvalidPrefixError if nothing is left.
+    """Turn user text into one safe file name stem; raise InvalidPrefixError if none is left.
 
-    Accents are dropped (``Café`` becomes ``Cafe``) and other characters collapse to ``_``.
-    Names that are already valid come back unchanged.
+    Same rules as ``sanitise_album``, but cut shorter so the stem plus ``_NNNN_a.jpg`` (and the
+    temporary name used while writing) stays under the 255 byte file name limit. A stem that
+    is already clean comes back unchanged.
     """
-    folded = unicodedata.normalize("NFKD", prefix).encode("ascii", "ignore").decode("ascii")
-    trimmed = _PREFIX_INVALID_EDGES.sub("", folded)
-    name = _PREFIX_INVALID_RUN.sub("_", trimmed)[:MAX_ALBUM_CHARS]
+    name = _clean_component(prefix, MAX_PREFIX_BYTES)
     if not name:
         raise InvalidPrefixError(f"prefix {prefix!r} has no usable characters for a file name")
     return name
 
 
 def default_prefix(album: str | None) -> str:
-    """FastFoto names files after the album folder; fall back to DEFAULT_PREFIX."""
+    """FastFoto names files after the album folder, so the stem matches the folder name.
+
+    Raises InvalidAlbumError for an unusable album; DEFAULT_PREFIX when there is no album.
+    """
     if album is None:
         return DEFAULT_PREFIX
-    try:
-        return sanitise_prefix(sanitise_album(album))
-    except InvalidPrefixError:
-        return DEFAULT_PREFIX
+    return sanitise_prefix(sanitise_album(album))
 
 
 def album_dir(output_root: Path, album: str | None) -> Path:

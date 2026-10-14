@@ -35,9 +35,10 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 
+from fastfoto_linux.pipeline.geometry import mm_to_px
+
 _LOG = logging.getLogger(__name__)
 
-MM_PER_INCH = 25.4
 FULL_SCALE = 255
 LUT_SIZE = FULL_SCALE + 1
 RGB_NDIM = 3
@@ -133,10 +134,6 @@ def _require_rgb_uint8(img: np.ndarray) -> None:
             "expected a non-empty uint8 RGB image of shape (H, W, 3), "
             f"got dtype={img.dtype} shape={img.shape}"
         )
-
-
-def _mm_to_px(mm: float, dpi: float) -> int:
-    return round(mm * dpi / MM_PER_INCH)
 
 
 def _frame_mask(img: np.ndarray) -> np.ndarray:
@@ -324,7 +321,7 @@ def _recover_saturation(img: np.ndarray, gain: float) -> np.ndarray:
 def _local_contrast(img: np.ndarray, dpi: float) -> np.ndarray:
     lab = cv2.cvtColor(img, cv2.COLOR_RGB2LAB)
     height, width = lab.shape[:2]
-    tile_px = max(1, _mm_to_px(CLAHE_TILE_MM, dpi))
+    tile_px = max(1, mm_to_px(CLAHE_TILE_MM, dpi))
     grid = (
         max(CLAHE_MIN_TILES, round(width / tile_px)),
         max(CLAHE_MIN_TILES, round(height / tile_px)),

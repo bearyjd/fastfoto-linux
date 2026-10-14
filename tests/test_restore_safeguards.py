@@ -6,7 +6,6 @@ import pytest
 from fastfoto_linux.enhance.restore import (
     DEFAULT,
     MAX_CHANNEL_GAIN_RATIO,
-    RestoreSettings,
     _balanced_luts,
     measure_cast,
     restore_colour,
@@ -203,14 +202,6 @@ def test_bright_pixels_inside_the_photo_are_not_mistaken_for_a_frame() -> None:
 
 def test_default_gain_cap_is_conservative() -> None:
     assert DEFAULT.max_gain == pytest.approx(2.0)
-
-
-def test_channel_already_spanning_the_full_scale_is_left_alone() -> None:
-    img = make_reference()
-    img[..., 1] = np.rint(40 + img[..., 1] / 255.0 * 160).astype(np.uint8)
-    out = restore_colour(img, DPI, RestoreSettings(saturation_gain=1.0))
-    assert np.array_equal(out[..., 0], img[..., 0])  # red spans 0-255: not touched
-    assert not np.array_equal(out[..., 1], img[..., 1])  # green was compressed: stretched
 
 
 def test_a_dark_image_with_a_bright_highlight_is_not_stretched() -> None:

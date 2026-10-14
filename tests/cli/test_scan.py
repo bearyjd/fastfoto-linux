@@ -79,7 +79,10 @@ def test_a_failed_sheet_is_reported_exit_1_and_its_raw_pages_are_kept(
     transport.sheets = [plain_sheet(0), plain_sheet(1), plain_sheet(2)]
     transport.corrupt_page = 3
     assert scan(out) == 1
-    assert names(out)[:2] == ["FastFoto_0001.jpg", "FastFoto_0002.jpg"]
+    assert [n for n in names(out) if n.endswith(".jpg")] == [
+        "FastFoto_0001.jpg",
+        "FastFoto_0002.jpg",
+    ]
     err = capsys.readouterr().err
     assert page_name(3) in err
     assert page_name(4) in err
@@ -100,7 +103,6 @@ def test_pages_scanned_before_a_scanner_failure_are_still_processed(out, transpo
 def test_a_scanner_failure_with_no_pages_loses_nothing_and_leaves_nothing(
     out, transport, capsys
 ) -> None:
-    transport.sheets = [plain_sheet()]
     transport.failure = lambda pages: ScanError("could not start scanimage", pages=pages)
     assert scan(out) == 1
     assert names(out) == []
@@ -204,3 +206,11 @@ def test_a_missing_output_folder_is_exit_2_unless_mkdir_is_given(
 def test_the_output_option_is_required(transport, capsys) -> None:
     assert main(["scan", *FAST]) == 2
     assert "--out" in capsys.readouterr().err
+
+
+def test_progress_is_logged_page_by_page_with_verbose(out, transport, capsys) -> None:
+    transport.sheets = [plain_sheet()]
+    assert scan(out, "-v") == 0
+    err = capsys.readouterr().err
+    assert "page 1 scanned" in err
+    assert "page 2 scanned" in err

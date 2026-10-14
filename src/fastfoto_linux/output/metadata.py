@@ -21,8 +21,8 @@ CREATOR_TOOL = f"fastfoto-linux {__version__}"
 _DATE = re.compile(r"([0-9]{4})(?:-([0-9]{2})(?:-([0-9]{2}))?)?")
 _EXIF_CLOCK = "%Y:%m:%d %H:%M:%S"
 # Control characters, lone surrogates and U+FFFE/U+FFFF cannot appear in XML 1.0 at all.
-_XML_ILLEGAL = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff￾￿]")
-_REPLACEMENT = "�"
+_XML_ILLEGAL = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]")
+_REPLACEMENT = "\ufffd"
 _XPACKET_BEGIN = b'<?xpacket begin="\xef\xbb\xbf" id="W5M0MpCehiHzreSzNTczkc9d"?>\n'
 _XPACKET_END = b'\n<?xpacket end="w"?>'
 

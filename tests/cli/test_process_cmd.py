@@ -113,3 +113,19 @@ def test_a_missing_output_folder_is_exit_2_and_mkdir_creates_it(tmp_path, spy, c
     assert spy == []
     assert process(target, [page], "--mkdir") == 0
     assert target.is_dir()
+
+
+def test_an_output_path_that_is_a_file_is_exit_2(tmp_path, spy, capsys) -> None:
+    page = write_dummy_page(tmp_path / "raw", "page-1.png")
+    not_a_folder = write_dummy_page(tmp_path, "album")
+    assert process(not_a_folder, [page], "--mkdir") == 2
+    assert "not a folder" in capsys.readouterr().err
+    assert spy == []
+
+
+def test_an_output_folder_that_cannot_be_made_is_exit_1(tmp_path, spy, capsys) -> None:
+    page = write_dummy_page(tmp_path / "raw", "page-1.png")
+    blocker = write_dummy_page(tmp_path, "blocker")
+    assert process(blocker / "album", [page], "--mkdir") == 1
+    assert "cannot create" in capsys.readouterr().err
+    assert spy == []

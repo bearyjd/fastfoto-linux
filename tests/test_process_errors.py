@@ -5,7 +5,7 @@ import pytest
 
 from fastfoto_linux.output import OutputRootMissingError
 from fastfoto_linux.pipeline.process import ProcessSettings, SheetIssue, process_pages
-from fastfoto_linux.pipeline.sides import BackPolicy
+from fastfoto_linux.pipeline.sides import BackPolicy, BatchError
 from tests.process_helpers import (
     BLANK,
     DPI,
@@ -113,3 +113,14 @@ def test_a_missing_output_root_is_refused_before_any_page_is_read(tmp_path) -> N
 def test_settings_are_validated_on_construction(tmp_path, bad) -> None:
     with pytest.raises(ValueError):
         ProcessSettings(output_root=tmp_path, **bad)
+
+
+def test_a_problem_with_the_whole_batch_is_reported_without_a_sheet(tmp_path, monkeypatch) -> None:
+    def batch_error(pages, *, on_sheet_error, **kwargs):
+        on_sheet_error(BatchError("no pages make sense"))
+        return iter(())
+
+    monkeypatch.setattr("fastfoto_linux.pipeline.process.iter_photos", batch_error)
+    _, out = workspace(tmp_path)
+    result = process_pages([], settings_for(out))
+    assert result.failed == (SheetIssue(None, (), "no pages make sense"),)

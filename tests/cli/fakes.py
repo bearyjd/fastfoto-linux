@@ -77,6 +77,10 @@ class FakeTransport:
         pages += write_front_pages(job.output_dir, self.front_pages, first_number=len(pages) + 1)
         if self.corrupt_page is not None:
             pages[self.corrupt_page - 1].write_bytes(b"not a png")
+        on_progress = kwargs.get("on_progress")
+        for number in range(1, len(pages) + 1):
+            if on_progress is not None:
+                on_progress(number)
         if self.failure is not None:
             raise self.failure(tuple(pages[: self.pages_before_failure]))
         return ScanResult(pages=tuple(pages))

@@ -130,7 +130,8 @@ def test_the_orienter_turns_the_front_only(tmp_path) -> None:
     (written,) = process_pages(pages, settings).written
     front_w, front_h = jpeg_size(written.original)
     back_w, back_h = jpeg_size(written.back)
-    assert (front_w, front_h) == (back_h, back_w)  # same photo size, front turned a quarter
+    assert front_w < front_h  # the landscape front was turned a quarter
+    assert back_w > back_h  # the back stays as scanned
 
 
 def test_enhancers_get_the_oriented_front_once_per_photo_in_order(tmp_path) -> None:

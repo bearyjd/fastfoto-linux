@@ -1,6 +1,7 @@
 """Pairing pages into photos: which side is the front, back policies, odd and simplex batches."""
 
 import logging
+import weakref
 from pathlib import Path
 
 import numpy as np
@@ -24,8 +25,13 @@ DARK = 150  # a front's median grey stays below this, a back's above 240
 PAPER = 240
 
 WRITTEN = {"writing": True}
+NOTE = {"note": True, "imprint": False}
 IMPRINT_ONLY = {"imprint": True}
 BLANK = {"imprint": False}
+PALE = (185, 185, 185)  # a pale print: its own crop works, but it is not paper
+SNOW = (220, 220, 220)  # as bright as paper and nearly the scanner background: no crop of its own
+NEAR_WHITE = (245, 245, 245)  # a front that scores exactly like a back
+CREAM = (235, 228, 210)
 
 
 def _sheets(*backs: dict, dpi: int = DPI):
@@ -119,15 +125,14 @@ def test_a_dropped_back_still_lists_its_page_as_a_source() -> None:
     assert tuple(map(page_number, photo.source_pages)) == (2, 1)
 
 
-# --- hard cases: bright fronts and ties ------------------------------------------------------
+# --- hard cases: pale fronts, cream backs and ties ---------------------------------------------
 
 
 @pytest.mark.parametrize("expect_front_first", [None, True, False])
-def test_snow_bright_front_is_found_by_score_even_against_the_page_order(
+def test_pale_front_is_found_by_score_even_against_the_page_order(
     expect_front_first: bool | None,
 ) -> None:
-    """A flat grey-220 front is nearly the scanner background, so its own box is not found."""
-    sheet = make_duplex_sheet(dpi=DPI, front={"photo_rgb": (220, 220, 220)}, back=WRITTEN)
+    sheet = make_duplex_sheet(dpi=DPI, front={"photo_rgb": PALE}, back=WRITTEN)
     pages, loader = batch([sheet], (False,), DPI)  # parity says back first; so does the score
     (photo,) = assemble_photos(
         pages,
@@ -137,25 +142,49 @@ def test_snow_bright_front_is_found_by_score_even_against_the_page_order(
         loader=loader,
     )
     assert tuple(map(page_number, photo.source_pages)) == (2, 1)
+    assert np.median(photo.front) == pytest.approx(185, abs=3)
+    assert not photo.side_uncertain
+
+
+def test_cream_back_against_a_bright_front_is_decided_by_content_not_parity() -> None:
+    """Cream paper must score as paper: parity here points the wrong way, and NEVER would then
+    drop the real photo."""
+    sheet = make_duplex_sheet(
+        dpi=DPI, front={"photo_rgb": PALE}, back={"photo_rgb": CREAM, "imprint": False}
+    )
+    pages, loader = batch([sheet], (False,), DPI)
+    (photo,) = assemble_photos(
+        pages, duplex=True, back_policy=BackPolicy.NEVER, expect_front_first=True, loader=loader
+    )
+    assert tuple(map(page_number, photo.source_pages)) == (2, 1)
+    assert np.median(photo.front) == pytest.approx(185, abs=3)
+    assert not photo.side_uncertain
+
+
+def test_snow_front_has_no_crop_of_its_own_and_scores_as_paper_so_the_sheet_is_uncertain() -> None:
+    sheet = make_duplex_sheet(dpi=DPI, front={"photo_rgb": SNOW}, back=WRITTEN)
+    pages, loader = batch([sheet], (False,), DPI)
+    (photo,) = assemble_photos(
+        pages, duplex=True, back_policy=BackPolicy.NEVER, expect_front_first=False, loader=loader
+    )
+    assert photo.side_uncertain
+    assert photo.back is not None  # an uncertain sheet keeps its back whatever the policy
+    assert tuple(map(page_number, photo.source_pages)) == (2, 1)  # the expected parity decided
     assert np.median(photo.front) == pytest.approx(220, abs=3)
     _, truth = sheet[0]
     assert photo.front.shape[1] == pytest.approx(truth.w, abs=mm_to_px(2, DPI))
 
 
-def test_snow_front_scanned_first_is_still_the_front() -> None:
-    sheet = make_duplex_sheet(dpi=DPI, front={"photo_rgb": (220, 220, 220)}, back=BLANK)
-    pages, loader = batch([sheet], (True,), DPI)
-    (photo,) = assemble_photos(pages, duplex=True, back_policy=BackPolicy.ALWAYS, loader=loader)
-    assert tuple(map(page_number, photo.source_pages)) == (1, 2)
+def _tie_sheet():
+    """A near-white front: it scores like its back, so content cannot tell the sides apart."""
+    return make_duplex_sheet(dpi=DPI, front={"photo_rgb": NEAR_WHITE}, back=BLANK)
 
 
 @pytest.mark.parametrize("front_first", [True, False])
 def test_tie_falls_back_to_the_expected_parity_and_is_logged(
     front_first: bool, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """A near-white front scores like a back: the two sides look alike."""
-    sheet = make_duplex_sheet(dpi=DPI, front={"photo_rgb": (245, 245, 245)}, back=BLANK)
-    pages, loader = batch([sheet], (front_first,), DPI)
+    pages, loader = batch([_tie_sheet()], (front_first,), DPI)
     with caplog.at_level(logging.INFO, logger=SIDES_LOGGER):
         (photo,) = assemble_photos(
             pages,
@@ -165,14 +194,99 @@ def test_tie_falls_back_to_the_expected_parity_and_is_logged(
             loader=loader,
         )
     assert page_number(photo.source_pages[0]) == (1 if front_first else 2)
+    assert photo.side_uncertain
     assert any("parity" in r.getMessage() for r in caplog.records)
 
 
-def test_tie_without_an_expectation_is_an_error_naming_the_setting() -> None:
-    sheet = make_duplex_sheet(dpi=DPI, front={"photo_rgb": (245, 245, 245)}, back=BLANK)
-    pages, loader = batch([sheet], (False,), DPI)
-    with pytest.raises(BatchError, match="expect_front_first"):
-        assemble_photos(pages, duplex=True, expect_front_first=None, loader=loader)
+def test_tie_on_the_first_sheet_without_any_hint_still_returns_the_photo(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    pages, loader = batch([_tie_sheet()], (False,), DPI)
+    with caplog.at_level(logging.INFO, logger=SIDES_LOGGER):
+        (photo,) = assemble_photos(pages, duplex=True, back_policy=BackPolicy.NEVER, loader=loader)
+    assert photo.side_uncertain
+    assert photo.back is not None  # never dropped when the sides are uncertain
+    assert tuple(map(page_number, photo.source_pages)) == (1, 2)  # no hint at all: first = front
+    assert any("parity" in r.getMessage() for r in caplog.records)
+
+
+def _mixed_batch(order: tuple[bool, bool, bool]):
+    """Two clear sheets and, third, a tie sheet; ``order`` says front-first per sheet."""
+    sheets = [*_sheets(WRITTEN, IMPRINT_ONLY), _tie_sheet()]
+    return batch(sheets, order, DPI)
+
+
+def test_tie_mid_batch_follows_the_parity_the_batch_has_shown(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    pages, loader = _mixed_batch((False, False, False))
+    with caplog.at_level(logging.INFO, logger=SIDES_LOGGER):
+        photos = assemble_photos(pages, duplex=True, back_policy=BackPolicy.NEVER, loader=loader)
+    assert [p.side_uncertain for p in photos] == [False, False, True]
+    assert tuple(map(page_number, photos[2].source_pages)) == (6, 5)
+    assert photos[2].back is not None  # ... but not of an uncertain one
+    assert photos[0].back is None  # NEVER drops the backs of confident sheets ...
+    assert photos[1].back is None
+    assert any("majority" in r.getMessage() for r in caplog.records)
+
+
+def test_tie_mid_batch_follows_a_front_first_batch_too() -> None:
+    pages, loader = _mixed_batch((True, True, True))
+    photos = assemble_photos(pages, duplex=True, loader=loader)
+    assert tuple(map(page_number, photos[2].source_pages)) == (5, 6)
+
+
+def test_a_wrong_majority_guess_still_keeps_both_images() -> None:
+    pages, loader = _mixed_batch((False, False, True))  # the tie sheet breaks the batch's habit
+    photos = assemble_photos(pages, duplex=True, back_policy=BackPolicy.NEVER, loader=loader)
+    last = photos[2]
+    assert last.side_uncertain
+    assert tuple(map(page_number, last.source_pages)) == (6, 5)  # a guess, flagged
+    assert last.back is not None
+    assert last.front.shape[:2] == pytest.approx(last.back.shape[:2], abs=mm_to_px(2, DPI))
+
+
+def test_expected_parity_overrides_the_batch_majority() -> None:
+    pages, loader = _mixed_batch((False, False, False))
+    photos = assemble_photos(pages, duplex=True, expect_front_first=True, loader=loader)
+    assert tuple(map(page_number, photos[2].source_pages)) == (5, 6)
+    assert photos[2].side_uncertain
+
+
+def test_an_even_split_of_resolved_sheets_falls_back_to_front_first() -> None:
+    sheets = [*_sheets(WRITTEN, IMPRINT_ONLY), _tie_sheet()]
+    pages, loader = batch(sheets, (True, False, False), DPI)
+    photos = assemble_photos(pages, duplex=True, loader=loader)
+    assert tuple(map(page_number, photos[2].source_pages)) == (5, 6)
+
+
+def test_uncertain_sheets_do_not_count_towards_the_majority() -> None:
+    sheets = [_tie_sheet(), *_sheets(WRITTEN), _tie_sheet()]
+    pages, loader = batch(sheets, (True, False, False), DPI)
+    photos = assemble_photos(pages, duplex=True, loader=loader)
+    assert [p.side_uncertain for p in photos] == [True, False, True]
+    assert tuple(map(page_number, photos[0].source_pages)) == (1, 2)  # nothing resolved yet
+    assert tuple(map(page_number, photos[2].source_pages)) == (6, 5)  # one back-first sheet
+
+
+def test_content_contradicting_the_expected_parity_is_logged(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    pages, loader = batch(_sheets(WRITTEN), (False,), DPI)
+    with caplog.at_level(logging.INFO, logger=SIDES_LOGGER):
+        (photo,) = assemble_photos(pages, duplex=True, expect_front_first=True, loader=loader)
+    assert tuple(map(page_number, photo.source_pages)) == (2, 1)  # content wins
+    assert not photo.side_uncertain
+    assert any("contradict" in r.getMessage() for r in caplog.records)
+
+
+def test_content_agreeing_with_the_expected_parity_logs_no_contradiction(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    pages, loader = batch(_sheets(WRITTEN), (False,), DPI)
+    with caplog.at_level(logging.DEBUG, logger=SIDES_LOGGER):
+        assemble_photos(pages, duplex=True, expect_front_first=False, loader=loader)
+    assert not any("contradict" in r.getMessage() for r in caplog.records)
 
 
 def test_a_clear_decision_logs_no_parity_fallback(caplog: pytest.LogCaptureFixture) -> None:
@@ -180,6 +294,22 @@ def test_a_clear_decision_logs_no_parity_fallback(caplog: pytest.LogCaptureFixtu
     with caplog.at_level(logging.DEBUG, logger=SIDES_LOGGER):
         assemble_photos(pages, duplex=True, expect_front_first=True, loader=loader)
     assert not any("parity" in r.getMessage() for r in caplog.records)
+
+
+def test_short_dated_notes_keep_the_back_under_auto() -> None:
+    sheets = [make_duplex_sheet(dpi=DPI, back=NOTE), make_duplex_sheet(dpi=DPI, back=IMPRINT_ONLY)]
+    pages, loader = batch(sheets, (False, False), DPI)
+    photos = assemble_photos(pages, duplex=True, back_policy=BackPolicy.AUTO, loader=loader)
+    assert [p.back_has_writing for p in photos] == [True, False]
+    assert [p.back is not None for p in photos] == [True, False]
+
+
+def test_back_writing_evidence_is_logged(caplog: pytest.LogCaptureFixture) -> None:
+    pages, loader = batch([make_duplex_sheet(dpi=DPI, back=NOTE)], (False,), DPI)
+    with caplog.at_level(logging.INFO, logger=SIDES_LOGGER):
+        assemble_photos(pages, duplex=True, loader=loader)
+    messages = [r.getMessage() for r in caplog.records]
+    assert any("2 candidate" in m and "2 pen stroke" in m for m in messages)
 
 
 # --- odd counts, simplex, errors --------------------------------------------------------------
@@ -292,3 +422,81 @@ def test_photos_do_not_alias_the_loaded_pages() -> None:
     assert photo.back is not None
     assert not any(np.shares_memory(photo.front, a) for a in page_arrays)
     assert not any(np.shares_memory(photo.back, a) for a in page_arrays)
+
+
+# --- memory, loader errors and dangling pages ------------------------------------------------
+
+
+def test_at_most_one_sheet_of_frames_is_alive_at_a_time() -> None:
+    sheets = _sheets(WRITTEN, BLANK, IMPRINT_ONLY, WRITTEN)
+    pages, loader = batch(sheets, (False,) * 4, DPI)
+    alive, peak = 0, 0
+
+    def released() -> None:
+        nonlocal alive
+        alive -= 1
+
+    def counting(path: Path):
+        nonlocal alive, peak
+        frame, dpi = loader(path)
+        fresh = frame.copy()
+        weakref.finalize(fresh, released)
+        alive += 1
+        peak = max(peak, alive)
+        return fresh, dpi
+
+    photos = list(iter_photos(pages, duplex=True, loader=counting))
+    assert len(photos) == 4
+    assert peak <= 2, f"{peak} full frames were alive at once"
+    assert alive == 0
+
+
+def test_loader_failure_names_the_sheet_and_the_page() -> None:
+    pages, loader = batch(_sheets(BLANK, BLANK), (False, False), DPI)
+
+    def failing(path: Path):
+        if page_number(path) == 4:
+            raise ValueError("file has no dpi metadata")
+        return loader(path)
+
+    with pytest.raises(BatchError, match=r"sheet 2.*page-004\.png.*no dpi metadata") as caught:
+        assemble_photos(pages, duplex=True, loader=failing)
+    assert isinstance(caught.value.__cause__, ValueError)
+
+
+def test_simplex_loader_failure_names_the_page() -> None:
+    def failing(path: Path):
+        raise OSError("disk gone")
+
+    with pytest.raises(BatchError, match=r"sheet 1.*page-001\.png.*disk gone"):
+        assemble_photos([Path("page-001.png")], duplex=False, loader=failing)
+
+
+def test_dangling_page_that_looks_like_a_back_is_flagged(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    pages, loader = batch(_sheets(BLANK, BLANK), (False, False), DPI)
+    with caplog.at_level(logging.WARNING, logger=SIDES_LOGGER):
+        photos = assemble_photos(pages[:3], duplex=True, allow_odd=True, loader=loader)
+    assert photos[1].side_uncertain  # page 3 is a back, so its front is missing
+    assert photos[1].back is None
+    assert not photos[0].side_uncertain
+    assert any("looks like a back" in r.getMessage() for r in caplog.records)
+
+
+def test_dangling_page_that_looks_like_a_front_is_not_flagged(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    pages, loader = batch(_sheets(BLANK, BLANK), (False, True), DPI)  # sheet 2: front first
+    with caplog.at_level(logging.WARNING, logger=SIDES_LOGGER):
+        photos = assemble_photos(pages[:3], duplex=True, allow_odd=True, loader=loader)
+    assert not photos[1].side_uncertain
+    assert not [r for r in caplog.records if r.name == SIDES_LOGGER]
+
+
+def test_confident_photos_are_not_marked_uncertain() -> None:
+    pages, loader = batch(_sheets(WRITTEN, BLANK), (False, True), DPI)
+    assert not any(p.side_uncertain for p in assemble_photos(pages, duplex=True, loader=loader))
+    fronts = {Path("page-001.png"): (make_frame(dpi=DPI, side="front")[0], DPI)}
+    (photo,) = assemble_photos(list(fronts), duplex=False, loader=lambda path: fronts[path])
+    assert not photo.side_uncertain

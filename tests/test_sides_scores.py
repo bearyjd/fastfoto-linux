@@ -8,7 +8,9 @@ from fastfoto_linux.pipeline import sides
 from fastfoto_linux.pipeline.geometry import mm_to_px
 from fastfoto_linux.pipeline.sides import (
     HANDWRITING_MIN_CANDIDATES,
+    HandwritingEvidence,
     handwriting_candidates,
+    handwriting_evidence,
     has_handwriting,
     paper_score,
 )
@@ -40,8 +42,18 @@ def test_bright_but_saturated_colour_is_not_paper() -> None:
 
 
 def test_grey_just_below_the_paper_level_is_not_paper() -> None:
-    assert paper_score(_solid((229, 229, 229))) == 0.0
-    assert paper_score(_solid((231, 231, 231))) == pytest.approx(1.0)
+    assert paper_score(_solid((199, 199, 199))) == 0.0
+    assert paper_score(_solid((201, 201, 201))) == pytest.approx(1.0)
+
+
+def test_cream_and_aged_paper_count_as_paper() -> None:
+    assert paper_score(_solid((235, 228, 210))) == pytest.approx(1.0)
+    assert paper_score(_solid((225, 215, 190))) == pytest.approx(1.0)
+
+
+def test_paper_chroma_limit_is_45() -> None:
+    assert paper_score(_solid((205, 205, 250))) == pytest.approx(1.0)  # chroma 45
+    assert paper_score(_solid((205, 205, 251))) == 0.0  # chroma 46
 
 
 def test_score_is_the_paper_fraction() -> None:
@@ -110,11 +122,42 @@ def test_imprint_beside_handwriting_does_not_add_candidates() -> None:
     assert handwriting_candidates(marked, dpi) == handwriting_candidates(plain, dpi)
 
 
+def test_the_gate_is_two_candidates() -> None:
+    assert HANDWRITING_MIN_CANDIDATES == 2
+
+
+@pytest.mark.parametrize("dpi", [150, 300])
+@pytest.mark.parametrize("seed", [0, 1, 2])
+def test_a_short_dated_note_counts_as_handwriting(dpi: int, seed: int) -> None:
+    """Two connected words, 3 to 7 mm tall: all the writing a back may carry."""
+    back = cropped_back(dpi, note=True, imprint=False, rng_seed=seed)
+    assert handwriting_candidates(back, dpi) == 2
+    assert has_handwriting(back, dpi)
+
+
+def test_a_note_beside_the_faint_imprint_is_still_handwriting() -> None:
+    back = cropped_back(150, note=True, imprint=True, rng_seed=3)
+    assert has_handwriting(back, 150)
+
+
+@pytest.mark.parametrize("dpi", [150, 300])
+def test_dark_imprint_with_bars_is_a_known_false_positive_without_pen_strokes(dpi: int) -> None:
+    """After enhancement the lab imprint is as dark as ink: kept as writing (harmless), but its
+    grey is lighter than pen, which the pen-stroke count can tell apart later."""
+    back = cropped_back(dpi, dark_imprint=True, imprint=False)
+    evidence = handwriting_evidence(back, dpi)
+    assert evidence.candidates >= HANDWRITING_MIN_CANDIDATES
+    assert has_handwriting(back, dpi)
+    assert evidence.pen_strokes == 0
+
+
 @pytest.mark.parametrize("dpi", [150, 300, 450, 600])
 def test_classification_is_stable_across_resolutions(dpi: int) -> None:
     written = cropped_back(dpi, writing=True, imprint=True, photo_mm=SMALL_BACK_MM)
     imprint = cropped_back(dpi, imprint=True, photo_mm=SMALL_BACK_MM)
+    note = cropped_back(dpi, note=True, imprint=False, photo_mm=SMALL_BACK_MM)
     assert has_handwriting(written, dpi)
+    assert has_handwriting(note, dpi)
     assert not has_handwriting(imprint, dpi)
 
 
@@ -207,3 +250,65 @@ def test_handwriting_rejects_bad_input() -> None:
         handwriting_candidates(np.zeros((50, 50), dtype=np.uint8), 150)
     with pytest.raises(ValueError, match="dpi"):
         handwriting_candidates(cropped_back(150), 0)
+
+
+# --- evidence (candidates plus pen strokes) -------------------------------------------------
+
+
+def _stamped(grey_level: int, size_mm: tuple[float, float], dpi: int = 150) -> np.ndarray:
+    """A blank back with one solid rectangle of ``grey_level`` (width, height in mm)."""
+    back = cropped_back(dpi, imprint=False)
+    x, y = mm_to_px(30, dpi), mm_to_px(30, dpi)
+    back[y : y + mm_to_px(size_mm[1], dpi), x : x + mm_to_px(size_mm[0], dpi)] = grey_level
+    return back
+
+
+@pytest.mark.parametrize("dpi", [150, 300])
+def test_evidence_counts_agree_with_the_candidate_function(dpi: int) -> None:
+    for kwargs in ({"writing": True}, {"note": True}, {"imprint": True}, {"dark_imprint": True}):
+        back = cropped_back(dpi, **kwargs)
+        evidence = handwriting_evidence(back, dpi)
+        assert isinstance(evidence, HandwritingEvidence)
+        assert evidence.candidates == handwriting_candidates(back, dpi)
+
+
+@pytest.mark.parametrize("dpi", [150, 300])
+def test_a_note_has_pen_strokes_and_blank_or_faint_backs_have_none(dpi: int) -> None:
+    note = handwriting_evidence(cropped_back(dpi, note=True, imprint=False), dpi)
+    assert note.pen_strokes == 2
+    assert handwriting_evidence(cropped_back(dpi, imprint=False), dpi) == HandwritingEvidence(0, 0)
+    assert handwriting_evidence(cropped_back(dpi, imprint=True), dpi).pen_strokes == 0
+
+
+def test_a_solid_dark_blob_is_a_candidate_but_not_a_pen_stroke() -> None:
+    evidence = handwriting_evidence(_stamped(60, (4, 4)), 150)  # fill ratio 1.0
+    assert evidence == HandwritingEvidence(candidates=1, pen_strokes=0)
+
+
+def _diagonal_stroke(grey_level: int, dpi: int = 150) -> np.ndarray:
+    """A blank back with one thin diagonal stroke, 6 mm tall, of a single grey level."""
+    back = cropped_back(dpi, imprint=False)
+    x, y = mm_to_px(30, dpi), mm_to_px(30, dpi)
+    p0, p1 = (x, y + mm_to_px(6, dpi)), (x + mm_to_px(3, dpi), y)
+    cv2.line(back, p0, p1, (grey_level,) * 3, mm_to_px(0.5, dpi), cv2.LINE_8)
+    return back
+
+
+@pytest.mark.parametrize(("grey_level", "pen"), [(100, 1), (110, 1), (120, 0)])
+def test_only_ink_as_dark_as_pen_is_a_pen_stroke(grey_level: int, pen: int) -> None:
+    evidence = handwriting_evidence(_diagonal_stroke(grey_level), 150)
+    assert (evidence.candidates, evidence.pen_strokes) == (1, pen)
+
+
+def test_evidence_does_not_modify_its_input_and_validates_it() -> None:
+    back = cropped_back(600, note=True, photo_mm=SMALL_BACK_MM)
+    before = back.copy()
+    handwriting_evidence(back, 600)
+    assert np.array_equal(back, before)
+    with pytest.raises(ValueError, match="RGB"):
+        handwriting_evidence(np.zeros((50, 50), dtype=np.uint8), 150)
+    with pytest.raises(ValueError, match="dpi"):
+        handwriting_evidence(cropped_back(150), 0)
+    assert handwriting_evidence(np.zeros((20, 20, 3), dtype=np.uint8), 150) == HandwritingEvidence(
+        0, 0
+    )

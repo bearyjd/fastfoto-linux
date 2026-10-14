@@ -17,10 +17,12 @@ from fastfoto_linux.pipeline.io import load_frame
 __all__ = [
     "BackPolicy",
     "BatchError",
+    "HandwritingEvidence",
     "Photo",
     "assemble_photos",
     "front_needs_correction",
     "handwriting_candidates",
+    "handwriting_evidence",
     "has_handwriting",
     "iter_photos",
     "mirrored_front_box",
@@ -73,6 +75,7 @@ class Photo:
     back_has_writing: bool
     source_pages: tuple[Path, ...]
     dpi: int
+    side_uncertain: bool = False
 
 
 def paper_score(img: np.ndarray) -> float:
@@ -119,6 +122,19 @@ def handwriting_candidates(back_img: np.ndarray, dpi: int) -> int:
     low, high = (mm_to_px(mm, work_dpi) for mm in STROKE_HEIGHT_MM)
     too_long = np.maximum(blob_h, blob_w) > mm_to_px(BLOB_MAX_EXTENT_MM, work_dpi)
     return int(((blob_h >= low) & (blob_h <= high) & ~too_long).sum())
+
+
+@dataclass(frozen=True)
+class HandwritingEvidence:
+    """Both back-writing measures: blob candidates (the gate) and pen strokes (not a gate yet)."""
+
+    candidates: int
+    pen_strokes: int
+
+
+def handwriting_evidence(back_img: np.ndarray, dpi: int) -> HandwritingEvidence:
+    """Candidate-blob and pen-stroke counts of a cropped RGB back."""
+    raise NotImplementedError
 
 
 def has_handwriting(back_img: np.ndarray, dpi: int) -> bool:

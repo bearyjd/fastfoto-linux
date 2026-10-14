@@ -43,6 +43,18 @@ WRITING_WORD_GAP_MM = 8.0
 WRITING_STROKE_PITCH_MM = 2.5
 WRITING_LINE_PITCH_MM = 11.0
 WRITING_INSET_MM = 15.0
+NOTE_WORDS = 2  # a short dated note such as "June 1985": two connected words, one line
+NOTE_TEETH = (3, 5)  # zig-zag teeth per word
+NOTE_TOOTH_PITCH_MM = 2.5
+NOTE_WORD_GAP_MM = 9.0
+DARK_IMPRINT_GREY = 140  # the lab imprint once a scan has been contrast-enhanced: darker than ink
+DARK_IMPRINT_TEXT = "22 -01 NNAN2 627"
+DARK_IMPRINT_CHAR_MM = 3.0
+DARK_IMPRINT_STROKE_MM = 0.4
+DARK_IMPRINT_BAR_MM = (0.7, 6.0)  # width and height of each "|" bar
+DARK_IMPRINT_BARS = 2
+DARK_IMPRINT_INSET_MM = 20.0
+CV_CAP_HEIGHT_PX = 22.0  # cv2.putText with FONT_HERSHEY_SIMPLEX at scale 1 draws ~22 px capitals
 FRONT_BLOCK_MM = 6.0
 FRONT_GREY_RANGE = (25, 130)
 FLAT_PHOTO_NOISE_STD = 4.0
@@ -148,6 +160,47 @@ def _paint_writing(canvas: np.ndarray, box: Box, dpi: int, rng: np.random.Genera
             x += mm_to_px(WRITING_WORD_GAP_MM, dpi)
 
 
+def _paint_note(canvas: np.ndarray, box: Box, dpi: int, rng: np.random.Generator) -> None:
+    """A short dated note: two words, each one connected zig-zag stroke (so two ink blobs)."""
+    thickness = max(1, mm_to_px(WRITING_THICKNESS_MM, dpi))
+    baseline = box.y + mm_to_px(WRITING_INSET_MM + 2 * WRITING_LINE_PITCH_MM, dpi)
+    x = box.x + mm_to_px(WRITING_INSET_MM, dpi)
+    for _word in range(NOTE_WORDS):
+        points = [(x, baseline)]
+        for _tooth in range(int(rng.integers(*NOTE_TEETH))):
+            height = mm_to_px(float(rng.uniform(*WRITING_STROKE_MM)), dpi)
+            x += mm_to_px(NOTE_TOOTH_PITCH_MM, dpi)
+            points += [(x, baseline - height), (x + mm_to_px(NOTE_TOOTH_PITCH_MM, dpi), baseline)]
+            x += mm_to_px(NOTE_TOOTH_PITCH_MM, dpi)
+        pts = np.asarray(points, dtype=np.int32).reshape(-1, 1, 2)
+        cv2.polylines(canvas, [pts], False, (WRITING_GREY,) * 3, thickness, cv2.LINE_AA)
+        x += mm_to_px(NOTE_WORD_GAP_MM, dpi)
+
+
+def _paint_dark_imprint(canvas: np.ndarray, box: Box, dpi: int) -> None:
+    """Dark lab imprint: a line of small capitals and digits plus "||" bars, all one flat grey."""
+    colour = (DARK_IMPRINT_GREY,) * 3
+    stroke = max(1, mm_to_px(DARK_IMPRINT_STROKE_MM, dpi))
+    scale = mm_to_px(DARK_IMPRINT_CHAR_MM, dpi) / CV_CAP_HEIGHT_PX
+    x = box.x + mm_to_px(DARK_IMPRINT_INSET_MM, dpi)
+    y = box.y + box.h // 2
+    cv2.putText(
+        canvas,
+        DARK_IMPRINT_TEXT,
+        (x, y),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        scale,
+        colour,
+        stroke,
+        cv2.LINE_8,
+    )
+    bar_w, bar_h = (max(1, mm_to_px(v, dpi)) for v in DARK_IMPRINT_BAR_MM)
+    bar_x = x + mm_to_px(DARK_IMPRINT_INSET_MM, dpi)
+    for index in range(DARK_IMPRINT_BARS):
+        left = bar_x + index * 2 * bar_w
+        canvas[y : y + bar_h, left : left + bar_w] = DARK_IMPRINT_GREY
+
+
 def _validate(
     photo_mm: tuple[float, float], offset_mm: tuple[float, float], side: str, strip: str | None
 ) -> None:
@@ -179,6 +232,8 @@ def _paint_photo(  # noqa: PLR0913
     paper_noise_std: float,
     imprint: bool,
     writing: bool,
+    note: bool,
+    dark_imprint: bool,
 ) -> None:
     if side == "front":
         if photo_rgb:
@@ -191,8 +246,12 @@ def _paint_photo(  # noqa: PLR0913
     _paint_back(canvas, box, rng, photo_rgb, paper_noise_std)
     if imprint:
         _paint_imprint(canvas, box, dpi, rng)
+    if dark_imprint:
+        _paint_dark_imprint(canvas, box, dpi)
     if writing:
         _paint_writing(canvas, box, dpi, rng)
+    if note:
+        _paint_note(canvas, box, dpi, rng)
 
 
 def _layout(  # noqa: PLR0913
@@ -227,6 +286,8 @@ def make_frame(  # noqa: PLR0913
     offset_mm: tuple[float, float] = (20, 0.5),
     side: Side = "front",
     writing: bool = False,
+    note: bool = False,
+    dark_imprint: bool = False,
     imprint: bool = True,
     white_strip: Strip = "left",
     rng_seed: int = 0,
@@ -246,12 +307,14 @@ def make_frame(  # noqa: PLR0913
 
     ``photo_mm`` is ``(width, height)`` and ``offset_mm`` the photo's ``(x, y)`` from the frame's
     top-left. The frame is as wide as ``offset + photo + right_margin_mm`` and as tall as the
-    photo, ``grey_band_mm`` of background and ``tail_mm`` of ``tail_grey``. ``imprint`` and
-    ``writing`` only affect backs; ``sky_mm`` only fronts. ``photo_rgb`` replaces the photo with a
-    flat colour (cream paper on a back, a pale print on a front). ``halo_mm`` adds a soft shadow
-    ring around the print and ``edge_blur_mm`` rolls the photo edge off over that distance
-    inside the box. ``paper_noise_std`` sets the grain of back paper (0 gives perfectly flat
-    paper). ``strip_through_tail`` lets the near-white edge strip run on through the white tail.
+    photo, ``grey_band_mm`` of background and ``tail_mm`` of ``tail_grey``. ``imprint``,
+    ``writing``, ``note`` (a two-word dated note) and ``dark_imprint`` (the lab imprint as it
+    looks after contrast enhancement, with "||" bars) only affect backs; ``sky_mm`` only fronts.
+    ``photo_rgb`` replaces the photo with a flat colour (cream paper on a back, a pale print on a
+    front). ``halo_mm`` adds a soft shadow ring around the print and ``edge_blur_mm`` rolls the
+    photo edge off over that distance inside the box. ``paper_noise_std`` sets the grain of back
+    paper (0 gives perfectly flat paper). ``strip_through_tail`` lets the near-white edge strip
+    run on through the white tail.
     ``background_rgb`` overrides the scanner background colour.
     Everything random derives from ``rng_seed``.
     """
@@ -282,6 +345,8 @@ def make_frame(  # noqa: PLR0913
         paper_noise_std=paper_noise_std,
         imprint=imprint,
         writing=writing,
+        note=note,
+        dark_imprint=dark_imprint,
     )
     if edge_blur_mm:
         _roll_off_edges(canvas, behind, box, max(1.0, edge_blur_mm * dpi / 25.4))

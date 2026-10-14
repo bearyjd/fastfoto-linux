@@ -63,3 +63,7 @@ def test_front_and_back_crops_have_the_same_size(photos) -> None:
         assert max(h_diff, w_diff) <= MAX_FRONT_BACK_SIZE_DIFF_MM, (
             f"photo {photo.index}: size differs by {w_diff:.1f} x {h_diff:.1f} mm"
         )
+
+
+def test_no_real_sheet_is_uncertain(photos) -> None:
+    assert not any(p.side_uncertain for p in photos)

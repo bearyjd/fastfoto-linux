@@ -118,3 +118,25 @@ def test_a_good_front_crop_is_left_alone(caplog: pytest.LogCaptureFixture) -> No
     assert photo.front.shape[:2] == (own.h, own.w)
     assert np.array_equal(photo.front, front_frame[own.y : own.y + own.h, own.x : own.x + own.w])
     assert not any("mirrored" in r.getMessage() for r in caplog.records)
+
+
+def test_implausible_back_box_never_overwrites_a_plausible_front(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A back that crops to an odd size (here 120x60 mm) is no evidence against a normal front."""
+    sheet = make_duplex_sheet(dpi=150, back={"photo_mm": (120, 60)})
+    (front_frame, _), _ = sheet
+    own = detect_photo(front_frame, 150)
+    assert own.plausible
+    pages, loader = batch([sheet], (False,), 150)
+    with caplog.at_level(logging.WARNING, logger=SIDES_LOGGER):
+        (photo,) = assemble_photos(pages, duplex=True, loader=loader)
+    assert photo.front.shape[:2] == (own.box.h, own.box.w)
+    assert any("disagree" in r.getMessage() for r in caplog.records if r.name == SIDES_LOGGER)
+
+
+def test_agreeing_boxes_log_no_disagreement(caplog: pytest.LogCaptureFixture) -> None:
+    pages, loader = batch([make_duplex_sheet(dpi=150)], (False,), 150)
+    with caplog.at_level(logging.DEBUG, logger=SIDES_LOGGER):
+        assemble_photos(pages, duplex=True, loader=loader)
+    assert not any("disagree" in r.getMessage() for r in caplog.records)

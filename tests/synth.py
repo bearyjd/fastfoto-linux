@@ -36,7 +36,7 @@ IMPRINT_INSET_MM = 15.0
 WRITING_GREY = 110
 WRITING_THICKNESS_MM = 0.5
 WRITING_STROKE_MM = (3.0, 7.0)
-WRITING_LINES = 2
+WRITING_LINES = 3
 WRITING_WORDS_PER_LINE = 3
 WRITING_STROKES_PER_WORD = (3, 6)
 WRITING_WORD_GAP_MM = 8.0
@@ -48,6 +48,9 @@ FRONT_GREY_RANGE = (25, 130)
 FLAT_PHOTO_NOISE_STD = 4.0
 SKY_RGB = (190, 203, 222)  # a front area that is almost the scanner background colour
 HALO_SHIFT = 17  # per-channel darkening of the shadow ring: about 29 RGB units from the background
+# On a real duplex sheet the front photo sits where the back photo is, mirrored in x and shifted
+# a little (measured +1.1 to +1.6 mm); ``make_duplex_sheet`` reproduces that.
+MIRROR_X_OFFSET_MM = 1.2
 
 
 def _paint_flat(
@@ -286,3 +289,37 @@ def make_frame(  # noqa: PLR0913
     if strip_through_tail:
         _paint_strip(canvas[tail_y:], white_strip, strip, height - tail_y)
     return canvas, box
+
+
+def make_duplex_sheet(  # noqa: PLR0913
+    *,
+    dpi: int = 150,
+    photo_mm: tuple[float, float] = (178, 127),
+    back_offset_mm: tuple[float, float] = (20, 0.5),
+    rng_seed: int = 0,
+    front: dict | None = None,
+    back: dict | None = None,
+) -> tuple[tuple[np.ndarray, Box], tuple[np.ndarray, Box]]:
+    """Build both sides of one ADF sheet: ``((front, front_box), (back, back_box))``.
+
+    Both frames are as wide as the back frame, and the front photo is the back photo mirrored in x
+    (``front_x = frame_w - (back_x + back_w) + MIRROR_X_OFFSET_MM``, same y), as measured on real
+    FF-680W duplex scans. ``front`` and ``back`` hold extra ``make_frame`` keyword arguments for
+    that side (``sky_mm``, ``writing``, ``photo_rgb``, ...); the near-white edge strip defaults to
+    the left edge on the front and the right edge on the back.
+    """
+    back_x, back_y = back_offset_mm
+    margin = RIGHT_MARGIN_MM
+    front_x = margin + MIRROR_X_OFFSET_MM
+    common = {"dpi": dpi, "photo_mm": photo_mm}
+    back_args = {"side": "back", "white_strip": "right", "rng_seed": rng_seed, **common}
+    front_args = {"white_strip": "left", "rng_seed": rng_seed + 1, **common}
+    back_frame = make_frame(
+        offset_mm=back_offset_mm, right_margin_mm=margin, **{**back_args, **(back or {})}
+    )
+    front_frame = make_frame(
+        offset_mm=(front_x, back_y),
+        right_margin_mm=back_x - MIRROR_X_OFFSET_MM,
+        **{**front_args, **(front or {})},
+    )
+    return front_frame, back_frame

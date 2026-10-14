@@ -1,5 +1,6 @@
 """detect_faces_full_res with a stub detector: what it is fed and how results map back."""
 
+import dataclasses
 from collections.abc import Callable
 from typing import cast
 
@@ -22,6 +23,7 @@ class StubDetector:
 
     def __init__(self, respond: Responder) -> None:
         self.shapes: list[tuple[int, ...]] = []
+        self.crops: list[tuple[int, int, int, int]] = []  # left, top, right, bottom of each crop
         self._respond = respond
 
     def detect(self, img_rgb: np.ndarray) -> tuple[Face, ...]:
@@ -103,6 +105,7 @@ def _refining_stub(coarse: Face, refined_full_res: tuple[Face, ...]) -> StubDete
             return (coarse,)
         left, top = _crop_origin(img)
         height, width = img.shape[:2]
+        stub.crops.append((left, top, left + width, top + height))
         return tuple(
             _shifted(face, -left, -top)
             for face in refined_full_res
@@ -112,7 +115,8 @@ def _refining_stub(coarse: Face, refined_full_res: tuple[Face, ...]) -> StubDete
             and face.y + face.height <= top + height
         )
 
-    return StubDetector(respond)
+    stub = StubDetector(respond)
+    return stub
 
 
 def test_a_face_is_redetected_on_a_full_resolution_crop() -> None:
@@ -163,3 +167,81 @@ def test_a_face_outside_the_photo_is_not_redetected() -> None:
     faces = detect_faces_full_res(np.zeros((1200, 1500, 3), np.uint8), _as_detector(stub))
     assert len(stub.shapes) == 1
     assert faces[0].score == COARSE_SCORE
+
+
+def _truth(coarse: Face, scale: float, offset: float) -> Face:
+    """``coarse`` mapped to full resolution (pixel centres, same scale both ways), then nudged."""
+    return _shifted(
+        Face(
+            x=(coarse.x + 0.5) * scale - 0.5,
+            y=(coarse.y + 0.5) * scale - 0.5,
+            width=coarse.width * scale,
+            height=coarse.height * scale,
+            landmarks=tuple(
+                ((x + 0.5) * scale - 0.5, (y + 0.5) * scale - 0.5) for x, y in coarse.landmarks
+            ),
+            score=REFINED_SCORE,
+        ),
+        offset,
+        offset,
+    )
+
+
+# Faces whose crops are clipped by the left, top, right or bottom edge of a 1200 x 1500 photo
+# (shrunk by 1.5 for the first pass): (eye, eye, box) in shrunk coordinates, crop edge, its value.
+EDGE_FACES = {
+    "left": (((30.0, 400.0), (70.0, 402.0), (10.0, 370.0, 80.0, 100.0)), 0, 0),
+    "top": (((460.0, 40.0), (500.0, 42.0), (440.0, 10.0, 90.0, 100.0)), 1, 0),
+    "right": (((900.0, 400.0), (940.0, 402.0), (880.0, 370.0, 90.0, 100.0)), 2, 1500),
+    "bottom": (((460.0, 720.0), (500.0, 722.0), (440.0, 690.0, 90.0, 100.0)), 3, 1200),
+}
+
+
+@pytest.mark.parametrize(("placement", "side", "edge"), EDGE_FACES.values(), ids=EDGE_FACES.keys())
+def test_crops_are_clipped_to_the_photo_on_every_side(
+    placement: tuple[tuple[float, float], tuple[float, float], tuple[float, ...]],
+    side: int,
+    edge: int,
+) -> None:
+    left_eye, right_eye, box = placement
+    coarse = _face(left_eye, right_eye, box, COARSE_SCORE)
+    truth = _truth(coarse, 1.5, 2.0)
+    stub = _refining_stub(coarse, (truth,))
+    faces = detect_faces_full_res(_coded_image(1200, 1500), _as_detector(stub))
+    assert len(stub.crops) == 1
+    assert stub.crops[0][side] == edge
+    assert faces[0].score == REFINED_SCORE
+    for want, got in zip(truth.landmarks[EYES], faces[0].landmarks[EYES], strict=True):
+        assert got == pytest.approx(want, abs=TOLERANCE)
+
+
+def _two_coarse_faces_stub(first: Face, second: Face, answers: tuple[Face, Face]) -> StubDetector:
+    def respond(call: int, img: np.ndarray) -> tuple[Face, ...]:
+        if call == 0:
+            return (first, second)
+        left, top = _crop_origin(img)
+        return (_shifted(answers[call - 1], -left, -top),)
+
+    return StubDetector(respond)
+
+
+def test_overlapping_coarse_boxes_over_one_face_give_it_once() -> None:
+    first = _face((460.0, 400.0), (500.0, 402.0), (440.0, 370.0, 90.0, 100.0), COARSE_SCORE)
+    second = _face((462.0, 401.0), (502.0, 403.0), (442.0, 371.0, 90.0, 100.0), COARSE_SCORE)
+    truth = _face((692.25, 601.5), (751.75, 604.0), (660.0, 560.0, 140.0, 150.0), REFINED_SCORE)
+    surer = dataclasses.replace(truth, score=0.99)
+    for answers in ((truth, surer), (surer, truth)):
+        stub = _two_coarse_faces_stub(first, second, answers)
+        faces = detect_faces_full_res(_coded_image(1200, 1500), _as_detector(stub))
+        assert len(faces) == 1
+        assert faces[0].score == 0.99
+
+
+def test_distinct_faces_are_both_kept() -> None:
+    first = _face((460.0, 400.0), (500.0, 402.0), (440.0, 370.0, 90.0, 100.0), COARSE_SCORE)
+    other = _face((200.0, 300.0), (240.0, 302.0), (180.0, 270.0, 90.0, 100.0), COARSE_SCORE)
+    truths = (_truth(first, 1.5, 1.0), _truth(other, 1.5, 1.0))
+    faces = detect_faces_full_res(
+        _coded_image(1200, 1500), _as_detector(_two_coarse_faces_stub(first, other, truths))
+    )
+    assert [face.landmarks[0] for face in faces] == [t.landmarks[0] for t in truths]

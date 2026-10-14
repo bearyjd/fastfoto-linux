@@ -3,6 +3,7 @@
 import dataclasses
 import logging
 import math
+from typing import cast
 
 import cv2
 import numpy as np
@@ -179,6 +180,7 @@ def test_a_blob_wider_than_tall_is_not_a_pupil(portrait: np.ndarray, face: Face)
     assert len(find_red_eyes(_blocks(portrait, face, 8, 8), (face,))) == 2
     assert len(find_red_eyes(_blocks(portrait, face, 10, 8), (face,))) == 2
     assert find_red_eyes(_blocks(portrait, face, 11, 8), (face,)) == ()
+    assert find_red_eyes(_blocks(portrait, face, 14, 11), (face,)) == ()
 
 
 def test_a_blob_somewhat_taller_than_wide_is_still_a_pupil(
@@ -339,3 +341,54 @@ def _crosses(portrait: np.ndarray, face: Face, size: int, arm: int) -> np.ndarra
 def test_a_ragged_blob_is_not_a_pupil_but_a_plump_one_is(portrait: np.ndarray, face: Face) -> None:
     assert find_red_eyes(_crosses(portrait, face, 11, 3), (face,)) == ()  # fills 0.47 of its box
     assert len(find_red_eyes(_crosses(portrait, face, 11, 5), (face,))) == 2  # fills 0.70
+
+
+PUPIL_COVER = 0.07  # of the IOD
+MM_PER_INCH = 25.4
+
+
+@pytest.fixture(scope="module")
+def detector() -> FaceDetector:
+    return FaceDetector()
+
+
+def _with_red_pupils(portrait: np.ndarray, face: Face) -> np.ndarray:
+    painted = portrait.copy()
+    for centre in _eyes(face):
+        cv2.circle(painted, centre, round(PUPIL_COVER * _interocular(face)), RED, thickness=-1)
+    return painted
+
+
+@pytest.mark.parametrize(("iod_mm", "corrected"), [(1.75, False), (2.25, True)])
+def test_faces_closer_than_two_millimetres_are_skipped(
+    portrait: np.ndarray, face: Face, detector: FaceDetector, iod_mm: float, corrected: bool
+) -> None:
+    painted = _with_red_pupils(portrait, face)
+    iod_px = _interocular(detector.detect(painted)[0])
+    result = remove_red_eye(painted, iod_px * MM_PER_INCH / iod_mm, detector)
+    assert np.array_equal(result, painted) is not corrected
+
+
+class _Faces:
+    def __init__(self, *faces: Face) -> None:
+        self._faces = faces
+
+    def detect(self, _img: np.ndarray) -> tuple[Face, ...]:
+        return self._faces
+
+
+def test_only_faces_that_pass_the_score_gate_are_counted_and_checked(
+    portrait: np.ndarray, face: Face, caplog: pytest.LogCaptureFixture
+) -> None:
+    painted = _with_red_pupils(portrait, face)
+    unsure = dataclasses.replace(face, score=0.5)
+    malformed = dataclasses.replace(face, score=0.5, landmarks=())
+    detector = cast(FaceDetector, _Faces(face, unsure, malformed))
+    with caplog.at_level(logging.INFO, logger=LOGGER):
+        remove_red_eye(painted, 300, detector)
+    assert "corrected 2 eye(s) in 1 face(s)" in caplog.text
+
+
+def test_a_malformed_face_below_the_score_gate_is_ignored(portrait: np.ndarray, face: Face) -> None:
+    malformed = dataclasses.replace(face, score=0.5, landmarks=())
+    assert find_red_eyes(portrait, (malformed,)) == ()

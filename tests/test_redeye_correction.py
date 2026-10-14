@@ -8,16 +8,16 @@ from fastfoto_linux.enhance.redeye import EyeFix, apply_fixes
 SIZE = 61
 CENTRE = SIZE // 2
 PUPIL_RADIUS = 6
-CORE_RADIUS = 3
+CORE_RADIUS = 4
 SKIN = (200, 150, 130)
 # pupil colour -> highest luminance its corrected core may have (about half of blue-green, <= 40)
 PUPILS = {
     "saturated red": ((230, 20, 20), 12),
-    "faded red": ((200, 90, 80), 45),
+    "faded red": ((200, 90, 80), 41),
     "dull red": ((150, 70, 60), 36),
-    "orange red": ((250, 150, 140), 45),
+    "orange red": ((250, 150, 140), 41),
 }
-MAX_CHANNEL_SPREAD = 3
+MAX_CHANNEL_SPREAD = 2
 HALO_NEAR_PX = 1.5
 HALO_FAR_PX = 3.5
 UNTOUCHED_BEYOND_PX = 5

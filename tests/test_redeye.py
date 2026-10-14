@@ -37,7 +37,7 @@ MOUTH_AND_NOSE = slice(2, 5)
 BIG_CANVAS = (1800, 2400)
 BIG_FACE_SCALE = 3
 BIG_FACE_ORIGIN = (200, 300)
-MAPPING_TOLERANCE = 0.05  # of the inter-ocular distance
+MAPPING_TOLERANCE = 0.15  # of the inter-ocular distance: detection noise at the working size
 LOGGER = "fastfoto_linux.enhance.redeye"
 
 

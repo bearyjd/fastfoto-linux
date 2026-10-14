@@ -24,20 +24,28 @@ logger = logging.getLogger(__name__)
 WORK_DPI = 75  # the box search runs on a copy downsampled to about this resolution
 TAIL_WHITE_LEVEL = 250  # grey level (0-255) counted as scanner-white
 TAIL_ROW_FRACTION = 0.98  # share of a row that must be white for it to count as a white row
-TAIL_DEFECT_MM = 4.0  # non-white runs up to this tall inside the tail are defects, not content
+# The tail is the last run of at least TAIL_MIN_MM white rows. Non-white gaps up to TAIL_GAP_MM
+# (dirt streaks) do not break it; the real grey band under the paper is 9 mm or more, so it does.
+TAIL_MIN_MM = 20.0
+TAIL_GAP_MM = 8.5
 BACKGROUND_PRIOR_RGB = (202.0, 210.0, 219.0)  # measured scanner background (blue-grey, B > R)
-# A pixel is a background sample if it is this close (RGB distance) to the prior...
-BACKGROUND_PRIOR_TOLERANCE = 20.0
-BACKGROUND_NON_WHITE_MARGIN = 10  # ...and this far below TAIL_WHITE_LEVEL in grey
-BACKGROUND_MIN_SAMPLES = 200  # with fewer samples than this the prior itself is the background
-BG_SAMPLE_NEAR_MM = 3.0  # samples come from between these distances from each side edge
+# Background samples come from between BG_SAMPLE_NEAR_MM and BG_SAMPLE_FAR_MM in from each side
+# edge (the first millimetres glow brighter on real frames) and must lie this close (RGB
+# distance) to the prior. If too few do, a looser pass accepts blue-grey (B >= R) pixels
+# within BACKGROUND_FALLBACK_TOLERANCE, for a scanner with a differently tinted lamp or glass.
+# Failing that the prior itself is used. Cream paper has R > B, so it never counts as background.
+BG_SAMPLE_NEAR_MM = 3.0
 BG_SAMPLE_FAR_MM = 8.0
+BACKGROUND_PRIOR_TOLERANCE = 20.0
+BACKGROUND_FALLBACK_TOLERANCE = 40.0
+BACKGROUND_MIN_SAMPLES = 200
 FOREGROUND_DISTANCE = 40.0  # RGB distance from the background that counts as photo
-# Retry threshold for cream or aged backs. It also picks up the soft shadow some prints cast,
-# so it is only used when the strict pass finds no photo.
+# Second pass for cream or aged backs, run when the first finds nothing or an implausible box. It
+# also picks up the soft shadow some prints cast, so its boxes can be 2-7 mm too large.
 PALE_FOREGROUND_DISTANCE = 20.0
 OPEN_KERNEL_MM = 3.0  # opening removes the thin white edge strip, hairs and speckle noise
 MIN_PHOTO_MM = 25.0  # smaller boxes are noise, not photos
+FULL_WIDTH_SHARE = 0.95  # an implausible box this wide is the frame, not a photo
 RGB_CHANNELS = 3
 
 
@@ -102,42 +110,55 @@ def _downsample(frame: np.ndarray, dpi: float) -> tuple[np.ndarray, int]:
 
 
 def _tail_from(white_rows: np.ndarray, work_dpi: float) -> int:
-    """First row of the trailing run of white rows, ignoring short non-white defect runs in it."""
-    max_defect = mm_to_px(TAIL_DEFECT_MM, work_dpi)
+    """First row of the last long run of white rows; ``white_rows.size`` if there is none.
+
+    Runs are white rows separated by non-white gaps of at most ``TAIL_GAP_MM``. The run need not
+    reach the frame end, so a dirty trailing row does not matter.
+    """
+    max_gap = mm_to_px(TAIL_GAP_MM, work_dpi)
+    min_rows = mm_to_px(TAIL_MIN_MM, work_dpi)
     white = np.flatnonzero(white_rows)
-    if white.size == 0 or white_rows.size - 1 - white[-1] > max_defect:
+    if white.size == 0:
         return white_rows.size
-    long_gaps = np.flatnonzero(np.diff(white) - 1 > max_defect)
-    return int(white[long_gaps[-1] + 1]) if long_gaps.size else int(white[0])
+    breaks = np.flatnonzero(np.diff(white) - 1 > max_gap) + 1
+    run_starts = np.r_[0, breaks]
+    run_sizes = np.diff(np.r_[run_starts, white.size])
+    long_runs = np.flatnonzero(run_sizes >= min_rows)
+    return int(white[run_starts[long_runs[-1]]]) if long_runs.size else white_rows.size
 
 
-def _background_colour(small: np.ndarray, grey: np.ndarray, work_dpi: float) -> np.ndarray:
+def _background_colour(small: np.ndarray, work_dpi: float) -> np.ndarray:
     """Median colour of side-band pixels that look like scanner background, else the prior."""
     near = mm_to_px(BG_SAMPLE_NEAR_MM, work_dpi)
     far = max(near + 1, mm_to_px(BG_SAMPLE_FAR_MM, work_dpi))
     width = small.shape[1]
     if width <= 2 * far:
         raise ValueError(f"frame is too narrow to sample the background: {width} px")
-    columns = np.r_[near:far, width - far : width - near]
-    pixels = small[:, columns].reshape(-1, RGB_CHANNELS)
-    prior = np.asarray(BACKGROUND_PRIOR_RGB, dtype=np.float32)
-    close = np.linalg.norm(pixels.astype(np.float32) - prior, axis=1) <= BACKGROUND_PRIOR_TOLERANCE
-    dark_enough = grey[:, columns].ravel() < TAIL_WHITE_LEVEL - BACKGROUND_NON_WHITE_MARGIN
-    samples = pixels[close & dark_enough]
-    if samples.shape[0] < BACKGROUND_MIN_SAMPLES:
-        logger.debug("only %d background samples; using the prior colour", samples.shape[0])
-        return prior
-    background = np.median(samples, axis=0).astype(np.float32)
-    logger.debug("background %s from %d samples", background.round(1).tolist(), samples.shape[0])
-    return background
+    pixels = small[:, np.r_[near:far, width - far : width - near]].reshape(-1, RGB_CHANNELS)
+    offset = pixels.astype(np.float32) - np.asarray(BACKGROUND_PRIOR_RGB, dtype=np.float32)
+    distance = np.linalg.norm(offset, axis=1)
+    bluish = pixels[:, 2] >= pixels[:, 0]
+    for source, chosen in (
+        ("prior", distance <= BACKGROUND_PRIOR_TOLERANCE),
+        ("fallback", (distance <= BACKGROUND_FALLBACK_TOLERANCE) & bluish),
+    ):
+        samples = pixels[chosen]
+        if samples.shape[0] >= BACKGROUND_MIN_SAMPLES:
+            background = np.median(samples, axis=0).astype(np.float32)
+            logger.debug(
+                "%s background %s from %d samples", source, background.tolist(), len(samples)
+            )
+            return background
+    logger.debug("too few background samples; using the prior colour")
+    return np.asarray(BACKGROUND_PRIOR_RGB, dtype=np.float32)
 
 
 def _foreground_mask(
-    distance: np.ndarray, threshold: float, tail_rows: np.ndarray, work_dpi: float
+    distance: np.ndarray, threshold: float, tail_start: int, work_dpi: float
 ) -> np.ndarray:
     """Pixels farther than ``threshold`` from the background, minus the tail, strips and speckle."""
     mask = (distance > threshold).astype(np.uint8)
-    mask[tail_rows] = 0
+    mask[tail_start:] = 0
     side = max(1, mm_to_px(OPEN_KERNEL_MM, work_dpi))
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (side, side))
     return cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
@@ -162,14 +183,33 @@ def _largest_component(mask: np.ndarray, work_dpi: float) -> tuple[int, int, int
     return x, y, w, h, int((big & separate).sum())
 
 
-def detect_photo(frame: np.ndarray, dpi: float) -> Detection:
-    """Locate the photo in a raw RGB frame: its bounding box in frame pixels plus a size check.
+@dataclass(frozen=True)
+class _Scan:
+    """What the detection passes share: the distance map, the tail and the frame geometry."""
 
-    Raises ``NoPhotoFoundError`` when nothing photo-sized stands out from the background and
-    ``ValueError`` for malformed input. ``frame`` is never modified. Logs a warning when the box
-    touches the left, right or bottom frame edge (the top edge is normal for ADF scans), when
-    a second photo-sized region was ignored, or when the size is implausible for a print.
-    """
+    distance: np.ndarray
+    tail_start: int
+    small_shape: tuple[int, ...]
+    frame_shape: tuple[int, ...]
+    factor: int
+    dpi: float
+
+    @property
+    def work_dpi(self) -> float:
+        return self.dpi / self.factor
+
+
+@dataclass(frozen=True)
+class _Hit:
+    """The outcome of one pass: the box, where it sits on the work grid, and its plausibility."""
+
+    box: Box
+    work_box: tuple[int, int, int, int]
+    others: int
+    plausible: bool
+
+
+def _prepare(frame: np.ndarray, dpi: float) -> _Scan:
     _validate_frame(frame)
     if dpi <= 0:
         raise ValueError(f"dpi must be positive, got {dpi}")
@@ -177,32 +217,76 @@ def detect_photo(frame: np.ndarray, dpi: float) -> Detection:
     work_dpi = dpi / factor
     grey = cv2.cvtColor(small, cv2.COLOR_RGB2GRAY)
     white_rows = (grey >= TAIL_WHITE_LEVEL).mean(axis=1) >= TAIL_ROW_FRACTION
-    tail_rows = white_rows & (np.arange(white_rows.size) >= _tail_from(white_rows, work_dpi))
-    background = _background_colour(small, grey, work_dpi)
+    background = _background_colour(small, work_dpi)
     distance = np.linalg.norm(small.astype(np.float32) - background, axis=2)
+    tail_start = _tail_from(white_rows, work_dpi)
+    return _Scan(distance, tail_start, small.shape, frame.shape, factor, dpi)
+
+
+def _attempt(scan: _Scan, threshold: float) -> _Hit:
+    """Find the largest region farther than ``threshold`` from the background."""
+    mask = _foreground_mask(scan.distance, threshold, scan.tail_start, scan.work_dpi)
+    x, y, w, h, others = _largest_component(mask, scan.work_dpi)
+    box = _to_frame_box((x, y, w, h), scan.small_shape, scan.frame_shape, scan.factor)
+    _require_photo_sized(box, scan.dpi)
+    plausible = is_common_print_size(*box.mm(scan.dpi)[2:])
+    if not plausible and box.w >= FULL_WIDTH_SHARE * scan.frame_shape[1]:
+        raise NoPhotoFoundError(
+            f"a {box.mm(scan.dpi)[2]:.0f} mm wide region spans the frame and matches no print size"
+        )
+    return _Hit(box, (x, y, w, h), others, plausible)
+
+
+def detect_photo(frame: np.ndarray, dpi: float) -> Detection:
+    """Locate the photo in a raw RGB frame: its bounding box in frame pixels plus a size check.
+
+    A strict pass runs first; a more sensitive pass (cream or aged backs) runs when the strict
+    one finds nothing or a box that matches no print size, and its box is used if it is plausible.
+    Raises ``NoPhotoFoundError`` when nothing photo-sized stands out from the background (or the
+    only candidate is the whole frame width) and ``ValueError`` for malformed input. ``frame`` is
+    never modified. Logs a warning when the box touches the left, right or bottom frame edge (the
+    top edge is normal for ADF scans), when a second photo-sized region was ignored, or when the
+    size is implausible for a print.
+    """
+    scan = _prepare(frame, dpi)
+    failure = NoPhotoFoundError("no region differs from the scanner background")
+    implausible: _Hit | None = None
     for threshold in (FOREGROUND_DISTANCE, PALE_FOREGROUND_DISTANCE):
-        mask = _foreground_mask(distance, threshold, tail_rows, work_dpi)
         try:
-            work_box = _largest_component(mask, work_dpi)
-            box = _to_frame_box(work_box[:4], small.shape, frame.shape, factor)
-            _require_photo_sized(box, dpi)
+            hit = _attempt(scan, threshold)
         except NoPhotoFoundError as error:
             logger.debug("no photo at distance threshold %g: %s", threshold, error)
             failure = error
-        else:
-            _report_edges(work_box[:4], small.shape)
-            if work_box[4]:
-                logger.warning(
-                    "ignored %d other photo-sized region(s); only the largest is returned",
-                    work_box[4],
-                )
-            return Detection(box, _check_print_size(box, dpi))
-    raise failure
+            continue
+        if hit.plausible:
+            return _report(hit, scan)
+        implausible = implausible or hit
+    if implausible is None:
+        raise failure
+    return _report(implausible, scan)
 
 
 def find_photo_box(frame: np.ndarray, dpi: float) -> Box:
-    """Like :func:`detect_photo` but returns only the box."""
+    """Like :func:`detect_photo` but returns only the box; implausible sizes still log a warning."""
     return detect_photo(frame, dpi).box
+
+
+def _report(hit: _Hit, scan: _Scan) -> Detection:
+    _report_edges(hit.work_box, scan.small_shape)
+    if hit.others:
+        logger.warning(
+            "ignored %d other photo-sized region(s); only the largest is returned", hit.others
+        )
+    if not hit.plausible:
+        w_mm, h_mm = hit.box.mm(scan.dpi)[2:]
+        logger.warning(
+            "box %.0fx%.0f mm matches no common print size; part of the photo may be close to the "
+            "scanner background colour (sky, pale border) or a stamp was found instead of the "
+            "paper",
+            w_mm,
+            h_mm,
+        )
+    return Detection(hit.box, hit.plausible)
 
 
 def _to_frame_box(
@@ -241,19 +325,6 @@ def _report_edges(work_box: tuple[int, int, int, int], small_shape: tuple[int, .
     for side, touches in touching.items():
         if touches:
             logger.warning("photo box touches the %s frame edge; the photo may be cut off", side)
-
-
-def _check_print_size(box: Box, dpi: float) -> bool:
-    w_mm, h_mm = box.mm(dpi)[2:]
-    if is_common_print_size(w_mm, h_mm):
-        return True
-    logger.warning(
-        "box %.0fx%.0f mm matches no common print size; part of the photo may be close to the "
-        "scanner background colour (sky, pale border) and was cropped away",
-        w_mm,
-        h_mm,
-    )
-    return False
 
 
 def crop(frame: np.ndarray, box: Box) -> np.ndarray:

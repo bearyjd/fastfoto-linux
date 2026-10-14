@@ -120,6 +120,31 @@ def test_numbering_continues_in_a_folder_that_holds_only_enhanced_and_back_files
     assert (folder / "1983_June_lake-trip_0007_a.jpg").read_bytes() == b"old"
 
 
+def test_numbering_continues_in_a_folder_whose_name_has_punctuation(tmp_path: Path) -> None:
+    album = "Mom & Dad (1970s)"
+    folder = tmp_path / album
+    folder.mkdir()
+    (folder / f"{album}_0012_a.jpg").write_bytes(b"old")
+    (folder / f"{album}_0012_b.jpg").write_bytes(b"old")
+
+    result = write_photo(rgb(), dpi=DPI, output_root=tmp_path, album=album, enhanced=rgb())
+
+    assert result.index == 13
+    assert result.enhanced == folder.resolve() / "Mom_Dad_1970s_0013_a.jpg"
+    assert (folder / f"{album}_0012_a.jpg").read_bytes() == b"old"
+
+
+def test_an_explicit_prefix_numbers_by_that_prefix_only(tmp_path: Path) -> None:
+    album = "Mom & Dad (1970s)"
+    folder = tmp_path / album
+    folder.mkdir()
+    (folder / f"{album}_0012_a.jpg").write_bytes(b"old")
+
+    result = write_photo(rgb(), dpi=DPI, output_root=tmp_path, album=album, prefix="Roll")
+
+    assert result.index == 1
+
+
 def test_successive_photos_get_successive_numbers_and_never_touch_earlier_ones(
     tmp_path: Path,
 ) -> None:

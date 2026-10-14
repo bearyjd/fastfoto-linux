@@ -91,6 +91,17 @@ def _encode_jpeg(
     return buffer.getvalue()
 
 
+def _next_index(directory: Path, file_prefix: str, folder_name: str | None) -> int:
+    """Next number for ``file_prefix``, also counting files named after the raw folder name.
+
+    FastFoto prefixes files with the album folder name as typed, punctuation included, while
+    ``file_prefix`` is restricted to ``[A-Za-z0-9_-]``; counting both keeps numbering going in
+    such folders. Pass ``folder_name=None`` when the caller chose the prefix explicitly.
+    """
+    stems = {file_prefix} if folder_name is None else {file_prefix, folder_name}
+    return max(next_index(directory, stem) for stem in stems)
+
+
 def write_photo(  # noqa: PLR0913
     front: np.ndarray,
     *,
@@ -126,15 +137,16 @@ def write_photo(  # noqa: PLR0913
     directory = album_dir(output_root, album)
     file_prefix = sanitise_prefix(prefix) if prefix is not None else default_prefix(album)
     written_at = _now()
+    folder_name = sanitise_album(album) if album is not None else None
     meta = PhotoMetadata(
         scanned_at=scanned_at or written_at,
         written_at=written_at,
-        album=sanitise_album(album) if album is not None else None,
+        album=folder_name,
         notes=notes,
         date=date,
     )
     exif, xmp = build_exif(meta), build_xmp(meta)
-    index = next_index(directory, file_prefix)
+    index = _next_index(directory, file_prefix, folder_name if prefix is None else None)
     paths = photo_paths(directory, file_prefix, index)
     result = WrittenFiles(
         directory=directory,

@@ -31,3 +31,7 @@ class OutputCollisionError(OutputError, FileExistsError):
 
 class OutputRootMissingError(OutputError, FileNotFoundError):
     """The output folder does not exist (unmounted drive, unexpanded ``~``, typo)."""
+
+
+class OutputLockTimeoutError(OutputError):
+    """Another writer has held the lock on an album folder for too long."""

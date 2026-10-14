@@ -1,4 +1,5 @@
 import errno
+import fcntl
 import os
 from pathlib import Path
 
@@ -6,10 +7,12 @@ import numpy as np
 import pytest
 from PIL import Image, JpegImagePlugin
 
+from fastfoto_linux.output import files as files_module
 from fastfoto_linux.output import writer
 from fastfoto_linux.output.errors import (
     InvalidAlbumError,
     OutputCollisionError,
+    OutputLockTimeoutError,
     OutputRootMissingError,
 )
 from fastfoto_linux.output.files import LOCK_NAME
@@ -363,3 +366,35 @@ def test_an_album_symlink_pointing_outside_the_root_is_refused(tmp_path: Path) -
         write_photo(rgb(), dpi=DPI, output_root=root, album="Sneaky")
 
     assert names(outside) == []
+
+
+def test_a_read_only_lock_file_left_by_another_user_does_not_block_writing(tmp_path: Path) -> None:
+    folder = tmp_path / "Trip"
+    folder.mkdir()
+    lock = folder / LOCK_NAME
+    lock.write_bytes(b"")
+    lock.chmod(0o444)
+
+    result = write_photo(rgb(), dpi=DPI, output_root=tmp_path, album="Trip")
+
+    assert result.original is not None
+    assert result.original.exists()
+
+
+def test_a_folder_lock_held_too_long_is_an_error_and_nothing_is_written(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(files_module, "LOCK_TIMEOUT_S", 0.2)
+    monkeypatch.setattr(files_module, "LOCK_POLL_S", 0.02)
+    folder = tmp_path / "Trip"
+    folder.mkdir()
+    holder = os.open(folder / LOCK_NAME, os.O_RDWR | os.O_CREAT, 0o666)
+    fcntl.flock(holder, fcntl.LOCK_EX)
+
+    try:
+        with pytest.raises(OutputLockTimeoutError, match="Trip"):
+            write_photo(rgb(), dpi=DPI, output_root=tmp_path, album="Trip")
+    finally:
+        os.close(holder)
+
+    assert names(folder) == []

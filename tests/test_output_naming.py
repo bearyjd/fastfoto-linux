@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 
 import pytest
@@ -7,6 +8,7 @@ from fastfoto_linux.output.naming import (
     DEFAULT_PREFIX,
     MAX_ALBUM_CHARS,
     MAX_COMPONENT_BYTES,
+    MAX_INDEX,
     MAX_INDEX_DIGITS,
     MAX_PREFIX_BYTES,
     album_dir,
@@ -319,10 +321,22 @@ def test_next_index_ignores_camera_style_names_with_a_time_part(tmp_path: Path) 
     assert next_index(tmp_path, "IMG") == 1
 
 
-def test_next_index_accepts_up_to_the_largest_index(tmp_path: Path) -> None:
-    touch(tmp_path, f"X_{'9' * MAX_INDEX_DIGITS}.jpg", "X_1234567890.jpg")
+def test_next_index_accepts_up_to_the_largest_usable_index(tmp_path: Path) -> None:
+    touch(tmp_path, f"X_{MAX_INDEX - 1}.jpg", "X_1234567890.jpg")
 
-    assert next_index(tmp_path, "X") == 10**MAX_INDEX_DIGITS
+    assert next_index(tmp_path, "X") == MAX_INDEX
+    assert photo_paths(tmp_path, "X", MAX_INDEX).original.name == f"X_{MAX_INDEX}.jpg"
+
+
+def test_next_index_ignores_a_stray_number_that_leaves_no_room_above_it(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    touch(tmp_path, f"X_{MAX_INDEX}.jpg", "X_0004.jpg")
+
+    with caplog.at_level(logging.WARNING):
+        assert next_index(tmp_path, "X") == 5
+
+    assert any(f"X_{MAX_INDEX}.jpg" in record.getMessage() for record in caplog.records)
 
 
 def test_next_index_skips_directories(tmp_path: Path) -> None:

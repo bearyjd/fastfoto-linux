@@ -22,6 +22,8 @@ logger = logging.getLogger(__name__)
 
 LOCK_NAME = ".fastfoto-linux.lock"
 LOCK_FILE_MODE = 0o666  # before the umask
+LOCK_TIMEOUT_S = 60.0
+LOCK_POLL_S = 0.05
 TEMP_SUFFIX = ".tmp"
 TEMP_TOKEN_BYTES = 4
 # link() errors that mean "this filesystem has no hard links" (FAT/exFAT, some network mounts).

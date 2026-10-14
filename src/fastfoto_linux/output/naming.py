@@ -12,6 +12,7 @@ MAX_ALBUM_CHARS = 120
 MAX_COMPONENT_BYTES = 255
 INDEX_WIDTH = 4
 MAX_INDEX_DIGITS = 9
+MAX_INDEX = 10**MAX_INDEX_DIGITS - 1
 # Room kept free after the stem: "_" + the widest index + "_a.jpg", plus the 14 extra bytes of
 # the ".<name>.<8 hex digits>.tmp" staging name used while a file is being written.
 FILE_SUFFIX_BYTES = len("_") + MAX_INDEX_DIGITS + len("_a.jpg")

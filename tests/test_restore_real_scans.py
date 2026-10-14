@@ -31,6 +31,12 @@ def test_restore_runs_quickly_on_real_fronts_and_keeps_shape_and_dtype(
         pytest.skip(f"front page {page} not present in the scans directory")
     bgr = cv2.imread(str(path), cv2.IMREAD_COLOR)
     assert bgr is not None, f"front page {page} could not be decoded"
+    height, width = bgr.shape[:2]
+    if height < REGION_ROWS.stop or width < REGION_COLS.stop:
+        pytest.skip(
+            f"front page {page} is {width}x{height} px, smaller than the fixed "
+            f"{REGION_COLS.stop}x{REGION_ROWS.stop} px region this test crops"
+        )
     region = cv2.cvtColor(bgr[REGION_ROWS, REGION_COLS], cv2.COLOR_BGR2RGB)
 
     started = perf_counter()

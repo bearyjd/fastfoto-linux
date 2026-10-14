@@ -1,6 +1,8 @@
 import dataclasses
 import hashlib
-from importlib import resources
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from importlib import metadata, resources
 from pathlib import Path
 
 import numpy as np
@@ -15,9 +17,11 @@ from fastfoto_linux.enhance.faces import (
     default_detector,
     ensure_rgb_uint8,
 )
-from tests.face_images import load_astronaut, textured_photo_without_faces
+from tests.face_images import load_astronaut, photo_with_face, textured_photo_without_faces
 
 MIN_UPRIGHT_SCORE = 0.9
+THREADS = 8
+CALLS_PER_THREAD = 10
 LICENSE_FILENAME = "LICENSE-YuNet"
 
 
@@ -126,3 +130,52 @@ def test_non_rgb_uint8_input_is_rejected(bad: np.ndarray, detector: FaceDetector
         ensure_rgb_uint8(bad)
     with pytest.raises(ValueError, match="RGB"):
         detector.detect(bad)
+
+
+def test_licence_file_ends_with_a_newline() -> None:
+    licence = resources.files(MODEL_PACKAGE).joinpath(LICENSE_FILENAME).read_text()
+    assert licence.endswith("\n")
+
+
+def test_yunet_licence_is_listed_in_the_distribution_metadata() -> None:
+    files = metadata.distribution("fastfoto-linux").files or []
+    assert any(path.name == LICENSE_FILENAME for path in files)
+
+
+def test_default_detector_sees_a_face_that_scores_below_the_orientation_floor() -> None:
+    # The upside-down portrait scores about 0.78: found at the 0.7 detection threshold but weak
+    # enough to count for nothing in orientation scoring (floor 0.8).
+    upside_down = np.ascontiguousarray(np.rot90(load_astronaut(), 2))
+    faces = default_detector().detect(upside_down)
+    assert len(faces) == 1
+    assert 0.7 <= faces[0].score < 0.8
+
+
+@pytest.mark.parametrize("bad", [None, "photo.png", [[[0, 0, 0]]], b"abc"])
+def test_non_array_input_is_a_type_error(bad: object, detector: FaceDetector) -> None:
+    with pytest.raises(TypeError, match="numpy"):
+        ensure_rgb_uint8(bad)  # type: ignore[arg-type]
+    with pytest.raises(TypeError, match="numpy"):
+        detector.detect(bad)  # type: ignore[arg-type]
+
+
+def test_shared_default_detector_is_thread_safe() -> None:
+    images = [
+        load_astronaut(),
+        photo_with_face(300, 400, 1, (20, 60)),
+        photo_with_face(400, 300, 1, (100, 20)),
+        photo_with_face(480, 640, 1, (100, 300)),
+        photo_with_face(320, 512, 1, (30, 200)),
+    ]
+    expected = [default_detector().detect(image) for image in images]
+    assert all(expected)
+    start_together = threading.Barrier(THREADS)
+
+    def work(offset: int) -> list[tuple[int, tuple[Face, ...]]]:
+        start_together.wait()
+        indices = [(offset + call) % len(images) for call in range(CALLS_PER_THREAD)]
+        return [(index, default_detector().detect(images[index])) for index in indices]
+
+    with ThreadPoolExecutor(max_workers=THREADS) as pool:
+        results = list(pool.map(work, range(THREADS)))
+    assert all(faces == expected[index] for result in results for index, faces in result)

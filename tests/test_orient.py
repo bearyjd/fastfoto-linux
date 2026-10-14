@@ -5,9 +5,11 @@ import pytest
 
 from fastfoto_linux.enhance.faces import FaceDetector
 from fastfoto_linux.enhance.orient import (
+    _CV2_ROTATION_CODE,
     CANDIDATE_ROTATIONS,
     OrientationDecision,
     _choose_rotation,
+    _rotation_score,
     apply_rotation,
     auto_orient,
     decide_orientation,
@@ -150,3 +152,22 @@ def test_image_must_be_rgb_uint8() -> None:
         decide_orientation(np.zeros((10, 10), dtype=np.uint8), DPI)
     with pytest.raises(ValueError, match="RGB"):
         auto_orient(np.zeros((10, 10, 3), dtype=np.float32), DPI)
+
+
+@pytest.mark.parametrize("shape", [(2, 5000, 3), (1, 3000, 3), (5000, 2, 3)])
+def test_thin_images_are_left_alone(shape: tuple[int, int, int], detector: FaceDetector) -> None:
+    thin = np.full(shape, 128, dtype=np.uint8)
+    decision = decide_orientation(thin, DPI, detector)
+    assert decision == OrientationDecision(rotation=0, scores=(0.0, 0.0, 0.0, 0.0), confident=False)
+    assert np.array_equal(auto_orient(thin, DPI, detector), thin)
+
+
+def test_faces_below_the_confidence_floor_contribute_nothing(detector: FaceDetector) -> None:
+    upside_down = np.ascontiguousarray(np.rot90(load_astronaut(), 2))
+    assert detector.detect(upside_down)  # seen by the detector...
+    assert _rotation_score(detector, upside_down, 0) == 0.0  # ...but worth nothing here
+
+
+def test_rotation_table_is_read_only() -> None:
+    with pytest.raises(TypeError):
+        _CV2_ROTATION_CODE[90] = 0  # type: ignore[index]

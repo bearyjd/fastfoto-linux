@@ -55,6 +55,19 @@ class Box:
         )
 
 
+@dataclass(frozen=True)
+class Detection:
+    """A detected photo box plus whether its size is believable for a photo print."""
+
+    box: Box
+    plausible: bool
+
+
+def detect_photo(frame: np.ndarray, dpi: float) -> Detection:
+    """Locate the photo in a raw RGB frame: its bounding box plus a size check."""
+    raise NotImplementedError
+
+
 def _validate_frame(frame: np.ndarray) -> None:
     if frame.dtype != np.uint8 or frame.ndim != RGB_CHANNELS or frame.shape[2] != RGB_CHANNELS:
         raise ValueError(

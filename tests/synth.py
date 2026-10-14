@@ -3,7 +3,8 @@
 Mimics the measured layout of real raw frames: light blue-grey scanner background with noise, a
 thin near-white strip on one side edge, the photo near the top, a grey band under the paper and a
 pure-white tail. ``make_frame`` also returns the exact box the photo was painted into so tests can
-check a cropper against ground truth.
+check a cropper against ground truth. Optional knobs reproduce harder real-world cases: no grey
+band, rolled-off edges, a soft shadow around the print, pale or cream paper, sky-coloured areas.
 """
 
 from typing import Literal
@@ -44,6 +45,17 @@ WRITING_LINE_PITCH_MM = 11.0
 WRITING_INSET_MM = 15.0
 FRONT_BLOCK_MM = 6.0
 FRONT_GREY_RANGE = (25, 130)
+FLAT_PHOTO_NOISE_STD = 4.0
+SKY_RGB = (190, 203, 222)  # a front area that is almost the scanner background colour
+HALO_SHIFT = 17  # per-channel darkening of the shadow ring: about 29 RGB units from the background
+
+
+def _paint_flat(
+    canvas: np.ndarray, box: Box, rgb: tuple[int, int, int], rng: np.random.Generator
+) -> None:
+    noise = rng.normal(0, FLAT_PHOTO_NOISE_STD, size=(box.h, box.w, 3))
+    photo = np.clip(np.asarray(rgb) + noise, 0, 255).astype(np.uint8)
+    canvas[box.y : box.y + box.h, box.x : box.x + box.w] = photo
 
 
 def _paint_front(canvas: np.ndarray, box: Box, dpi: int, rng: np.random.Generator) -> None:
@@ -61,10 +73,46 @@ def _paint_front(canvas: np.ndarray, box: Box, dpi: int, rng: np.random.Generato
     canvas[box.y : box.y + h, box.x : box.x + w] = photo.astype(np.uint8)
 
 
-def _paint_back(canvas: np.ndarray, box: Box, rng: np.random.Generator) -> None:
-    paper = rng.normal(PAPER_GREY, PAPER_NOISE_STD, size=(box.h, box.w, 1))
-    paper = np.broadcast_to(np.clip(paper, 0, 255), (box.h, box.w, 3))
-    canvas[box.y : box.y + box.h, box.x : box.x + box.w] = paper.astype(np.uint8)
+def _paint_back(
+    canvas: np.ndarray,
+    box: Box,
+    rng: np.random.Generator,
+    rgb: tuple[int, int, int] | None,
+    noise_std: float,
+) -> None:
+    base = np.asarray(rgb if rgb else (PAPER_GREY,) * 3, dtype=np.float32)
+    paper = base + rng.normal(0, noise_std, size=(box.h, box.w, 1))
+    canvas[box.y : box.y + box.h, box.x : box.x + box.w] = np.clip(paper, 0, 255).astype(np.uint8)
+
+
+def _paint_sky(
+    canvas: np.ndarray, box: Box, dpi: int, sky_mm: float, rng: np.random.Generator
+) -> None:
+    """Replace the top ``sky_mm`` of a front photo with a nearly background-coloured area."""
+    rows = min(box.h, mm_to_px(sky_mm, dpi))
+    sky = SKY_RGB + rng.normal(0, BACKGROUND_NOISE_STD, size=(rows, box.w, 3))
+    canvas[box.y : box.y + rows, box.x : box.x + box.w] = np.clip(sky, 0, 255).astype(np.uint8)
+
+
+def _paint_halo(canvas: np.ndarray, box: Box, dpi: int, halo_mm: float) -> None:
+    """Darken a ring around the photo, like the soft shadow real prints cast on the platen."""
+    pad = mm_to_px(halo_mm, dpi)
+    y0, x0 = max(0, box.y - pad), max(0, box.x - pad)
+    window = canvas[y0 : box.y + box.h + pad, x0 : box.x + box.w + pad]
+    ring = np.ones(window.shape[:2], dtype=bool)
+    ring[box.y - y0 : box.y - y0 + box.h, box.x - x0 : box.x - x0 + box.w] = False
+    window[ring] = np.clip(window[ring].astype(np.int16) - HALO_SHIFT, 0, 255).astype(np.uint8)
+
+
+def _roll_off_edges(canvas: np.ndarray, behind: np.ndarray, box: Box, blur_px: float) -> None:
+    """Fade the photo into what was behind it over ``blur_px`` just inside every edge."""
+    ys, xs = np.arange(box.h) + 0.5, np.arange(box.w) + 0.5
+    ramp_y = np.clip(np.minimum(ys, box.h - ys) / blur_px, 0, 1)
+    ramp_x = np.clip(np.minimum(xs, box.w - xs) / blur_px, 0, 1)
+    alpha = np.minimum(ramp_y[:, None], ramp_x[None, :])[:, :, None]
+    rows, cols = slice(box.y, box.y + box.h), slice(box.x, box.x + box.w)
+    mixed = alpha * canvas[rows, cols] + (1 - alpha) * behind[rows, cols]
+    canvas[rows, cols] = np.rint(mixed).astype(np.uint8)
 
 
 def _paint_imprint(canvas: np.ndarray, box: Box, dpi: int, rng: np.random.Generator) -> None:
@@ -108,6 +156,67 @@ def _validate(
         raise ValueError("photo_mm must be positive and offset_mm non-negative")
 
 
+def _background(
+    shape: tuple[int, int], rng: np.random.Generator, rgb: tuple[int, int, int]
+) -> np.ndarray:
+    noise = rng.standard_normal((*shape, 3), dtype=np.float32) * BACKGROUND_NOISE_STD
+    canvas = np.clip(np.rint(np.asarray(rgb, dtype=np.float32) + noise), 0, 255)
+    return canvas.astype(np.uint8)
+
+
+def _paint_photo(  # noqa: PLR0913
+    canvas: np.ndarray,
+    box: Box,
+    dpi: int,
+    rng: np.random.Generator,
+    *,
+    side: Side,
+    photo_rgb: tuple[int, int, int] | None,
+    sky_mm: float,
+    paper_noise_std: float,
+    imprint: bool,
+    writing: bool,
+) -> None:
+    if side == "front":
+        if photo_rgb:
+            _paint_flat(canvas, box, photo_rgb, rng)
+        else:
+            _paint_front(canvas, box, dpi, rng)
+        if sky_mm:
+            _paint_sky(canvas, box, dpi, sky_mm, rng)
+        return
+    _paint_back(canvas, box, rng, photo_rgb, paper_noise_std)
+    if imprint:
+        _paint_imprint(canvas, box, dpi, rng)
+    if writing:
+        _paint_writing(canvas, box, dpi, rng)
+
+
+def _layout(  # noqa: PLR0913
+    dpi: int,
+    *,
+    photo_mm: tuple[float, float],
+    offset_mm: tuple[float, float],
+    right_margin_mm: float,
+    grey_band_mm: float,
+    tail_mm: float,
+) -> tuple[Box, int, int, int]:
+    """Photo box, first tail row, frame width and frame height, all in pixels."""
+    x0, y0 = mm_to_px(offset_mm[0], dpi), mm_to_px(offset_mm[1], dpi)
+    x1, y1 = mm_to_px(offset_mm[0] + photo_mm[0], dpi), mm_to_px(offset_mm[1] + photo_mm[1], dpi)
+    tail_y = y1 + mm_to_px(grey_band_mm, dpi)
+    width, height = x1 + mm_to_px(right_margin_mm, dpi), tail_y + mm_to_px(tail_mm, dpi)
+    return Box(x0, y0, x1 - x0, y1 - y0), tail_y, width, height
+
+
+def _paint_strip(rows: np.ndarray, side: Strip, strip: int, height: int) -> None:
+    """Paint the near-white edge strip into the first ``height`` rows of ``rows``."""
+    if side == "left":
+        rows[:height, :strip] = STRIP_GREY
+    elif side == "right":
+        rows[:height, rows.shape[1] - strip :] = STRIP_GREY
+
+
 def make_frame(  # noqa: PLR0913
     *,
     dpi: int = 150,
@@ -120,37 +229,60 @@ def make_frame(  # noqa: PLR0913
     rng_seed: int = 0,
     right_margin_mm: float = RIGHT_MARGIN_MM,
     tail_mm: float = TAIL_MM,
+    grey_band_mm: float = GREY_BAND_MM,
+    tail_grey: int = TAIL_GREY,
+    photo_rgb: tuple[int, int, int] | None = None,
+    sky_mm: float = 0.0,
+    halo_mm: float = 0.0,
+    edge_blur_mm: float = 0.0,
+    paper_noise_std: float = PAPER_NOISE_STD,
+    strip_through_tail: bool = False,
+    background_rgb: tuple[int, int, int] = BACKGROUND_RGB,
 ) -> tuple[np.ndarray, Box]:
     """Build one synthetic frame and the ground-truth photo ``Box`` (pixels at ``dpi``).
 
     ``photo_mm`` is ``(width, height)`` and ``offset_mm`` the photo's ``(x, y)`` from the frame's
     top-left. The frame is as wide as ``offset + photo + right_margin_mm`` and as tall as the
-    photo, a 9 mm grey band and ``tail_mm`` of white. ``imprint`` and ``writing`` only affect
-    backs. Everything random derives from ``rng_seed``.
+    photo, ``grey_band_mm`` of background and ``tail_mm`` of ``tail_grey``. ``imprint`` and
+    ``writing`` only affect backs; ``sky_mm`` only fronts. ``photo_rgb`` replaces the photo with a
+    flat colour (cream paper on a back, a pale print on a front). ``halo_mm`` adds a soft shadow
+    ring around the print and ``edge_blur_mm`` rolls the photo edge off over that distance
+    inside the box. ``paper_noise_std`` sets the grain of back paper (0 gives perfectly flat
+    paper). ``strip_through_tail`` lets the near-white edge strip run on through the white tail.
+    ``background_rgb`` overrides the scanner background colour.
+    Everything random derives from ``rng_seed``.
     """
     _validate(photo_mm, offset_mm, side, white_strip)
     rng = np.random.default_rng(rng_seed)
-    x0, y0 = mm_to_px(offset_mm[0], dpi), mm_to_px(offset_mm[1], dpi)
-    x1, y1 = mm_to_px(offset_mm[0] + photo_mm[0], dpi), mm_to_px(offset_mm[1] + photo_mm[1], dpi)
-    box = Box(x0, y0, x1 - x0, y1 - y0)
-    tail_y = y1 + mm_to_px(GREY_BAND_MM, dpi)
-    width, height = x1 + mm_to_px(right_margin_mm, dpi), tail_y + mm_to_px(tail_mm, dpi)
-
-    noise = rng.standard_normal((height, width, 3), dtype=np.float32) * BACKGROUND_NOISE_STD
-    canvas = np.clip(np.rint(np.asarray(BACKGROUND_RGB, dtype=np.float32) + noise), 0, 255)
-    canvas = canvas.astype(np.uint8)
+    box, tail_y, width, height = _layout(
+        dpi,
+        photo_mm=photo_mm,
+        offset_mm=offset_mm,
+        right_margin_mm=right_margin_mm,
+        grey_band_mm=grey_band_mm,
+        tail_mm=tail_mm,
+    )
+    canvas = _background((height, width), rng, background_rgb)
+    if halo_mm:
+        _paint_halo(canvas, box, dpi, halo_mm)
     strip = max(1, mm_to_px(STRIP_MM, dpi))
-    if white_strip == "left":
-        canvas[:tail_y, :strip] = STRIP_GREY
-    elif white_strip == "right":
-        canvas[:tail_y, width - strip :] = STRIP_GREY
-    if side == "front":
-        _paint_front(canvas, box, dpi, rng)
-    else:
-        _paint_back(canvas, box, rng)
-        if imprint:
-            _paint_imprint(canvas, box, dpi, rng)
-        if writing:
-            _paint_writing(canvas, box, dpi, rng)
-    canvas[tail_y:] = TAIL_GREY
+    _paint_strip(canvas, white_strip, strip, tail_y)
+    behind = canvas.copy() if edge_blur_mm else canvas
+    _paint_photo(
+        canvas,
+        box,
+        dpi,
+        rng,
+        side=side,
+        photo_rgb=photo_rgb,
+        sky_mm=sky_mm,
+        paper_noise_std=paper_noise_std,
+        imprint=imprint,
+        writing=writing,
+    )
+    if edge_blur_mm:
+        _roll_off_edges(canvas, behind, box, max(1.0, edge_blur_mm * dpi / 25.4))
+    canvas[tail_y:] = tail_grey
+    if strip_through_tail:
+        _paint_strip(canvas[tail_y:], white_strip, strip, height - tail_y)
     return canvas, box

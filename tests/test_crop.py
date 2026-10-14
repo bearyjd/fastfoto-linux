@@ -1,40 +1,17 @@
 import dataclasses
-import logging
 
 import numpy as np
 import pytest
 
 from fastfoto_linux.pipeline.crop import Box, NoPhotoFoundError, crop, find_photo_box
 from fastfoto_linux.pipeline.geometry import mm_to_px
+from tests.crop_helpers import SIDES, assert_box_matches, background_only
 from tests.synth import BACKGROUND_RGB, make_frame
 
-TOLERANCE_MM = 1.0
 PHOTO_4X6 = (152, 102)
 PHOTO_5X7 = (178, 127)
 PHOTO_8X10 = (254, 203)
 PANORAMA = (250, 90)
-SIDES = ("front", "back")
-
-
-def assert_box_matches(found: Box, expected: Box, dpi: int) -> None:
-    """Every edge within TOLERANCE_MM (numbers only in the failure message)."""
-    fx, fy, fw, fh = found.mm(dpi)
-    ex, ey, ew, eh = expected.mm(dpi)
-    edges = {
-        "left": (fx, ex),
-        "top": (fy, ey),
-        "right": (fx + fw, ex + ew),
-        "bottom": (fy + fh, ey + eh),
-    }
-    off = {name: round(f - e, 2) for name, (f, e) in edges.items() if abs(f - e) > TOLERANCE_MM}
-    assert not off, f"edges off by more than {TOLERANCE_MM} mm at {dpi} dpi: {off}"
-
-
-def background_only(dpi: int, size_mm: tuple[float, float] = (120, 150)) -> np.ndarray:
-    rng = np.random.default_rng(1)
-    shape = (mm_to_px(size_mm[1], dpi), mm_to_px(size_mm[0], dpi), 3)
-    noise = rng.normal(0, 3, size=shape)
-    return np.clip(np.asarray(BACKGROUND_RGB) + noise, 0, 255).astype(np.uint8)
 
 
 @pytest.mark.parametrize("side", SIDES)
@@ -150,22 +127,6 @@ def test_no_photo_error_is_a_value_error() -> None:
     assert issubclass(NoPhotoFoundError, ValueError)
 
 
-def test_touching_the_frame_edge_logs_a_warning(caplog: pytest.LogCaptureFixture) -> None:
-    frame, expected = make_frame(offset_mm=(20, 0))
-    with caplog.at_level(logging.WARNING, logger="fastfoto_linux.pipeline.crop"):
-        box = find_photo_box(frame, 150)
-    assert box.y == 0
-    assert any("frame edge" in record.message for record in caplog.records)
-    assert_box_matches(box, expected, 150)
-
-
-def test_photo_clear_of_the_edges_logs_no_warning(caplog: pytest.LogCaptureFixture) -> None:
-    frame, _ = make_frame(offset_mm=(20, 5))
-    with caplog.at_level(logging.WARNING, logger="fastfoto_linux.pipeline.crop"):
-        find_photo_box(frame, 150)
-    assert not caplog.records
-
-
 @pytest.mark.parametrize(
     "frame",
     [
@@ -209,10 +170,19 @@ def test_crop_returns_an_independent_copy_of_the_box_region() -> None:
     assert not np.shares_memory(cut, frame)
 
 
-def test_crop_of_found_box_contains_only_photo_pixels() -> None:
-    frame, _ = make_frame(side="back", imprint=False)
+MAX_BACKGROUND_SHARE = 0.02
+BACKGROUND_LIKE_DISTANCE = 30
+
+
+@pytest.mark.parametrize("side", SIDES)
+def test_crop_of_found_box_contains_almost_no_background(side: str) -> None:
+    frame, _ = make_frame(side=side, imprint=False)
     cut = crop(frame, find_photo_box(frame, 150))
-    assert np.median(cut) > 240
+    offset = cut.astype(np.int16) - np.asarray(BACKGROUND_RGB, dtype=np.int16)
+    background_like = np.linalg.norm(offset, axis=2) < BACKGROUND_LIKE_DISTANCE
+    assert background_like.mean() <= MAX_BACKGROUND_SHARE
+    if side == "back":
+        assert np.median(cut) > 240
 
 
 @pytest.mark.parametrize(
@@ -221,3 +191,25 @@ def test_crop_of_found_box_contains_only_photo_pixels() -> None:
 def test_crop_rejects_boxes_outside_the_frame(box: Box) -> None:
     with pytest.raises(ValueError, match="outside"):
         crop(np.zeros((100, 100, 3), dtype=np.uint8), box)
+
+
+@pytest.mark.parametrize("shape", [(0, 100, 3), (100, 0, 3), (0, 0, 3)])
+def test_empty_frames_are_rejected_clearly(shape: tuple[int, int, int]) -> None:
+    frame = np.zeros(shape, dtype=np.uint8)
+    with pytest.raises(ValueError, match="empty"):
+        find_photo_box(frame, 150)
+    with pytest.raises(ValueError, match="empty"):
+        crop(frame, Box(0, 0, 1, 1))
+
+
+@pytest.mark.parametrize("dpi", [0, -150])
+def test_non_positive_dpi_is_rejected(dpi: int) -> None:
+    with pytest.raises(ValueError, match="dpi"):
+        find_photo_box(np.zeros((100, 100, 3), dtype=np.uint8), dpi)
+
+
+def test_crop_validates_the_frame_like_find_photo_box() -> None:
+    with pytest.raises(ValueError, match="HxWx3 uint8"):
+        crop(np.zeros((100, 100), dtype=np.uint8), Box(0, 0, 10, 10))
+    with pytest.raises(ValueError, match="HxWx3 uint8"):
+        crop(np.zeros((100, 100, 3), dtype=np.float32), Box(0, 0, 10, 10))

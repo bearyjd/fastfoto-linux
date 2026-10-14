@@ -20,13 +20,15 @@ from tests._restore_synth import (
 
 HIGH_DPI = 600
 CLIP_PCT = 0.5
-CLIP_TOLERANCE = 0.002  # fraction of pixels: quantisation of a continuous tail
-BALANCED_MAX_MEAN_CHANGE = 4.0
+CLIP_TOLERANCE = 0.001  # fraction of pixels: quantisation of a continuous tail
+BALANCED_MAX_MEAN_CHANGE = 3.5
 FRAME_PX = 20
 FRAME_CAST_REDUCTION = 0.5
 FRAME_INTERIOR_MAX_CHANGE = 1.0
 NIGHT_MIN_P1_KEPT = 0.75  # fraction of the original 1st percentile that must survive
-NIGHT_MAX_MEAN_SHIFT = 10.0  # grey levels
+NIGHT_MAX_MEAN_SHIFT = (
+    15.0  # grey levels: brightening is capped by max_gain, darkening by the black-point rule
+)
 NIGHT_MIN_P1 = 30.0  # the fixture starts with lifted blacks, not real black
 HEAVY_BIN_FRACTION = 0.03
 HEAVY_BIN_LEVEL = 8
@@ -80,8 +82,9 @@ def test_a_pure_black_and_white_frame_does_not_pin_the_percentiles() -> None:
     after = measure_cast(inside[RAMP_ROWS])
     assert np.hypot(*after) <= FRAME_CAST_REDUCTION * np.hypot(*before)
     assert mean_abs_change(inside, restore_colour(faded, DPI)) < FRAME_INTERIOR_MAX_CHANGE
-    for level in (0, FULL_SCALE):  # the frame itself is untouched
-        assert np.sum(np.all(out == level, axis=2)) == np.sum(np.all(framed == level, axis=2))
+    ring = np.ones(framed.shape[:2], dtype=bool)
+    ring[2 * FRAME_PX : -2 * FRAME_PX, 2 * FRAME_PX : -2 * FRAME_PX] = False
+    assert np.array_equal(out[ring], framed[ring])  # the frame itself is untouched
 
 
 def test_an_image_that_is_entirely_frame_is_returned_unchanged() -> None:

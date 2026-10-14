@@ -40,6 +40,7 @@ BEACH_BAND_ROWS = HEIGHT // 4
 # Median mean-LAB-chroma seen in practice: ScanSnap prints about 10.6, Epson `_a` about 13.8.
 REALISTIC_CHROMAS = (10.6, 13.8, 22.0)
 MAX_HUE_SHIFT_SIN = 0.12
+MIN_BOOST_STEP = 0.04
 
 
 def test_sepia_keeps_its_tone_while_contrast_is_restored() -> None:
@@ -131,6 +132,7 @@ def test_boost_grows_with_the_chroma_deficit_and_never_exceeds_the_gain() -> Non
         ratios.append(mean_chroma(restore_colour(dull, DPI, settings)) / mean_chroma(dull))
     assert 1.0 <= ratios[0] < ratios[1] < ratios[2] <= settings.saturation_gain + 0.03
     assert ratios[2] > 1.1  # a really dull image is clearly recovered
+    assert ratios[2] - ratios[1] > MIN_BOOST_STEP  # ...and a mildly dull one gets less
 
 
 def test_a_neutral_image_stays_exactly_neutral_when_boosted() -> None:

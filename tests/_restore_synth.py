@@ -180,7 +180,7 @@ def make_beach() -> np.ndarray:
 
 NIGHT_BACKGROUND = (44, 46, 54)
 NIGHT_LIGHTS_FRACTION = 0.02
-NIGHT_LIGHT_LEVEL = 225
+NIGHT_LIGHT_LEVEL = 170  # street lights and windows: bright, but nothing is white
 
 
 def make_night_scene() -> np.ndarray:
@@ -193,7 +193,7 @@ def make_night_scene() -> np.ndarray:
     )
     img = base + 3.0 * rng.normal(size=(*shape, 3))
     lights = rng.random(shape) < NIGHT_LIGHTS_FRACTION
-    img[lights] = NIGHT_LIGHT_LEVEL + rng.integers(0, 25, (int(lights.sum()), 1))
+    img[lights] = NIGHT_LIGHT_LEVEL + rng.integers(0, 30, (int(lights.sum()), 1))
     return np.clip(np.rint(img), 0, FULL_SCALE).astype(np.uint8)
 
 

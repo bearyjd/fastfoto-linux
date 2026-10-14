@@ -305,6 +305,10 @@ def _balanced_luts(
     return luts
 
 
+def _black_shift_limit(evidence: float) -> float:
+    raise NotImplementedError
+
+
 def _cast_evidence(
     sample: np.ndarray, ab: np.ndarray, stats: list[tuple[float, float, float]]
 ) -> float:

@@ -44,7 +44,7 @@ DOMINANT_MIN_CHROMA_KEPT = 0.8
 SCENE_MIN_CHROMA_KEPT = 0.5  # a one-hue scene keeps at least half of its colour
 TINT_MAX_GROWTH = 1.1
 PAPER_MAX_CHANGE = 1.0  # levels
-INK_FRACTION = 0.005
+INK_FRACTIONS = (0.005, 0.01, 0.03, 0.05)  # a few percent of the print
 BEACH_HUE_TOLERANCE_DEG = 15.0
 BEACH_BAND_ROWS = HEIGHT // 4
 # Median mean-LAB-chroma seen in practice: ScanSnap prints about 10.6, Epson `_a` about 13.8.
@@ -104,8 +104,9 @@ def test_sepia_with_scan_noise_still_keeps_its_tone() -> None:
     _assert_tone_kept(noisy, restore_colour(noisy, DPI))
 
 
-def test_sepia_with_a_little_coloured_ink_is_still_a_tone() -> None:
-    inked = make_sepia_with_ink(INK_FRACTION)
+@pytest.mark.parametrize("fraction", INK_FRACTIONS)
+def test_sepia_with_a_little_coloured_ink_is_still_a_tone(fraction: float) -> None:
+    inked = make_sepia_with_ink(fraction)
     out = restore_colour(inked, DPI)
     _assert_tone_kept(inked, out)
     assert l_contrast(out) > MIN_CONTRAST_RATIO * l_contrast(inked)

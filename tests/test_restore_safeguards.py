@@ -3,7 +3,14 @@
 import numpy as np
 import pytest
 
-from fastfoto_linux.enhance.restore import DEFAULT, RestoreSettings, measure_cast, restore_colour
+from fastfoto_linux.enhance.restore import (
+    DEFAULT,
+    MAX_CHANNEL_GAIN_RATIO,
+    RestoreSettings,
+    _balanced_luts,
+    measure_cast,
+    restore_colour,
+)
 from tests._restore_synth import (
     DPI,
     FULL_SCALE,
@@ -11,18 +18,20 @@ from tests._restore_synth import (
     RAMP_ROWS,
     SEED,
     clipped_fractions,
+    fade_between,
     fade_with_cast,
     grey_of,
     lab,
+    make_cast_card,
     make_natural,
     make_night_scene,
     make_reference,
     mean_abs_change,
+    ramp_cast,
     uniform_with_chroma,
 )
 
 HIGH_DPI = 600
-MAX_CHANNEL_GAIN_RATIO = 1.5
 CLIP_PCT = 0.5
 CLIP_TOLERANCE = 0.001  # fraction of pixels: quantisation of a continuous tail
 BALANCED_MAX_MEAN_CHANGE = 3.5
@@ -35,6 +44,8 @@ NIGHT_MAX_MEAN_SHIFT = (
     15.0  # grey levels: brightening is capped by max_gain, darkening by the black-point rule
 )
 NIGHT_MIN_P1 = 30.0  # the fixture starts with lifted blacks, not real black
+MIN_CAST_BEFORE = 10.0  # sanity: the fixture really carries a cast
+RATIO_CAST_REDUCTION = 0.35  # a fully balanced print keeps little of it (a cut-back one does not)
 HEAVY_BIN_FRACTION = 0.03
 HEAVY_BIN_LEVEL = 8
 
@@ -147,28 +158,36 @@ def test_nearly_flat_neutral_image_is_left_alone() -> None:
     assert np.array_equal(restore_colour(img, DPI), img)
 
 
-def test_channel_gain_is_capped() -> None:
-    img = make_reference()
-    narrow = img.copy()
-    narrow[..., 0] = np.rint(100 + img[..., 0] / 255.0 * 40).astype(np.uint8)  # 40-level range
-    span_before = int(narrow[..., 0].max()) - int(narrow[..., 0].min())
-    out = restore_colour(narrow, DPI, RestoreSettings(saturation_gain=1.0))
-    span_after = int(out[..., 0].max()) - int(out[..., 0].min())
-    assert span_after > 1.5 * span_before  # stretched...
-    assert span_after <= DEFAULT.max_gain * span_before + 2  # ...but not beyond the cap
+def _widest_to_narrowest_fade(mismatch: float) -> tuple[tuple[float, ...], tuple[float, ...]]:
+    """Black and white levels: red spans 200 levels, blue ``200 / mismatch``, green in between."""
+    widest = 200.0
+    narrowest = widest / mismatch
+    return (30.0, 55.0, 40.0), (30.0 + widest, 55.0 + 0.5 * (widest + narrowest), 40.0 + narrowest)
 
 
-def test_relative_gain_between_channels_is_bounded() -> None:
-    img = make_reference()
-    img[..., 0] = np.rint(100 + img[..., 0] / 255.0 * 40).astype(np.uint8)  # red: 40 levels
-    img[..., 1] = np.rint(30 + img[..., 1] / 255.0 * 200).astype(np.uint8)  # green: 200 levels
-    out = restore_colour(img, DPI, RestoreSettings(saturation_gain=1.0))
+@pytest.mark.parametrize("mismatch", [1.35, 1.45])  # between the old cap (1.3) and the cap
+def test_a_channel_mismatch_within_the_gain_ratio_cap_is_fully_balanced(mismatch: float) -> None:
+    assert mismatch <= MAX_CHANNEL_GAIN_RATIO  # the cap is the source constant
+    faded = fade_between(make_cast_card(12.0), *_widest_to_narrowest_fade(mismatch))
+    assert ramp_cast(faded) > MIN_CAST_BEFORE
+    assert ramp_cast(restore_colour(faded, DPI)) <= RATIO_CAST_REDUCTION * ramp_cast(faded)
 
-    def gain(channel: int) -> float:
-        before = int(img[..., channel].max()) - int(img[..., channel].min())
-        return (int(out[..., channel].max()) - int(out[..., channel].min())) / before
 
-    assert gain(0) / gain(1) <= MAX_CHANNEL_GAIN_RATIO + 0.05
+SHIFT_LIMIT = 12.0
+# A warm scene's levels: the red black point sits far above green and blue.
+SAND_STATS = [(58.0, 245.0, 150.0), (23.0, 207.0, 120.0), (26.0, 207.0, 120.0)]
+
+
+def test_black_points_move_no_further_than_the_shift_limit() -> None:
+    luts = _balanced_luts(SAND_STATS, 1.0, SHIFT_LIMIT)  # max_gain 1: no common move
+    for lut, (low, _, _) in zip(luts, SAND_STATS, strict=True):
+        assert abs(int(lut[int(low)]) - low) <= SHIFT_LIMIT + 1
+
+
+def test_black_points_are_aligned_when_the_limit_allows() -> None:
+    luts = _balanced_luts(SAND_STATS, 1.0, 100.0)
+    landed = [int(lut[int(low)]) for lut, (low, _, _) in zip(luts, SAND_STATS, strict=True)]
+    assert max(landed) - min(landed) <= 1
 
 
 def test_bright_pixels_inside_the_photo_are_not_mistaken_for_a_frame() -> None:

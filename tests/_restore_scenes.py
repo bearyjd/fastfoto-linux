@@ -31,6 +31,18 @@ DOMINANT_FLOOR, DOMINANT_RANGE = 20.0, 215.0
 DOMINANT_JITTER = 0.10  # smooth +-10% variation per channel: real scenes are not one exact tone
 PAPER_BRIGHT_PERCENTILE = 70.0
 
+WARM_SCENES = {  # kind: (per-channel tone multipliers, share of dark neutral blobs)
+    "sand": ((1.0, 0.82, 0.64), 0.08),  # dark rocks
+    "sunset": ((1.0, 0.58, 0.40), 0.40),  # black silhouettes
+    "skin": ((1.0, 0.88, 0.78), 0.30),  # dark hair
+    "lawn": ((0.55, 1.0, 0.25), 0.10),  # deep shadows
+}
+WARM_FLOOR, WARM_RANGE = 40.0, 200.0
+WARM_JITTER = 0.10  # smooth +-10% variation per channel
+WARM_BLOB_SIGMA = 30
+WARM_DARK_BASE, WARM_DARK_SPAN = 25.0, 30.0
+COLOURED_MIN_CHROMA = 10.0  # pixels with less chroma than this have no hue worth comparing
+
 
 def make_near_white_page() -> np.ndarray:
     """A print back: pale, almost neutral paper with a few dark text strokes."""
@@ -82,4 +94,39 @@ def paper_chroma(img: np.ndarray) -> float:
     brightest = img_lab[..., 0] >= np.percentile(img_lab[..., 0], PAPER_BRIGHT_PERCENTILE)
     return float(
         np.hypot(np.median(img_lab[..., 1][brightest]), np.median(img_lab[..., 2][brightest]))
+    )
+
+
+def make_warm_scene(kind: str) -> np.ndarray:
+    """A scene that is mostly one hue and has no cast, with dark neutral parts but no white.
+
+    Dark rocks on sand, a sunset with silhouettes, skin next to dark hair, a lawn with shadows:
+    the shadows are neutral, the lights are tinted by the scene itself, as in real prints.
+    """
+    tone, dark_share = WARM_SCENES[kind]
+    rng = np.random.default_rng(SEED + 10)
+    shape = (HEIGHT, WIDTH)
+    luminance = grey_of(make_natural()) / FULL_SCALE
+    jitter = np.stack(
+        [1 + WARM_JITTER * _smooth_field(rng, shape, WARM_BLOB_SIGMA) for _ in range(3)], axis=-1
+    )
+    img = (WARM_FLOOR + luminance * WARM_RANGE)[..., None] * np.array(tone, np.float32) * jitter
+    blobs = _smooth_field(rng, shape, WARM_BLOB_SIGMA)
+    dark = blobs < np.percentile(blobs, 100.0 * dark_share)
+    img[dark] = WARM_DARK_BASE + luminance[dark][:, None] * WARM_DARK_SPAN
+    return np.clip(np.rint(img), 0, FULL_SCALE).astype(np.uint8)
+
+
+def colour_change(before: np.ndarray, after: np.ndarray) -> tuple[float, float]:
+    """Median hue shift (degrees) and median chroma ratio over the coloured pixels of ``before``."""
+    lab_before, lab_after = lab(before), lab(after)
+    chroma_before = np.hypot(lab_before[..., 1], lab_before[..., 2])
+    chroma_after = np.hypot(lab_after[..., 1], lab_after[..., 2])
+    coloured = chroma_before > COLOURED_MIN_CHROMA
+    turn = np.arctan2(lab_after[..., 2], lab_after[..., 1]) - np.arctan2(
+        lab_before[..., 2], lab_before[..., 1]
+    )
+    shift = np.abs(np.angle(np.exp(1j * turn)))[coloured]
+    return float(np.degrees(np.median(shift))), float(
+        np.median(chroma_after[coloured] / chroma_before[coloured])
     )

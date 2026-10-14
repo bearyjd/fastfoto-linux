@@ -283,8 +283,11 @@ def _balances(spans: list[float], reference: float) -> list[float]:
     return [min(gain, ceiling) for gain in gains]
 
 
-def _balanced_luts(stats: list[tuple[float, float, float]], max_gain: float) -> list[np.ndarray]:
+def _balanced_luts(
+    stats: list[tuple[float, float, float]], max_gain: float, shift_limit: float = math.inf
+) -> list[np.ndarray]:
     """Per-channel curves: black points aligned, gains balanced, then one common move."""
+    del shift_limit  # red-commit stub: the limit is not applied yet
     luts = [_affine_lut(1.0, 0.0)] * RGB_CHANNELS
     active = [
         i

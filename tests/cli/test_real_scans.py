@@ -22,8 +22,12 @@ ORIGINAL = re.compile(r"FastFoto_(\d{4})\.jpg")
 BACK = re.compile(r"FastFoto_(\d{4})_b\.jpg")
 ENHANCED = re.compile(r"FastFoto_(\d{4})_a\.jpg")
 SUMMARY_ENHANCED = re.compile(r"^enhanced: (\d+)(?: \((\d+) unchanged\))?$", re.MULTILINE)
+# The private batch is fixed: restore changes three of the four fronts and leaves one as it was.
 FRONTS = 4
 BACKS = 2
+ENHANCED_FRONTS = 3
+UNCHANGED_FRONTS = 1
+JPEGS = FRONTS + BACKS + ENHANCED_FRONTS
 
 
 @dataclass(frozen=True)
@@ -64,20 +68,18 @@ def test_the_summary_reports_the_two_dropped_backs(album) -> None:
     assert "backs dropped: 2 (" in album.summary
 
 
-def test_every_front_has_an_enhanced_copy_or_is_reported_unchanged(album) -> None:
+def test_three_fronts_have_an_enhanced_copy_and_one_is_reported_unchanged(album) -> None:
     match = SUMMARY_ENHANCED.search(album.summary)
     assert match is not None, "the summary has no 'enhanced: N' line"
-    enhanced, unchanged = _numbers(album.out, ENHANCED), int(match.group(2) or 0)
-    assert len(enhanced) == int(match.group(1))
+    enhanced = _numbers(album.out, ENHANCED)
+    assert len(enhanced) == ENHANCED_FRONTS == int(match.group(1))
+    assert int(match.group(2) or 0) == UNCHANGED_FRONTS
     assert set(enhanced) <= set(_numbers(album.out, ORIGINAL))
-    assert len(enhanced) + unchanged == FRONTS
-    assert enhanced, "restore changed none of the photos"
 
 
 def test_the_album_holds_exactly_the_expected_files(album) -> None:
-    enhanced = _numbers(album.out, ENHANCED)
-    jpegs = sorted(album.out.glob("*.jpg"))
-    assert len(jpegs) == FRONTS + BACKS + len(enhanced)
+    assert len(list(album.out.glob("*.jpg"))) == JPEGS
+    assert len(list(album.out.iterdir())) == JPEGS + 1  # and the writer's lock file
 
 
 def test_the_front_of_page_2_is_turned_upright(album) -> None:

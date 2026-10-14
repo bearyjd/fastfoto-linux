@@ -10,8 +10,6 @@ from tests._restore_synth import (
     BEACH_BANDS,
     DPI,
     HEIGHT,
-    SUNSET_BAND_WIDTH,
-    SUNSET_BANDS,
     WIDTH,
     desaturate,
     hue_error,
@@ -20,9 +18,9 @@ from tests._restore_synth import (
     lab,
     make_beach,
     make_faded_black_and_white,
+    make_faded_orange_glow,
     make_faded_sepia,
     make_natural,
-    make_sunset,
     mean_chroma,
     mean_hue,
     patch_mean_ab,
@@ -76,23 +74,19 @@ def _band_hue_and_chroma(img: np.ndarray, rows: slice, x0: int, width: int) -> t
     return hue_of(a, b), math.hypot(a, b)
 
 
-def test_sunset_keeps_hue_ordering_and_most_of_its_chroma() -> None:
-    sunset = make_sunset()
-    out = restore_colour(sunset, DPI)
-    top = slice(0, HEIGHT * 2 // 3)
-    before = [
-        _band_hue_and_chroma(sunset, top, i * SUNSET_BAND_WIDTH, SUNSET_BAND_WIDTH)
-        for i in range(len(SUNSET_BANDS))
-    ]
-    after = [
-        _band_hue_and_chroma(out, top, i * SUNSET_BAND_WIDTH, SUNSET_BAND_WIDTH)
-        for i in range(len(SUNSET_BANDS))
-    ]
-    assert np.argsort([h for h, _ in after]).tolist() == np.argsort([h for h, _ in before]).tolist()
-    for (hue_in, chroma_in), (hue_out, chroma_out) in zip(before, after, strict=True):
-        assert hue_error(hue_in, hue_out) <= SUNSET_HUE_TOLERANCE_DEG
-        assert chroma_out >= DOMINANT_MIN_CHROMA_KEPT * chroma_in
-    assert mean_chroma(out) >= DOMINANT_MIN_CHROMA_KEPT * mean_chroma(sunset)
+def test_single_hue_glow_keeps_its_hue_and_chroma() -> None:
+    glow = make_faded_orange_glow()
+    out = restore_colour(glow, DPI)
+    assert hue_error(mean_hue(glow), mean_hue(out)) <= SEPIA_MAX_HUE_SHIFT_DEG
+    assert mean_chroma(out) >= DOMINANT_MIN_CHROMA_KEPT * mean_chroma(glow)
+    assert l_contrast(out) > MIN_CONTRAST_RATIO * l_contrast(glow)
+
+
+def test_sepia_with_scan_noise_still_keeps_its_tone() -> None:
+    noisy = make_faded_sepia(height=900, width=1200, noise=2)
+    out = restore_colour(noisy, DPI)
+    assert hue_error(mean_hue(noisy), mean_hue(out)) <= SEPIA_MAX_HUE_SHIFT_DEG
+    assert mean_chroma(out) >= SEPIA_CHROMA_BAND[0] * mean_chroma(noisy)
 
 
 def test_beach_keeps_its_three_hue_families_and_chroma() -> None:

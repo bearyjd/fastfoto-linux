@@ -41,6 +41,7 @@ NATURAL_TAIL_PCT = 0.5
 NATURAL_LOW, NATURAL_HIGH = 8.0, 247.0  # 0.5% / 99.5% levels of every channel
 
 SEPIA_TONE = (1.0, 0.86, 0.66)  # per-channel multipliers of a grey ramp
+ORANGE_GLOW_TONE = (1.0, 0.5, 0.15)  # a strongly saturated single hue
 FADE_FLOOR, FADE_CEILING = 40.0, 200.0  # grey range of a faded monochrome print
 
 
@@ -70,11 +71,20 @@ def make_reference() -> np.ndarray:
     return img
 
 
-def fade_with_cast(img: np.ndarray, gammas: tuple[float, ...] = (1.0, 1.0, 1.0)) -> np.ndarray:
-    low = np.array(FADE_LOW, dtype=np.float32)
-    high = np.array(FADE_HIGH, dtype=np.float32)
+def fade_between(
+    img: np.ndarray,
+    low: tuple[float, ...],
+    high: tuple[float, ...],
+    gammas: tuple[float, ...] = (1.0, 1.0, 1.0),
+) -> np.ndarray:
+    """Per-channel fade: squeeze each channel into [low, high] (optionally after a tone curve)."""
+    lo, hi = np.array(low, dtype=np.float32), np.array(high, dtype=np.float32)
     tone = (img.astype(np.float32) / FULL_SCALE) ** np.array(gammas, dtype=np.float32)
-    return np.rint(low + tone * (high - low)).astype(np.uint8)
+    return np.rint(lo + tone * (hi - lo)).astype(np.uint8)
+
+
+def fade_with_cast(img: np.ndarray, gammas: tuple[float, ...] = (1.0, 1.0, 1.0)) -> np.ndarray:
+    return fade_between(img, FADE_LOW, FADE_HIGH, gammas)
 
 
 def _smooth_field(rng: np.random.Generator, shape: tuple[int, int], sigma: float) -> np.ndarray:
@@ -119,42 +129,35 @@ def grey_of(img: np.ndarray) -> np.ndarray:
     return img.astype(np.float32).mean(axis=2)
 
 
-def faded_monochrome(tone: tuple[float, float, float]) -> np.ndarray:
-    """Natural luminance squeezed into the faded range, then multiplied by a per-channel tone."""
-    luminance = grey_of(make_natural()) / FULL_SCALE
+def faded_monochrome(
+    tone: tuple[float, float, float],
+    height: int = HEIGHT,
+    width: int = WIDTH,
+    noise: int = 0,
+) -> np.ndarray:
+    """Natural luminance squeezed into the faded range, multiplied by a per-channel tone.
+
+    ``noise`` adds independent integer scan noise of +-noise levels to every value.
+    """
+    luminance = grey_of(make_natural(height, width)) / FULL_SCALE
     faded = FADE_FLOOR + luminance * (FADE_CEILING - FADE_FLOOR)
-    return np.clip(
-        np.rint(faded[..., None] * np.array(tone, dtype=np.float32)), 0, FULL_SCALE
-    ).astype(np.uint8)
+    img = faded[..., None] * np.array(tone, dtype=np.float32)
+    if noise:
+        rng = np.random.default_rng(SEED + 2)
+        img = img + rng.integers(-noise, noise + 1, img.shape)
+    return np.clip(np.rint(img), 0, FULL_SCALE).astype(np.uint8)
 
 
-def make_faded_sepia() -> np.ndarray:
-    return faded_monochrome(SEPIA_TONE)
+def make_faded_orange_glow() -> np.ndarray:
+    return faded_monochrome(ORANGE_GLOW_TONE)
+
+
+def make_faded_sepia(height: int = HEIGHT, width: int = WIDTH, noise: int = 0) -> np.ndarray:
+    return faded_monochrome(SEPIA_TONE, height, width, noise)
 
 
 def make_faded_black_and_white(noise: int = 0) -> np.ndarray:
-    img = faded_monochrome((1.0, 1.0, 1.0))
-    if noise:
-        rng = np.random.default_rng(SEED + 2)
-        jitter = rng.integers(-noise, noise + 1, img.shape, dtype=np.int16)
-        img = np.clip(img.astype(np.int16) + jitter, 0, FULL_SCALE).astype(np.uint8)
-    return img
-
-
-SUNSET_BANDS = ((170, 50, 30), (225, 120, 40), (250, 190, 70))  # red-orange to yellow-orange
-SUNSET_SILHOUETTE = (35, 18, 12)
-SUNSET_BAND_WIDTH = WIDTH // 3
-
-
-def make_sunset() -> np.ndarray:
-    """Dominant single hue family, no neutral anywhere (sky bands over a dark silhouette)."""
-    rng = np.random.default_rng(SEED + 3)
-    img = np.zeros((HEIGHT, WIDTH, 3), dtype=np.uint8)
-    for i, colour in enumerate(SUNSET_BANDS):
-        img[: HEIGHT * 2 // 3, i * SUNSET_BAND_WIDTH : (i + 1) * SUNSET_BAND_WIDTH] = colour
-    img[HEIGHT * 2 // 3 :] = SUNSET_SILHOUETTE
-    noise = rng.normal(0.0, 3.0, img.shape)
-    return np.clip(np.rint(img + noise), 0, FULL_SCALE).astype(np.uint8)
+    return faded_monochrome((1.0, 1.0, 1.0), noise=noise)
 
 
 BEACH_BANDS = (  # sky, sea, sand: three hue families, with white foam and dark rocks
@@ -178,22 +181,48 @@ def make_beach() -> np.ndarray:
     return np.clip(np.rint(img + noise), 0, FULL_SCALE).astype(np.uint8)
 
 
+# Strong casts for faded colour prints: (per-channel black level, per-channel white level).
+RED_CAST = ((70.0, 25.0, 35.0), (225.0, 150.0, 170.0))
+BLUE_VIOLET_CAST = ((45.0, 35.0, 75.0), (170.0, 160.0, 235.0))
+CAST_CARD_SCENE_ROWS = 160
+
+
+def make_cast_card(scene_chroma: float, scale: float = 1.0) -> np.ndarray:
+    """Neutral grey ramp (rows ``RAMP_ROWS``) above a natural scene of the given mean chroma.
+
+    ``scale`` darkens the whole card (a dark print). The ramp gives the cast a place to be read.
+    """
+    natural = make_natural(height=CAST_CARD_SCENE_ROWS, width=WIDTH)
+    scene = desaturate(natural, scene_chroma / mean_chroma(natural))
+    ramp_row = np.rint(np.linspace(0, FULL_SCALE, WIDTH)).astype(np.uint8)
+    ramp = np.broadcast_to(ramp_row[None, :, None], (RAMP_ROWS.stop, WIDTH, 3))
+    card = np.concatenate([ramp, scene], axis=0).astype(np.float32)
+    return np.rint(card * scale).astype(np.uint8)
+
+
+def ramp_cast(img: np.ndarray) -> float:
+    """Distance from neutral (mean a*, b*) of the grey ramp at the top of a cast card."""
+    ramp_lab = lab(img[RAMP_ROWS])
+    return math.hypot(float(ramp_lab[..., 1].mean()), float(ramp_lab[..., 2].mean()))
+
+
 NIGHT_BACKGROUND = (44, 46, 54)
 NIGHT_LIGHTS_FRACTION = 0.02
 NIGHT_LIGHT_LEVEL = 170  # street lights and windows: bright, but nothing is white
+NIGHT_UNLIT_BACKGROUND = (18, 20, 26)  # a night scene with no lights at all
 
 
-def make_night_scene() -> np.ndarray:
-    """Dark, slightly lifted blacks (p1 above 30), a few bright lights, no real white."""
+def make_night_scene(
+    lights: bool = True, background: tuple[int, int, int] = NIGHT_BACKGROUND
+) -> np.ndarray:
+    """A dark scene with lifted blacks and (optionally) a few bright lights, no real white."""
     rng = np.random.default_rng(SEED + 5)
     shape = (HEIGHT, WIDTH)
-    base = (
-        np.array(NIGHT_BACKGROUND, dtype=np.float32)
-        + 6.0 * _smooth_field(rng, shape, 30)[..., None]
-    )
+    base = np.array(background, dtype=np.float32) + 6.0 * _smooth_field(rng, shape, 30)[..., None]
     img = base + 3.0 * rng.normal(size=(*shape, 3))
-    lights = rng.random(shape) < NIGHT_LIGHTS_FRACTION
-    img[lights] = NIGHT_LIGHT_LEVEL + rng.integers(0, 30, (int(lights.sum()), 1))
+    if lights:
+        lit = rng.random(shape) < NIGHT_LIGHTS_FRACTION
+        img[lit] = NIGHT_LIGHT_LEVEL + rng.integers(0, 30, (int(lit.sum()), 1))
     return np.clip(np.rint(img), 0, FULL_SCALE).astype(np.uint8)
 
 

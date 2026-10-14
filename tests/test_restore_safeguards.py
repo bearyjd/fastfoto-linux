@@ -7,6 +7,7 @@ from fastfoto_linux.enhance.restore import DEFAULT, RestoreSettings, measure_cas
 from tests._restore_synth import (
     DPI,
     FULL_SCALE,
+    NIGHT_UNLIT_BACKGROUND,
     RAMP_ROWS,
     SEED,
     clipped_fractions,
@@ -67,15 +68,15 @@ def test_resolution_does_not_change_the_result() -> None:
 # --- scanner frame ------------------------------------------------------------------------
 
 
-def _with_scanner_frame(img: np.ndarray) -> np.ndarray:
+def _with_scanner_frame(img: np.ndarray, black: int, white: int) -> np.ndarray:
     pad = ((FRAME_PX, FRAME_PX), (FRAME_PX, FRAME_PX), (0, 0))
-    black = np.pad(img, pad, constant_values=0)
-    return np.pad(black, pad, constant_values=FULL_SCALE)
+    return np.pad(np.pad(img, pad, constant_values=black), pad, constant_values=white)
 
 
-def test_a_pure_black_and_white_frame_does_not_pin_the_percentiles() -> None:
+@pytest.mark.parametrize(("black", "white"), [(0, 255), (1, 254), (2, 253)])
+def test_a_black_and_white_frame_does_not_pin_the_percentiles(black: int, white: int) -> None:
     faded = fade_with_cast(make_reference())
-    framed = _with_scanner_frame(faded)
+    framed = _with_scanner_frame(faded, black, white)  # JPEG scans never hold exact 0 / 255
     out = restore_colour(framed, DPI)
     inside = out[2 * FRAME_PX : -2 * FRAME_PX, 2 * FRAME_PX : -2 * FRAME_PX]
     before = measure_cast(faded[RAMP_ROWS])
@@ -103,6 +104,12 @@ def test_a_dark_night_scene_is_not_crushed() -> None:
     p1_before = float(np.percentile(before, 1))
     assert p1_before > NIGHT_MIN_P1
     assert float(np.percentile(after, 1)) >= NIGHT_MIN_P1_KEPT * p1_before
+    assert abs(float(after.mean()) - float(before.mean())) <= NIGHT_MAX_MEAN_SHIFT
+
+
+def test_an_unlit_night_scene_is_not_brightened_much() -> None:
+    unlit = make_night_scene(lights=False, background=NIGHT_UNLIT_BACKGROUND)
+    before, after = grey_of(unlit), grey_of(restore_colour(unlit, DPI))
     assert abs(float(after.mean()) - float(before.mean())) <= NIGHT_MAX_MEAN_SHIFT
 
 

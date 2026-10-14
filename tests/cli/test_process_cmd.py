@@ -1,0 +1,115 @@
+"""``ffscan process``: existing raw pages in, album files out."""
+
+from pathlib import Path
+
+from fastfoto_linux.cli import main
+from tests._output_helpers import names
+from tests.cli.fakes import write_dummy_page
+from tests.process_helpers import (
+    BLANK,
+    DPI,
+    original_date,
+    page_name,
+    plain_sheet,
+    write_front_pages,
+    write_sheets,
+    written_sheet,
+)
+from tests.synth import make_duplex_sheet
+
+FAST = ["--no-orient", "--no-restore"]
+NEAR_WHITE = (245, 245, 245)
+
+
+def process(out: Path, pages, *extra: str) -> int:
+    return main(["process", *map(str, pages), "--out", str(out), *FAST, *extra])
+
+
+def test_pages_are_sorted_by_number_not_alphabetically(tmp_path, out, spy) -> None:
+    files = {n: write_dummy_page(tmp_path / "raw", f"page-{n}.png") for n in (10, 2, 1)}
+    assert process(out, [files[10], files[2], files[1]]) == 0
+    ((pages, _),) = spy
+    assert [p.name for p in pages] == ["page-1.png", "page-2.png", "page-10.png"]
+
+
+def test_sheets_are_processed_and_summarised(tmp_path, out, capsys) -> None:
+    pages = write_sheets(tmp_path / "raw", [plain_sheet(0), written_sheet(1)])
+    assert process(out, pages, "--date", "1975-06-14") == 0
+    assert names(out) == ["FastFoto_0001.jpg", "FastFoto_0002.jpg", "FastFoto_0002_b.jpg"]
+    assert original_date(out / "FastFoto_0001.jpg") == "1975:06:14 00:00:00"
+    stdout = capsys.readouterr().out
+    assert "photos written: 2" in stdout
+    assert "backs kept: 1" in stdout
+    assert "enhanced copies: 0" in stdout
+
+
+def test_the_default_chain_orients_and_restores_into_an_enhanced_copy(
+    tmp_path, out, capsys
+) -> None:
+    pages = write_sheets(tmp_path / "raw", [plain_sheet()])
+    assert main(["process", *map(str, pages), "--out", str(out)]) == 0
+    assert names(out) == ["FastFoto_0001.jpg", "FastFoto_0001_a.jpg"]
+    assert "enhanced copies: 1" in capsys.readouterr().out
+
+
+def test_face_up_loading_reads_the_first_page_of_a_sheet_as_the_front(tmp_path, out) -> None:
+    pages = write_sheets(tmp_path / "raw", [plain_sheet()], front_first=True)
+    assert process(out, pages, "--feed", "face-up", "--backs", "always") == 0
+    assert names(out) == ["FastFoto_0001.jpg", "FastFoto_0001_b.jpg"]
+
+
+def test_simplex_pages_are_all_fronts(tmp_path, out) -> None:
+    pages = write_front_pages(tmp_path / "raw", 3)
+    assert process(out, pages, "--simplex") == 0
+    assert names(out) == ["FastFoto_0001.jpg", "FastFoto_0002.jpg", "FastFoto_0003.jpg"]
+
+
+def test_a_bad_sheet_is_exit_1_and_lists_its_pages_while_the_rest_is_written(
+    tmp_path, out, capsys
+) -> None:
+    pages = write_sheets(tmp_path / "raw", [plain_sheet(0), plain_sheet(1), plain_sheet(2)])
+    pages[2].write_bytes(b"not a png")
+    assert process(out, pages) == 1
+    assert names(out) == ["FastFoto_0001.jpg", "FastFoto_0002.jpg"]
+    err = capsys.readouterr().err
+    assert page_name(3) in err
+    assert page_name(4) in err
+    assert "Traceback" not in err
+
+
+def test_uncertain_sheets_are_listed_in_the_summary(tmp_path, out, capsys) -> None:
+    tie = make_duplex_sheet(dpi=DPI, front={"photo_rgb": NEAR_WHITE}, back=BLANK)
+    pages = write_sheets(tmp_path / "raw", [plain_sheet(), tie])
+    assert process(out, pages, "--backs", "never") == 0
+    stdout = capsys.readouterr().out
+    assert "uncertain" in stdout
+    assert page_name(3) in stdout
+    assert page_name(1) not in stdout
+    assert "FastFoto_0002_b.jpg" in names(out)
+
+
+def test_a_missing_page_is_exit_2_and_nothing_runs(tmp_path, out, spy, capsys) -> None:
+    present = write_dummy_page(tmp_path / "raw", "page-1.png")
+    assert process(out, [present, tmp_path / "raw" / "page-2.png"]) == 2
+    assert spy == []
+    assert "page-2.png" in capsys.readouterr().err
+
+
+def test_a_folder_is_not_a_page(tmp_path, out, spy) -> None:
+    assert process(out, [tmp_path]) == 2
+    assert spy == []
+
+
+def test_pages_are_required(out, capsys) -> None:
+    assert main(["process", "--out", str(out)]) == 2
+    assert "usage" in capsys.readouterr().err.lower()
+
+
+def test_a_missing_output_folder_is_exit_2_and_mkdir_creates_it(tmp_path, spy, capsys) -> None:
+    page = write_dummy_page(tmp_path / "raw", "page-1.png")
+    target = tmp_path / "a" / "b"
+    assert process(target, [page]) == 2
+    assert "--mkdir" in capsys.readouterr().err
+    assert spy == []
+    assert process(target, [page], "--mkdir") == 0
+    assert target.is_dir()

@@ -31,3 +31,6 @@ htmlcov/
 *.jpeg
 .env*
 .claude/
+
+# Public-domain NASA test portrait (see tests/fixtures/README.md)
+!tests/fixtures/astronaut.jpg

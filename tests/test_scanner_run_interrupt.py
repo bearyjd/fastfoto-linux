@@ -37,10 +37,12 @@ def test_an_interrupt_right_after_scanimage_started_still_stops_it(tmp_path: Pat
     marker = tmp_path / "sigterm-marker"
     env = fake_env(install(tmp_path / "bin"), pages=1, hang=True, sigterm_marker=str(marker))
     procs: list[subprocess.Popen[bytes]] = []
+    pipes: list[object] = []  # the real stderr pipes: closing them would kill the fake
 
     def popen(argv: tuple[str, ...], **kwargs: Any) -> "subprocess.Popen[bytes]":
         proc = subprocess.Popen(argv, **kwargs)
         procs.append(proc)
+        pipes.append(proc.stderr)
         proc.stderr = InterruptingStderr(job.output_dir / "page-0001.png")  # type: ignore[assignment]
         return proc
 

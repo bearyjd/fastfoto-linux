@@ -71,6 +71,7 @@ def test_every_front_has_an_enhanced_copy_or_is_reported_unchanged(album) -> Non
     assert len(enhanced) == int(match.group(1))
     assert set(enhanced) <= set(_numbers(album.out, ORIGINAL))
     assert len(enhanced) + unchanged == FRONTS
+    assert enhanced, "restore changed none of the photos"
 
 
 def test_the_album_holds_exactly_the_expected_files(album) -> None:

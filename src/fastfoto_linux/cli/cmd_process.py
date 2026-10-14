@@ -50,4 +50,4 @@ def run(args: argparse.Namespace) -> int:
     prepare_output_root(args)
     result = process_pages(pages, settings)
     print_summary(result)
-    return EXIT_PROCESSING_ERROR if result.failed else EXIT_OK
+    return EXIT_OK if result.ok else EXIT_PROCESSING_ERROR

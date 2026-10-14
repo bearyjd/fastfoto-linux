@@ -46,13 +46,27 @@ def host(text: str) -> str:
         raise argparse.ArgumentTypeError(str(error)) from error
 
 
-def common_parent() -> argparse.ArgumentParser:
-    """``-v`` and ``--debug``, shared by every command through ``parents=``."""
-    parent = argparse.ArgumentParser(add_help=False)
-    parent.add_argument("-v", "--verbose", action="store_true", help="log progress to stderr")
-    parent.add_argument(
-        "--debug", action="store_true", help="log in detail and show tracebacks on errors"
+def add_log_options(parser: argparse.ArgumentParser, *, default: bool | str) -> None:
+    """``-v`` and ``--debug``; ``default`` is False, or SUPPRESS where another parser has them."""
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", default=default, help="log progress to stderr"
     )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        default=default,
+        help="log in detail and show tracebacks on errors",
+    )
+
+
+def common_parent() -> argparse.ArgumentParser:
+    """``-v`` and ``--debug`` after the command, shared by every command through ``parents=``.
+
+    They are also accepted before the command. A subparser's default would overwrite a value
+    given there, so these copies set nothing unless the option is actually present.
+    """
+    parent = argparse.ArgumentParser(add_help=False)
+    add_log_options(parent, default=argparse.SUPPRESS)
     return parent
 
 

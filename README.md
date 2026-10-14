@@ -34,12 +34,18 @@ uv run ffscan process page-*.png --out ~/Scans --album "Family Trips" --feed fac
 - `process` handles raw pages scanned earlier, in natural filename order.
 - Per photo it writes `Album_0001.jpg` (the original, turned upright by its faces), an enhanced
   copy `Album_0001_a.jpg` (colour restoration) and `Album_0001_b.jpg` when the back has
-  handwriting (`--backs auto|always|never`). `--no-orient`, `--no-restore` and `--enhanced-only`
-  switch parts off; `--redeye` adds red-eye removal to the enhanced copy and is off by default
+  handwriting (`--backs auto|always|never`; with `auto` the summary lists the backs it dropped).
+  An enhanced copy that would be identical to the original is not written (the summary says
+  `enhanced: N (M unchanged)`). If the orienter or an enhancer fails, the sheet keeps its
+  original, loses only the `_a` copy and the exit code is 1. `--no-orient`, `--no-restore` and
+  `--enhanced-only` switch parts off; `--redeye` adds red-eye removal to the enhanced copy and is off by default
   because roughly one fix in six is visibly wrong.
 - `--out` must exist unless `--mkdir` is given. A sheet that cannot be processed never stops the
-  others: it is listed at the end and the exit code is 1. Its raw pages are then kept in
-  `DIR/.raw/<UTC time>/` (as are all of them with `--keep-raw`), so nothing needs rescanning.
+  others: it is listed at the end and the exit code is 1. `scan` keeps the raw pages in
+  `DIR/.raw/<UTC time>/` (so nothing needs rescanning) when anything went wrong (a failed or
+  degraded sheet, a scanner error, Ctrl-C, SIGTERM or SIGHUP), when a back was dropped for lack
+  of writing, and always with `--keep-raw`; `--discard-raw` deletes them after an otherwise
+  clean run even if a back was dropped.
 - Exit codes: 0 ok, 1 processing error, 2 usage, 3 scanner not found or shim missing, 4 no
   documents in the feeder. `-v` logs progress, `--debug` adds tracebacks.
 

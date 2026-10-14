@@ -18,7 +18,7 @@ from fastfoto_linux.cli.options import (
 )
 from fastfoto_linux.cli.rawdir import create_raw_dir, settle_raw_dir
 from fastfoto_linux.cli.summary import print_summary
-from fastfoto_linux.pipeline.process import ProcessSettings, process_pages
+from fastfoto_linux.pipeline.process import ProcessResult, ProcessSettings, process_pages
 from fastfoto_linux.scanner import (
     ScanError,
     ScanJob,
@@ -66,24 +66,47 @@ def run(args: argparse.Namespace) -> int:
 def _scan_into(
     root: Path, target: ScanTarget, settings: ProcessSettings, args: argparse.Namespace
 ) -> int:
-    """Scan into a raw folder, process it, and keep the raw pages if anything went wrong."""
+    """Scan into a raw folder, process it, and delete the raw pages only if nothing was lost."""
     raw = create_raw_dir(root, keep=args.keep_raw)
-    clean = False
+    result: ProcessResult | None = None
     scan_error: ScanError | None = None
+    exit_code = EXIT_PROCESSING_ERROR
     try:
         pages, scan_error = _scan(raw, target, simplex=args.simplex, dpi=args.dpi)
         result = process_pages(pages, settings)
-        print_summary(result)
-        clean = not result.failed
-    finally:
-        kept = settle_raw_dir(raw, root, keep=args.keep_raw or not clean)
-        if kept is not None and not (args.keep_raw and clean):
-            print(f"ffscan: raw pages kept in {kept}", file=sys.stderr)
-    if kept is not None and clean:
-        print(f"raw pages kept in: {kept}")
+        print_summary(result, can_keep_raw=True)
+        exit_code = EXIT_OK if result.ok else EXIT_PROCESSING_ERROR
+    finally:  # also for Ctrl-C and a crash: a scanned page cannot be had again without a rescan
+        calm = scan_error is None and result is not None and result.ok
+        kept = settle_raw_dir(raw, root, keep=_keep_raw(args, result, scan_error))
+        _report_kept(kept, calm=calm)
     if scan_error is not None:
         raise scan_error
-    return EXIT_OK if clean else EXIT_PROCESSING_ERROR
+    return exit_code
+
+
+def _keep_raw(
+    args: argparse.Namespace, result: ProcessResult | None, scan_error: ScanError | None
+) -> bool:
+    """Whether the raw pages stay: always unless the run was clean (no ``result`` means it ended
+    early, by an interrupt or an error).
+
+    A clean run that dropped a back for lack of writing keeps them too, so that a back with
+    faint writing is never lost for good; ``--discard-raw`` opts out of that one reason.
+    """
+    if args.keep_raw or scan_error is not None or result is None or not result.ok:
+        return True
+    return result.backs_dropped > 0 and not args.discard_raw
+
+
+def _report_kept(kept: Path | None, *, calm: bool) -> None:
+    """Say where the raw pages are: on stdout when it was planned, on stderr when it was not."""
+    if kept is None:
+        return
+    if calm:
+        print(f"raw pages kept in: {kept}")
+    else:
+        print(f"ffscan: raw pages kept in {kept}", file=sys.stderr)
 
 
 def _scan(

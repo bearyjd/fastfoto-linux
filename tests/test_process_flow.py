@@ -12,6 +12,7 @@ from tests.process_helpers import (
     DPI,
     LOGGER,
     half_bright_front_sheet,
+    invert,
     jpeg_mean,
     jpeg_names,
     jpeg_size,
@@ -177,7 +178,7 @@ def test_no_enhanced_copy_without_enhancers(tmp_path) -> None:
 def test_enhanced_only_skips_the_plain_original(tmp_path) -> None:
     raw, out = workspace(tmp_path)
     pages = write_sheets(raw, [plain_sheet()])
-    settings = settings_for(out, keep_original=False, enhancers=(lambda img, dpi: img,))
+    settings = settings_for(out, keep_original=False, enhancers=(invert,))
     (written,) = process_pages(pages, settings).written
     assert written.original is None
     assert jpeg_names(out) == ["FastFoto_0001_a.jpg"]

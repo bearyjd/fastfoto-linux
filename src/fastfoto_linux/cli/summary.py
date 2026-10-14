@@ -10,20 +10,39 @@ def _label(issue: SheetIssue) -> str:
     return f"{sheet} ({', '.join(issue.pages)})" if issue.pages else sheet
 
 
-def print_summary(result: ProcessResult) -> None:
-    """Counts and folders on stdout; sheets that were lost on stderr.
+def _enhanced_line(result: ProcessResult) -> str:
+    line = f"enhanced: {result.enhanced}"
+    return f"{line} ({result.unchanged} unchanged)" if result.unchanged else line
 
-    The reason a sheet failed was logged as it happened, so the summary only names the sheets.
+
+def _print_dropped(result: ProcessResult, *, can_keep_raw: bool) -> None:
+    how = "--backs always or --keep-raw" if can_keep_raw else "--backs always"
+    print(f"backs dropped: {result.backs_dropped} (no writing detected; use {how} to keep them)")
+    print(f"  {', '.join(result.dropped_backs)}")
+
+
+def print_summary(result: ProcessResult, *, can_keep_raw: bool = False) -> None:
+    """Counts and folders on stdout; sheets that need attention below them.
+
+    Sheets that need a look (``uncertain``) go to stdout with their reason; degraded and failed
+    sheets go to stderr. ``can_keep_raw`` says whether the user could have asked for the raw
+    pages (``ffscan scan``), which changes the advice about dropped backs.
     """
     print(f"photos written: {result.photos}")
     print(f"backs kept: {result.backs_kept}")
-    print(f"enhanced copies: {result.enhanced}")
+    if result.dropped_backs:
+        _print_dropped(result, can_keep_raw=can_keep_raw)
+    print(_enhanced_line(result))
     for folder in sorted({str(files.directory) for files in result.written}):
         print(f"output: {folder}")
     if result.uncertain:
-        print("front and back could not be told apart (the back was kept, please check):")
+        print("please check these sheets:")
         for issue in result.uncertain:
-            print(f"  {_label(issue)}")
+            print(f"  {_label(issue)}: {issue.reason}")
+    if result.degraded:
+        print(f"{len(result.degraded)} sheet(s) written without an enhanced copy:", file=sys.stderr)
+        for issue in result.degraded:
+            print(f"  {_label(issue)}: {issue.reason}", file=sys.stderr)
     if result.failed:
         print(f"{len(result.failed)} sheet(s) could not be processed:", file=sys.stderr)
         for issue in result.failed:

@@ -82,10 +82,14 @@ def run_scan(  # noqa: PLR0913
         raise ScanCancelledError("scan cancelled before it started")
     _prepare_output_dir(job)
     proc = _start(popen, build_argv(job, scanimage), env)
-    deadline = None if timeout_s is None else time.monotonic() + timeout_s
-    stderr_fd = cast("IO[bytes]", proc.stderr).fileno()  # stderr=PIPE was requested
-    with proc, StderrMonitor(job, on_progress, stderr_fd) as monitor:
-        outcome = _supervise(proc, monitor, deadline, cancel)
+    try:
+        deadline = None if timeout_s is None else time.monotonic() + timeout_s
+        stderr_fd = cast("IO[bytes]", proc.stderr).fileno()  # stderr=PIPE was requested
+        with proc, StderrMonitor(job, on_progress, stderr_fd) as monitor:
+            outcome = _supervise(proc, monitor, deadline, cancel)
+    except BaseException:  # incl. an interrupt that lands before the supervision starts
+        _stop(proc)  # scanimage runs in its own session: nothing else would stop it
+        raise
     pages = _find_pages(job)
     if outcome is _Outcome.CANCELLED:
         raise ScanCancelledError(_with_output("scan cancelled", monitor.tail_text), pages=pages)

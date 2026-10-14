@@ -3,9 +3,12 @@
 import argparse
 import contextlib
 import logging
+import signal
 import sys
+import threading
 import traceback
-from collections.abc import Iterator, Sequence
+from collections.abc import Generator, Sequence
+from types import FrameType
 
 from fastfoto_linux.cli import cmd_devices, cmd_process, cmd_scan
 from fastfoto_linux.cli.errors import (
@@ -16,11 +19,13 @@ from fastfoto_linux.cli.errors import (
     EXIT_USAGE,
     CliError,
 )
+from fastfoto_linux.cli.options import add_log_options
 from fastfoto_linux.scanner import NoDocumentsError, ScannerNotFoundError, ShimMissingError
 
 PROG = "ffscan"
 LOG_FORMAT = "%(levelname)s: %(message)s"
 PACKAGE_LOGGER = "fastfoto_linux"
+HANGUP_SIGNALS = (signal.SIGTERM, signal.SIGHUP)  # "stop now" / "the terminal closed"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -28,6 +33,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog=PROG,
         description="Developer command line for the Epson FastFoto FF-680W on Linux.",
     )
+    add_log_options(parser, default=False)
     commands = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
     for module in (cmd_devices, cmd_scan, cmd_process):
         module.add_parser(commands)
@@ -38,14 +44,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Run ``ffscan`` and return its exit code.
 
     0 ok, 1 processing error, 2 usage, 3 scanner not found or USB shim missing, 4 no documents
-    in the feeder, 130 interrupted. User-facing errors are one line on stderr; ``--debug`` adds
-    the traceback.
+    in the feeder, 130 interrupted (Ctrl-C, SIGTERM or SIGHUP). User-facing errors are one line
+    on stderr; ``--debug`` adds the traceback.
     """
     try:
         args = build_parser().parse_args(argv)
     except SystemExit as exit_:  # argparse: --help (0) or a usage error (2)
-        return exit_.code if isinstance(exit_.code, int) else EXIT_USAGE
-    with _logging(verbose=args.verbose, debug=args.debug):
+        code = exit_.code
+        return code if isinstance(code, int) else EXIT_USAGE
+    with _signals_as_interrupt(), _logging(verbose=args.verbose, debug=args.debug):
         try:
             return args.handler(args)
         except KeyboardInterrupt:
@@ -73,8 +80,32 @@ def _report(error: Exception, *, debug: bool) -> int:
     return exit_code_for(error)
 
 
+def _raise_interrupt(signum: int, frame: FrameType | None) -> None:
+    raise KeyboardInterrupt
+
+
 @contextlib.contextmanager
-def _logging(*, verbose: bool, debug: bool) -> Iterator[None]:
+def _signals_as_interrupt() -> Generator[None]:
+    """Make SIGTERM and SIGHUP act like Ctrl-C for the length of one command.
+
+    Without it, closing the terminal kills ``ffscan`` at once: scanimage, which runs in its own
+    session, keeps scanning into a raw folder nobody is told about. As a KeyboardInterrupt the
+    signal stops scanimage and keeps the raw pages. The previous handlers come back afterwards;
+    outside the main thread (an embedding program) signals are left alone.
+    """
+    if threading.current_thread() is not threading.main_thread():
+        yield
+        return
+    previous = {signum: signal.signal(signum, _raise_interrupt) for signum in HANGUP_SIGNALS}
+    try:
+        yield
+    finally:
+        for signum, handler in previous.items():
+            signal.signal(signum, handler if handler is not None else signal.SIG_DFL)
+
+
+@contextlib.contextmanager
+def _logging(*, verbose: bool, debug: bool) -> Generator[None]:
     """Log the package's messages to the current stderr for the length of one command.
 
     A handler on the package logger, not ``basicConfig``: the root logger stays untouched, and

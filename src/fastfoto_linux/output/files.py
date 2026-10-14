@@ -76,7 +76,7 @@ def write_new_files(items: Sequence[tuple[Path, bytes]]) -> None:
     except BaseException:
         _rollback(staged)
         raise
-    _sync_folders({entry.target.parent for entry in staged})
+    sync_folders({entry.target.parent for entry in staged})
 
 
 def _file_id(info: os.stat_result) -> _FileId:
@@ -159,7 +159,7 @@ def _discard(paths: Iterable[Path]) -> None:
             logger.warning("could not remove %s while cleaning up", path, exc_info=True)
 
 
-def _sync_folders(folders: Iterable[Path]) -> None:
+def sync_folders(folders: Iterable[Path]) -> None:
     """Flush folder entries so the new names survive a power cut.
 
     The files are already complete and in place, so a folder that cannot be synced because the

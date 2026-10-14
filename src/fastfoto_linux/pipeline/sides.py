@@ -309,6 +309,7 @@ def _generate(
         if duplex and 2 * index + 1 < len(pages) and not photo.side_uncertain:
             recent.append(photo.source_pages[0] == pages[2 * index])
         yield photo
+        del photo  # do not hold this photo's images while the next sheet is loaded
 
 
 def iter_photos(  # noqa: PLR0913

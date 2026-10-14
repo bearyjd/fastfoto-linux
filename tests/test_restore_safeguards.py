@@ -22,6 +22,7 @@ from tests._restore_synth import (
 )
 
 HIGH_DPI = 600
+MAX_CHANNEL_GAIN_RATIO = 1.3
 CLIP_PCT = 0.5
 CLIP_TOLERANCE = 0.001  # fraction of pixels: quantisation of a continuous tail
 BALANCED_MAX_MEAN_CHANGE = 3.5
@@ -75,10 +76,13 @@ def _with_scanner_frame(img: np.ndarray, black: int, white: int) -> np.ndarray:
     return np.pad(np.pad(img, pad, constant_values=black), pad, constant_values=white)
 
 
-@pytest.mark.parametrize(("black", "white"), [(0, 255), (1, 254), (2, 253)])
+# Real scans: JPEG never holds exact 0 / 255, and a ScanSnap white margin is about 250-252.
+@pytest.mark.parametrize(
+    ("black", "white"), [(0, 255), (1, 254), (2, 253), (5, 252), (5, 250), (6, 248)]
+)
 def test_a_black_and_white_frame_does_not_pin_the_percentiles(black: int, white: int) -> None:
     faded = fade_with_cast(make_reference())
-    framed = _with_scanner_frame(faded, black, white)  # JPEG scans never hold exact 0 / 255
+    framed = _with_scanner_frame(faded, black, white)
     out = restore_colour(framed, DPI)
     inside = out[2 * FRAME_PX : -2 * FRAME_PX, 2 * FRAME_PX : -2 * FRAME_PX]
     before = measure_cast(faded[RAMP_ROWS])
@@ -145,11 +149,24 @@ def test_relative_gain_between_channels_is_bounded() -> None:
     img = make_reference()
     img[..., 0] = np.rint(100 + img[..., 0] / 255.0 * 40).astype(np.uint8)  # red: 40 levels
     img[..., 1] = np.rint(30 + img[..., 1] / 255.0 * 200).astype(np.uint8)  # green: 200 levels
-    span_before = int(img[..., 0].max()) - int(img[..., 0].min())
     out = restore_colour(img, DPI, RestoreSettings(saturation_gain=1.0))
-    span_after = int(out[..., 0].max()) - int(out[..., 0].min())
-    # balance (<= max_gain) times the common move (<= max_gain)
-    assert span_after <= DEFAULT.max_gain**2 * span_before + 2
+
+    def gain(channel: int) -> float:
+        before = int(img[..., channel].max()) - int(img[..., channel].min())
+        return (int(out[..., channel].max()) - int(out[..., channel].min())) / before
+
+    assert gain(0) / gain(1) <= MAX_CHANNEL_GAIN_RATIO + 0.05
+
+
+def test_bright_pixels_inside_the_photo_are_not_mistaken_for_a_frame() -> None:
+    faded = fade_with_cast(make_reference())
+    faded[100:130, 150:200] = FULL_SCALE  # a specular highlight, not touching any edge
+    out = restore_colour(faded, DPI)
+    assert np.array_equal(out[100:130, 150:200], faded[100:130, 150:200])
+    inside = out[:, :150]  # the rest is still corrected
+    assert np.hypot(*measure_cast(inside[RAMP_ROWS])) <= FRAME_CAST_REDUCTION * np.hypot(
+        *measure_cast(faded[:, :150][RAMP_ROWS])
+    )
 
 
 def test_default_gain_cap_is_conservative() -> None:

@@ -7,6 +7,14 @@ import numpy as np
 import pytest
 
 from fastfoto_linux.enhance.restore import RestoreSettings, measure_cast, restore_colour
+from tests._restore_scenes import (
+    make_dominant_hue,
+    make_near_white_page,
+    make_sepia_with_ink,
+    make_tinted_black_and_white,
+    paper_chroma,
+    paper_level,
+)
 from tests._restore_synth import (
     BEACH_BANDS,
     DPI,
@@ -29,11 +37,14 @@ from tests._restore_synth import (
 )
 
 MIN_CONTRAST_RATIO = 1.3
-SEPIA_CHROMA_BAND = (0.6, 2.5)  # tone kept: neither stripped nor wildly exaggerated
-SEPIA_MAX_HUE_SHIFT_DEG = 15.0
+TONE_CHROMA_BAND = (0.85, 1.15)  # a tone is kept as it is: not stripped, not amplified
+TONE_MAX_HUE_SHIFT_DEG = 15.0
 BLACK_AND_WHITE_MAX_CHROMA = 2.0
 DOMINANT_MIN_CHROMA_KEPT = 0.8
-SUNSET_HUE_TOLERANCE_DEG = 10.0
+SCENE_MIN_CHROMA_KEPT = 0.5  # a one-hue scene keeps at least half of its colour
+TINT_MAX_GROWTH = 1.1
+PAPER_MAX_CHANGE = 1.0  # levels
+INK_FRACTION = 0.005
 BEACH_HUE_TOLERANCE_DEG = 15.0
 BEACH_BAND_ROWS = HEIGHT // 4
 # Median mean-LAB-chroma seen in practice: ScanSnap prints about 10.6, Epson `_a` about 13.8.
@@ -49,9 +60,9 @@ def test_sepia_keeps_its_tone_while_contrast_is_restored() -> None:
     after_a, after_b = measure_cast(out)
     assert math.copysign(1, after_a) == math.copysign(1, before_a)  # a*/b* keep their sign
     assert math.copysign(1, after_b) == math.copysign(1, before_b)
-    low, high = SEPIA_CHROMA_BAND
+    low, high = TONE_CHROMA_BAND
     assert low * mean_chroma(sepia) <= mean_chroma(out) <= high * mean_chroma(sepia)
-    assert hue_error(mean_hue(sepia), mean_hue(out)) <= SEPIA_MAX_HUE_SHIFT_DEG
+    assert hue_error(mean_hue(sepia), mean_hue(out)) <= TONE_MAX_HUE_SHIFT_DEG
     assert l_contrast(out) > MIN_CONTRAST_RATIO * l_contrast(sepia)
 
 
@@ -75,19 +86,52 @@ def _band_hue_and_chroma(img: np.ndarray, rows: slice, x0: int, width: int) -> t
     return hue_of(a, b), math.hypot(a, b)
 
 
+def _assert_tone_kept(before: np.ndarray, after: np.ndarray) -> None:
+    low, high = TONE_CHROMA_BAND
+    assert low * mean_chroma(before) <= mean_chroma(after) <= high * mean_chroma(before)
+    assert hue_error(mean_hue(before), mean_hue(after)) <= TONE_MAX_HUE_SHIFT_DEG
+
+
 def test_single_hue_glow_keeps_its_hue_and_chroma() -> None:
     glow = make_faded_orange_glow()
     out = restore_colour(glow, DPI)
-    assert hue_error(mean_hue(glow), mean_hue(out)) <= SEPIA_MAX_HUE_SHIFT_DEG
-    assert mean_chroma(out) >= DOMINANT_MIN_CHROMA_KEPT * mean_chroma(glow)
+    _assert_tone_kept(glow, out)
     assert l_contrast(out) > MIN_CONTRAST_RATIO * l_contrast(glow)
 
 
 def test_sepia_with_scan_noise_still_keeps_its_tone() -> None:
     noisy = make_faded_sepia(height=900, width=1200, noise=2)
-    out = restore_colour(noisy, DPI)
-    assert hue_error(mean_hue(noisy), mean_hue(out)) <= SEPIA_MAX_HUE_SHIFT_DEG
-    assert mean_chroma(out) >= SEPIA_CHROMA_BAND[0] * mean_chroma(noisy)
+    _assert_tone_kept(noisy, restore_colour(noisy, DPI))
+
+
+def test_sepia_with_a_little_coloured_ink_is_still_a_tone() -> None:
+    inked = make_sepia_with_ink(INK_FRACTION)
+    out = restore_colour(inked, DPI)
+    _assert_tone_kept(inked, out)
+    assert l_contrast(out) > MIN_CONTRAST_RATIO * l_contrast(inked)
+
+
+@pytest.mark.parametrize("tint", [(6.0, 0.0, -5.0), (8.0, 3.0, -8.0), (-4.0, 0.0, 5.0)])
+def test_black_and_white_on_tinted_paper_does_not_amplify_the_tint(
+    tint: tuple[float, float, float],
+) -> None:
+    print_ = make_tinted_black_and_white(tint)
+    out = restore_colour(print_, DPI)
+    assert paper_chroma(out) <= TINT_MAX_GROWTH * paper_chroma(print_)
+    assert l_contrast(out) > MIN_CONTRAST_RATIO * l_contrast(print_)
+
+
+def test_near_white_page_keeps_its_paper_level() -> None:
+    page = make_near_white_page()
+    out = restore_colour(page, DPI)
+    assert abs(paper_level(out) - paper_level(page)) <= PAPER_MAX_CHANGE
+
+
+@pytest.mark.parametrize("kind", ["lawn", "skin", "sea"])
+def test_one_hue_scene_keeps_at_least_half_of_its_colour(kind: str) -> None:
+    scene = make_dominant_hue(kind)
+    out = restore_colour(scene, DPI)
+    assert mean_chroma(out) >= SCENE_MIN_CHROMA_KEPT * mean_chroma(scene)
 
 
 def test_beach_keeps_its_three_hue_families_and_chroma() -> None:

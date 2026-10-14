@@ -45,3 +45,19 @@ def test_dark_faded_print_with_a_cast_is_de_cast(
     faded = fade_between(make_cast_card(scene_chroma, scale), *cast)
     assert ramp_cast(faded) > MIN_CAST_BEFORE
     assert ramp_cast(restore_colour(faded, DPI)) <= CAST_REDUCTION * ramp_cast(faded)
+
+
+MUTED_CHROMAS = (1.0, 2.0, 3.0, 4.0, 5.0)
+MAX_CAST_GROWTH = 1.1
+
+
+@pytest.mark.parametrize("scale", [1.0, 0.7, 0.5])
+@pytest.mark.parametrize("scene_chroma", MUTED_CHROMAS)
+@pytest.mark.parametrize("cast", CASTS.values(), ids=CASTS.keys())
+def test_a_cast_on_a_nearly_colourless_scene_is_never_made_worse(
+    cast: tuple[tuple[float, ...], tuple[float, ...]], scene_chroma: float, scale: float
+) -> None:
+    """Such a print is indistinguishable from a toned one: it may be kept, but never amplified."""
+    faded = fade_between(make_cast_card(scene_chroma, scale), *cast)
+    assert ramp_cast(faded) > MIN_CAST_BEFORE
+    assert ramp_cast(restore_colour(faded, DPI)) <= MAX_CAST_GROWTH * ramp_cast(faded)

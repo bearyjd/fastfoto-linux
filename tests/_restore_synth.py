@@ -201,9 +201,19 @@ def make_cast_card(scene_chroma: float, scale: float = 1.0) -> np.ndarray:
 
 
 def ramp_cast(img: np.ndarray) -> float:
-    """Distance from neutral (mean a*, b*) of the grey ramp at the top of a cast card."""
+    """Worst distance from neutral over the dark, middle and light thirds of the grey ramp.
+
+    The mean over the whole ramp can hide a slope mismatch (blue shadows, yellow highlights).
+    """
     ramp_lab = lab(img[RAMP_ROWS])
-    return math.hypot(float(ramp_lab[..., 1].mean()), float(ramp_lab[..., 2].mean()))
+    third = ramp_lab.shape[1] // 3
+    return max(
+        math.hypot(
+            float(ramp_lab[:, i * third : (i + 1) * third, 1].mean()),
+            float(ramp_lab[:, i * third : (i + 1) * third, 2].mean()),
+        )
+        for i in range(3)
+    )
 
 
 NIGHT_BACKGROUND = (44, 46, 54)

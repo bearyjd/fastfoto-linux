@@ -51,6 +51,28 @@ def test_sky_coloured_top_is_flagged_implausible_with_the_likely_cause(
     assert any("no common print size" in m and "background colour" in m for m in messages)
 
 
+def test_find_photo_box_also_warns_for_an_implausible_size(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    frame, _ = make_frame(dpi=150, sky_mm=44)
+    with caplog.at_level(logging.WARNING, logger=CROP_LOGGER):
+        find_photo_box(frame, 150)
+    assert any("no common print size" in m for m in warnings_for(caplog))
+
+
+def test_unusual_sized_cream_back_is_returned_but_flagged(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    frame, expected = make_frame(
+        dpi=150, side="back", photo_mm=(120, 60), photo_rgb=(235, 228, 210), imprint=False
+    )
+    with caplog.at_level(logging.WARNING, logger=CROP_LOGGER):
+        detection = detect_photo(frame, 150)
+    assert not detection.plausible
+    assert_box_matches(detection.box, expected, 150)
+    assert any("no common print size" in m for m in warnings_for(caplog))
+
+
 @pytest.mark.xfail(
     strict=True,
     reason="a sky-coloured top edge is cropped away; the sides PR corrects the front box from "

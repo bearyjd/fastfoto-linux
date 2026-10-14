@@ -6,7 +6,7 @@ Each test pins one algorithm constant: pushing the matching constant far off mak
 import numpy as np
 import pytest
 
-from fastfoto_linux.pipeline.crop import NoPhotoFoundError, find_photo_box
+from fastfoto_linux.pipeline.crop import NoPhotoFoundError, detect_photo, find_photo_box
 from fastfoto_linux.pipeline.geometry import mm_to_px
 from tests.crop_helpers import SIDES, assert_box_matches, background_only
 from tests.synth import BACKGROUND_RGB, make_frame
@@ -17,19 +17,42 @@ CREAM_PAPER = [(235, 228, 210), (225, 222, 215)]
 PALE_PRINT = (165, 180, 200)  # about 50 RGB units from the scanner background
 
 
-def with_defect_rows(frame: np.ndarray, rows: int) -> np.ndarray:
-    """Copy of ``frame`` with ``rows`` grey rows, 3% of the width, 85% of the way down."""
+def with_defect_rows(frame: np.ndarray, rows: int, width_share: float = 0.03) -> np.ndarray:
+    """Copy of ``frame`` with ``rows`` grey rows, ``width_share`` wide, 85% of the way down."""
     out = frame.copy()
     first = int(out.shape[0] * 0.85)
-    out[first : first + rows, : int(out.shape[1] * 0.03)] = 128
+    out[first : first + rows, : int(out.shape[1] * width_share)] = 128
     return out
 
 
 @pytest.mark.parametrize("side", SIDES)
-@pytest.mark.parametrize("rows", [1, 2, 3, 9])  # 9 rows at 75 dpi is a 3 mm streak
+@pytest.mark.parametrize("rows", [1, 2, 3, 9, 14, 20, 23])  # 75 dpi: 14 rows = 4.7 mm, 23 = 7.8
 def test_defect_rows_in_a_long_tail_do_not_move_the_box(side: str, rows: int) -> None:
     frame, expected = make_frame(dpi=75, side=side, tail_mm=LONG_TAIL_MM)
     assert_box_matches(find_photo_box(with_defect_rows(frame, rows), 75), expected, 75)
+
+
+@pytest.mark.parametrize("side", SIDES)
+@pytest.mark.parametrize("rows", [14, 23])
+def test_full_width_defect_streaks_up_to_8_mm_are_tolerated(side: str, rows: int) -> None:
+    frame, expected = make_frame(dpi=75, side=side, tail_mm=LONG_TAIL_MM)
+    dirty = with_defect_rows(frame, rows, width_share=1.0)
+    assert_box_matches(find_photo_box(dirty, 75), expected, 75)
+
+
+@pytest.mark.parametrize("side", SIDES)
+@pytest.mark.parametrize("trailing_mm", [5, 30])
+def test_dirty_rows_at_the_frame_end_do_not_hide_the_tail(side: str, trailing_mm: int) -> None:
+    frame, expected = make_frame(dpi=75, side=side, tail_mm=LONG_TAIL_MM)
+    frame[-mm_to_px(trailing_mm, 75) :] = 90
+    assert_box_matches(find_photo_box(frame, 75), expected, 75)
+
+
+def test_a_short_white_run_after_a_big_dirty_gap_is_not_the_tail() -> None:
+    frame, expected = make_frame(dpi=75, tail_mm=LONG_TAIL_MM)
+    end = frame.shape[0] - mm_to_px(10, 75)
+    frame[end - mm_to_px(12, 75) : end] = 90  # 12 mm of dirt, then only 10 mm of white
+    assert_box_matches(find_photo_box(frame, 75), expected, 75)
 
 
 @pytest.mark.parametrize("side", SIDES)
@@ -38,14 +61,17 @@ def test_defect_rows_are_tolerated_at_300_dpi(side: str) -> None:
     assert_box_matches(find_photo_box(with_defect_rows(frame, 2), 300), expected, 300)
 
 
+WIDE_PRINTS_MM = [(205, 254), (208, 208), (211, 211), (213, 213)]  # 8x10-ish, then squares
+
+
 @pytest.mark.parametrize("side", SIDES)
-@pytest.mark.parametrize("width_mm", [205, 208, 211, 213])
-def test_prints_nearly_as_wide_as_the_frame(side: str, width_mm: int) -> None:
+@pytest.mark.parametrize(("width_mm", "height_mm"), WIDE_PRINTS_MM)
+def test_prints_nearly_as_wide_as_the_frame(side: str, width_mm: int, height_mm: int) -> None:
     margin = (FRAME_WIDTH_MM - width_mm) / 2
     frame, expected = make_frame(
         dpi=75,
         side=side,
-        photo_mm=(width_mm, 127),
+        photo_mm=(width_mm, height_mm),
         offset_mm=(margin, 0.5),
         right_margin_mm=margin,
         white_strip=None,
@@ -58,7 +84,7 @@ def test_wide_back_at_300_dpi() -> None:
     frame, expected = make_frame(
         dpi=300,
         side="back",
-        photo_mm=(208, 60),
+        photo_mm=(208, 208),
         offset_mm=(3.95, 0.5),
         right_margin_mm=3.95,
         white_strip=None,
@@ -73,7 +99,7 @@ def test_pure_white_back_98_percent_of_the_frame_width_is_not_tail() -> None:
     frame, expected = make_frame(
         dpi=75,
         side="back",
-        photo_mm=(213, 127),
+        photo_mm=(213, 213),
         offset_mm=(margin, 0.5),
         right_margin_mm=margin,
         white_strip=None,
@@ -88,7 +114,7 @@ def test_pure_white_back_98_percent_of_the_frame_width_is_not_tail() -> None:
 def test_wide_print_beside_the_white_strip() -> None:
     frame, expected = make_frame(
         dpi=75,
-        photo_mm=(205, 127),
+        photo_mm=(205, 254),
         offset_mm=(5.45, 0.5),
         right_margin_mm=5.45,
         white_strip="right",
@@ -102,7 +128,7 @@ def test_white_paper_directly_above_the_tail_is_not_tail() -> None:
     frame, expected = make_frame(
         dpi=75,
         side="back",
-        photo_mm=(208, 127),
+        photo_mm=(208, 208),
         offset_mm=(3.95, 0.5),
         right_margin_mm=3.95,
         white_strip=None,
@@ -181,6 +207,63 @@ def test_background_is_measured_from_the_frame_not_assumed() -> None:
         imprint=False,
     )
     assert_box_matches(find_photo_box(frame, 150), expected, 150)
+
+
+@pytest.mark.parametrize("rgb", CREAM_PAPER)
+def test_wide_cream_back_is_not_taken_for_the_background(rgb: tuple[int, int, int]) -> None:
+    """The side bands hold only paper; cream (R > B) must not be learned as background."""
+    margin = (FRAME_WIDTH_MM - 211) / 2
+    frame, expected = make_frame(
+        dpi=75,
+        side="back",
+        photo_mm=(211, 211),
+        offset_mm=(margin, 0.5),
+        right_margin_mm=margin,
+        white_strip=None,
+        photo_rgb=rgb,
+        imprint=False,
+        tail_mm=LONG_TAIL_MM,
+    )
+    assert_box_matches(find_photo_box(frame, 75), expected, 75)
+
+
+OFF_PRIOR = {"background_rgb": (180, 190, 200), "photo_rgb": (200, 206, 212)}  # 35 and 28 apart
+
+
+def test_background_far_from_the_usual_colour_is_measured_in_the_fallback_pass() -> None:
+    frame, expected = make_frame(
+        dpi=150, side="back", paper_noise_std=1, imprint=False, **OFF_PRIOR
+    )
+    assert_box_matches(find_photo_box(frame, 150), expected, 150)
+
+
+def test_a_few_stray_pixels_do_not_become_the_background() -> None:
+    frame, expected = make_frame(
+        dpi=150, side="back", paper_noise_std=1, imprint=False, **OFF_PRIOR
+    )
+    frame[100:120, 25:45] = (200, 208, 217)  # 100 work pixels near the usual colour, in the band
+    assert_box_matches(find_photo_box(frame, 150), expected, 150)
+
+
+@pytest.mark.parametrize("stamp_mm", [26, 33, 40])
+@pytest.mark.parametrize("rgb", CREAM_PAPER)
+def test_dark_stamp_on_a_cream_back_does_not_replace_the_paper(
+    stamp_mm: int, rgb: tuple[int, int, int]
+) -> None:
+    frame, expected = make_frame(dpi=150, side="back", photo_rgb=rgb, imprint=False)
+    size = mm_to_px(stamp_mm, 150)
+    top, left = expected.y + mm_to_px(40, 150), expected.x + mm_to_px(60, 150)
+    frame[top : top + size, left : left + size] = 60
+    detection = detect_photo(frame, 150)
+    assert detection.plausible
+    assert_box_matches(detection.box, expected, 150, tolerance_mm=2.0)
+
+
+def test_implausible_region_spanning_the_frame_width_is_not_a_photo() -> None:
+    frame = background_only(150, (216, 150))
+    frame[mm_to_px(40, 150) : mm_to_px(100, 150)] = 40  # a 216 x 60 mm dark band
+    with pytest.raises(NoPhotoFoundError, match="spans the frame"):
+        find_photo_box(frame, 150)
 
 
 def test_faint_stain_is_not_a_photo() -> None:

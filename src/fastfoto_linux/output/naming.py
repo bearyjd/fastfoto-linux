@@ -1,11 +1,14 @@
 """Album folder and file naming, FastFoto style, with path-traversal protection."""
 
+import logging
 import re
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
 from fastfoto_linux.output.errors import InvalidAlbumError, InvalidPrefixError
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_PREFIX = "FastFoto"
 MAX_ALBUM_CHARS = 120
@@ -116,21 +119,31 @@ def next_index(directory: Path, prefix: str) -> int:
     style suffix, and skips folders, so a folder holding only ``_a``/``_b`` files still
     continues correctly. Names that merely contain a number (``Trip_2020_0003.jpg`` for prefix
     ``Trip``, ``IMG_20200101_123456.jpg``) do not count. Counting too much is harmless: it only
-    skips a number.
+    skips a number. A stray number too large to have a successor (``MAX_INDEX``) is ignored
+    with a warning, so one odd file cannot make the whole prefix unusable.
     """
     pattern = re.compile(re.escape(_fold(prefix)) + _INDEXED_NAME)
     try:
         entries = list(directory.iterdir())
     except FileNotFoundError:
         return 1
-    matches = (pattern.fullmatch(_fold(e.name)) for e in entries if not e.is_dir())
-    return max((int(match.group(1)) for match in matches if match), default=0) + 1
+    highest = 0
+    for entry in entries:
+        match = None if entry.is_dir() else pattern.fullmatch(_fold(entry.name))
+        if match is None:
+            continue
+        number = int(match.group(1))
+        if number >= MAX_INDEX:
+            logger.warning("ignoring %s: its number leaves no room for a next photo", entry.name)
+            continue
+        highest = max(highest, number)
+    return highest + 1
 
 
 def photo_paths(directory: Path, prefix: str, index: int) -> PhotoPaths:
     """Paths of the original, enhanced (``_a``) and back (``_b``) files for ``index``."""
-    if not 1 <= index < 10**MAX_INDEX_DIGITS:
-        raise ValueError(f"index must be 1-{10**MAX_INDEX_DIGITS - 1}, got {index}")
+    if not 1 <= index <= MAX_INDEX:
+        raise ValueError(f"index must be 1-{MAX_INDEX}, got {index}")
     stem = f"{prefix}_{index:0{INDEX_WIDTH}d}"
     return PhotoPaths(
         original=directory / f"{stem}.jpg",

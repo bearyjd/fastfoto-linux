@@ -96,7 +96,11 @@ def _check_options(dpi: object, quality: object) -> tuple[int, int]:
 
 
 def _require_root(output_root: Path) -> None:
-    """The root is never created: a missing one usually means an unmounted drive or a typo."""
+    """The root is never created: a missing one usually means an unmounted drive or a typo.
+
+    An empty mount point left behind by an unmounted drive does exist, so it passes this check
+    and photos would land on the disk underneath; only the caller can tell the difference.
+    """
     if not output_root.is_dir():
         raise OutputRootMissingError(
             f"output folder {output_root} does not exist; create or mount it first"
@@ -124,8 +128,10 @@ def _publish_photo(
 ) -> WrittenFiles:
     """Number the photo and publish its files; the caller holds the folder lock.
 
-    If another writer that does not take the lock got there first, the files collide, nothing
-    is written, and the next number is tried, up to MAX_INDEX_ATTEMPTS times.
+    If another writer that does not take the lock got there first, a file collides, nothing is
+    written, and the next number is tried, up to MAX_INDEX_ATTEMPTS times. That only protects
+    against overwriting the same file: a writer that ignores the lock can still reuse a number
+    for different files (say, one writes only the original and the other only ``_a``).
     """
     index = 0
     collision: OutputCollisionError | None = None
@@ -169,11 +175,14 @@ def write_photo(  # noqa: PLR0913
     the album name (``FastFoto`` with no album) and numbering continues after the highest
     existing number in the folder. ``scanned_at`` (default: now) becomes DateTimeDigitized.
 
-    ``output_root`` must already exist (OutputRootMissingError otherwise); the album folder is
-    created on demand. Writers sharing a folder take turns through a lock file there. All files
-    of the photo are written or none are: an existing file raises OutputCollisionError and
-    anything already written by this call is removed again. Names are not adapted to the
-    reserved characters of FAT/exFAT (``<>:"|?*``), which such a drive would refuse.
+    ``output_root`` must already exist (OutputRootMissingError otherwise; note that an empty
+    mount point of an unmounted drive exists too); the album folder is created on demand.
+    Writers sharing a folder take turns through a lock file there (OutputLockTimeoutError if
+    another writer holds it for too long). All files of the photo are written or none are: an
+    existing file raises OutputCollisionError and anything already written by this call is
+    removed again. An OSError with EIO from the final folder sync means the files are in place
+    but may not be durable. Names are not adapted to the reserved characters of FAT/exFAT
+    (``<>:"|?*``), which such a drive would refuse.
     """
     _check_image("front", front)
     for name, array in (("back", back), ("enhanced", enhanced)):

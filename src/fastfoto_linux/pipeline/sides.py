@@ -1,6 +1,7 @@
 """Turn the raw pages of one scanimage batch into photos: fronts, backs and back writing."""
 
 import logging
+from collections import deque
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
@@ -19,6 +20,11 @@ from fastfoto_linux.pipeline.ink import (
     paper_score,
 )
 from fastfoto_linux.pipeline.io import load_frame
+from fastfoto_linux.pipeline.side_order import (
+    BACK_LIKE_PAPER_SCORE,
+    TIE_BREAK_RECENT_SHEETS,
+    decide_sides,
+)
 
 __all__ = [
     "BackPolicy",
@@ -37,10 +43,6 @@ __all__ = [
 
 logger = logging.getLogger(__name__)
 
-PAPER_TIE_MARGIN = 0.2  # paper scores closer than this cannot tell the two sides apart
-BACK_LIKE_PAPER_SCORE = 0.75  # a lone page this paper-white is a back (real fronts stay below)
-DEFAULT_FRONT_FIRST = True  # tie with no expectation and no resolved sheet: page 1 is the front
-TIE_BREAK_RECENT_SHEETS = 8  # a tie follows the page order of this many latest confident sheets
 FRONT_FROM_BACK_X_OFFSET_MM = 1.2  # measured shift of the front box against the mirrored back box
 FRONT_BACK_SIZE_TOLERANCE_MM = 3.0  # a front box this much off the back's size is distrusted
 
@@ -48,7 +50,14 @@ FrameLoader = Callable[[Path], tuple[np.ndarray, int]]
 
 
 class BatchError(ValueError):
-    """The pages of a batch cannot be turned into photos (odd page count, no photo, ...)."""
+    """The pages of a batch cannot be turned into photos (odd page count, no photo, ...).
+
+    ``sheet`` is the 1-based number of the sheet at fault, or None when the batch as a whole is.
+    """
+
+    def __init__(self, message: str, *, sheet: int | None = None) -> None:
+        super().__init__(message)
+        self.sheet = sheet
 
 
 class BackPolicy(StrEnum):
@@ -72,13 +81,15 @@ class _Settings:
 class Photo:
     """One photo: cropped front, optional cropped back and where they came from.
 
-    ``index`` counts photos from 0 in batch order. ``source_pages`` lists the page paths as
+    ``index`` counts photos from 0 in batch order (a sheet skipped through ``on_sheet_error``
+    leaves a gap). ``source_pages`` lists the page paths as
     ``(front_page, back_page)``, or ``(front_page,)`` for a simplex batch; the back page is listed
     even when the back was dropped by the policy. ``back_has_writing`` reports the detection
     whether or not the back was kept. Arrays are never shared with the loaded pages.
     ``side_uncertain`` is True when the sides of the sheet could not be told apart by content (the
-    decision came from page parity) or a lone last page looks like a back; such a photo always
-    keeps its back, whatever the policy, because it may in fact be the front.
+    decision came from page parity), when the content contradicts an explicit
+    ``expect_front_first``, or when a lone last page looks like a back; such a photo always keeps
+    its back, whatever the policy, because it may in fact be the front.
     """
 
     index: int
@@ -147,7 +158,9 @@ def _load_page(number: int, path: Path, loader: FrameLoader) -> _Page:
         frame, dpi = loader(path)
         return _Page(path, frame, dpi, _detect(path, frame, dpi))
     except Exception as error:
-        raise BatchError(f"sheet {number}: cannot read {path.name}: {error}") from error
+        raise BatchError(
+            f"sheet {number}: cannot read {path.name}: {error}", sheet=number
+        ) from error
 
 
 def _view(page: _Page, box: Box) -> np.ndarray:
@@ -159,63 +172,10 @@ def _own_boxes(number: int, first: _Page, second: _Page) -> tuple[Box, Box]:
     """Each page's detected box; a page with none borrows the other page's, mirrored."""
     one, two = first.detection, second.detection
     if one is None and two is None:
-        raise BatchError(f"sheet {number}: no photo found on either page")
+        raise BatchError(f"sheet {number}: no photo found on either page", sheet=number)
     box_one = one.box if one else mirrored_front_box(two.box, first.frame.shape, first.dpi)
     box_two = two.box if two else mirrored_front_box(one.box, second.frame.shape, second.dpi)
     return box_one, box_two
-
-
-def _majority(front_first_sheets: int, back_first_sheets: int) -> bool | None:
-    """The page order most resolved sheets of this batch had, or None when it is an even split."""
-    if front_first_sheets == back_first_sheets:
-        return None
-    return front_first_sheets > back_first_sheets
-
-
-def _tie_break(expect_front_first: bool | None, majority: bool | None) -> tuple[bool, str]:
-    """Front-first or not for a sheet content cannot decide, and where that answer came from."""
-    if expect_front_first is not None:
-        return expect_front_first, "the expected"
-    if majority is not None:
-        return majority, "the batch-majority"
-    return DEFAULT_FRONT_FIRST, "the default"
-
-
-def _front_index(
-    number: int,
-    scores: tuple[float, float],
-    expect_front_first: bool | None,
-    majority: bool | None,
-) -> tuple[int, bool]:
-    """Which page of the sheet (0 or 1) is the front, and whether that is only a tie-break.
-
-    The page with the lower paper score is the front. Scores within ``PAPER_TIE_MARGIN`` are a
-    tie: ``expect_front_first`` decides, else the order most resolved sheets of the batch had, else
-    ``DEFAULT_FRONT_FIRST``. Nothing here raises: a wrong guess is flagged, never a lost photo.
-    """
-    first, second = scores
-    if abs(first - second) >= PAPER_TIE_MARGIN:
-        front_at = 0 if first < second else 1
-        if expect_front_first is not None and (front_at == 0) != expect_front_first:
-            logger.info(
-                "sheet %d: the content says page %d is the front, which contradicts "
-                "expect_front_first=%s; using the content",
-                number,
-                front_at + 1,
-                expect_front_first,
-            )
-        return front_at, False
-    front_first, source = _tie_break(expect_front_first, majority)
-    logger.info(
-        "sheet %d: paper scores %.2f and %.2f cannot tell front from back; using %s page parity "
-        "(front scanned %s)",
-        number,
-        first,
-        second,
-        source,
-        "first" if front_first else "second",
-    )
-    return (0 if front_first else 1), True
 
 
 def _front_box(number: int, front: _Page, back: _Page, own_box: Box) -> Box:
@@ -242,15 +202,20 @@ def _front_box(number: int, front: _Page, back: _Page, own_box: Box) -> Box:
 
 
 def _sheet_photo(
-    index: int, pages: tuple[_Page, _Page], settings: _Settings, majority: bool | None
+    index: int, pages: tuple[_Page, _Page], settings: _Settings, recent: Sequence[bool]
 ) -> Photo:
     number = index + 1
     first, second = pages
     if first.dpi != second.dpi:
-        raise BatchError(f"sheet {number}: pages differ in dpi ({first.dpi} and {second.dpi})")
+        raise BatchError(
+            f"sheet {number}: pages differ in dpi ({first.dpi} and {second.dpi})", sheet=number
+        )
     boxes = _own_boxes(number, first, second)
     scores = (paper_score(_view(first, boxes[0])), paper_score(_view(second, boxes[1])))
-    front_at, uncertain = _front_index(number, scores, settings.expect_front_first, majority)
+    decision = decide_sides(scores, settings.expect_front_first, recent)
+    if decision.note:
+        logger.info("sheet %d: %s", number, decision.note)
+    front_at, uncertain = decision.front_at, decision.uncertain
     front_page, back_page = pages[front_at], pages[1 - front_at]
     front_box = _front_box(number, front_page, back_page, boxes[front_at])
     evidence = handwriting_evidence(_view(back_page, boxes[1 - front_at]), back_page.dpi)
@@ -287,7 +252,7 @@ def _front_only_photo(index: int, path: Path, loader: FrameLoader, *, dangling: 
     """
     page = _load_page(index + 1, path, loader)
     if page.detection is None:
-        raise BatchError(f"sheet {index + 1}: {path.name}: no photo found")
+        raise BatchError(f"sheet {index + 1}: {path.name}: no photo found", sheet=index + 1)
     suspicious = dangling and paper_score(_view(page, page.detection.box)) >= BACK_LIKE_PAPER_SCORE
     if suspicious:
         logger.warning(
@@ -300,31 +265,50 @@ def _front_only_photo(index: int, path: Path, loader: FrameLoader, *, dangling: 
 
 
 def _duplex_photo(
-    index: int, paths: tuple[Path, Path], settings: _Settings, majority: bool | None
+    index: int, paths: tuple[Path, Path], settings: _Settings, recent: Sequence[bool]
 ) -> Photo:
     """Load both pages of a sheet and build its photo; the full frames die when this returns."""
     loader = settings.loader
     pages = (_load_page(index + 1, paths[0], loader), _load_page(index + 1, paths[1], loader))
-    return _sheet_photo(index, pages, settings, majority)
+    return _sheet_photo(index, pages, settings, recent)
 
 
-def _generate(pages: tuple[Path, ...], duplex: bool, settings: _Settings) -> Iterator[Photo]:
-    if not duplex:
-        for index, path in enumerate(pages):
-            yield _front_only_photo(index, path, settings.loader, dangling=False)
-        return
-    front_first_sheets = back_first_sheets = 0
-    for index in range(len(pages) // 2):
+def _photo_at(
+    index: int, pages: tuple[Path, ...], duplex: bool, settings: _Settings, recent: Sequence[bool]
+) -> Photo:
+    """The photo of sheet ``index``; any failure becomes a ``BatchError`` naming the sheet."""
+    try:
+        if not duplex:
+            return _front_only_photo(index, pages[index], settings.loader, dangling=False)
+        if 2 * index + 1 == len(pages):  # the odd last page of an allow_odd batch
+            return _front_only_photo(index, pages[-1], settings.loader, dangling=True)
         paths = (pages[2 * index], pages[2 * index + 1])
-        majority = _majority(front_first_sheets, back_first_sheets)
-        photo = _duplex_photo(index, paths, settings, majority)
-        if not photo.side_uncertain:
-            front_first = photo.source_pages[0] == paths[0]
-            front_first_sheets += front_first
-            back_first_sheets += not front_first
+        return _duplex_photo(index, paths, settings, recent)
+    except BatchError:
+        raise
+    except Exception as error:
+        raise BatchError(f"sheet {index + 1}: {error}", sheet=index + 1) from error
+
+
+def _generate(
+    pages: tuple[Path, ...],
+    duplex: bool,
+    settings: _Settings,
+    on_sheet_error: Callable[[BatchError], None] | None,
+) -> Iterator[Photo]:
+    recent: deque[bool] = deque(maxlen=TIE_BREAK_RECENT_SHEETS)  # page orders of confident sheets
+    for index in range((len(pages) + 1) // 2 if duplex else len(pages)):
+        try:
+            photo = _photo_at(index, pages, duplex, settings, tuple(recent))
+        except BatchError as error:
+            if on_sheet_error is None:
+                raise
+            logger.error("%s; skipping the sheet", error)
+            on_sheet_error(error)
+            continue
+        if duplex and 2 * index + 1 < len(pages) and not photo.side_uncertain:
+            recent.append(photo.source_pages[0] == pages[2 * index])
         yield photo
-    if len(pages) % 2:
-        yield _front_only_photo(len(pages) // 2, pages[-1], settings.loader, dangling=True)
 
 
 def iter_photos(  # noqa: PLR0913
@@ -342,16 +326,21 @@ def iter_photos(  # noqa: PLR0913
     The page count is checked immediately (``BatchError`` for an odd duplex batch unless
     ``allow_odd``); loading, cropping and pairing happen as the iterator is consumed. See
     :func:`assemble_photos` for the rules.
+
+    A sheet that fails is a ``BatchError`` naming it (``error.sheet``). By default that error is
+    raised from ``next()`` and the iterator then ends: no later sheet is produced. With
+    ``on_sheet_error`` the error is logged and passed to the callback instead, the sheet is
+    skipped and the iterator goes on; ``Photo.index`` stays the sheet's place in the batch, so a
+    skipped sheet leaves a gap. Errors the callback raises itself propagate.
     """
-    if on_sheet_error is not None:
-        raise NotImplementedError("on_sheet_error")
     paths = tuple(pages)
     if duplex and len(paths) % 2 and not allow_odd:
         raise BatchError(
             f"odd number of pages ({len(paths)}) in a duplex batch; every sheet has two sides "
             "(pass allow_odd=True to treat the last page as a front without a back)"
         )
-    return _generate(paths, duplex, _Settings(back_policy, expect_front_first, loader))
+    settings = _Settings(back_policy, expect_front_first, loader)
+    return _generate(paths, duplex, settings, on_sheet_error)
 
 
 def assemble_photos(  # noqa: PLR0913
@@ -367,19 +356,24 @@ def assemble_photos(  # noqa: PLR0913
     """Load, crop and pair the pages of a batch into photos.
 
     Duplex: pages ``(1, 2), (3, 4), ...`` are the two sides of one sheet each. Which side is the
-    front is decided by content (the side with the lower :func:`paper_score` is the front), not
-    parity. When the scores differ by less than ``PAPER_TIE_MARGIN`` the sides cannot be told
-    apart and the order comes from, in turn, ``expect_front_first`` (True: the first page of a
-    sheet is the front), the order most already-resolved sheets of this batch had, and finally
-    "first page is the front". That never raises and never drops anything: such a photo has
-    ``side_uncertain`` set and keeps its back whatever the policy. A front whose own crop is
-    missing or doubtful takes its box from the mirrored back box (:func:`front_needs_correction`,
-    only from a plausible back box). The back is kept according to ``back_policy``;
-    ``back_has_writing`` is always reported (gate: ``HANDWRITING_MIN_CANDIDATES`` ink blobs) and
-    the pen-stroke count is logged next to it. An odd page count is a ``BatchError`` unless
-    ``allow_odd``, which makes the last page a front without a back (flagged uncertain if it looks
-    like a back). Simplex (``duplex=False``): every page is a front. A page that cannot be read
-    or holds no photo is a ``BatchError`` naming the sheet.
+    front is decided by content, not parity: the side with the lower :func:`paper_score` is the
+    front, but only when the scores differ by ``PAPER_TIE_MARGIN`` and the higher one is as
+    paper-white as a back (``BACK_LIKE_PAPER_SCORE``). Otherwise (a tie, or a dark or coloured
+    "back" against a front that is not clearly paper) the order comes from, in turn,
+    ``expect_front_first`` (True: the first page of a sheet is the front), the order most of the
+    latest ``TIE_BREAK_RECENT_SHEETS`` confident sheets had, and finally "first page is the
+    front". That never raises and never drops anything: such a photo has ``side_uncertain`` set
+    and keeps its back whatever the policy. Content that contradicts an explicit
+    ``expect_front_first`` is still followed, but flags the sheet the same way. A front whose own
+    crop is missing or doubtful takes its box from the mirrored back box
+    (:func:`front_needs_correction`, only from a plausible back box). The back is kept according
+    to ``back_policy``; ``back_has_writing`` is always reported (gate:
+    ``HANDWRITING_MIN_CANDIDATES`` ink blobs) and the pen-stroke count is logged next to it. An
+    odd page count is a ``BatchError`` unless ``allow_odd``, which makes the last page a front
+    without a back (flagged uncertain if it looks like a back). Simplex (``duplex=False``): every
+    page is a front. A page that cannot be read, holds no photo or cannot be cropped is a
+    ``BatchError`` naming the sheet. By default it is raised; with ``on_sheet_error`` the sheet is
+    logged, reported to the callback and left out of the result (see :func:`iter_photos`).
     """
     return tuple(
         iter_photos(

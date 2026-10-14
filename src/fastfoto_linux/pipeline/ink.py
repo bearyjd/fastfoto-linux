@@ -27,8 +27,11 @@ BLOB_MAX_EXTENT_MM = 50.0
 # to the candidate count but not used as a gate yet (leave-one-out recall was only 16 of 18).
 PEN_FILL_MAX = 0.30  # blob area / bounding-box area
 PEN_CORE_GREY_MAX = 110  # darkest pixel of the blob
-# Paper-white, loosely enough to take cream and aged paper (grey ~215-235, chroma up to ~45):
-# measured on real fronts the paper share stays at or below 0.51 at the 99th percentile.
+# Paper-white, loosely enough to take cream and aged paper (grey ~215-235, chroma up to ~45).
+# That also lets bright fronts in: over 5182 real fronts the paper share has p99 0.555 and max
+# 0.965 (7 reach 0.75). On 1374 real duplex sheets 15 read the wrong way round on score alone
+# (4 at grey 230 / chroma 40, which misses cream paper); all 15 have a dark or coloured back page.
+# side_order.decide_sides therefore only believes the score when the whiter page is paper-like.
 PAPER_MIN_GREY = 200  # grey level (0-255) of a paper-white pixel
 PAPER_MAX_CHROMA = 45  # max-min over R, G, B of a paper-white pixel (low saturation)
 PAPER_SCORE_STRIDE = 4  # paper_score looks at every n-th pixel in each direction
@@ -37,8 +40,9 @@ PAPER_SCORE_STRIDE = 4  # paper_score looks at every n-th pixel in each directio
 def paper_score(img: np.ndarray) -> float:
     """Fraction of pixels that are paper-white: grey >= 200 and low saturation (0.0 to 1.0).
 
-    Photo backs are white paper and fronts are not, so the side with the higher score is the back.
-    Only every ``PAPER_SCORE_STRIDE``-th pixel in each direction is looked at.
+    Photo backs are white paper and fronts mostly are not, so the side with the higher score is
+    usually the back (see ``BACK_LIKE_PAPER_SCORE`` for when that is believed). Only every
+    ``PAPER_SCORE_STRIDE``-th pixel in each direction is looked at.
     """
     ensure_rgb_uint8(img)
     sample = np.ascontiguousarray(img[::PAPER_SCORE_STRIDE, ::PAPER_SCORE_STRIDE])

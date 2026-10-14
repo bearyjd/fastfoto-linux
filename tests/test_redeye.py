@@ -37,7 +37,7 @@ MOUTH_AND_NOSE = slice(2, 5)
 BIG_CANVAS = (1800, 2400)
 BIG_FACE_SCALE = 3
 BIG_FACE_ORIGIN = (200, 300)
-MAPPING_TOLERANCE = 0.15  # of the inter-ocular distance: detection noise at the working size
+MAPPING_TOLERANCE = 0.05  # of the inter-ocular distance
 LOGGER = "fastfoto_linux.enhance.redeye"
 
 
@@ -132,7 +132,7 @@ def test_portrait_without_red_pupils_is_unchanged(
     detector: FaceDetector, portrait: np.ndarray
 ) -> None:
     result = remove_red_eye(portrait, DPI, detector)
-    assert np.abs(result.astype(int) - portrait.astype(int)).max() <= 1
+    assert np.array_equal(result, portrait)
 
 
 def test_big_red_object_without_a_face_is_unchanged(detector: FaceDetector) -> None:
@@ -159,7 +159,7 @@ def test_large_photo_is_corrected_at_full_resolution(detector: FaceDetector) -> 
     mapped = detect_faces_full_res(clean, detector)
     assert len(mapped) == 1
     tolerance = MAPPING_TOLERANCE * _interocular(direct)
-    for want, got in zip(direct.landmarks, mapped[0].landmarks, strict=True):
+    for want, got in zip(direct.landmarks[EYES], mapped[0].landmarks[EYES], strict=True):
         assert math.dist(want, got) <= tolerance
     discs = _eye_discs(direct, PUPIL_FRACTION)
     painted = _paint_discs(clean, discs)

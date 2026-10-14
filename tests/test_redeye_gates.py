@@ -9,7 +9,14 @@ import numpy as np
 import pytest
 
 from fastfoto_linux.enhance.faces import Face, FaceDetector
-from fastfoto_linux.enhance.redeye import ROI_HALF_FRACTION, _ring_contrast, find_red_eyes
+from fastfoto_linux.enhance.redeye import (
+    ROI_HALF_FRACTION,
+    EyeFix,
+    _ring_contrast,
+    apply_fixes,
+    find_red_eyes,
+    remove_red_eye,
+)
 from tests.face_images import scaled_face
 
 LOGGER = "fastfoto_linux.enhance.redeye"
@@ -152,6 +159,98 @@ def test_the_same_blob_on_neutral_skin_is_a_pupil(portrait: np.ndarray, face: Fa
     assert all(fix.mask.sum() > math.pi * CORE_RADIUS_PX**2 for fix in fixes)
 
 
-def test_a_blob_filling_the_patch_has_no_ring_to_compare_with() -> None:
+def test_a_blob_filling_the_patch_has_no_contrast_with_its_surroundings() -> None:
     patch = np.full((9, 9, 3), RED, dtype=np.uint8)
-    assert _ring_contrast(patch, np.ones((9, 9), dtype=bool)) is None
+    assert _ring_contrast(patch, np.ones((9, 9), dtype=bool)) == 0.0
+
+
+def _blocks(portrait: np.ndarray, face: Face, width: int, height: int) -> np.ndarray:
+    """A filled red rectangle of ``width`` x ``height`` pixels centred on each eye."""
+    painted = portrait.copy()
+    for x, y in _eyes(face):
+        left, top = x - width // 2, y - height // 2
+        cv2.rectangle(painted, (left, top), (left + width - 1, top + height - 1), RED, -1)
+    return painted
+
+
+def test_a_blob_wider_than_tall_is_not_a_pupil(portrait: np.ndarray, face: Face) -> None:
+    assert len(find_red_eyes(_blocks(portrait, face, 8, 8), (face,))) == 2
+    assert find_red_eyes(_blocks(portrait, face, 12, 8), (face,)) == ()
+
+
+def test_a_blob_somewhat_taller_than_wide_is_still_a_pupil(
+    portrait: np.ndarray, face: Face
+) -> None:
+    assert len(find_red_eyes(_blocks(portrait, face, 6, 10), (face,))) == 2
+
+
+def test_a_blob_far_taller_than_wide_is_not_a_pupil(portrait: np.ndarray, face: Face) -> None:
+    assert find_red_eyes(_blocks(portrait, face, 4, 12), (face,)) == ()
+
+
+def test_a_hollow_square_is_not_a_pupil(portrait: np.ndarray, face: Face) -> None:
+    hollow = portrait.copy()
+    for x, y in _eyes(face):
+        cv2.rectangle(hollow, (x - 6, y - 6), (x + 5, y + 5), RED, thickness=1)
+    assert find_red_eyes(hollow, (face,)) == ()
+
+
+@pytest.mark.parametrize(("level", "found"), [(90, 2), (89, 0)])
+def test_red_level_boundary(portrait: np.ndarray, face: Face, level: int, found: int) -> None:
+    radius = round(PUPIL_RADIUS_FRACTION * _interocular(face))
+    painted = portrait.copy()
+    for centre in _eyes(face):
+        cv2.circle(painted, centre, radius, (level, 15, 15), thickness=-1)
+    assert len(find_red_eyes(painted, (face,))) == found
+
+
+@pytest.mark.parametrize(("score", "found"), [(0.9, 2), (0.89, 0), (0.5, 0)])
+def test_face_score_boundary(portrait: np.ndarray, face: Face, score: float, found: int) -> None:
+    painted = portrait.copy()
+    radius = round(PUPIL_RADIUS_FRACTION * _interocular(face))
+    for centre in _eyes(face):
+        cv2.circle(painted, centre, radius, RED, thickness=-1)
+    sure = dataclasses.replace(face, score=score)
+    assert len(find_red_eyes(painted, (sure,))) == found
+
+
+def _with_landmarks(face: Face, landmarks: tuple[tuple[float, float], ...]) -> Face:
+    return dataclasses.replace(face, landmarks=landmarks)
+
+
+def test_a_face_needs_two_eye_landmarks(portrait: np.ndarray, face: Face) -> None:
+    for landmarks in ((), face.landmarks[:1]):
+        with pytest.raises(ValueError, match="landmarks"):
+            find_red_eyes(portrait, (_with_landmarks(face, landmarks),))
+
+
+@pytest.mark.parametrize("bad", [math.nan, math.inf, -math.inf])
+def test_eye_landmarks_must_be_finite(portrait: np.ndarray, face: Face, bad: float) -> None:
+    broken = _with_landmarks(face, ((bad, 5.0), *face.landmarks[1:]))
+    with pytest.raises(ValueError, match="finite"):
+        find_red_eyes(portrait, (broken,))
+
+
+def test_the_mask_must_match_the_roi() -> None:
+    wrong_shape = np.ones((3, 3), dtype=bool)
+    with pytest.raises(ValueError, match="mask"):
+        EyeFix(roi=(0, 0, 4, 4), mask=wrong_shape, center=(1.0, 1.0))
+    with pytest.raises(ValueError, match="mask"):
+        EyeFix(roi=(0, 0, 3, 3), mask=np.ones((3, 3), dtype=np.uint8), center=(1.0, 1.0))
+    with pytest.raises(ValueError, match="ROI"):
+        EyeFix(roi=(2, 2, 2, 5), mask=np.ones((3, 0), dtype=bool), center=(1.0, 1.0))
+
+
+def test_fixes_must_lie_inside_the_image(portrait: np.ndarray) -> None:
+    width = portrait.shape[1]
+    outside = EyeFix(
+        roi=(width - 2, 0, width + 2, 4), mask=np.ones((4, 4), dtype=bool), center=(0.0, 0.0)
+    )
+    with pytest.raises(ValueError, match="ROI"):
+        apply_fixes(portrait, (outside,))
+
+
+@pytest.mark.parametrize("dpi", [math.nan, math.inf, -math.inf, True, False])
+def test_dpi_must_be_a_positive_finite_number(portrait: np.ndarray, dpi: float) -> None:
+    with pytest.raises(ValueError, match="dpi"):
+        remove_red_eye(portrait, dpi)  # type: ignore[arg-type]

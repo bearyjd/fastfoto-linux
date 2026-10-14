@@ -40,6 +40,7 @@ logger = logging.getLogger(__name__)
 PAPER_TIE_MARGIN = 0.2  # paper scores closer than this cannot tell the two sides apart
 BACK_LIKE_PAPER_SCORE = 0.75  # a lone page this paper-white is a back (real fronts stay below)
 DEFAULT_FRONT_FIRST = True  # tie with no expectation and no resolved sheet: page 1 is the front
+TIE_BREAK_RECENT_SHEETS = 8  # a tie follows the page order of this many latest confident sheets
 FRONT_FROM_BACK_X_OFFSET_MM = 1.2  # measured shift of the front box against the mirrored back box
 FRONT_BACK_SIZE_TOLERANCE_MM = 3.0  # a front box this much off the back's size is distrusted
 
@@ -334,6 +335,7 @@ def iter_photos(  # noqa: PLR0913
     expect_front_first: bool | None = None,
     allow_odd: bool = False,
     loader: FrameLoader = load_frame,
+    on_sheet_error: Callable[[BatchError], None] | None = None,
 ) -> Iterator[Photo]:
     """Yield the photos of a batch one sheet at a time, so only one sheet is in memory.
 
@@ -341,6 +343,8 @@ def iter_photos(  # noqa: PLR0913
     ``allow_odd``); loading, cropping and pairing happen as the iterator is consumed. See
     :func:`assemble_photos` for the rules.
     """
+    if on_sheet_error is not None:
+        raise NotImplementedError("on_sheet_error")
     paths = tuple(pages)
     if duplex and len(paths) % 2 and not allow_odd:
         raise BatchError(
@@ -358,6 +362,7 @@ def assemble_photos(  # noqa: PLR0913
     expect_front_first: bool | None = None,
     allow_odd: bool = False,
     loader: FrameLoader = load_frame,
+    on_sheet_error: Callable[[BatchError], None] | None = None,
 ) -> tuple[Photo, ...]:
     """Load, crop and pair the pages of a batch into photos.
 
@@ -384,5 +389,6 @@ def assemble_photos(  # noqa: PLR0913
             expect_front_first=expect_front_first,
             allow_odd=allow_odd,
             loader=loader,
+            on_sheet_error=on_sheet_error,
         )
     )

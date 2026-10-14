@@ -284,6 +284,22 @@ def test_a_solid_dark_blob_is_a_candidate_but_not_a_pen_stroke() -> None:
     assert evidence == HandwritingEvidence(candidates=1, pen_strokes=0)
 
 
+def test_exactly_one_letter_sized_blob_is_not_handwriting() -> None:
+    back = _stamped(60, (4, 4))
+    assert handwriting_candidates(back, 150) == HANDWRITING_MIN_CANDIDATES - 1
+    assert not has_handwriting(back, 150)
+    assert not handwriting_evidence(back, 150).handwritten
+
+
+def test_a_second_letter_sized_blob_makes_it_handwriting() -> None:
+    back = _stamped(60, (4, 4))
+    x, y = mm_to_px(60, 150), mm_to_px(30, 150)
+    back[y : y + mm_to_px(4, 150), x : x + mm_to_px(4, 150)] = 60
+    assert handwriting_candidates(back, 150) == HANDWRITING_MIN_CANDIDATES
+    assert has_handwriting(back, 150)
+    assert handwriting_evidence(back, 150).handwritten
+
+
 def _diagonal_stroke(grey_level: int, dpi: int = 150) -> np.ndarray:
     """A blank back with one thin diagonal stroke, 6 mm tall, of a single grey level."""
     back = cropped_back(dpi, imprint=False)

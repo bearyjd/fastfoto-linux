@@ -143,7 +143,7 @@ def test_pale_front_is_found_by_score_even_against_the_page_order(
     )
     assert tuple(map(page_number, photo.source_pages)) == (2, 1)
     assert np.median(photo.front) == pytest.approx(185, abs=3)
-    assert not photo.side_uncertain
+    assert photo.side_uncertain == (expect_front_first is True)  # only that one contradicts it
 
 
 def test_cream_back_against_a_bright_front_is_decided_by_content_not_parity() -> None:
@@ -153,9 +153,7 @@ def test_cream_back_against_a_bright_front_is_decided_by_content_not_parity() ->
         dpi=DPI, front={"photo_rgb": PALE}, back={"photo_rgb": CREAM, "imprint": False}
     )
     pages, loader = batch([sheet], (False,), DPI)
-    (photo,) = assemble_photos(
-        pages, duplex=True, back_policy=BackPolicy.NEVER, expect_front_first=True, loader=loader
-    )
+    (photo,) = assemble_photos(pages, duplex=True, back_policy=BackPolicy.NEVER, loader=loader)
     assert tuple(map(page_number, photo.source_pages)) == (2, 1)
     assert np.median(photo.front) == pytest.approx(185, abs=3)
     assert not photo.side_uncertain
@@ -269,14 +267,14 @@ def test_uncertain_sheets_do_not_count_towards_the_majority() -> None:
     assert tuple(map(page_number, photos[2].source_pages)) == (6, 5)  # one back-first sheet
 
 
-def test_content_contradicting_the_expected_parity_is_logged(
+def test_content_contradicting_the_expected_parity_is_logged_and_flags_the_sheet(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     pages, loader = batch(_sheets(WRITTEN), (False,), DPI)
     with caplog.at_level(logging.INFO, logger=SIDES_LOGGER):
         (photo,) = assemble_photos(pages, duplex=True, expect_front_first=True, loader=loader)
     assert tuple(map(page_number, photo.source_pages)) == (2, 1)  # content wins
-    assert not photo.side_uncertain
+    assert photo.side_uncertain
     assert any("contradict" in r.getMessage() for r in caplog.records)
 
 

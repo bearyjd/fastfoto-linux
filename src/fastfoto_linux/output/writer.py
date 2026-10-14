@@ -27,6 +27,8 @@ from fastfoto_linux.output.naming import (
 )
 
 DEFAULT_QUALITY = 95
+MAX_DPI = 4800
+MAX_INDEX_ATTEMPTS = 5
 MIN_QUALITY = 1
 MAX_QUALITY = 100
 RGB_CHANNELS = 3

@@ -7,6 +7,7 @@ from fastfoto_linux.output.naming import (
     DEFAULT_PREFIX,
     MAX_ALBUM_CHARS,
     MAX_COMPONENT_BYTES,
+    MAX_INDEX_DIGITS,
     MAX_PREFIX_BYTES,
     album_dir,
     default_prefix,
@@ -134,10 +135,18 @@ def test_sanitise_prefix_truncates_to_the_byte_limit_on_a_codepoint_boundary() -
 
 def test_the_longest_prefix_still_makes_a_legal_file_name() -> None:
     stem = sanitise_prefix("\U0001f600" * MAX_ALBUM_CHARS)
-    longest = f"{stem}_{'9' * 10}_a.jpg"
+    longest = f"{stem}_{'9' * MAX_INDEX_DIGITS}_a.jpg"
+    staging = f".{longest}.deadbeef.tmp"
 
     assert len(longest.encode()) <= MAX_COMPONENT_BYTES
-    assert len(f".{longest}.deadbeef.tmp".encode()) <= MAX_COMPONENT_BYTES
+    assert len(staging.encode()) <= MAX_COMPONENT_BYTES
+
+
+def test_the_name_length_reserve_matches_the_largest_index_exactly() -> None:
+    suffix = f"_{'9' * MAX_INDEX_DIGITS}_a.jpg"
+    staging_overhead = len(b".") + len(b".deadbeef.tmp")
+
+    assert MAX_COMPONENT_BYTES - len(suffix) - staging_overhead == MAX_PREFIX_BYTES
 
 
 @pytest.mark.parametrize(
@@ -281,10 +290,62 @@ def test_next_index_reads_existing_five_digit_numbers(tmp_path: Path) -> None:
     assert next_index(tmp_path, "X") == 10004
 
 
-def test_next_index_counts_any_extension_and_case(tmp_path: Path) -> None:
-    touch(tmp_path, "X_0050.tif", "X_0060.JPG", "X_0070-copy.jpg")
+def test_next_index_counts_the_known_shapes_in_any_extension_and_letter_case(
+    tmp_path: Path,
+) -> None:
+    touch(tmp_path, "X_0050.tif", "X_0060.JPG", "X_0065_c.png")
 
-    assert next_index(tmp_path, "X") == 71
+    assert next_index(tmp_path, "X") == 66
+
+
+def test_next_index_ignores_names_that_only_start_like_a_numbered_file(tmp_path: Path) -> None:
+    touch(tmp_path, "X_0070-copy.jpg", "X_0071 (1).jpg", "X_0072_ab.jpg", "X_0073", "X_0074.")
+
+    assert next_index(tmp_path, "X") == 1
+
+
+def test_next_index_does_not_mistake_a_number_inside_the_prefix_for_an_index(
+    tmp_path: Path,
+) -> None:
+    touch(tmp_path, "Trip_2020_0003.jpg", "Trip_2020_0003_a.jpg")
+
+    assert next_index(tmp_path, "Trip") == 1
+    assert next_index(tmp_path, "Trip_2020") == 4
+
+
+def test_next_index_ignores_camera_style_names_with_a_time_part(tmp_path: Path) -> None:
+    touch(tmp_path, "IMG_20200101_123456.jpg")
+
+    assert next_index(tmp_path, "IMG") == 1
+
+
+def test_next_index_accepts_up_to_the_largest_index(tmp_path: Path) -> None:
+    touch(tmp_path, f"X_{'9' * MAX_INDEX_DIGITS}.jpg", "X_1234567890.jpg")
+
+    assert next_index(tmp_path, "X") == 10**MAX_INDEX_DIGITS
+
+
+def test_next_index_skips_directories(tmp_path: Path) -> None:
+    (tmp_path / "X_0099.jpg").mkdir()
+    (tmp_path / "X_0098").mkdir()
+    touch(tmp_path, "X_0005.jpg")
+
+    assert next_index(tmp_path, "X") == 6
+
+
+def test_next_index_ignores_case_when_matching_the_prefix(tmp_path: Path) -> None:
+    touch(tmp_path, "beach_0005.jpg")
+
+    assert next_index(tmp_path, "Beach") == 6
+    assert next_index(tmp_path, "BEACH") == 6
+
+
+def test_next_index_ignores_unicode_normalisation_when_matching_the_prefix(
+    tmp_path: Path,
+) -> None:
+    touch(tmp_path, "Cafe\u0301_0003.jpg")
+
+    assert next_index(tmp_path, "Caf\u00e9") == 4
 
 
 def test_next_index_ignores_other_prefixes_and_malformed_names(tmp_path: Path) -> None:
@@ -297,7 +358,6 @@ def test_next_index_ignores_other_prefixes_and_malformed_names(tmp_path: Path) -
         "X_abcd.jpg",
         "notes.txt",
         ".X_0090.jpg.abcd.tmp",
-        "x_0080.jpg",
     )
 
     assert next_index(tmp_path, "X") == 1
@@ -328,3 +388,9 @@ def test_photo_paths_follow_the_fastfoto_convention(tmp_path: Path) -> None:
 def test_photo_paths_reject_non_positive_indexes(tmp_path: Path, index: int) -> None:
     with pytest.raises(ValueError, match="index"):
         photo_paths(tmp_path, "X", index)
+
+
+def test_photo_paths_reject_indexes_wider_than_the_name_length_reserve(tmp_path: Path) -> None:
+    assert photo_paths(tmp_path, "X", 10**MAX_INDEX_DIGITS - 1).original.name.startswith("X_9")
+    with pytest.raises(ValueError, match="index"):
+        photo_paths(tmp_path, "X", 10**MAX_INDEX_DIGITS)

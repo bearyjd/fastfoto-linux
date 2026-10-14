@@ -157,6 +157,22 @@ def test_date_range_rejects_malformed_or_reversed_ranges(text: str) -> None:
         DateRange.parse(text)
 
 
+@pytest.mark.parametrize(
+    "text",
+    ["1975-06/1975", "1975-06-14/1975-06", "1970-03/1970", "1975-06-14/1975", "1975/1975-12-31"],
+)
+def test_date_range_accepts_a_coarse_end_that_covers_the_start(text: str) -> None:
+    assert str(DateRange.parse(text)) == text
+
+
+@pytest.mark.parametrize(
+    "text", ["1975-06/1975-05", "1975-06-14/1975-06-13", "1975-07/1975-06-30", "1976/1975-12-31"]
+)
+def test_date_range_rejects_an_end_that_falls_before_the_start(text: str) -> None:
+    with pytest.raises(InvalidDateError, match="before"):
+        DateRange.parse(text)
+
+
 def test_date_range_rejects_reversed_construction() -> None:
     with pytest.raises(InvalidDateError, match="before"):
         DateRange(PhotoDate(1980), PhotoDate(1970))
@@ -200,22 +216,38 @@ def test_exif_without_a_date_or_notes_omits_those_tags() -> None:
     assert exif[ExifTags.Base.Software] == SOFTWARE
 
 
-def test_exif_description_is_transliterated_to_ascii_and_never_carries_unicode() -> None:
-    exif, _ = read_exif(make_meta(notes="Caf\u00e9 \u7956\u6bcd na\u00efve"))
+def test_exif_description_is_written_when_the_notes_are_printable_ascii() -> None:
+    exif, _ = read_exif(make_meta(notes="Beach day, 1975: a/b & (c)"))
 
-    assert exif[ExifTags.Base.ImageDescription] == "Cafe naive"
+    assert exif[ExifTags.Base.ImageDescription] == "Beach day, 1975: a/b & (c)"
 
 
-def test_exif_description_is_omitted_when_nothing_ascii_survives() -> None:
-    exif, _ = read_exif(make_meta(notes="\u7956\u6bcd\U0001f600"))
+@pytest.mark.parametrize(
+    "notes",
+    [
+        "Caf\u00e9",
+        "\u00bd cup of sugar",
+        "na\u00efve \u7956\u6bcd",
+        "\u7956\u6bcd\U0001f600",
+        "a\x00b",
+        "line1\nline2",
+        "tab\there",
+    ],
+)
+def test_exif_description_is_omitted_unless_the_notes_are_already_printable_ascii(
+    notes: str,
+) -> None:
+    exif, _ = read_exif(make_meta(notes=notes))
 
     assert ExifTags.Base.ImageDescription not in exif
 
 
-def test_exif_description_flattens_control_characters() -> None:
-    exif, _ = read_exif(make_meta(notes="a\x00b\x1bc\nd\te"))
+def test_notes_that_are_not_printable_ascii_stay_complete_in_xmp() -> None:
+    notes = "\u00bd cup of sugar \u7956\u6bcd\nsecond line"
 
-    assert exif[ExifTags.Base.ImageDescription] == "a b c d e"
+    root = read_xmp(make_meta(notes=notes))
+
+    assert texts(root, ".//dc:description/rdf:Alt/rdf:li") == [notes]
 
 
 def test_exif_timestamps_convert_aware_datetimes_to_local_time() -> None:
@@ -339,6 +371,13 @@ def test_longest_allowed_notes_fit_in_one_jpeg_app1_segment(char: str) -> None:
 def test_notes_over_the_limit_are_rejected() -> None:
     with pytest.raises(InvalidNotesError, match=str(MAX_NOTES_CHARS)):
         make_meta(notes="x" * (MAX_NOTES_CHARS + 1))
+
+
+def test_building_xmp_leaves_the_global_xml_namespace_registry_alone() -> None:
+    build_xmp(make_meta())
+
+    element = ET.Element("{http://purl.org/dc/elements/1.1/}title")
+    assert b"ns0:title" in ET.tostring(element)
 
 
 def test_metadata_is_frozen() -> None:

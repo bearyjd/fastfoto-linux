@@ -4,6 +4,8 @@ from pathlib import Path
 
 import numpy as np
 
+from fastfoto_linux.output.files import LOCK_NAME
+
 HEIGHT, WIDTH = 40, 60
 DPI = 300
 
@@ -18,5 +20,12 @@ def rgb(
     return array
 
 
+def make_root(parent: Path, name: str = "out") -> Path:
+    """An existing output root: write_photo never creates it."""
+    root = parent / name
+    root.mkdir()
+    return root
+
+
 def names(directory: Path) -> list[str]:
-    return sorted(p.name for p in directory.iterdir())
+    return sorted(p.name for p in directory.iterdir() if p.name != LOCK_NAME)

@@ -11,6 +11,7 @@ DEFAULT_PREFIX = "FastFoto"
 MAX_ALBUM_CHARS = 120
 MAX_COMPONENT_BYTES = 255
 INDEX_WIDTH = 4
+MAX_INDEX_DIGITS = 9
 # Room kept free after the stem: "_" + up to 10 digits + "_a.jpg", and the 14 extra bytes of
 # the ".<name>.<token>.tmp" staging name used while a file is being written.
 FILE_SUFFIX_RESERVE_BYTES = 32

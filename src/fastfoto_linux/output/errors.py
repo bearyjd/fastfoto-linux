@@ -27,3 +27,7 @@ class InvalidImageError(OutputError, ValueError):
 
 class OutputCollisionError(OutputError, FileExistsError):
     """A file this photo needs already exists; nothing was overwritten."""
+
+
+class OutputRootMissingError(OutputError, FileNotFoundError):
+    """The output folder does not exist (unmounted drive, unexpanded ``~``, typo)."""

@@ -1,16 +1,19 @@
 """Write new files without ever overwriting, all-or-nothing."""
 
 import errno
+import fcntl  # noqa: F401
 import logging
 import os
 import secrets
 from collections.abc import Iterable, Sequence
+from contextlib import AbstractContextManager
 from pathlib import Path
 
 from fastfoto_linux.output.errors import OutputCollisionError
 
 logger = logging.getLogger(__name__)
 
+LOCK_NAME = ".fastfoto-linux.lock"
 TEMP_SUFFIX = ".tmp"
 TEMP_TOKEN_BYTES = 4
 # link() errors that mean "this filesystem has no hard links" (FAT/exFAT, some network mounts).
@@ -82,3 +85,8 @@ def _discard(paths: Iterable[Path]) -> None:
             path.unlink(missing_ok=True)
         except OSError:
             logger.warning("could not remove %s while cleaning up", path, exc_info=True)
+
+
+def locked_folder(directory: Path) -> AbstractContextManager[None]:
+    """Hold an exclusive lock on ``directory`` while numbering and publishing a photo."""
+    raise NotImplementedError

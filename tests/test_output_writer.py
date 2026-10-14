@@ -10,9 +10,11 @@ from fastfoto_linux.output import writer
 from fastfoto_linux.output.errors import (
     InvalidAlbumError,
     OutputCollisionError,
+    OutputRootMissingError,
 )
-from fastfoto_linux.output.writer import DEFAULT_QUALITY, write_photo
-from tests._output_helpers import DPI, HEIGHT, WIDTH, names, rgb
+from fastfoto_linux.output.files import LOCK_NAME
+from fastfoto_linux.output.writer import DEFAULT_QUALITY, MAX_INDEX_ATTEMPTS, write_photo
+from tests._output_helpers import DPI, HEIGHT, WIDTH, make_root, names, rgb
 
 
 def test_defaults_write_one_original_named_after_the_album(tmp_path: Path) -> None:
@@ -34,12 +36,34 @@ def test_without_an_album_files_go_straight_into_the_root(tmp_path: Path) -> Non
     assert names(tmp_path) == ["FastFoto_0001.jpg"]
 
 
-def test_the_root_and_album_folders_are_created_on_demand(tmp_path: Path) -> None:
-    root = tmp_path / "deep" / "out"
+def test_album_folders_are_created_on_demand_inside_an_existing_root(tmp_path: Path) -> None:
+    root = make_root(tmp_path)
 
     write_photo(rgb(), dpi=DPI, output_root=root, album="Trip")
 
     assert names(root / "Trip") == ["Trip_0001.jpg"]
+
+
+def test_a_missing_output_root_is_an_error_and_nothing_is_created(tmp_path: Path) -> None:
+    root = tmp_path / "unmounted" / "photos"
+
+    with pytest.raises(OutputRootMissingError, match="photos"):
+        write_photo(rgb(), dpi=DPI, output_root=root, album="Trip")
+
+    assert list(tmp_path.rglob("*")) == []
+
+
+def test_an_output_root_that_is_a_file_is_an_error(tmp_path: Path) -> None:
+    (tmp_path / "photos").write_bytes(b"not a folder")
+
+    with pytest.raises(OutputRootMissingError):
+        write_photo(rgb(), dpi=DPI, output_root=tmp_path / "photos")
+
+
+def test_the_lock_file_is_the_only_extra_thing_left_in_the_folder(tmp_path: Path) -> None:
+    write_photo(rgb(), dpi=DPI, output_root=tmp_path, album="Trip")
+
+    assert sorted(p.name for p in (tmp_path / "Trip").iterdir()) == [LOCK_NAME, "Trip_0001.jpg"]
 
 
 def test_an_explicit_prefix_overrides_the_album_name(tmp_path: Path) -> None:
@@ -49,8 +73,10 @@ def test_an_explicit_prefix_overrides_the_album_name(tmp_path: Path) -> None:
 
 
 def test_the_enhanced_copy_is_written_only_when_supplied(tmp_path: Path) -> None:
-    plain = write_photo(rgb(), dpi=DPI, output_root=tmp_path / "p")
-    both = write_photo(rgb(), dpi=DPI, output_root=tmp_path / "b", enhanced=rgb((10, 20, 30)))
+    plain = write_photo(rgb(), dpi=DPI, output_root=make_root(tmp_path, "p"))
+    both = write_photo(
+        rgb(), dpi=DPI, output_root=make_root(tmp_path, "b"), enhanced=rgb((10, 20, 30))
+    )
 
     assert plain.enhanced is None
     assert names(tmp_path / "p") == ["FastFoto_0001.jpg"]
@@ -59,8 +85,8 @@ def test_the_enhanced_copy_is_written_only_when_supplied(tmp_path: Path) -> None
 
 
 def test_the_back_is_written_only_when_supplied(tmp_path: Path) -> None:
-    plain = write_photo(rgb(), dpi=DPI, output_root=tmp_path / "p")
-    both = write_photo(rgb(), dpi=DPI, output_root=tmp_path / "b", back=rgb((10, 20, 30)))
+    plain = write_photo(rgb(), dpi=DPI, output_root=make_root(tmp_path, "p"))
+    both = write_photo(rgb(), dpi=DPI, output_root=make_root(tmp_path, "b"), back=rgb((10, 20, 30)))
 
     assert plain.back is None
     assert names(tmp_path / "p") == ["FastFoto_0001.jpg"]
@@ -165,22 +191,49 @@ def test_successive_photos_get_successive_numbers_and_never_touch_earlier_ones(
     assert first.original.read_bytes() == before
 
 
-def test_a_pre_existing_target_is_an_error_and_nothing_else_is_written(
+def stale_next_index(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Make numbering miss files, as if another writer published them a moment later."""
+    monkeypatch.setattr(writer, "next_index", lambda directory, prefix: 1)
+
+
+def test_an_index_taken_by_another_writer_is_skipped_without_overwriting(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     folder = tmp_path / "Trip"
     folder.mkdir()
-    (folder / "Trip_0001_b.jpg").write_bytes(b"precious")
-    monkeypatch.setattr(writer, "next_index", lambda directory, prefix: 1)
+    (folder / "Trip_0001_b.jpg").write_bytes(b"theirs")
+    stale_next_index(monkeypatch)
+
+    result = write_photo(
+        rgb(), dpi=DPI, output_root=tmp_path, album="Trip", back=rgb(), enhanced=rgb()
+    )
+
+    assert result.index == 2
+    assert names(folder) == [
+        "Trip_0001_b.jpg",
+        "Trip_0002.jpg",
+        "Trip_0002_a.jpg",
+        "Trip_0002_b.jpg",
+    ]
+    assert (folder / "Trip_0001_b.jpg").read_bytes() == b"theirs"
+
+
+def test_giving_up_after_repeated_collisions_writes_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    folder = tmp_path / "Trip"
+    folder.mkdir()
+    for index in range(1, MAX_INDEX_ATTEMPTS + 1):
+        (folder / f"Trip_{index:04d}_b.jpg").write_bytes(b"theirs")
+    stale_next_index(monkeypatch)
 
     with pytest.raises(OutputCollisionError):
         write_photo(rgb(), dpi=DPI, output_root=tmp_path, album="Trip", back=rgb(), enhanced=rgb())
 
-    assert names(folder) == ["Trip_0001_b.jpg"]
-    assert (folder / "Trip_0001_b.jpg").read_bytes() == b"precious"
+    assert names(folder) == [f"Trip_{i:04d}_b.jpg" for i in range(1, MAX_INDEX_ATTEMPTS + 1)]
 
 
-def test_an_encoder_failure_leaves_nothing_behind(
+def test_an_encoder_failure_creates_neither_the_album_folder_nor_any_file(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     saves = []
@@ -192,12 +245,12 @@ def test_an_encoder_failure_leaves_nothing_behind(
         fp.write(b"partial jpeg")  # type: ignore[attr-defined]
 
     monkeypatch.setattr(Image.Image, "save", failing_save)
-    root = tmp_path / "out"
+    root = make_root(tmp_path)
 
     with pytest.raises(OSError, match="encoder exploded"):
         write_photo(rgb(), dpi=DPI, output_root=root, album="Trip", back=rgb())
 
-    assert list(root.rglob("*")) == []
+    assert list(root.iterdir()) == []
 
 
 def test_a_disk_error_while_writing_rolls_back_the_whole_photo(
@@ -206,11 +259,11 @@ def test_a_disk_error_while_writing_rolls_back_the_whole_photo(
     real_link = os.link
     calls = []
 
-    def flaky_link(src: Path, dst: Path) -> None:
+    def flaky_link(src: Path, dst: Path, **kwargs: bool) -> None:
         calls.append(dst)
         if len(calls) == 2:
             raise OSError(errno.ENOSPC, "No space left on device")
-        real_link(src, dst)
+        real_link(src, dst, **kwargs)
 
     monkeypatch.setattr(os, "link", flaky_link)
 
@@ -236,8 +289,8 @@ def test_the_default_quality_is_95_and_can_be_overridden(tmp_path: Path) -> None
     rng = np.random.default_rng(0)
     noisy = rng.integers(0, 256, size=(HEIGHT, WIDTH, 3), dtype=np.uint8)
 
-    high = write_photo(noisy, dpi=DPI, output_root=tmp_path / "hi")
-    low = write_photo(noisy, dpi=DPI, output_root=tmp_path / "lo", quality=20)
+    high = write_photo(noisy, dpi=DPI, output_root=make_root(tmp_path, "hi"))
+    low = write_photo(noisy, dpi=DPI, output_root=make_root(tmp_path, "lo"), quality=20)
 
     assert DEFAULT_QUALITY == 95
     assert high.original.stat().st_size > low.original.stat().st_size
@@ -276,7 +329,7 @@ def test_non_contiguous_arrays_are_accepted(tmp_path: Path) -> None:
 def test_path_traversal_in_the_album_stays_inside_the_output_root(
     tmp_path: Path, album: str
 ) -> None:
-    root = tmp_path / "out"
+    root = make_root(tmp_path)
 
     result = write_photo(rgb(), dpi=DPI, output_root=root, album=album)
 
@@ -288,7 +341,7 @@ def test_path_traversal_in_the_album_stays_inside_the_output_root(
 def test_path_traversal_in_the_prefix_stays_inside_the_album_folder(
     tmp_path: Path, prefix: str
 ) -> None:
-    root = tmp_path / "out"
+    root = make_root(tmp_path)
 
     result = write_photo(rgb(), dpi=DPI, output_root=root, album="Trip", prefix=prefix)
 

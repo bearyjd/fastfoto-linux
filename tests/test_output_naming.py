@@ -1,0 +1,294 @@
+from pathlib import Path
+
+import pytest
+
+from fastfoto_linux.output.errors import InvalidAlbumError, InvalidPrefixError
+from fastfoto_linux.output.naming import (
+    DEFAULT_PREFIX,
+    MAX_ALBUM_CHARS,
+    MAX_COMPONENT_BYTES,
+    album_dir,
+    default_prefix,
+    next_index,
+    photo_paths,
+    sanitise_album,
+    sanitise_prefix,
+)
+
+ADVERSARIAL_ALBUMS = [
+    "../../etc",
+    "/etc/passwd",
+    "..\\..\\windows",
+    "C:\\Users\\x",
+    "....//....//x",
+    "a/../../b",
+    "nul\x00byte",
+    "\u202eevil",
+    "~root",
+    ".hidden",
+    "x\n\ty\r",
+    "\U0001f600" * 300,
+    "\u7956" * 300,
+]
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("Grandma 1970s", "Grandma 1970s"),
+        ("  Grandma   1970s  ", "Grandma 1970s"),
+        ("Grandma/1970s", "Grandma 1970s"),
+        ("a\\b", "a b"),
+        ("../../etc", "etc"),
+        ("/etc/passwd", "etc passwd"),
+        ("..hidden", "hidden"),
+        (".hidden.album.", "hidden.album"),
+        ("tab\tnew\nline", "tab new line"),
+        ("nul\x00byte", "nul byte"),
+        ("bell\x07", "bell"),
+        ("\u202eevil", "evil"),
+        ("Cafe\u0301", "Caf\u00e9"),
+        ("Caf\u00e9 \u7956\u6bcd", "Caf\u00e9 \u7956\u6bcd"),
+        ("1983_June_lake-trip", "1983_June_lake-trip"),
+    ],
+)
+def test_sanitise_album_table(raw: str, expected: str) -> None:
+    assert sanitise_album(raw) == expected
+
+
+@pytest.mark.parametrize("raw", ["", "   ", ".", "..", "...", " . . ", "/", "\\", "\x00", "\n"])
+def test_sanitise_album_rejects_names_with_nothing_usable(raw: str) -> None:
+    with pytest.raises(InvalidAlbumError):
+        sanitise_album(raw)
+
+
+@pytest.mark.parametrize("raw", ADVERSARIAL_ALBUMS)
+def test_sanitise_album_always_yields_one_safe_path_component(raw: str) -> None:
+    name = sanitise_album(raw)
+
+    assert name
+    assert Path(name).name == name
+    assert not name.startswith(".")
+    assert not any(ch in name for ch in "/\\\x00")
+    assert name.isprintable()
+    assert len(name) <= MAX_ALBUM_CHARS
+    assert len(name.encode()) <= MAX_COMPONENT_BYTES
+
+
+def test_sanitise_album_keeps_exactly_the_maximum_length() -> None:
+    assert sanitise_album("a" * MAX_ALBUM_CHARS) == "a" * MAX_ALBUM_CHARS
+
+
+def test_sanitise_album_truncates_to_the_character_limit() -> None:
+    assert sanitise_album("a" * (MAX_ALBUM_CHARS + 30)) == "a" * MAX_ALBUM_CHARS
+
+
+def test_sanitise_album_truncates_on_a_codepoint_boundary_to_the_byte_limit() -> None:
+    name = sanitise_album("\U0001f600" * MAX_ALBUM_CHARS)
+
+    assert name == "\U0001f600" * (MAX_COMPONENT_BYTES // 4)
+    assert len(name.encode()) <= MAX_COMPONENT_BYTES
+
+
+def test_sanitise_album_restrips_after_truncating() -> None:
+    assert sanitise_album("a" * (MAX_ALBUM_CHARS - 1) + " .tail") == "a" * (MAX_ALBUM_CHARS - 1)
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("FastFoto", "FastFoto"),
+        ("1983_June_lake-trip", "1983_June_lake-trip"),
+        ("a__b_-c", "a__b_-c"),
+        ("_x_", "_x_"),
+        ("Grandma 1970s", "Grandma_1970s"),
+        ("Caf\u00e9", "Cafe"),
+        ("a/b\\c", "a_b_c"),
+        ("(x)", "x"),
+        ("../x", "x"),
+        ("a  !! b", "a_b"),
+        ("Zo\u00eb & Ren\u00e9", "Zoe_Rene"),
+    ],
+)
+def test_sanitise_prefix_table(raw: str, expected: str) -> None:
+    assert sanitise_prefix(raw) == expected
+
+
+def test_sanitise_prefix_truncates_to_the_album_limit() -> None:
+    assert sanitise_prefix("a" * 500) == "a" * MAX_ALBUM_CHARS
+
+
+@pytest.mark.parametrize("raw", ["", "!!!", "\u7956\u6bcd", "  ", "../.."])
+def test_sanitise_prefix_rejects_names_with_nothing_usable(raw: str) -> None:
+    with pytest.raises(InvalidPrefixError):
+        sanitise_prefix(raw)
+
+
+@pytest.mark.parametrize("raw", ADVERSARIAL_ALBUMS)
+def test_sanitise_prefix_output_is_idempotent_and_filename_safe(raw: str) -> None:
+    try:
+        once = sanitise_prefix(raw)
+    except InvalidPrefixError:
+        return
+    assert all(ch.isascii() and (ch.isalnum() or ch in "_-") for ch in once)
+    assert sanitise_prefix(once) == once
+
+
+@pytest.mark.parametrize(
+    ("album", "expected"),
+    [
+        (None, DEFAULT_PREFIX),
+        ("Grandma 1970s", "Grandma_1970s"),
+        ("1983_June_lake-trip", "1983_June_lake-trip"),
+        ("\u7956\u6bcd", DEFAULT_PREFIX),
+        ("Caf\u00e9", "Cafe"),
+    ],
+)
+def test_default_prefix_follows_the_album_name(album: str | None, expected: str) -> None:
+    assert default_prefix(album) == expected
+
+
+def test_default_prefix_still_rejects_an_unusable_album() -> None:
+    with pytest.raises(InvalidAlbumError):
+        default_prefix("..")
+
+
+def test_default_prefix_of_a_folder_name_continues_that_folders_numbering() -> None:
+    folder = sanitise_album("1983_June_lake-trip")
+
+    assert default_prefix(folder) == folder
+
+
+def test_album_dir_without_album_is_the_resolved_root(tmp_path: Path) -> None:
+    assert album_dir(tmp_path / "out" / ".." / "out", None) == (tmp_path / "out").resolve()
+
+
+def test_album_dir_is_a_child_of_the_root_and_is_not_created(tmp_path: Path) -> None:
+    root = tmp_path / "out"
+
+    result = album_dir(root, "Grandma 1970s")
+
+    assert result == root.resolve() / "Grandma 1970s"
+    assert not root.exists()
+
+
+@pytest.mark.parametrize("raw", ADVERSARIAL_ALBUMS)
+def test_album_dir_never_leaves_the_root(tmp_path: Path, raw: str) -> None:
+    root = (tmp_path / "out").resolve()
+
+    result = album_dir(root, raw)
+
+    assert result.parent == root
+
+
+@pytest.mark.parametrize("raw", ["..", ".", "", "/", "\\"])
+def test_album_dir_rejects_unusable_albums(tmp_path: Path, raw: str) -> None:
+    with pytest.raises(InvalidAlbumError):
+        album_dir(tmp_path, raw)
+
+
+def test_album_dir_rejects_a_symlink_that_escapes_the_root(tmp_path: Path) -> None:
+    root = tmp_path / "out"
+    root.mkdir()
+    outside = tmp_path / "elsewhere"
+    outside.mkdir()
+    (root / "Sneaky").symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(InvalidAlbumError, match="outside"):
+        album_dir(root, "Sneaky")
+
+
+def test_album_dir_allows_a_symlink_that_stays_inside_the_root(tmp_path: Path) -> None:
+    root = tmp_path / "out"
+    (root / "real").mkdir(parents=True)
+    (root / "Alias").symlink_to(root / "real", target_is_directory=True)
+
+    assert album_dir(root, "Alias") == (root / "real").resolve()
+
+
+def touch(directory: Path, *names: str) -> None:
+    directory.mkdir(parents=True, exist_ok=True)
+    for name in names:
+        (directory / name).write_bytes(b"x")
+
+
+def test_next_index_is_one_for_a_missing_or_empty_folder(tmp_path: Path) -> None:
+    assert next_index(tmp_path / "missing", "X") == 1
+    touch(tmp_path / "empty")
+    assert next_index(tmp_path / "empty", "X") == 1
+
+
+def test_next_index_continues_after_the_highest_number(tmp_path: Path) -> None:
+    touch(tmp_path, "X_0001.jpg", "X_0002_a.jpg", "X_0002_b.jpg")
+
+    assert next_index(tmp_path, "X") == 3
+
+
+def test_next_index_does_not_fill_gaps(tmp_path: Path) -> None:
+    touch(tmp_path, "X_0001.jpg", "X_0005.jpg")
+
+    assert next_index(tmp_path, "X") == 6
+
+
+@pytest.mark.parametrize("name", ["X_0007_a.jpg", "X_0007_b.jpg", "X_0007.jpg"])
+def test_next_index_continues_a_folder_holding_only_one_kind_of_file(
+    tmp_path: Path, name: str
+) -> None:
+    touch(tmp_path, name)
+
+    assert next_index(tmp_path, "X") == 8
+
+
+def test_next_index_rolls_over_to_five_digits(tmp_path: Path) -> None:
+    touch(tmp_path, "X_9999.jpg")
+
+    assert next_index(tmp_path, "X") == 10000
+    assert photo_paths(tmp_path, "X", 10000).original.name == "X_10000.jpg"
+
+
+def test_next_index_reads_existing_five_digit_numbers(tmp_path: Path) -> None:
+    touch(tmp_path, "X_10003_a.jpg", "X_0004.jpg")
+
+    assert next_index(tmp_path, "X") == 10004
+
+
+def test_next_index_counts_any_extension_and_case(tmp_path: Path) -> None:
+    touch(tmp_path, "X_0050.tif", "X_0060.JPG", "X_0070-copy.jpg")
+
+    assert next_index(tmp_path, "X") == 71
+
+
+def test_next_index_ignores_other_prefixes_and_malformed_names(tmp_path: Path) -> None:
+    touch(
+        tmp_path,
+        "Y_0050.jpg",
+        "XX_0060.jpg",
+        "X_Y_0070.jpg",
+        "X_12.jpg",
+        "X_abcd.jpg",
+        "notes.txt",
+        ".X_0090.jpg.abcd.tmp",
+        "x_0080.jpg",
+    )
+
+    assert next_index(tmp_path, "X") == 1
+
+
+def test_next_index_treats_prefix_characters_literally(tmp_path: Path) -> None:
+    touch(tmp_path, "a-b_0003.jpg", "aXb_0009.jpg")
+
+    assert next_index(tmp_path, "a-b") == 4
+
+
+def test_photo_paths_follow_the_fastfoto_convention(tmp_path: Path) -> None:
+    paths = photo_paths(tmp_path, "Trip", 7)
+
+    assert paths.original == tmp_path / "Trip_0007.jpg"
+    assert paths.enhanced == tmp_path / "Trip_0007_a.jpg"
+    assert paths.back == tmp_path / "Trip_0007_b.jpg"
+
+
+@pytest.mark.parametrize("index", [0, -1])
+def test_photo_paths_reject_non_positive_indexes(tmp_path: Path, index: int) -> None:
+    with pytest.raises(ValueError, match="index"):
+        photo_paths(tmp_path, "X", index)

@@ -50,10 +50,16 @@ def settle_raw_dir(raw: Path, root: Path, *, keep: bool) -> Path | None:
     rescanning the physical print.
 
     This runs while an error may be on its way to the user, so it never raises for a folder
-    that cannot be moved or deleted: that is logged and ``raw`` is returned, as the place where
-    the pages still are.
+    that cannot be listed, moved or deleted: that is logged and ``raw`` is returned, as the
+    place where the pages still are (a folder that cannot even be listed is left alone, not
+    deleted blind).
     """
-    if not any(raw.iterdir()):
+    try:
+        empty = not any(raw.iterdir())
+    except OSError as error:
+        logger.error("raw folder %s cannot be read, its pages are left in it: %s", raw, error)
+        return raw
+    if empty:
         _remove_empty(raw, root)
         return None
     if not keep:
@@ -64,7 +70,11 @@ def settle_raw_dir(raw: Path, root: Path, *, keep: bool) -> Path | None:
 
 
 def _remove_empty(raw: Path, root: Path) -> None:
-    raw.rmdir()
+    try:
+        raw.rmdir()
+    except OSError as error:  # no page is lost, an empty folder is just left behind
+        logger.error("empty raw folder %s not removed: %s", raw, error)
+        return
     if raw.parent == root / KEPT_DIR_NAME:
         with contextlib.suppress(OSError):  # other scans' folders may still be in there
             raw.parent.rmdir()

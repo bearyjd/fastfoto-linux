@@ -15,23 +15,24 @@ def _enhanced_line(result: ProcessResult) -> str:
     return f"{line} ({result.unchanged} unchanged)" if result.unchanged else line
 
 
-def _print_dropped(result: ProcessResult, *, can_keep_raw: bool) -> None:
-    how = "--backs always or --keep-raw" if can_keep_raw else "--backs always"
-    print(f"backs dropped: {result.backs_dropped} (no writing detected; use {how} to keep them)")
+def _print_dropped(result: ProcessResult) -> None:
+    print(
+        f"backs dropped: {result.backs_dropped} "
+        "(no writing detected; use --backs always to keep them)"
+    )
     print(f"  {', '.join(result.dropped_backs)}")
 
 
-def print_summary(result: ProcessResult, *, can_keep_raw: bool = False) -> None:
+def print_summary(result: ProcessResult) -> None:
     """Counts and folders on stdout; sheets that need attention below them.
 
     Sheets that need a look (``uncertain``) go to stdout with their reason; degraded and failed
-    sheets go to stderr. ``can_keep_raw`` says whether the user could have asked for the raw
-    pages (``ffscan scan``), which changes the advice about dropped backs.
+    sheets go to stderr.
     """
     print(f"photos written: {result.photos}")
     print(f"backs kept: {result.backs_kept}")
     if result.dropped_backs:
-        _print_dropped(result, can_keep_raw=can_keep_raw)
+        _print_dropped(result)
     print(_enhanced_line(result))
     for folder in sorted({str(files.directory) for files in result.written}):
         print(f"output: {folder}")

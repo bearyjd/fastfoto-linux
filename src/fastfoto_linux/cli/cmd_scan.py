@@ -74,12 +74,13 @@ def _scan_into(
     try:
         pages, scan_error = _scan(raw, target, simplex=args.simplex, dpi=args.dpi)
         result = process_pages(pages, settings)
-        print_summary(result, can_keep_raw=True)
+        print_summary(result)
         exit_code = EXIT_OK if result.ok else EXIT_PROCESSING_ERROR
     finally:  # also for Ctrl-C and a crash: a scanned page cannot be had again without a rescan
         calm = scan_error is None and result is not None and result.ok
-        kept = settle_raw_dir(raw, root, keep=_keep_raw(args, result, scan_error))
-        _report_kept(kept, calm=calm)
+        keep = _keep_raw(args, result, scan_error)
+        kept = settle_raw_dir(raw, root, keep=keep)
+        _report_kept(kept, calm=calm, for_dropped_back=keep and calm and not args.keep_raw)
     if scan_error is not None:
         raise scan_error
     return exit_code
@@ -99,14 +100,26 @@ def _keep_raw(
     return result.backs_dropped > 0 and not args.discard_raw
 
 
-def _report_kept(kept: Path | None, *, calm: bool) -> None:
-    """Say where the raw pages are: on stdout when it was planned, on stderr when it was not."""
+def _report_kept(kept: Path | None, *, calm: bool, for_dropped_back: bool) -> None:
+    """Say where the raw pages are: on stdout when it was planned, on stderr when it was not.
+
+    ``for_dropped_back``: nobody asked for them, they stay only because a back was dropped, so
+    the user is told how to get rid of them. This runs in a ``finally``: a terminal that has
+    hung up (EIO) must not replace the interrupt or error that is on its way.
+    """
     if kept is None:
         return
-    if calm:
-        print(f"raw pages kept in: {kept}")
-    else:
-        print(f"ffscan: raw pages kept in {kept}", file=sys.stderr)
+    with contextlib.suppress(OSError):
+        if for_dropped_back:
+            print(
+                f"raw pages kept in {kept} (a back was dropped); "
+                "--discard-raw deletes them after a clean run"
+            )
+            print("  raw PNGs use disk space; delete that folder once the photos look right")
+        elif calm:
+            print(f"raw pages kept in: {kept}")
+        else:
+            print(f"ffscan: raw pages kept in {kept}", file=sys.stderr)
 
 
 def _scan(

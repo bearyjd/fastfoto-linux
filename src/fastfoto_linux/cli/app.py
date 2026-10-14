@@ -56,7 +56,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         try:
             return args.handler(args)
         except KeyboardInterrupt:
-            print(f"{PROG}: interrupted", file=sys.stderr)
+            with contextlib.suppress(OSError):  # a hung-up terminal must not change the exit code
+                print(f"{PROG}: interrupted", file=sys.stderr)
             return EXIT_INTERRUPTED
         except Exception as error:  # every failure ends as one line, not a traceback
             return _report(error, debug=args.debug)
@@ -73,10 +74,11 @@ def exit_code_for(error: Exception) -> int:
 
 
 def _report(error: Exception, *, debug: bool) -> int:
-    if debug:
-        traceback.print_exception(error, file=sys.stderr)
     message = " ".join(str(error).split()) or type(error).__name__
-    print(f"{PROG}: error: {message}", file=sys.stderr)
+    with contextlib.suppress(OSError):  # a hung-up terminal must not change the exit code
+        if debug:
+            traceback.print_exception(error, file=sys.stderr)
+        print(f"{PROG}: error: {message}", file=sys.stderr)
     return exit_code_for(error)
 
 
@@ -91,12 +93,18 @@ def _signals_as_interrupt() -> Generator[None]:
     Without it, closing the terminal kills ``ffscan`` at once: scanimage, which runs in its own
     session, keeps scanning into a raw folder nobody is told about. As a KeyboardInterrupt the
     signal stops scanimage and keeps the raw pages. The previous handlers come back afterwards;
-    outside the main thread (an embedding program) signals are left alone.
+    outside the main thread (an embedding program) signals are left alone, and so is a signal
+    that is ignored (``nohup ffscan scan &``: whoever ignored it wants the scan to outlive the
+    terminal).
     """
     if threading.current_thread() is not threading.main_thread():
         yield
         return
-    previous = {signum: signal.signal(signum, _raise_interrupt) for signum in HANGUP_SIGNALS}
+    previous = {
+        signum: signal.signal(signum, _raise_interrupt)
+        for signum in HANGUP_SIGNALS
+        if signal.getsignal(signum) is not signal.SIG_IGN
+    }
     try:
         yield
     finally:

@@ -44,8 +44,8 @@ uv run ffscan process page-*.png --out ~/Scans --album "Family Trips" --feed fac
   others: it is listed at the end and the exit code is 1. `scan` keeps the raw pages in
   `DIR/.raw/<UTC time>/` (so nothing needs rescanning) when anything went wrong (a failed or
   degraded sheet, a scanner error, Ctrl-C, SIGTERM or SIGHUP), when a back was dropped for lack
-  of writing, and always with `--keep-raw`; `--discard-raw` deletes them after an otherwise
-  clean run even if a back was dropped.
+  of writing (the run says so; raw PNGs use disk space), and always with `--keep-raw`;
+  `--discard-raw` deletes them after an otherwise clean run even if a back was dropped.
 - Exit codes: 0 ok, 1 processing error, 2 usage, 3 scanner not found or shim missing, 4 no
   documents in the feeder. `-v` logs progress, `--debug` adds tracebacks.
 

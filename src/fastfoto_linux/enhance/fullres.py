@@ -16,6 +16,8 @@ from fastfoto_linux.enhance.faces import Face, FaceDetector, default_detector, e
 # Detector input size in pixels (not a physical length).
 DETECT_LONG_SIDE_PX = 1000
 FACE_CROP_MARGIN = 0.5  # of the face's larger side, added on every side of the crop
+# Two refined faces whose eyes are this close (as a fraction of the inter-ocular distance) are one.
+DUPLICATE_EYE_FRACTION = 0.5
 
 Box = tuple[int, int, int, int]
 
@@ -83,6 +85,26 @@ def _refined(img: np.ndarray, coarse: Face, detector: FaceDetector) -> Face:
     return min(inside, key=lambda f: math.dist(_centre(f), (cx, cy)), default=coarse)
 
 
+def _same_face(a: Face, b: Face) -> bool:
+    (ax0, ay0), (ax1, ay1) = a.landmarks[:2]
+    reach = DUPLICATE_EYE_FRACTION * math.dist((ax0, ay0), (ax1, ay1))
+    return all(
+        math.dist(p, q) <= reach for p, q in zip(a.landmarks[:2], b.landmarks[:2], strict=True)
+    )
+
+
+def _without_duplicates(faces: list[Face]) -> tuple[Face, ...]:
+    """One face per person: overlapping coarse boxes can be refined to the same face."""
+    kept: list[Face] = []
+    for face in faces:
+        twin = next((i for i, other in enumerate(kept) if _same_face(face, other)), None)
+        if twin is None:
+            kept.append(face)
+        elif face.score > kept[twin].score:
+            kept[twin] = face
+    return tuple(kept)
+
+
 def detect_faces_full_res(
     img: np.ndarray, detector: FaceDetector | None = None
 ) -> tuple[Face, ...]:
@@ -92,4 +114,5 @@ def detect_faces_full_res(
     if max(img.shape[:2]) <= DETECT_LONG_SIDE_PX:
         return active.detect(img)
     whole = (0, 0, img.shape[1], img.shape[0])
-    return tuple(_refined(img, face, active) for face in _detect_region(img, whole, active))
+    refined = [_refined(img, face, active) for face in _detect_region(img, whole, active)]
+    return _without_duplicates(refined)

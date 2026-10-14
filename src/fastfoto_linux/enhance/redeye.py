@@ -248,9 +248,9 @@ def find_red_eyes(img: np.ndarray, faces: Sequence[Face]) -> tuple[EyeFix, ...]:
     ensure_rgb_uint8(img)
     fixes: list[EyeFix] = []
     for face in faces:
-        iod = _interocular(face)
         if face.score < MIN_FACE_SCORE:
             continue
+        iod = _interocular(face)
         for centre in face.landmarks[:LANDMARKS_PER_FACE]:
             fix = _find_pupil(img, centre, iod)
             if fix is not None:
@@ -304,7 +304,11 @@ def remove_red_eye(img: np.ndarray, dpi: int, detector: FaceDetector | None = No
         raise ValueError(f"dpi must be a positive finite number, got {dpi!r}")
     ensure_rgb_uint8(img)
     min_iod = _mm_to_px(MIN_INTEROCULAR_MM, dpi)
-    faces = tuple(f for f in detect_faces_full_res(img, detector) if _interocular(f) >= min_iod)
+    faces = tuple(
+        f
+        for f in detect_faces_full_res(img, detector)
+        if f.score >= MIN_FACE_SCORE and _interocular(f) >= min_iod
+    )
     fixes = find_red_eyes(img, faces)
     logger.info("red-eye: corrected %d eye(s) in %d face(s)", len(fixes), len(faces))
     return apply_fixes(img, fixes)

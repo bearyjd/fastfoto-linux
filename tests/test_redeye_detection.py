@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from fastfoto_linux.enhance.faces import Face, FaceDetector
+from fastfoto_linux.enhance.fullres import _crop_box
 from fastfoto_linux.enhance.redeye import detect_faces_full_res
 
 MAX_INPUT_LONG_SIDE = 1000
@@ -229,7 +230,7 @@ def test_overlapping_coarse_boxes_over_one_face_give_it_once() -> None:
     first = _face((460.0, 400.0), (500.0, 402.0), (440.0, 370.0, 90.0, 100.0), COARSE_SCORE)
     second = _face((462.0, 401.0), (502.0, 403.0), (442.0, 371.0, 90.0, 100.0), COARSE_SCORE)
     truth = _face((692.25, 601.5), (751.75, 604.0), (660.0, 560.0, 140.0, 150.0), REFINED_SCORE)
-    surer = dataclasses.replace(truth, score=0.99)
+    surer = _shifted(dataclasses.replace(truth, score=0.99), 4.0, 3.0)  # same eyes, a few px off
     for answers in ((truth, surer), (surer, truth)):
         stub = _two_coarse_faces_stub(first, second, answers)
         faces = detect_faces_full_res(_coded_image(1200, 1500), _as_detector(stub))
@@ -245,3 +246,24 @@ def test_distinct_faces_are_both_kept() -> None:
         _coded_image(1200, 1500), _as_detector(_two_coarse_faces_stub(first, other, truths))
     )
     assert [face.landmarks[0] for face in faces] == [t.landmarks[0] for t in truths]
+
+
+@pytest.mark.parametrize(("placement", "side", "edge"), EDGE_FACES.values(), ids=EDGE_FACES.keys())
+def test_the_crop_box_stops_at_the_photo_edge(
+    placement: tuple[tuple[float, float], tuple[float, float], tuple[float, ...]],
+    side: int,
+    edge: int,
+) -> None:
+    left_eye, right_eye, box = placement
+    full = _truth(_face(left_eye, right_eye, box, COARSE_SCORE), 1.5, 0.0)
+    assert _crop_box(full, (1200, 1500, 3))[side] == edge
+
+
+def test_faces_sharing_only_one_eye_position_are_different_faces() -> None:
+    first = _face((460.0, 400.0), (500.0, 402.0), (440.0, 370.0, 90.0, 100.0), COARSE_SCORE)
+    second = _face((460.0, 400.0), (620.0, 410.0), (440.0, 370.0, 200.0, 100.0), COARSE_SCORE)
+    truths = (_truth(first, 1.5, 0.0), _truth(second, 1.5, 0.0))
+    faces = detect_faces_full_res(
+        _coded_image(1200, 1500), _as_detector(_two_coarse_faces_stub(first, second, truths))
+    )
+    assert len(faces) == 2

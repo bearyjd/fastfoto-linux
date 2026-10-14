@@ -8,6 +8,7 @@ from fastfoto_linux.output.errors import (
     InvalidPrefixError,
     OutputCollisionError,
     OutputError,
+    OutputRootMissingError,
 )
 from fastfoto_linux.output.metadata import DateRange, PhotoDate
 from fastfoto_linux.output.writer import DEFAULT_QUALITY, WrittenFiles, write_photo
@@ -22,6 +23,7 @@ __all__ = [
     "InvalidPrefixError",
     "OutputCollisionError",
     "OutputError",
+    "OutputRootMissingError",
     "PhotoDate",
     "WrittenFiles",
     "write_photo",

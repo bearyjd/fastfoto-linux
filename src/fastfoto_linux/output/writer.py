@@ -1,6 +1,7 @@
 """Write scanned photos to album folders as JPEG with EXIF and XMP metadata."""
 
 import io
+import operator
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -8,8 +9,12 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from fastfoto_linux.output.errors import InvalidImageError
-from fastfoto_linux.output.files import write_new_files
+from fastfoto_linux.output.errors import (
+    InvalidImageError,
+    OutputCollisionError,
+    OutputRootMissingError,
+)
+from fastfoto_linux.output.files import locked_folder, write_new_files
 from fastfoto_linux.output.metadata import (
     DateRange,
     PhotoDate,
@@ -70,11 +75,32 @@ def _check_image(name: str, array: object) -> None:
         )
 
 
-def _check_options(dpi: int, quality: int) -> None:
-    if not isinstance(dpi, int) or isinstance(dpi, bool) or dpi < 1:
-        raise ValueError(f"dpi must be a positive integer, got {dpi!r}")
-    if not isinstance(quality, int) or not MIN_QUALITY <= quality <= MAX_QUALITY:
-        raise ValueError(f"quality must be {MIN_QUALITY}-{MAX_QUALITY}, got {quality!r}")
+def _as_int(name: str, value: object) -> int:
+    """``value`` as a plain int; accepts numpy integers, rejects bools, floats and strings."""
+    if isinstance(value, bool):
+        raise ValueError(f"{name} must be an integer, got {value!r}")
+    try:
+        return operator.index(value)  # type: ignore[arg-type]
+    except TypeError as exc:
+        raise ValueError(f"{name} must be an integer, got {value!r}") from exc
+
+
+def _check_options(dpi: object, quality: object) -> tuple[int, int]:
+    dpi_value = _as_int("dpi", dpi)
+    if not 1 <= dpi_value <= MAX_DPI:
+        raise ValueError(f"dpi must be 1-{MAX_DPI}, got {dpi_value}")
+    quality_value = _as_int("quality", quality)
+    if not MIN_QUALITY <= quality_value <= MAX_QUALITY:
+        raise ValueError(f"quality must be {MIN_QUALITY}-{MAX_QUALITY}, got {quality_value}")
+    return dpi_value, quality_value
+
+
+def _require_root(output_root: Path) -> None:
+    """The root is never created: a missing one usually means an unmounted drive or a typo."""
+    if not output_root.is_dir():
+        raise OutputRootMissingError(
+            f"output folder {output_root} does not exist; create or mount it first"
+        )
 
 
 def _encode_jpeg(
@@ -91,6 +117,32 @@ def _encode_jpeg(
         xmp=xmp,
     )
     return buffer.getvalue()
+
+
+def _publish_photo(
+    directory: Path, file_prefix: str, blobs: tuple[bytes | None, bytes | None, bytes | None]
+) -> WrittenFiles:
+    """Number the photo and publish its files; the caller holds the folder lock.
+
+    If another writer that does not take the lock got there first, the files collide, nothing
+    is written, and the next number is tried, up to MAX_INDEX_ATTEMPTS times.
+    """
+    index = 0
+    collision: OutputCollisionError | None = None
+    for _ in range(MAX_INDEX_ATTEMPTS):
+        index = max(next_index(directory, file_prefix), index + 1)
+        paths = photo_paths(directory, file_prefix, index)
+        pairs = list(zip((paths.original, paths.enhanced, paths.back), blobs, strict=True))
+        try:
+            write_new_files([(path, blob) for path, blob in pairs if blob is not None])
+        except OutputCollisionError as exc:
+            collision = exc
+            continue
+        original, enhanced, back = (path if blob is not None else None for path, blob in pairs)
+        return WrittenFiles(directory, index, original, enhanced, back)
+    raise OutputCollisionError(
+        f"no free number for {file_prefix!r} in {directory} after {MAX_INDEX_ATTEMPTS} attempts"
+    ) from collision
 
 
 def write_photo(  # noqa: PLR0913
@@ -117,16 +169,20 @@ def write_photo(  # noqa: PLR0913
     the album name (``FastFoto`` with no album) and numbering continues after the highest
     existing number in the folder. ``scanned_at`` (default: now) becomes DateTimeDigitized.
 
-    All files of the photo are written or none are: an existing file raises
-    OutputCollisionError and anything already written by this call is removed again.
+    ``output_root`` must already exist (OutputRootMissingError otherwise); the album folder is
+    created on demand. Writers sharing a folder take turns through a lock file there. All files
+    of the photo are written or none are: an existing file raises OutputCollisionError and
+    anything already written by this call is removed again. Names are not adapted to the
+    reserved characters of FAT/exFAT (``<>:"|?*``), which such a drive would refuse.
     """
     _check_image("front", front)
     for name, array in (("back", back), ("enhanced", enhanced)):
         if array is not None:
             _check_image(name, array)
-    _check_options(dpi, quality)
+    dpi, quality = _check_options(dpi, quality)
     directory = album_dir(output_root, album)
     file_prefix = sanitise_prefix(prefix) if prefix is not None else default_prefix(album)
+    _require_root(output_root)
     written_at = _now()
     meta = PhotoMetadata(
         scanned_at=scanned_at or written_at,
@@ -136,24 +192,14 @@ def write_photo(  # noqa: PLR0913
         date=date,
     )
     exif, xmp = build_exif(meta), build_xmp(meta)
-    index = next_index(directory, file_prefix)
-    paths = photo_paths(directory, file_prefix, index)
-    result = WrittenFiles(
-        directory=directory,
-        index=index,
-        original=paths.original if keep_original or enhanced is None else None,
-        enhanced=paths.enhanced if enhanced is not None else None,
-        back=paths.back if back is not None else None,
-    )
-    files = [
-        (path, _encode_jpeg(array, dpi=dpi, quality=quality, exif=exif, xmp=xmp))
-        for path, array in (
-            (result.original, front),
-            (result.enhanced, enhanced),
-            (result.back, back),
-        )
-        if path is not None and array is not None
-    ]
-    directory.mkdir(parents=True, exist_ok=True)
-    write_new_files(files)
-    return result
+    keep_front = keep_original or enhanced is None
+
+    def encode(array: np.ndarray | None) -> bytes | None:
+        if array is None:
+            return None
+        return _encode_jpeg(array, dpi=dpi, quality=quality, exif=exif, xmp=xmp)
+
+    blobs = (encode(front if keep_front else None), encode(enhanced), encode(back))
+    directory.mkdir(exist_ok=True)
+    with locked_folder(directory):
+        return _publish_photo(directory, file_prefix, blobs)

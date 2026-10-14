@@ -376,8 +376,8 @@ def test_notes_over_the_limit_are_rejected() -> None:
 def test_building_xmp_leaves_the_global_xml_namespace_registry_alone() -> None:
     build_xmp(make_meta())
 
-    element = ET.Element("{http://purl.org/dc/elements/1.1/}title")
-    assert b"ns0:title" in ET.tostring(element)
+    element = ET.Element("{http://ns.adobe.com/photoshop/1.0/}DateCreated")
+    assert b"ns0:DateCreated" in ET.tostring(element)
 
 
 def test_metadata_is_frozen() -> None:

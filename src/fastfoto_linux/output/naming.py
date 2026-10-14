@@ -12,15 +12,18 @@ MAX_ALBUM_CHARS = 120
 MAX_COMPONENT_BYTES = 255
 INDEX_WIDTH = 4
 MAX_INDEX_DIGITS = 9
-# Room kept free after the stem: "_" + up to 10 digits + "_a.jpg", and the 14 extra bytes of
-# the ".<name>.<token>.tmp" staging name used while a file is being written.
-FILE_SUFFIX_RESERVE_BYTES = 32
-MAX_PREFIX_BYTES = MAX_COMPONENT_BYTES - FILE_SUFFIX_RESERVE_BYTES
+# Room kept free after the stem: "_" + the widest index + "_a.jpg", plus the 14 extra bytes of
+# the ".<name>.<8 hex digits>.tmp" staging name used while a file is being written.
+FILE_SUFFIX_BYTES = len("_") + MAX_INDEX_DIGITS + len("_a.jpg")
+STAGING_OVERHEAD_BYTES = len(".") + len(".") + 8 + len(".tmp")
+MAX_PREFIX_BYTES = MAX_COMPONENT_BYTES - FILE_SUFFIX_BYTES - STAGING_OVERHEAD_BYTES
 
 _PATH_SEPARATORS = "/\\"
 _STRIPPED_EDGES = ". "
 # Control, format (e.g. bidi overrides), surrogate and line/paragraph separator characters.
 _UNSAFE_CATEGORIES = frozenset({"Cc", "Cf", "Cs", "Zl", "Zp"})
+# <prefix>_NNNN[_x].ext, with the prefix folded for case- and normalisation-blind matching.
+_INDEXED_NAME = rf"_([0-9]{{{INDEX_WIDTH},{MAX_INDEX_DIGITS}}})(?:_[a-z])?\.[a-z0-9]+"
 
 
 @dataclass(frozen=True)
@@ -100,25 +103,33 @@ def album_dir(output_root: Path, album: str | None) -> Path:
     return target
 
 
-def next_index(directory: Path, prefix: str) -> int:
-    """One more than the highest ``<prefix>_NNNN*`` number in ``directory`` (1 when none).
+def _fold(text: str) -> str:
+    """Canonical caseless form, so ``Beach`` matches ``beach`` and composed matches decomposed."""
+    return unicodedata.normalize("NFD", unicodedata.normalize("NFD", text).casefold())
 
-    Any file starting with ``<prefix>_`` and at least four digits counts, whatever its suffix
-    or extension, so a folder holding only ``_a``/``_b`` files still continues correctly.
+
+def next_index(directory: Path, prefix: str) -> int:
+    """One more than the highest ``<prefix>_NNNN[_a].ext`` number in ``directory`` (1 when none).
+
+    Matching ignores case and Unicode normalisation, covers any extension and the ``_a``/``_b``
+    style suffix, and skips folders, so a folder holding only ``_a``/``_b`` files still
+    continues correctly. Names that merely contain a number (``Trip_2020_0003.jpg`` for prefix
+    ``Trip``, ``IMG_20200101_123456.jpg``) do not count. Counting too much is harmless: it only
+    skips a number.
     """
-    pattern = re.compile(rf"{re.escape(prefix)}_([0-9]{{{INDEX_WIDTH},}})")
+    pattern = re.compile(re.escape(_fold(prefix)) + _INDEXED_NAME)
     try:
-        entries = [entry.name for entry in directory.iterdir()]
+        entries = list(directory.iterdir())
     except FileNotFoundError:
         return 1
-    matches = (pattern.match(name) for name in entries)
+    matches = (pattern.fullmatch(_fold(e.name)) for e in entries if not e.is_dir())
     return max((int(match.group(1)) for match in matches if match), default=0) + 1
 
 
 def photo_paths(directory: Path, prefix: str, index: int) -> PhotoPaths:
     """Paths of the original, enhanced (``_a``) and back (``_b``) files for ``index``."""
-    if index < 1:
-        raise ValueError(f"index must be at least 1, got {index}")
+    if not 1 <= index < 10**MAX_INDEX_DIGITS:
+        raise ValueError(f"index must be 1-{10**MAX_INDEX_DIGITS - 1}, got {index}")
     stem = f"{prefix}_{index:0{INDEX_WIDTH}d}"
     return PhotoPaths(
         original=directory / f"{stem}.jpg",

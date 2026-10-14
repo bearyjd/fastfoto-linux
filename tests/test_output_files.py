@@ -10,6 +10,7 @@ import pytest
 import fastfoto_linux.output.files as files_module
 from fastfoto_linux.output.errors import OutputCollisionError
 from fastfoto_linux.output.files import LOCK_NAME, locked_folder, write_new_files
+from fastfoto_linux.output.naming import STAGING_OVERHEAD_BYTES
 
 
 def listing(directory: Path) -> list[str]:
@@ -289,6 +290,23 @@ def test_hard_links_never_follow_symlinks(tmp_path: Path, monkeypatch: pytest.Mo
     write_new_files([(tmp_path / "a.jpg", b"AAA")])
 
     assert seen == [{"follow_symlinks": False}]
+
+
+def test_the_staging_name_is_as_long_as_the_name_length_reserve_assumes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    lengths = []
+    real_link = os.link
+
+    def link(src: Path, dst: Path, **kwargs: bool) -> None:
+        lengths.append(len(Path(src).name.encode()) - len(Path(dst).name.encode()))
+        real_link(src, dst, **kwargs)
+
+    monkeypatch.setattr(os, "link", link)
+
+    write_new_files([(tmp_path / "a.jpg", b"AAA")])
+
+    assert lengths == [STAGING_OVERHEAD_BYTES]
 
 
 def test_an_interrupt_right_after_linking_still_removes_the_new_file(

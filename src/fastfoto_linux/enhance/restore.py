@@ -30,18 +30,18 @@ Safeguards keep unusual images from being damaged:
   zero hue scatter around its mean colour (a few percent of coloured ink are ignored) and gets
   the luminance-only stretch: the tone is neither neutralised nor amplified. A colour cast
   shifts the mean but leaves the scene's scatter, so a cast print is taken for a tone only when
-  its scene is nearly colourless (scene chroma up to about 3, or the scene's colours squeezed to
-  a third to two thirds of their range): the cast is then kept, never amplified.
+  its scene is nearly colourless (scene chroma up to about 3, up to about 6 on a very dark
+  print): the cast is then kept, never amplified.
 * The common move is skipped for near-white pages (print backs), never pushes the median below
   a fixed fraction of the scale and brightens a low-key image only a little.
 * Trade-off: casts are removed by aligning the channels' black points and matching their
-  gains. No channel's black point moves further than the cast measured at the neutrals supports
-  (``BLACK_SHIFT_FLOOR`` levels at least, ``BLACK_SHIFT_PER_CHROMA`` per unit of evidence), and
-  no channel is stretched more than ``MAX_CHANNEL_GAIN_RATIO`` times the widest one. A cast that
-  needs a larger channel-gain mismatch leaves no neutral pixel after the balance, so it gives no
-  evidence and is left alone; so is a cast on a print whose neutrals are not tinted enough
-  (below ``CAST_EVIDENCE_CHROMA``). A scene with one dominant colour and no neutral part at all
-  can still be taken for a cast.
+  gains. A black point moves no further than the cast measured at the neutrals supports:
+  ``BLACK_SHIFT_PER_CHROMA`` levels per unit of evidence, at least ``BLACK_SHIFT_FLOOR`` (so at
+  least 15 once the evidence threshold is met). No channel is stretched more than
+  ``MAX_CHANNEL_GAIN_RATIO`` times the widest one. A cast that needs a larger channel-gain
+  mismatch leaves no neutral pixel after the balance, so it gives no evidence and is left alone;
+  so is a cast on a print whose neutrals are not tinted enough (below ``CAST_EVIDENCE_CHROMA``).
+  A scene with one dominant colour and no neutral part at all can still be taken for a cast.
 
 Known limitation: a cream or aged margin with any channel below ``FRAME_WHITE_MIN`` is not a
 frame, so it is measured and recoloured like the photo.

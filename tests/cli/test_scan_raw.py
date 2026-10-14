@@ -1,5 +1,6 @@
 """``ffscan scan`` and its raw pages: when they are kept, what is said, what cannot hide them."""
 
+import errno
 from pathlib import Path
 
 import pytest
@@ -11,7 +12,10 @@ from tests.process_helpers import page_name, plain_sheet, written_sheet
 
 FAST = ["--no-orient", "--no-restore"]
 STAMP = "20261013T230000Z"
-DROPPED = "backs dropped: {} (no writing detected; use --backs always or --keep-raw to keep them)"
+DROPPED = "backs dropped: {} (no writing detected; use --backs always to keep them)"
+KEPT_FOR_DROPPED = (
+    "raw pages kept in {} (a back was dropped); --discard-raw deletes them after a clean run"
+)
 
 
 @pytest.fixture(autouse=True)
@@ -68,7 +72,33 @@ def test_a_dropped_back_keeps_the_raw_pages_by_default_and_says_so(out, transpor
     stdout = capsys.readouterr().out
     assert DROPPED.format(1) in stdout
     assert page_name(1) in stdout
+    assert KEPT_FOR_DROPPED.format(kept(out)) in stdout
+    assert "disk space" in stdout
+
+
+def test_keep_raw_does_not_blame_a_dropped_back_for_keeping_the_pages(
+    out, transport, capsys
+) -> None:
+    transport.sheets = [plain_sheet(0), written_sheet(1)]
+    assert scan(out, "--keep-raw") == 0
+    stdout = capsys.readouterr().out
     assert f"raw pages kept in: {kept(out)}" in stdout
+    assert "a back was dropped" not in stdout
+
+
+def test_a_failed_delete_after_discard_raw_does_not_blame_a_dropped_back(
+    out, transport, capsys, monkeypatch
+) -> None:
+    def refuse(folders):
+        raise OSError(errno.EIO, "Input/output error")
+
+    monkeypatch.setattr(rawdir, "sync_folders", refuse)
+    transport.sheets = [plain_sheet(0), written_sheet(1)]
+    assert scan(out, "--discard-raw") == 0
+    stdout = capsys.readouterr().out
+    assert "raw pages kept in" in stdout
+    assert "a back was dropped" not in stdout
+    assert DROPPED.format(1) in stdout
 
 
 def test_discard_raw_deletes_the_pages_after_a_clean_run_but_still_reports_the_drop(
@@ -77,7 +107,9 @@ def test_discard_raw_deletes_the_pages_after_a_clean_run_but_still_reports_the_d
     transport.sheets = [plain_sheet(0), written_sheet(1)]
     assert scan(out, "--discard-raw") == 0
     assert not (out / ".raw").exists()
-    assert DROPPED.format(1) in capsys.readouterr().out
+    stdout = capsys.readouterr().out
+    assert DROPPED.format(1) in stdout
+    assert "raw pages kept" not in stdout
 
 
 def test_no_raw_pages_are_kept_when_every_back_was_kept(out, transport, capsys) -> None:
@@ -181,3 +213,26 @@ def test_a_failure_to_move_the_raw_pages_does_not_hide_the_real_error(
     (left_over,) = (p for p in out.iterdir() if p.name.startswith(rawdir.TEMP_PREFIX))
     assert str(left_over) in err
     assert sorted(p.name for p in left_over.iterdir()) == all_pages(2)
+
+
+def test_a_raw_folder_that_cannot_be_listed_does_not_hide_the_real_error(
+    out, transport, capsys, monkeypatch
+) -> None:
+    def boom(pages, settings):
+        raise RuntimeError("processing blew up")
+
+    real_iterdir = Path.iterdir
+
+    def refuse_raw(self):
+        if self.name.startswith(rawdir.TEMP_PREFIX):
+            raise OSError(errno.EIO, "Input/output error")
+        return real_iterdir(self)
+
+    monkeypatch.setattr("fastfoto_linux.cli.cmd_scan.process_pages", boom)
+    monkeypatch.setattr(Path, "iterdir", refuse_raw)
+    transport.sheets = [plain_sheet()]
+    assert scan(out) == 1
+    err = capsys.readouterr().err
+    assert "processing blew up" in err
+    (left_over,) = (p for p in out.glob(f"{rawdir.TEMP_PREFIX}*"))
+    assert str(left_over) in err

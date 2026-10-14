@@ -155,3 +155,37 @@ def test_raw_pages_are_kept_when_the_output_folder_cannot_be_synced(
         assert rawdir.settle_raw_dir(raw, tmp_path, keep=False) == raw
     assert (raw / "page-0001.png").exists()
     assert "Input/output error" in caplog.text
+
+
+def test_a_dir_that_cannot_be_listed_is_left_alone_and_reported(
+    tmp_path, monkeypatch, caplog
+) -> None:
+    raw = rawdir.create_raw_dir(tmp_path, keep=False)
+    (raw / "page-0001.png").write_bytes(b"x")
+
+    def refuse(self):
+        raise OSError(errno.EIO, "Input/output error")
+
+    monkeypatch.setattr(Path, "iterdir", refuse)
+    for keep in (False, True):  # unknown contents: never deleted, never moved
+        with caplog.at_level(logging.ERROR, logger=rawdir.__name__):
+            assert rawdir.settle_raw_dir(raw, tmp_path, keep=keep) == raw
+        assert str(raw) in caplog.text
+        assert "Input/output error" in caplog.text
+        caplog.clear()
+    assert (raw / "page-0001.png").read_bytes() == b"x"
+
+
+def test_an_empty_dir_that_cannot_be_removed_is_reported_not_raised(
+    tmp_path, monkeypatch, caplog
+) -> None:
+    raw = rawdir.create_raw_dir(tmp_path, keep=False)
+
+    def refuse(self):
+        raise OSError(errno.EIO, "Input/output error")
+
+    monkeypatch.setattr(Path, "rmdir", refuse)
+    with caplog.at_level(logging.ERROR, logger=rawdir.__name__):
+        assert rawdir.settle_raw_dir(raw, tmp_path, keep=False) is None  # no pages are in it
+    assert str(raw) in caplog.text
+    assert "Input/output error" in caplog.text

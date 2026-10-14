@@ -6,12 +6,18 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
-import cv2
 import numpy as np
 
-from fastfoto_linux.enhance.faces import ensure_rgb_uint8
 from fastfoto_linux.pipeline.crop import Box, Detection, NoPhotoFoundError, crop, detect_photo
 from fastfoto_linux.pipeline.geometry import mm_to_px
+from fastfoto_linux.pipeline.ink import (
+    HANDWRITING_MIN_CANDIDATES,
+    HandwritingEvidence,
+    handwriting_candidates,
+    handwriting_evidence,
+    has_handwriting,
+    paper_score,
+)
 from fastfoto_linux.pipeline.io import load_frame
 
 __all__ = [
@@ -31,16 +37,9 @@ __all__ = [
 
 logger = logging.getLogger(__name__)
 
-HANDWRITING_MIN_CANDIDATES = 15  # ink blobs needed on a back before it counts as handwritten
-HANDWRITING_WORK_DPI = 300  # backs sharper than this are downsampled before blob counting
-INK_INSET_MM = 4.0  # ignored band along every edge of a cropped back (the paper edge)
-INK_GREY_BELOW = 170  # darker than this is ink; the lab's dot-matrix imprint is fainter
-STROKE_HEIGHT_MM = (1.5, 25.0)  # a blob this tall is a letter or a stroke
-BLOB_MAX_EXTENT_MM = 50.0  # a blob longer than this is a ruled line or an edge, not writing
-PAPER_MIN_GREY = 230  # grey level (0-255) of a paper-white pixel
-PAPER_MAX_CHROMA = 40  # max-min over R, G, B of a paper-white pixel (low saturation)
-PAPER_SCORE_STRIDE = 4  # paper_score looks at every n-th pixel in each direction
 PAPER_TIE_MARGIN = 0.2  # paper scores closer than this cannot tell the two sides apart
+BACK_LIKE_PAPER_SCORE = 0.75  # a lone page this paper-white is a back (real fronts stay below)
+DEFAULT_FRONT_FIRST = True  # tie with no expectation and no resolved sheet: page 1 is the front
 FRONT_FROM_BACK_X_OFFSET_MM = 1.2  # measured shift of the front box against the mirrored back box
 FRONT_BACK_SIZE_TOLERANCE_MM = 3.0  # a front box this much off the back's size is distrusted
 
@@ -59,6 +58,15 @@ class BackPolicy(StrEnum):
     NEVER = "never"
 
 
+@dataclass(frozen=True)
+class _Settings:
+    """The caller's choices that every sheet of a batch shares."""
+
+    back_policy: BackPolicy
+    expect_front_first: bool | None
+    loader: FrameLoader
+
+
 @dataclass(frozen=True, eq=False)
 class Photo:
     """One photo: cropped front, optional cropped back and where they came from.
@@ -67,6 +75,9 @@ class Photo:
     ``(front_page, back_page)``, or ``(front_page,)`` for a simplex batch; the back page is listed
     even when the back was dropped by the policy. ``back_has_writing`` reports the detection
     whether or not the back was kept. Arrays are never shared with the loaded pages.
+    ``side_uncertain`` is True when the sides of the sheet could not be told apart by content (the
+    decision came from page parity) or a lone last page looks like a back; such a photo always
+    keeps its back, whatever the policy, because it may in fact be the front.
     """
 
     index: int
@@ -76,70 +87,6 @@ class Photo:
     source_pages: tuple[Path, ...]
     dpi: int
     side_uncertain: bool = False
-
-
-def paper_score(img: np.ndarray) -> float:
-    """Fraction of pixels that are paper-white: grey >= 230 and low saturation (0.0 to 1.0).
-
-    Photo backs are white paper and fronts are not, so the side with the higher score is the back.
-    Only every ``PAPER_SCORE_STRIDE``-th pixel in each direction is looked at.
-    """
-    ensure_rgb_uint8(img)
-    sample = np.ascontiguousarray(img[::PAPER_SCORE_STRIDE, ::PAPER_SCORE_STRIDE])
-    grey = cv2.cvtColor(sample, cv2.COLOR_RGB2GRAY)
-    chroma = sample.max(axis=2) - sample.min(axis=2)  # uint8 and max >= min, so no overflow
-    return float(np.mean((grey >= PAPER_MIN_GREY) & (chroma <= PAPER_MAX_CHROMA)))
-
-
-def _work_grey(img: np.ndarray, dpi: float) -> tuple[np.ndarray, float]:
-    """Grey copy of ``img``, area-downsampled to ``HANDWRITING_WORK_DPI`` if it is sharper."""
-    grey = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-    if dpi <= HANDWRITING_WORK_DPI:
-        return grey, dpi
-    scale = HANDWRITING_WORK_DPI / dpi
-    size = (max(1, round(grey.shape[1] * scale)), max(1, round(grey.shape[0] * scale)))
-    return cv2.resize(grey, size, interpolation=cv2.INTER_AREA), HANDWRITING_WORK_DPI
-
-
-def handwriting_candidates(back_img: np.ndarray, dpi: int) -> int:
-    """Count ink blobs the size of letters or strokes on a cropped RGB back.
-
-    Ink is anything darker than ``INK_GREY_BELOW`` more than ``INK_INSET_MM`` from every edge, so
-    the paper edge and the faint lab imprint do not count. A blob is a candidate when it is
-    ``STROKE_HEIGHT_MM`` tall and no longer than ``BLOB_MAX_EXTENT_MM`` (ruled lines and borders
-    are longer). Raises ``ValueError`` for a malformed image or a non-positive ``dpi``.
-    """
-    ensure_rgb_uint8(back_img)
-    grey, work_dpi = _work_grey(back_img, dpi)
-    inset = mm_to_px(INK_INSET_MM, work_dpi)  # also validates dpi
-    height, width = grey.shape
-    if height <= 2 * inset or width <= 2 * inset:
-        logger.debug("back is too small to look for writing: %dx%d px", width, height)
-        return 0
-    ink = (grey[inset : height - inset, inset : width - inset] < INK_GREY_BELOW).astype(np.uint8)
-    _, _, stats, _ = cv2.connectedComponentsWithStats(ink, connectivity=8)
-    blob_h, blob_w = stats[1:, cv2.CC_STAT_HEIGHT], stats[1:, cv2.CC_STAT_WIDTH]
-    low, high = (mm_to_px(mm, work_dpi) for mm in STROKE_HEIGHT_MM)
-    too_long = np.maximum(blob_h, blob_w) > mm_to_px(BLOB_MAX_EXTENT_MM, work_dpi)
-    return int(((blob_h >= low) & (blob_h <= high) & ~too_long).sum())
-
-
-@dataclass(frozen=True)
-class HandwritingEvidence:
-    """Both back-writing measures: blob candidates (the gate) and pen strokes (not a gate yet)."""
-
-    candidates: int
-    pen_strokes: int
-
-
-def handwriting_evidence(back_img: np.ndarray, dpi: int) -> HandwritingEvidence:
-    """Candidate-blob and pen-stroke counts of a cropped RGB back."""
-    raise NotImplementedError
-
-
-def has_handwriting(back_img: np.ndarray, dpi: int) -> bool:
-    """True if a cropped back carries at least ``HANDWRITING_MIN_CANDIDATES`` ink blobs."""
-    return handwriting_candidates(back_img, dpi) >= HANDWRITING_MIN_CANDIDATES
 
 
 def _clamped(box: Box, frame_shape: tuple[int, ...]) -> Box:
@@ -185,14 +132,21 @@ class _Page:
     detection: Detection | None
 
 
-def _load_page(path: Path, loader: FrameLoader) -> _Page:
-    frame, dpi = loader(path)
+def _detect(path: Path, frame: np.ndarray, dpi: int) -> Detection | None:
     try:
-        detection = detect_photo(frame, dpi)
+        return detect_photo(frame, dpi)
     except NoPhotoFoundError as error:
         logger.debug("%s: no photo found: %s", path.name, error)
-        detection = None
-    return _Page(path, frame, dpi, detection)
+        return None
+
+
+def _load_page(number: int, path: Path, loader: FrameLoader) -> _Page:
+    """Load and detect one page; any failure becomes a ``BatchError`` naming sheet and page."""
+    try:
+        frame, dpi = loader(path)
+        return _Page(path, frame, dpi, _detect(path, frame, dpi))
+    except Exception as error:
+        raise BatchError(f"sheet {number}: cannot read {path.name}: {error}") from error
 
 
 def _view(page: _Page, box: Box) -> np.ndarray:
@@ -210,83 +164,166 @@ def _own_boxes(number: int, first: _Page, second: _Page) -> tuple[Box, Box]:
     return box_one, box_two
 
 
-def _front_index(number: int, scores: tuple[float, float], expect_front_first: bool | None) -> int:
-    """Which page of the sheet (0 or 1) is the front: the one with the lower paper score."""
+def _majority(front_first_sheets: int, back_first_sheets: int) -> bool | None:
+    """The page order most resolved sheets of this batch had, or None when it is an even split."""
+    if front_first_sheets == back_first_sheets:
+        return None
+    return front_first_sheets > back_first_sheets
+
+
+def _tie_break(expect_front_first: bool | None, majority: bool | None) -> tuple[bool, str]:
+    """Front-first or not for a sheet content cannot decide, and where that answer came from."""
+    if expect_front_first is not None:
+        return expect_front_first, "the expected"
+    if majority is not None:
+        return majority, "the batch-majority"
+    return DEFAULT_FRONT_FIRST, "the default"
+
+
+def _front_index(
+    number: int,
+    scores: tuple[float, float],
+    expect_front_first: bool | None,
+    majority: bool | None,
+) -> tuple[int, bool]:
+    """Which page of the sheet (0 or 1) is the front, and whether that is only a tie-break.
+
+    The page with the lower paper score is the front. Scores within ``PAPER_TIE_MARGIN`` are a
+    tie: ``expect_front_first`` decides, else the order most resolved sheets of the batch had, else
+    ``DEFAULT_FRONT_FIRST``. Nothing here raises: a wrong guess is flagged, never a lost photo.
+    """
     first, second = scores
     if abs(first - second) >= PAPER_TIE_MARGIN:
-        return 0 if first < second else 1
-    if expect_front_first is None:
-        raise BatchError(
-            f"sheet {number}: both pages look alike (paper scores {first:.2f} and {second:.2f}); "
-            "set expect_front_first to say which page of a sheet is scanned first"
-        )
+        front_at = 0 if first < second else 1
+        if expect_front_first is not None and (front_at == 0) != expect_front_first:
+            logger.info(
+                "sheet %d: the content says page %d is the front, which contradicts "
+                "expect_front_first=%s; using the content",
+                number,
+                front_at + 1,
+                expect_front_first,
+            )
+        return front_at, False
+    front_first, source = _tie_break(expect_front_first, majority)
     logger.info(
-        "sheet %d: paper scores %.2f and %.2f cannot tell front from back; "
-        "falling back to page parity (front %s)",
+        "sheet %d: paper scores %.2f and %.2f cannot tell front from back; using %s page parity "
+        "(front scanned %s)",
         number,
         first,
         second,
-        "first" if expect_front_first else "second",
+        source,
+        "first" if front_first else "second",
     )
-    return 0 if expect_front_first else 1
+    return (0 if front_first else 1), True
+
+
+def _front_box(number: int, front: _Page, back: _Page, own_box: Box) -> Box:
+    """The front's crop box: its own, or the back's mirrored when the back is the better witness.
+
+    A back box only corrects a front when it is plausible itself; against an implausible one the
+    front keeps its box and the disagreement is logged.
+    """
+    back_detection = back.detection
+    if back_detection is None or not front_needs_correction(
+        front.detection, back_detection.box, front.dpi
+    ):
+        return own_box
+    if front.detection is not None and not back_detection.plausible:
+        logger.warning(
+            "sheet %d: front and back boxes disagree, but the back box matches no common print "
+            "size either; keeping the front box",
+            number,
+        )
+        return own_box
+    reason = "no front photo found" if front.detection is None else "front box disagrees with back"
+    logger.info("sheet %d: %s; front box taken from the back box (mirrored)", number, reason)
+    return mirrored_front_box(back_detection.box, front.frame.shape, front.dpi)
 
 
 def _sheet_photo(
-    index: int,
-    pages: tuple[_Page, _Page],
-    back_policy: BackPolicy,
-    expect_front_first: bool | None,
+    index: int, pages: tuple[_Page, _Page], settings: _Settings, majority: bool | None
 ) -> Photo:
+    number = index + 1
     first, second = pages
     if first.dpi != second.dpi:
-        raise BatchError(f"sheet {index + 1}: pages differ in dpi ({first.dpi} and {second.dpi})")
-    boxes = _own_boxes(index + 1, first, second)
+        raise BatchError(f"sheet {number}: pages differ in dpi ({first.dpi} and {second.dpi})")
+    boxes = _own_boxes(number, first, second)
     scores = (paper_score(_view(first, boxes[0])), paper_score(_view(second, boxes[1])))
-    front_at = _front_index(index + 1, scores, expect_front_first)
+    front_at, uncertain = _front_index(number, scores, settings.expect_front_first, majority)
     front_page, back_page = pages[front_at], pages[1 - front_at]
-    front_box, back_box = boxes[front_at], boxes[1 - front_at]
-    back_detection = back_page.detection
-    if back_detection is not None and front_needs_correction(
-        front_page.detection, back_detection.box, front_page.dpi
-    ):
-        front_box = mirrored_front_box(back_detection.box, front_page.frame.shape, front_page.dpi)
-        logger.info("sheet %d: front box taken from the back box (mirrored)", index + 1)
-    writing = has_handwriting(_view(back_page, back_box), back_page.dpi)
-    keep_back = back_policy is BackPolicy.ALWAYS or (back_policy is BackPolicy.AUTO and writing)
+    front_box = _front_box(number, front_page, back_page, boxes[front_at])
+    evidence = handwriting_evidence(_view(back_page, boxes[1 - front_at]), back_page.dpi)
+    logger.info(
+        "sheet %d: back writing evidence: %d candidate blobs (gate %d), %d pen strokes "
+        "(reported only)",
+        number,
+        evidence.candidates,
+        HANDWRITING_MIN_CANDIDATES,
+        evidence.pen_strokes,
+    )
+    policy = settings.back_policy
+    keep_back = (
+        uncertain
+        or policy is BackPolicy.ALWAYS
+        or (policy is BackPolicy.AUTO and evidence.handwritten)
+    )
     return Photo(
         index=index,
         front=crop(front_page.frame, front_box),
-        back=crop(back_page.frame, back_box) if keep_back else None,
-        back_has_writing=writing,
+        back=crop(back_page.frame, boxes[1 - front_at]) if keep_back else None,
+        back_has_writing=evidence.handwritten,
         source_pages=(front_page.path, back_page.path),
         dpi=front_page.dpi,
+        side_uncertain=uncertain,
     )
 
 
-def _front_only_photo(index: int, path: Path, loader: FrameLoader) -> Photo:
-    page = _load_page(path, loader)
+def _front_only_photo(index: int, path: Path, loader: FrameLoader, *, dangling: bool) -> Photo:
+    """A photo from a page taken as a front: a simplex page or the odd last page of a duplex batch.
+
+    A dangling page that is paper-white looks like a back whose front is missing: it is kept as
+    the front, as asked, but flagged ``side_uncertain`` with a warning.
+    """
+    page = _load_page(index + 1, path, loader)
     if page.detection is None:
-        raise BatchError(f"{path.name}: no photo found")
-    return Photo(index, crop(page.frame, page.detection.box), None, False, (path,), page.dpi)
+        raise BatchError(f"sheet {index + 1}: {path.name}: no photo found")
+    suspicious = dangling and paper_score(_view(page, page.detection.box)) >= BACK_LIKE_PAPER_SCORE
+    if suspicious:
+        logger.warning(
+            "sheet %d: the last page (%s) looks like a back, not a front; its front is missing",
+            index + 1,
+            path.name,
+        )
+    crop_ = crop(page.frame, page.detection.box)
+    return Photo(index, crop_, None, False, (path,), page.dpi, side_uncertain=suspicious)
 
 
-def _generate(
-    pages: tuple[Path, ...],
-    duplex: bool,
-    back_policy: BackPolicy,
-    expect_front_first: bool | None,
-    loader: FrameLoader,
-) -> Iterator[Photo]:
-    sheet_size = 2 if duplex else 1
-    for index in range(len(pages) // sheet_size):
-        sheet = pages[index * sheet_size : (index + 1) * sheet_size]
-        if not duplex:
-            yield _front_only_photo(index, sheet[0], loader)
-            continue
-        loaded = (_load_page(sheet[0], loader), _load_page(sheet[1], loader))
-        yield _sheet_photo(index, loaded, back_policy, expect_front_first)
-    if duplex and len(pages) % 2:
-        yield _front_only_photo(len(pages) // 2, pages[-1], loader)
+def _duplex_photo(
+    index: int, paths: tuple[Path, Path], settings: _Settings, majority: bool | None
+) -> Photo:
+    """Load both pages of a sheet and build its photo; the full frames die when this returns."""
+    loader = settings.loader
+    pages = (_load_page(index + 1, paths[0], loader), _load_page(index + 1, paths[1], loader))
+    return _sheet_photo(index, pages, settings, majority)
+
+
+def _generate(pages: tuple[Path, ...], duplex: bool, settings: _Settings) -> Iterator[Photo]:
+    if not duplex:
+        for index, path in enumerate(pages):
+            yield _front_only_photo(index, path, settings.loader, dangling=False)
+        return
+    front_first_sheets = back_first_sheets = 0
+    for index in range(len(pages) // 2):
+        paths = (pages[2 * index], pages[2 * index + 1])
+        majority = _majority(front_first_sheets, back_first_sheets)
+        photo = _duplex_photo(index, paths, settings, majority)
+        if not photo.side_uncertain:
+            front_first = photo.source_pages[0] == paths[0]
+            front_first_sheets += front_first
+            back_first_sheets += not front_first
+        yield photo
+    if len(pages) % 2:
+        yield _front_only_photo(len(pages) // 2, pages[-1], settings.loader, dangling=True)
 
 
 def iter_photos(  # noqa: PLR0913
@@ -310,7 +347,7 @@ def iter_photos(  # noqa: PLR0913
             f"odd number of pages ({len(paths)}) in a duplex batch; every sheet has two sides "
             "(pass allow_odd=True to treat the last page as a front without a back)"
         )
-    return _generate(paths, duplex, back_policy, expect_front_first, loader)
+    return _generate(paths, duplex, _Settings(back_policy, expect_front_first, loader))
 
 
 def assemble_photos(  # noqa: PLR0913
@@ -326,13 +363,18 @@ def assemble_photos(  # noqa: PLR0913
 
     Duplex: pages ``(1, 2), (3, 4), ...`` are the two sides of one sheet each. Which side is the
     front is decided by content (the side with the lower :func:`paper_score` is the front), not
-    parity; when the scores differ by less than ``PAPER_TIE_MARGIN`` the choice falls back to
-    ``expect_front_first`` (True: the first page of a sheet is the front) and is logged, and with
-    no expectation it is a ``BatchError``. A front whose own crop is missing or doubtful takes
-    its box from the mirrored back box (:func:`front_needs_correction`). The back is kept
-    according to ``back_policy``; ``back_has_writing`` is always reported. An odd page count is a
-    ``BatchError`` unless ``allow_odd``, which makes the last page a front without a back.
-    Simplex (``duplex=False``): every page is a front. A page with no photo is a ``BatchError``.
+    parity. When the scores differ by less than ``PAPER_TIE_MARGIN`` the sides cannot be told
+    apart and the order comes from, in turn, ``expect_front_first`` (True: the first page of a
+    sheet is the front), the order most already-resolved sheets of this batch had, and finally
+    "first page is the front". That never raises and never drops anything: such a photo has
+    ``side_uncertain`` set and keeps its back whatever the policy. A front whose own crop is
+    missing or doubtful takes its box from the mirrored back box (:func:`front_needs_correction`,
+    only from a plausible back box). The back is kept according to ``back_policy``;
+    ``back_has_writing`` is always reported (gate: ``HANDWRITING_MIN_CANDIDATES`` ink blobs) and
+    the pen-stroke count is logged next to it. An odd page count is a ``BatchError`` unless
+    ``allow_odd``, which makes the last page a front without a back (flagged uncertain if it looks
+    like a back). Simplex (``duplex=False``): every page is a front. A page that cannot be read
+    or holds no photo is a ``BatchError`` naming the sheet.
     """
     return tuple(
         iter_photos(

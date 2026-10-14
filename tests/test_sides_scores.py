@@ -4,7 +4,6 @@ import cv2
 import numpy as np
 import pytest
 
-from fastfoto_linux.pipeline import sides
 from fastfoto_linux.pipeline.geometry import mm_to_px
 from fastfoto_linux.pipeline.sides import (
     HANDWRITING_MIN_CANDIDATES,
@@ -176,7 +175,7 @@ def _analysed_width(monkeypatch: pytest.MonkeyPatch, back: np.ndarray, dpi: int)
         seen.append(mask.shape[1])
         return real(mask, *args, **kwargs)
 
-    monkeypatch.setattr(sides.cv2, "connectedComponentsWithStats", spy)
+    monkeypatch.setattr(cv2, "connectedComponentsWithStats", spy)
     handwriting_candidates(back, dpi)
     return seen[0]
 

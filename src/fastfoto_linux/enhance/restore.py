@@ -5,10 +5,12 @@ Deterministic and classic (no machine learning), in three stages:
 1. *Simplest Color Balance* (Limare, Lisani, Morel, Petro, Sbert, IPOL 2011): clip a small
    percentile of every channel at both ends and stretch what is left to the full scale. Percentiles
    are exact, from full-resolution 256-bin histograms, so the clipped fraction is what the
-   settings say at any resolution. The stretch is two moves. One common brightness/contrast move
-   restores contrast (capped, and held back for low-key images). Only when the print shows
-   evidence of a cast are the channels also balanced onto a common range first (black points
-   aligned, gains matched), which removes the cast.
+   settings say at any resolution: per channel when the channels are balanced, for the luminance
+   when not (then the share of pixels with any channel at 255 can rise by up to about 0.5
+   points). The stretch is two moves. One common brightness/contrast move restores contrast
+   (capped, and held back for low-key images). Only when the print shows evidence of a cast are
+   the channels also balanced onto a common range first (black points aligned, gains matched),
+   which removes the cast.
 2. Gentle saturation recovery on LAB chroma, scaled by how desaturated the image measurably is.
 3. Optional mild local contrast (CLAHE on lightness), off by default.
 
@@ -17,7 +19,8 @@ neutral are the ones a cast would have tinted, and their mean colour offset in t
 evidence. A scene that is mostly one hue (sand, an amber sunset, skin, a lawn) has no such
 pixels, or they are already neutral, so its channels are never balanced: it keeps its hue and
 chroma. Without evidence the common move is applied to the luminance only, like a tone: every
-pixel keeps its own colour offsets, so a cast that is not removed is never amplified either.
+pixel keeps its own colour offsets, so the stretch never amplifies a cast that is not removed.
+Stage 2 can: it raises chroma by up to ``saturation_gain`` (1.15 by default).
 
 Safeguards keep unusual images from being damaged:
 
@@ -25,23 +28,30 @@ Safeguards keep unusual images from being damaged:
   white or black (a scanner border or background, any JPEG-noisy 248-255 or 0-6) form a frame:
   it is ignored when measuring and left untouched. Only whole edge lines count, so bright or
   dark pixels inside the photo (highlights, shadows) are measured like any other.
-* A channel that already spans nearly the full scale, or is flat, is left alone.
+* When balancing, a channel that already spans nearly the full scale, or is flat, is left alone.
+  Without evidence it only stays out of the measurement: the luminance move shifts every channel.
 * A monochrome print (black and white, sepia, any single-hue tone) is recognised by an almost
   zero hue scatter around its mean colour (a few percent of coloured ink are ignored) and gets
-  the luminance-only stretch: the tone is neither neutralised nor amplified. A colour cast
+  the luminance-only stretch, which neither neutralises nor amplifies the tone. A colour cast
   shifts the mean but leaves the scene's scatter, so a cast print is taken for a tone only when
   its scene is nearly colourless (scene chroma up to about 3, up to about 6 on a very dark
-  print): the cast is then kept, never amplified.
+  print): the cast is then kept, not amplified by the stretch.
 * The common move is skipped for near-white pages (print backs), never pushes the median below
   a fixed fraction of the scale and brightens a low-key image only a little.
 * Trade-off: casts are removed by aligning the channels' black points and matching their
-  gains. A black point moves no further than the cast measured at the neutrals supports:
-  ``BLACK_SHIFT_PER_CHROMA`` levels per unit of evidence, at least ``BLACK_SHIFT_FLOOR`` (so at
-  least 15 once the evidence threshold is met). No channel is stretched more than
-  ``MAX_CHANNEL_GAIN_RATIO`` times the widest one. A cast that needs a larger channel-gain
-  mismatch leaves no neutral pixel after the balance, so it gives no evidence and is left alone;
-  so is a cast on a print whose neutrals are not tinted enough (below ``CAST_EVIDENCE_CHROMA``).
-  A scene with one dominant colour and no neutral part at all can still be taken for a cast.
+  gains. A black point moves no further than the cast measured at the neutrals supports
+  (``_black_shift_limit``): ``BLACK_SHIFT_PER_CHROMA`` levels per unit of evidence, at least
+  ``BLACK_SHIFT_FLOOR``. The floor binds only below an evidence of 8; balancing needs 10, where
+  the limit is already 15, so the floor is a guard for a lowered threshold. No channel is
+  stretched more than ``MAX_CHANNEL_GAIN_RATIO`` times the widest one. A cast that needs a
+  larger channel-gain mismatch leaves no neutral pixel after the balance, so it gives no
+  evidence and is left alone; so is a cast on a print whose neutrals are not tinted enough
+  (below ``CAST_EVIDENCE_CHROMA``). A scene with one dominant colour and no neutral part at all
+  can still be taken for a cast. Measured on 2291 library prints, about 6% (141) lose a mild
+  whitening of neutrals that the previous version gave: the median neutral cast is 6.0 in the
+  originals, 2.8 with the previous version and 5.8 now. An evidence threshold of 7 would win
+  back 59 of them but raise the prints with a hue shift above 10 degrees from 31 to 81, so the
+  threshold stays at 10.
 
 Known limitation: a cream or aged margin with any channel below ``FRAME_WHITE_MIN`` is not a
 frame, so it is measured and recoloured like the photo.
@@ -86,7 +96,7 @@ MIN_OUTPUT_MEDIAN_FRACTION = 0.2  # the common move may not push the median belo
 NEAR_WHITE_MEDIAN_FRACTION = 0.97  # a median this close to white: a page, not a photo
 MAX_CHANNEL_GAIN_RATIO = 1.5  # no channel is stretched more than this times the widest one
 LOW_KEY_FULL_GAIN_MEDIAN = 96.0  # at and above this median the full gain cap applies; below, less
-BLACK_SHIFT_FLOOR = 12.0  # levels a channel's black point may always move when aligned
+BLACK_SHIFT_FLOOR = 12.0  # levels a black point may always move; a guard (see module doc)
 BLACK_SHIFT_PER_CHROMA = 1.5  # further levels per unit of cast chroma measured at the neutrals
 DESATURATED_MEAN_CHROMA = 10.0  # saturation recovery fades out as mean chroma reaches this
 CLAHE_CLIP_LIMIT = 1.5  # subtle: close to plain histogram equalisation's lower bound
@@ -306,7 +316,8 @@ def _balanced_luts(
 
 
 def _black_shift_limit(evidence: float) -> float:
-    raise NotImplementedError
+    """Levels a channel's black point may move: what the cast evidence supports, floor at least."""
+    return max(BLACK_SHIFT_FLOOR, BLACK_SHIFT_PER_CHROMA * evidence)
 
 
 def _cast_evidence(
@@ -336,7 +347,7 @@ def _restore_inner(inner: np.ndarray, settings: RestoreSettings) -> np.ndarray:
         if not active:
             return inner.copy()
         return _luminance_move(inner, *_common_move(*_reference(stats, active), settings.max_gain))
-    limit = max(BLACK_SHIFT_FLOOR, BLACK_SHIFT_PER_CHROMA * evidence)
+    limit = _black_shift_limit(evidence)
     luts = np.stack(_balanced_luts(stats, settings.max_gain, limit), axis=-1)
     return cv2.LUT(inner, luts.reshape(LUT_SIZE, 1, RGB_CHANNELS))
 

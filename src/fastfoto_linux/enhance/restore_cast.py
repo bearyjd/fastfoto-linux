@@ -9,7 +9,6 @@ import math
 import cv2
 import numpy as np
 
-RGB_CHANNELS = 3
 LAB_NEUTRAL = 128.0  # 8-bit OpenCV LAB stores a* and b* offset by this value
 STAT_MAX_PIXELS = 250_000  # colour statistics use a block-averaged copy of about this size
 NEUTRAL_MEAN_CHROMA = 3.0  # mean LAB chroma below this: a black-and-white print

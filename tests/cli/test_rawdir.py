@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from fastfoto_linux.cli import rawdir
+from fastfoto_linux.session import raw as rawdir
 
 
 @pytest.fixture

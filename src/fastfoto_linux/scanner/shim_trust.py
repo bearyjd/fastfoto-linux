@@ -28,6 +28,9 @@ logger = logging.getLogger(__name__)
 DEFAULT_TRUST_ROOT = Path("/")
 SHIM_TRUST_ROOT = DEFAULT_TRUST_ROOT  # the walk up the folders ends here (tests move it)
 ROOT_UID = 0
+FLATPAK_INFO = Path("/.flatpak-info")  # exists only inside a Flatpak sandbox
+FLATPAK_APP_ROOT = Path("/app")  # where a Flatpak mounts the application, read-only
+OVERFLOW_UID = 65534  # how a file owned by another host user (root) looks inside the sandbox
 
 ACL_XATTR = "system.posix_acl_access"
 ACL_VERSION = 2

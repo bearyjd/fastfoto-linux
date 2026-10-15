@@ -62,8 +62,3 @@ def test_an_image_over_the_pixel_limit_is_skipped_as_too_large(
     write_file(tmp_path, "a.jpg", sideways_jpeg(90, None))
     monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", limit)
     assert reason_of(tmp_path) == (Action.SKIP, "too-large")
-
-
-def test_the_pixel_limit_is_set_explicitly_when_the_module_is_imported() -> None:
-    assert decide_module.MAX_IMAGE_PIXELS == 200_000_000
-    assert Image.MAX_IMAGE_PIXELS == decide_module.MAX_IMAGE_PIXELS

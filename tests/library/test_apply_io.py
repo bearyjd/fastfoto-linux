@@ -112,7 +112,7 @@ def test_extended_attributes_are_not_copied(lib: Path, dest: Path) -> None:
     except OSError:
         pytest.skip("this filesystem has no user extended attributes")
     apply_plan([rotate_row(lib, FIRST, 90, 1, 6)], lib, dest)
-    assert "user.fastfoto-test" not in os.listxattr(dest / FIRST)
+    assert [name for name in os.listxattr(dest / FIRST) if name.startswith("user.")] == []
 
 
 def test_the_staging_file_is_created_private_exclusive_and_without_following_links(
@@ -157,7 +157,7 @@ def test_a_filesystem_without_hard_links_still_gets_the_copies(
 # --- running again --------------------------------------------------------------------
 
 
-def test_a_second_run_counts_identical_copies_as_done_and_writes_no_second_manifest(
+def test_a_second_run_counts_identical_copies_as_done_and_lists_them_in_its_own_manifest(
     lib: Path, dest: Path
 ) -> None:
     rows = two_rows(lib)
@@ -165,7 +165,10 @@ def test_a_second_run_counts_identical_copies_as_done_and_writes_no_second_manif
     second = apply_plan(rows, lib, dest)
     assert statuses(second) == {FIRST: STATUS_DONE, SECOND: STATUS_DONE}
     assert second.count(STATUS_DONE) == 2
-    assert len(manifest_files(dest)) == 1
+    assert len(manifest_files(dest)) == 2
+    lines = [path.read_text().splitlines() for path in manifest_files(dest)]
+    assert [len(one) for one in lines] == [3, 3]  # a header and two rows each
+    assert sorted(lines[0][1:]) == sorted(lines[1][1:])
 
 
 def test_an_interrupted_run_is_finished_by_the_next_one(lib: Path, dest: Path) -> None:

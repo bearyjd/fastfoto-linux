@@ -23,7 +23,7 @@ def item(index: int, **overrides: Any) -> PhotoItem:
 
 
 def url(path: Path) -> str:
-    return QUrl.fromLocalFile(str(path)).toString()
+    return bytes(QUrl.fromLocalFile(str(path)).toEncoded()).decode()
 
 
 @pytest.fixture
@@ -81,7 +81,10 @@ def test_a_longer_list_adds_rows_without_resetting(model: PhotosModel) -> None:
     model.set_items((item(1),))
     model.set_items((item(1), item(2), item(3)))
     assert model.rowCount() == 3
-    assert [(call[1], call[2]) for call in inserted] == [(0, 0), (1, 2)]
+    assert [(inserted.at(n)[1], inserted.at(n)[2]) for n in range(inserted.count())] == [
+        (0, 0),
+        (1, 2),
+    ]
     assert reset.count() == 0
 
 

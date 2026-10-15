@@ -19,13 +19,19 @@ class PhotoItem:
     @property
     def album(self) -> str:
         """The name of the folder the photo is in."""
-        raise NotImplementedError
+        return self.directory.name
 
     @property
     def front(self) -> Path | None:
         """The picture to show by default: the original, else the enhanced copy."""
-        raise NotImplementedError
+        return self.original or self.enhanced
 
 
 def item_from_files(files: WrittenFiles) -> PhotoItem:
-    raise NotImplementedError
+    return PhotoItem(
+        directory=files.directory,
+        index=files.index,
+        original=files.original,
+        enhanced=files.enhanced,
+        back=files.back,
+    )

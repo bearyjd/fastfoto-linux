@@ -374,7 +374,9 @@ def test_checking_again_is_not_possible_while_scanning(page: Page) -> None:
 
 @pytest.mark.parametrize("final", ["done", "failed", "cancelled"])
 def test_checking_again_is_possible_after_a_session(page: Page, out: Path, final: str) -> None:
-    controller = page.scanning()
+    controller = page.processing()
+    if final == "cancelled":
+        controller.cancel()
     results = {
         "done": clean_result(out),
         "failed": SessionResult(error=RuntimeError("x")),

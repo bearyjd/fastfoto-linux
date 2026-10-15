@@ -61,7 +61,7 @@ def test_the_window_loads_with_no_warnings_through_every_state(
     settle()
     bridge.processKept()
     wait_until(lambda: bridge.state == "done", "the kept pages to be processed")
-    child(window, "enhancedSwitch").toggle()
+    invoke(child(window, "enhancedSwitch"), "toggle")
     session.hold = False
     session.result = SessionResult(
         error=ScanError("scanimage timed out"),
@@ -213,7 +213,7 @@ def test_the_originals_and_enhanced_copies_can_be_switched(
     wait_until(lambda: bridge.state == "done", "the scan to finish")
     settle()
     assert switch.property("checked") is False
-    switch.toggle()
+    invoke(switch, "toggle")
     settle()
     assert switch.property("checked") is True
 

@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from PIL import Image
+
 from fastfoto_linux.gui.form import ScanForm
 from fastfoto_linux.output import WrittenFiles
 from fastfoto_linux.pipeline.process import ProcessResult
@@ -22,6 +24,14 @@ def written(directory: Path, index: int, *, enhanced: bool = True, back: bool = 
         enhanced=directory / f"{stem.name}_a.jpg" if enhanced else None,
         back=directory / f"{stem.name}_b.jpg" if back else None,
     )
+
+
+def with_images(files: WrittenFiles) -> WrittenFiles:
+    """Write a tiny JPEG at each path of ``files`` (QML warns about pictures it cannot open)."""
+    files.directory.mkdir(parents=True, exist_ok=True)
+    for path in files.paths:
+        Image.new("RGB", (64, 48), (90, 120, 160)).save(path)
+    return files
 
 
 def clean_result(directory: Path, photos: int = 3) -> SessionResult:
@@ -143,7 +153,7 @@ class ScriptedSession:
                 return cancelled_scan(self.out / ".raw" / "stamp", self.photos * 2)
         hooks["on_stage"](Stage.PROCESSING)
         for index in range(1, self.photos + 1):
-            hooks["on_photo"](written(self.out / ALBUM, index, back=index == 1))
+            hooks["on_photo"](with_images(written(self.out / ALBUM, index, back=index == 1)))
         hooks["on_stage"](Stage.DONE)
         return self.result or clean_result(self.out / ALBUM, self.photos)
 
@@ -152,7 +162,7 @@ def process_fake(out: Path, photos: int = 3):
     """A process_pages stand-in that writes ``photos`` photos (reporting each)."""
 
     def process(pages: Any, settings: Any, **hooks: Any) -> ProcessResult:
-        files = tuple(written(out / ALBUM, index) for index in range(1, photos + 1))
+        files = tuple(with_images(written(out / ALBUM, index)) for index in range(1, photos + 1))
         for item in files:
             hooks["on_photo"](item)
         return ProcessResult(written=files)

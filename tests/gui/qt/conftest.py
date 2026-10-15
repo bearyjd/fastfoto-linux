@@ -5,6 +5,7 @@ The tests skip when PySide6 or Kirigami is not installed (the Ubuntu jobs); with
 """
 
 import os
+import tempfile
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,8 @@ from tests.gui.qt import unavailable
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("QT_QUICK_BACKEND", "software")
+if "XDG_RUNTIME_DIR" not in os.environ:  # a container has none, and Qt warns about that
+    os.environ["XDG_RUNTIME_DIR"] = tempfile.mkdtemp(prefix="fastfoto-qt-runtime-")
 
 
 @pytest.fixture(scope="session")
@@ -40,6 +43,11 @@ def kirigami(qapp: Any) -> None:
         unavailable("Kirigami (kf6-kirigami) is not installed")
 
 
+# Logged once by Kirigami's icon fallback when no Plasma platform theme is loaded (a container,
+# or another desktop); it says nothing about this app's QML.
+KNOWN_PLATFORM_NOISE = ('Icon theme "breeze-internal" not found.',)
+
+
 @pytest.fixture
 def messages(qapp: Any) -> Iterator[list[str]]:
     """Every Qt warning or error printed while the test runs (QML warnings included)."""
@@ -48,7 +56,8 @@ def messages(qapp: Any) -> Iterator[list[str]]:
     seen: list[str] = []
 
     def handler(kind: QtMsgType, context: Any, text: str) -> None:
-        if kind in (QtMsgType.QtWarningMsg, QtMsgType.QtCriticalMsg, QtMsgType.QtFatalMsg):
+        loud = kind in (QtMsgType.QtWarningMsg, QtMsgType.QtCriticalMsg, QtMsgType.QtFatalMsg)
+        if loud and text not in KNOWN_PLATFORM_NOISE:
             seen.append(text)
 
     previous = qInstallMessageHandler(handler)

@@ -1,31 +1,123 @@
 """``fastfoto``: start the desktop app."""
 
+import logging
+import os
+import sys
 from collections.abc import Callable
+from importlib.resources import files
+from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 EXIT_MISSING_QT = 3
 APP_ID = "io.github.bearyjd.FastFotoLinux"
+APP_NAME = "fastfoto-linux"
+DISPLAY_NAME = "FastFoto Linux"
+STYLE = "org.kde.desktop"
+STYLE_ENV_VAR = "QT_QUICK_CONTROLS_STYLE"
+MISSING_QT_MESSAGE = (
+    "fastfoto: the desktop app needs the distribution's PySide6 and Kirigami (the PyPI PySide6 "
+    "wheel bundles its own Qt and cannot load Kirigami).\n"
+    "On Fedora: sudo dnf install python3-pyside6 kf6-kirigami\n"
+    "Or use the Flatpak, which has them built in (coming soon). `ffscan` needs neither."
+)
 
 
 def kirigami_available(import_paths: list[str]) -> bool:
     """True when one of the QML import folders has the Kirigami module."""
-    raise NotImplementedError
+    return _module_installed(import_paths, "org", "kde", "kirigami")
+
+
+def _module_installed(import_paths: list[str], *parts: str) -> bool:
+    return any(Path(folder, *parts).is_dir() for folder in import_paths if "://" not in folder)
+
+
+def _import_paths() -> list[str]:
+    from PySide6.QtQml import QQmlEngine  # noqa: PLC0415 - Qt is imported only when it runs
+
+    return QQmlEngine().importPathList()
 
 
 def configure_style() -> None:
-    """Use the KDE desktop style for the controls when it is installed."""
-    raise NotImplementedError
+    """Use the KDE desktop style for the controls when it is installed.
+
+    A style chosen by the user (``QT_QUICK_CONTROLS_STYLE``) is left alone, and setting it twice
+    is harmless: Qt does not accept a style once the controls have been loaded.
+    """
+    from PySide6.QtQuickControls2 import QQuickStyle  # noqa: PLC0415
+
+    if os.environ.get(STYLE_ENV_VAR) or QQuickStyle.name() == STYLE:
+        return
+    if _module_installed(_import_paths(), "org", "kde", "desktop"):
+        QQuickStyle.setStyle(STYLE)
+
+
+def qml_main() -> Path:
+    return Path(str(files("fastfoto_linux.gui") / "qml" / "Main.qml"))
 
 
 def create_engine(bridge: Any) -> tuple[Any, list[str]]:
     """The QML engine with the window loaded, and the list its warnings are collected in."""
-    raise NotImplementedError
+    from PySide6.QtCore import QUrl  # noqa: PLC0415
+    from PySide6.QtQml import QQmlApplicationEngine  # noqa: PLC0415
+
+    engine = QQmlApplicationEngine()
+    warnings: list[str] = []
+    engine.warnings.connect(lambda items: warnings.extend(item.toString() for item in items))
+    engine.rootContext().setContextProperty("bridge", bridge)
+    engine.load(QUrl.fromLocalFile(str(qml_main())))
+    return engine, warnings
 
 
 def show_error_dialog(text: str) -> None:
-    raise NotImplementedError
+    """Tell the user in a dialog too: a launcher has no terminal to print to."""
+    from PySide6.QtWidgets import QMessageBox  # noqa: PLC0415
+
+    QMessageBox(QMessageBox.Icon.Critical, DISPLAY_NAME, text).exec()
+
+
+def _fail(message: str, *, dialog: bool) -> int:
+    print(message, file=sys.stderr)
+    if dialog:
+        try:
+            show_error_dialog(message)
+        except Exception:
+            logger.exception("could not show the error dialog")
+    return EXIT_MISSING_QT
 
 
 def main(run_loop: Callable[[], int] | None = None) -> int:
     """Run the app; returns its exit code (3 when PySide6 or Kirigami is missing)."""
-    raise NotImplementedError
+    try:
+        import PySide6  # noqa: F401, PLC0415
+    except ImportError:
+        return _fail(MISSING_QT_MESSAGE, dialog=False)
+    from PySide6.QtGui import QGuiApplication  # noqa: PLC0415
+    from PySide6.QtWidgets import QApplication  # noqa: PLC0415
+
+    app = QApplication.instance() or QApplication(sys.argv)
+    QGuiApplication.setApplicationName(APP_NAME)
+    QGuiApplication.setApplicationDisplayName(DISPLAY_NAME)
+    QGuiApplication.setDesktopFileName(APP_ID)  # the window gets its icon under Wayland
+    if not kirigami_available(_import_paths()):
+        return _fail(MISSING_QT_MESSAGE, dialog=True)
+    configure_style()
+    return _run(run_loop or app.exec)
+
+
+def _run(run_loop: Callable[[], int]) -> int:
+    from fastfoto_linux.gui.qt.bridge import Bridge  # noqa: PLC0415
+
+    bridge = Bridge()
+    engine, warnings = create_engine(bridge)
+    if not engine.rootObjects():
+        print(f"fastfoto: the window could not be loaded: {'; '.join(warnings)}", file=sys.stderr)
+        return 1
+    bridge.checkScanner()
+    try:
+        return run_loop()
+    finally:
+        bridge.remember()
+        bridge.shutdown()
+        engine.deleteLater()

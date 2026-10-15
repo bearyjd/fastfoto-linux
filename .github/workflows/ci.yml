@@ -57,7 +57,7 @@ jobs:
           done
           python3 -m zipfile -e "$RUNNER_TEMP"/wheel/*.whl "$RUNNER_TEMP/unpacked"
           grep -q 'fastfoto = fastfoto_linux.gui.qt.app:main' "$RUNNER_TEMP"/unpacked/*.dist-info/entry_points.txt
-          ! grep -qi 'pyside' "$RUNNER_TEMP"/unpacked/*.dist-info/METADATA
+          ! grep -qi '^Requires-Dist:.*pyside' "$RUNNER_TEMP"/unpacked/*.dist-info/METADATA
 
   # The desktop app needs the distribution's PySide6 and Kirigami (the PyPI PySide6 wheel bundles
   # its own Qt and cannot load the system Kirigami plugin), so it is tested in a Fedora container.
@@ -76,7 +76,7 @@ jobs:
         run: >
           dnf install -y --setopt=install_weak_deps=False
           python3-pyside6 kf6-kirigami qt6-qtdeclarative kf6-qqc2-desktop-style
-          google-noto-sans-fonts uv git make gcc desktop-file-utils
+          kf6-breeze-icons google-noto-sans-fonts uv git make gcc gawk desktop-file-utils
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false

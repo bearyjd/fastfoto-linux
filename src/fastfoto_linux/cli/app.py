@@ -10,7 +10,7 @@ import traceback
 from collections.abc import Generator, Sequence
 from types import FrameType
 
-from fastfoto_linux.cli import cmd_devices, cmd_process, cmd_scan
+from fastfoto_linux.cli import cmd_devices, cmd_library, cmd_process, cmd_scan
 from fastfoto_linux.cli.errors import (
     EXIT_INTERRUPTED,
     EXIT_NO_DOCUMENTS,
@@ -20,12 +20,12 @@ from fastfoto_linux.cli.errors import (
     CliError,
 )
 from fastfoto_linux.cli.options import add_log_options
+from fastfoto_linux.library import stopping
 from fastfoto_linux.scanner import NoDocumentsError, ScannerNotFoundError, ShimMissingError
 
 PROG = "ffscan"
 LOG_FORMAT = "%(levelname)s: %(message)s"
 PACKAGE_LOGGER = "fastfoto_linux"
-HANGUP_SIGNALS = (signal.SIGTERM, signal.SIGHUP)  # "stop now" / "the terminal closed"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -35,7 +35,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     add_log_options(parser, default=False)
     commands = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
-    for module in (cmd_devices, cmd_scan, cmd_process):
+    for module in (cmd_devices, cmd_scan, cmd_process, cmd_library):
         module.add_parser(commands)
     return parser
 
@@ -83,6 +83,8 @@ def _report(error: Exception, *, debug: bool) -> int:
 
 
 def _raise_interrupt(signum: int, frame: FrameType | None) -> None:
+    if stopping.stop_under_way():
+        return  # a pooled run is already being stopped; this is a further signal for the same stop
     raise KeyboardInterrupt
 
 
@@ -96,13 +98,19 @@ def _signals_as_interrupt() -> Generator[None]:
     outside the main thread (an embedding program) signals are left alone, and so is a signal
     that is ignored (``nohup ffscan scan &``: whoever ignored it wants the scan to outlive the
     terminal).
+
+    Ctrl-C goes through the same handler, which lets a stop that a pooled run has begun
+    (``stopping.stop_under_way``) finish: a further signal of any of the three, before ``main`` has
+    said "interrupted", is ignored instead of raising again or, with the originals back, killing
+    the process by default.
     """
     if threading.current_thread() is not threading.main_thread():
         yield
         return
+    stopping.forget_stop()
     previous = {
         signum: signal.signal(signum, _raise_interrupt)
-        for signum in HANGUP_SIGNALS
+        for signum in stopping.STOP_SIGNALS
         if signal.getsignal(signum) is not signal.SIG_IGN
     }
     try:
@@ -110,6 +118,7 @@ def _signals_as_interrupt() -> Generator[None]:
     finally:
         for signum, handler in previous.items():
             signal.signal(signum, handler if handler is not None else signal.SIG_DFL)
+        stopping.forget_stop()
 
 
 @contextlib.contextmanager

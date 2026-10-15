@@ -1,4 +1,6 @@
+import grp
 import logging
+import os
 from dataclasses import FrozenInstanceError
 from pathlib import Path
 
@@ -29,7 +31,9 @@ def sysfs(tmp_path: Path) -> Path:
 def shim(tmp_path: Path) -> Path:
     path = tmp_path / "libs" / SHIM_NAME
     path.parent.mkdir()
+    path.parent.chmod(0o755)
     path.write_bytes(b"")
+    path.chmod(0o755)
     return path
 
 
@@ -293,3 +297,78 @@ def test_network_target_env_points_sane_at_the_private_config(config_dir: Path) 
     env = target.env({"PATH": "/usr/bin"})
 
     assert env == {"PATH": "/usr/bin", "SANE_CONFIG_DIR": str(config_dir)}
+
+
+# --- the shim is loaded into scanimage, so a shim anyone else could have changed is refused ---
+
+
+@pytest.fixture
+def shared_group(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every group has another member in it, as a group shared with someone else does."""
+    monkeypatch.setattr(
+        grp, "getgrgid", lambda gid: grp.struct_group(("shared", "x", gid, ["someone"]))
+    )
+
+
+@pytest.mark.usefixtures("shared_group")
+@pytest.mark.parametrize("mode", [0o775, 0o757, 0o777, 0o666])
+def test_a_group_or_world_writable_shim_is_refused_with_a_warning(
+    sysfs: Path, shim: Path, mode: int, caplog: pytest.LogCaptureFixture
+) -> None:
+    add_usb_device(sysfs, "1-1")
+    shim.chmod(mode)
+
+    with caplog.at_level(logging.WARNING), pytest.raises(ShimMissingError) as excinfo:
+        resolve_target(sysfs_root=sysfs, shim_candidates=[shim])
+
+    assert "writable" in caplog.text
+    assert str(shim) in caplog.text
+    assert "chmod" in str(excinfo.value)  # the error tells what to do about it
+
+
+@pytest.mark.usefixtures("shared_group")
+@pytest.mark.parametrize("mode", [0o775, 0o757, 0o777])
+def test_a_shim_in_a_group_or_world_writable_folder_is_refused(
+    sysfs: Path, shim: Path, mode: int, caplog: pytest.LogCaptureFixture
+) -> None:
+    add_usb_device(sysfs, "1-1")
+    shim.parent.chmod(mode)
+
+    with caplog.at_level(logging.WARNING), pytest.raises(ShimMissingError):
+        resolve_target(sysfs_root=sysfs, shim_candidates=[shim])
+
+    assert "folder" in caplog.text
+
+
+def test_a_shim_that_another_user_owns_is_refused(
+    sysfs: Path, shim: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    add_usb_device(sysfs, "1-1")
+    monkeypatch.setattr(os, "geteuid", lambda: shim.stat().st_uid + 1)
+
+    with caplog.at_level(logging.WARNING), pytest.raises(ShimMissingError):
+        resolve_target(sysfs_root=sysfs, shim_candidates=[shim])
+
+    assert "owned" in caplog.text
+
+
+def test_an_unsafe_candidate_is_skipped_for_the_next_safe_one(
+    sysfs: Path, shim: Path, tmp_path: Path
+) -> None:
+    add_usb_device(sysfs, "1-1")
+    unsafe = tmp_path / "unsafe" / SHIM_NAME
+    unsafe.parent.mkdir()
+    unsafe.write_bytes(b"")
+    unsafe.chmod(0o666)
+
+    target = resolve_target(sysfs_root=sysfs, shim_candidates=[unsafe, shim])
+
+    assert target.shim == shim
+
+
+def test_a_safe_shim_in_a_private_folder_is_used(sysfs: Path, shim: Path) -> None:
+    add_usb_device(sysfs, "1-1")
+    shim.parent.chmod(0o700)
+    shim.chmod(0o755)
+
+    assert resolve_target(sysfs_root=sysfs, shim_candidates=[shim]).shim == shim

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <title>FastFoto Linux</title>
+  <rect x="8" y="8" width="112" height="112" rx="24" fill="#1d6f8c"/>
+  <rect x="26" y="22" width="76" height="58" rx="5" fill="#f6f1e4"/>
+  <rect x="32" y="28" width="64" height="40" rx="2" fill="#9fd3e6"/>
+  <circle cx="82" cy="39" r="6" fill="#f5c542"/>
+  <path d="M32 68 L52 44 L66 60 L76 50 L96 68 Z" fill="#3f8f5a"/>
+  <rect x="18" y="86" width="92" height="12" rx="6" fill="#0d3b4d"/>
+  <rect x="18" y="86" width="92" height="4" rx="2" fill="#4cc3e6"/>
+  <rect x="26" y="98" width="76" height="6" rx="3" fill="#0d3b4d" opacity="0.55"/>
+</svg>

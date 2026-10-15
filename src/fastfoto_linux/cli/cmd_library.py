@@ -9,11 +9,12 @@ from collections.abc import Iterator
 from pathlib import Path
 
 from fastfoto_linux.cli.errors import EXIT_OK, EXIT_PROCESSING_ERROR, EXIT_USAGE, CliError
-from fastfoto_linux.cli.options import common_parent, prepare_output_root
+from fastfoto_linux.cli.options import common_parent
 from fastfoto_linux.library.apply import apply_plan
 from fastfoto_linux.library.decide import decide_files
 from fastfoto_linux.library.plan import PlanError, read_plan, write_plan
-from fastfoto_linux.library.safety import UnsafePathError, check_plan_output, check_roots
+from fastfoto_linux.library.planout import open_plan_target
+from fastfoto_linux.library.safety import UnsafePathError, check_roots
 from fastfoto_linux.library.summary import fix_problems, format_check, format_fix, summarize_check
 from fastfoto_linux.library.walk import walk_library
 
@@ -100,15 +101,24 @@ def _existing_folder(path: Path) -> Path:
 
 def run_check(args: argparse.Namespace) -> int:
     src = _existing_folder(args.src)
-    with _as_usage_errors():
-        plan_path = check_plan_output(args.plan, src)
-    walk = walk_library(src)
-    logger.info("found %d JPEG files; deciding with %d worker(s)", len(walk.jpegs), args.jobs)
-    rows = decide_files(src, walk.jpegs, args.jobs)
-    with _as_usage_errors():
-        write_plan(plan_path, rows)
+    with _as_usage_errors(), open_plan_target(args.plan, os.stat(src)) as target:
+        # the plan's folder stays open from here to the write, however long the scan takes
+        walk = walk_library(src)
+        logger.info("found %d JPEG files; deciding with %d worker(s)", len(walk.jpegs), args.jobs)
+        rows = decide_files(src, walk.jpegs, args.jobs)
+        write_plan(target, rows)
     print(format_check(summarize_check(walk, rows), args.plan))
     return EXIT_OK
+
+
+def _require_output_folder(out: Path, *, mkdir: bool) -> None:
+    """A missing folder is usually an unmounted drive or a typo, so it is only made on request."""
+    if out.is_dir():
+        return
+    if out.exists():
+        raise CliError(f"{out} exists but is not a folder", EXIT_USAGE)
+    if not mkdir:
+        raise CliError(f"output folder {out} does not exist; create it or pass --mkdir", EXIT_USAGE)
 
 
 def run_fix(args: argparse.Namespace) -> int:
@@ -116,9 +126,9 @@ def run_fix(args: argparse.Namespace) -> int:
     with _as_usage_errors():
         check_roots(src, args.out)
         rows = read_plan(args.plan, src)
-    prepare_output_root(args)
+    _require_output_folder(args.out, mkdir=args.mkdir)
     with _as_usage_errors():
-        result = apply_plan(rows, src, args.out)
+        result = apply_plan(rows, src, args.out, make_dest=args.mkdir)
     print(format_fix(result, args.out))
     problems = fix_problems(result)
     for line in problems:

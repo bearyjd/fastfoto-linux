@@ -8,10 +8,10 @@ import pytest
 
 from fastfoto_linux.library import safety
 from fastfoto_linux.library.plan import PLAN_COLUMNS, Action, PlanRow, read_plan, write_plan
+from fastfoto_linux.library.planout import open_plan_target
 from fastfoto_linux.library.safety import (
     UnsafePathError,
     assert_outside,
-    check_plan_output,
     check_roots,
     resolve_inside,
 )
@@ -22,6 +22,12 @@ def src(tmp_path: Path) -> Path:
     path = tmp_path / "lib"
     path.mkdir()
     return path
+
+
+def check_plan_output(plan: Path, src: Path) -> Path:
+    """Validate the plan path as ``check`` does at its start; where the plan would be written."""
+    with open_plan_target(plan, os.stat(src)):
+        return plan.parent.resolve() / plan.name
 
 
 # --- resolve_inside -------------------------------------------------------------------

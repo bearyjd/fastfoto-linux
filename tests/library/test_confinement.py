@@ -4,6 +4,7 @@ A path that was fine when it was checked can be swapped for a link (or another f
 write hours later; the descriptors opened at the start are what the write must use.
 """
 
+import errno
 import os
 import stat
 from pathlib import Path
@@ -240,3 +241,70 @@ def test_apply_plan_keeps_no_descriptor_open_after_a_refusal(
     with pytest.raises(UnsafePathError):
         apply_plan([row], small_lib, small_lib / "sub")
     assert fd_count() == before
+
+
+# --- rare paths ---------------------------------------------------------------------------------
+
+
+def test_a_folder_made_by_someone_else_in_the_meantime_is_used(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    real_mkdir = os.mkdir
+
+    def raced(name, mode=0o777, *, dir_fd=None):
+        real_mkdir(name, mode, dir_fd=dir_fd)
+        raise FileExistsError(name)
+
+    monkeypatch.setattr(os, "mkdir", raced)
+    os.close(confine.open_folder(tmp_path.resolve() / "new", create=True, last_mode=0o750))
+    assert (tmp_path / "new").is_dir()
+
+
+@pytest.mark.parametrize(
+    ("code", "outcome"), [(errno.EPERM, "tolerated"), (errno.EIO, "raised")], ids=["perm", "io"]
+)
+def test_a_filesystem_that_refuses_chmod_still_gets_the_folder(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, code: int, outcome: str
+) -> None:
+    def refuse(*_args) -> None:
+        raise OSError(code, "refused")
+
+    monkeypatch.setattr(os, "fchmod", refuse)
+    before = fd_count()
+    target = tmp_path.resolve() / "new"
+    if outcome == "tolerated":
+        os.close(confine.open_folder(target, create=True, last_mode=0o750))
+    else:
+        with pytest.raises(OSError, match="refused"):
+            confine.open_folder(target, create=True, last_mode=0o750)
+    assert fd_count() == before
+
+
+def test_a_folder_nested_beyond_the_depth_limit_is_refused(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    (tmp_path / "a" / "b" / "c").mkdir(parents=True)
+    monkeypatch.setattr(confine, "MAX_DEPTH", 2)
+    fd = os.open(tmp_path / "a" / "b" / "c", os.O_RDONLY | os.O_DIRECTORY)
+    before = fd_count()
+    try:
+        with pytest.raises(UnsafePathError, match="too deeply"):
+            confine.refuse_inside(fd, os.stat(tmp_path.parent))
+    finally:
+        os.close(fd)
+    assert fd_count() == before - 1
+
+
+def test_a_plan_path_that_keeps_changing_is_given_up_on(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, small_lib: Path
+) -> None:
+    def appears(*_args) -> None:
+        raise FileExistsError("appeared meanwhile")
+
+    monkeypatch.setattr(fdio, "link_new", appears)
+    plan = tmp_path / "plan.csv"
+    assert (
+        main(["library", "check", str(small_lib), "--plan", str(plan), "--jobs", "1"]) == EXIT_USAGE
+    )
+    assert not plan.exists()
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["lib"]

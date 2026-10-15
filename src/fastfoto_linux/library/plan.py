@@ -1,16 +1,20 @@
 """The plan file: one row per JPEG saying what ``fix`` should do, written by ``check``."""
 
 import csv
+import errno
 import io
 import math
+import os
 import re
+import stat
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
-from fastfoto_linux.library.fdio import write_replacing
+from fastfoto_linux.library import fdio
 from fastfoto_linux.library.plan_format import PLAN_COLUMNS
+from fastfoto_linux.library.planout import PlanTarget, open_plan_target, publish_plan
 from fastfoto_linux.library.safety import resolve_inside
 from fastfoto_linux.library.tags import (
     CLOCKWISE_BY_TAG,
@@ -20,6 +24,7 @@ from fastfoto_linux.library.tags import (
     compose_tag,
 )
 
+MAX_PLAN_BYTES = 64 * 1024 * 1024  # a plan has a few hundred bytes per photo
 ENCODING = "utf-8"
 ENCODING_ERRORS = "surrogateescape"  # file names that are not UTF-8 survive the round trip
 SCORE_FORMAT = ".3f"
@@ -57,9 +62,13 @@ def _blank_if_none(value: int | None) -> str:
     return "" if value is None else str(value)
 
 
-def write_plan(path: Path, rows: tuple[PlanRow, ...]) -> None:
-    """Write ``rows`` as CSV (relative POSIX paths only) through a staging file renamed over
-    ``path``; a link, special file or other non-regular file at ``path`` is refused."""
+def write_plan(target: PlanTarget | Path, rows: tuple[PlanRow, ...]) -> None:
+    """Write ``rows`` as CSV (relative POSIX paths only) through a staging file.
+
+    ``target`` is the plan's open folder from ``open_plan_target`` (the way ``check`` writes, so
+    that the folder cannot be swapped meanwhile) or a plain path, which is opened here. Only an
+    older plan is replaced; a link, special file or other file at the path is refused.
+    """
     buffer = io.StringIO(newline="")
     writer = csv.writer(buffer, lineterminator="\n")
     writer.writerow(PLAN_COLUMNS)
@@ -78,7 +87,12 @@ def write_plan(path: Path, rows: tuple[PlanRow, ...]) -> None:
                 row.sha256,
             ]
         )
-    write_replacing(path, buffer.getvalue().encode(ENCODING, ENCODING_ERRORS))
+    data = buffer.getvalue().encode(ENCODING, ENCODING_ERRORS)
+    if isinstance(target, PlanTarget):
+        publish_plan(target, data)
+        return
+    with open_plan_target(target) as opened:
+        publish_plan(opened, data)
 
 
 def _whole_number(fields: dict[str, str], name: str, low: int, high: int | None = None) -> int:
@@ -152,12 +166,37 @@ def _parse_row(record: list[str], root: Path) -> PlanRow:
     return row
 
 
+def _read_plan_text(path: Path) -> str:
+    """The text of the plan at ``path``, read through one descriptor opened without following
+    a link or waiting for a writer; PlanError for a link, a pipe, a device or a huge file."""
+    try:
+        fd = os.open(path, fdio.READ_FLAGS)
+    except OSError as error:
+        if error.errno == errno.ELOOP:
+            raise PlanError(f"plan {path} is a link; give the plan file itself") from error
+        raise PlanError(f"cannot read plan {path}: {error.strerror or error}") from error
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode):
+            raise PlanError(f"plan {path} is not a regular file")
+        if info.st_size > MAX_PLAN_BYTES:
+            raise PlanError(f"plan {path} is too large ({info.st_size} bytes)")
+    except BaseException:
+        os.close(fd)
+        raise
+    with os.fdopen(fd, "rb") as handle:
+        try:
+            data = handle.read(MAX_PLAN_BYTES + 1)
+        except OSError as error:
+            raise PlanError(f"cannot read plan {path}: {error.strerror or error}") from error
+    if len(data) > MAX_PLAN_BYTES:
+        raise PlanError(f"plan {path} is too large")
+    return data.decode(ENCODING, ENCODING_ERRORS)
+
+
 def read_plan(path: Path, src: Path) -> tuple[PlanRow, ...]:
     """Read a plan and validate it against the library folder ``src``; PlanError on a bad row."""
-    try:
-        text = path.read_text(encoding=ENCODING, errors=ENCODING_ERRORS)
-    except OSError as error:
-        raise PlanError(f"cannot read plan {path}: {error.strerror or error}") from error
+    text = _read_plan_text(path)
     reader = csv.reader(io.StringIO(text, newline=""))
     header = next(reader, None)
     if header is None:

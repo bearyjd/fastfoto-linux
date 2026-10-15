@@ -8,6 +8,7 @@ import math
 import multiprocessing
 import os
 import signal
+import threading
 import warnings
 from collections.abc import Callable, Iterator, Sequence
 from concurrent.futures import FIRST_COMPLETED, Future, ProcessPoolExecutor, wait
@@ -22,8 +23,13 @@ from PIL import Image
 from fastfoto_linux.enhance.faces import FaceDetector
 from fastfoto_linux.enhance.orient import WORKING_LONG_SIDE_PX, decide_orientation
 from fastfoto_linux.library import fdio
-from fastfoto_linux.library.exif_errors import JpegExifError
-from fastfoto_linux.library.jpeg_exif import read_orientation, set_orientation
+from fastfoto_linux.library.exif_errors import ImageTooLargeError, JpegExifError
+from fastfoto_linux.library.jpeg_exif import (
+    decoder_copy,
+    pixel_count,
+    read_orientation,
+    set_orientation,
+)
 from fastfoto_linux.library.plan import Action, PlanRow
 from fastfoto_linux.library.tags import (
     CLOCKWISE_BY_TAG,
@@ -44,14 +50,16 @@ REASON_INVALID_TAG = "invalid-tag"
 REASON_ROTATE = "faces-upright-after-turn"
 REASON_TOO_LARGE = "too-large"
 REASON_WORKER_CRASHED = "worker-crashed"
-MAX_IMAGE_PIXELS = 200_000_000
+REASON_WORKER_ERROR = "worker-error"
+# The frame header's pixel count is checked against this before anything is decoded. Pillow's own
+# limit (about 89 Mpx, an error at twice that) is left alone and applies on top.
+MAX_IMAGE_PIXELS = 89_000_000
+WORKER_JOIN_TIMEOUT_S = 2.0
 BACK_SUFFIX = "_b"
 # decide_orientation works at a fixed pixel size and ignores the dpi it is asked to validate.
 DETECTION_DPI = 600
 PROGRESS_EVERY = 100
 WINDOW_PER_WORKER = 2  # files in flight per worker; the few a crash can implicate
-# Set when this module is imported, so forkserver workers (which import it too) inherit the limit.
-Image.MAX_IMAGE_PIXELS = MAX_IMAGE_PIXELS
 # Pillow's transposes turn counter-clockwise; this maps a clockwise turn of the display.
 _PILLOW_TURN = MappingProxyType(
     {
@@ -98,11 +106,16 @@ def _draft_size(size: tuple[int, int]) -> tuple[int, int] | None:
 
 
 def load_working_image(data: bytes, tag: int | None) -> np.ndarray:
-    """The photo as displayed (``tag`` applied), RGB uint8, decoded at about the detector size."""
+    """The photo as displayed (``tag`` applied), RGB uint8, decoded at about the detector size.
+
+    Pillow is given ``decoder_copy`` of the file, without the segments it does not need.
+    """
+    if pixel_count(data) > MAX_IMAGE_PIXELS:
+        raise ImageTooLargeError("the JPEG header claims more pixels than are decoded")
     with warnings.catch_warnings():
         # Pillow only warns between one and two times the pixel limit; treat that as an error too.
         warnings.simplefilter("error", Image.DecompressionBombWarning)
-        with Image.open(io.BytesIO(data)) as image:
+        with Image.open(io.BytesIO(decoder_copy(data))) as image:
             requested = _draft_size(image.size)
             if requested is not None:
                 image.draft("RGB", requested)
@@ -154,7 +167,7 @@ def decide_file(src: Path, relative: str, detector: FaceDetector | None = None) 
     """The plan row for ``src / relative``. Never raises for a bad file: it becomes a skip row."""
     try:
         found = fdio.read_regular(src / relative)
-    except fdio.TooLargeError:
+    except (fdio.TooLargeError, MemoryError):
         return _row(relative, Action.SKIP, REASON_TOO_LARGE, (0, 0))
     except OSError:  # gone, a link, a pipe or device, unreadable, changed while it was read
         return _row(relative, Action.SKIP, REASON_UNREADABLE, (0, 0))
@@ -180,8 +193,42 @@ def _ignore_interrupt() -> None:
 
 
 @contextlib.contextmanager
+def _interrupts_ignored() -> Iterator[None]:
+    """No Ctrl-C while the workers are being stopped: ``uv run`` sends a second one soon after
+    the first, and a teardown cut short would leave workers running."""
+    if threading.current_thread() is not threading.main_thread():
+        yield
+        return
+    previous = signal.signal(signal.SIGINT, signal.SIG_IGN)
+    try:
+        yield
+    finally:
+        signal.signal(signal.SIGINT, previous)
+
+
+def _stop_workers(pool: ProcessPoolExecutor) -> None:
+    """Cancel the queue and kill the workers, so nothing is left to wait for at exit.
+
+    ``shutdown(wait=False)`` leaves running workers running, and the interpreter then waits for
+    them (for as long as their file takes) when it exits. The workers are listed first because
+    ``shutdown`` forgets them.
+    """
+    processes = list((getattr(pool, "_processes", None) or {}).values())
+    with _interrupts_ignored():
+        pool.shutdown(wait=False, cancel_futures=True)
+        for process in processes:
+            with contextlib.suppress(OSError, ValueError):
+                process.terminate()
+        for process in processes:
+            process.join(WORKER_JOIN_TIMEOUT_S)
+            if process.is_alive():
+                process.kill()
+                process.join(WORKER_JOIN_TIMEOUT_S)
+
+
+@contextlib.contextmanager
 def _pool(workers: int) -> Iterator[ProcessPoolExecutor]:
-    """A worker pool that is shut down at once, queue cancelled, if anything interrupts it."""
+    """A worker pool whose workers are stopped at once, queue cancelled, if anything interrupts."""
     pool = ProcessPoolExecutor(
         max_workers=workers,
         mp_context=multiprocessing.get_context("forkserver"),
@@ -190,7 +237,7 @@ def _pool(workers: int) -> Iterator[ProcessPoolExecutor]:
     try:
         yield pool
     except BaseException:
-        pool.shutdown(wait=False, cancel_futures=True)
+        _stop_workers(pool)
         raise
     pool.shutdown(wait=True)
 
@@ -205,13 +252,23 @@ class _Job:
     total: int
 
 
-def _crashed_row(src: Path, relative: str) -> PlanRow:
+def _failed_row(src: Path, relative: str, reason: str) -> PlanRow:
+    """A skip row for a file whose worker died or failed; its size and time are read afresh."""
     try:
         info = os.lstat(src / relative)
         sizes = (info.st_size, info.st_mtime_ns)
     except OSError:
         sizes = (0, 0)
-    return _row(relative, Action.SKIP, REASON_WORKER_CRASHED, sizes)
+    return _row(relative, Action.SKIP, reason, sizes)
+
+
+def _crashed_row(src: Path, relative: str) -> PlanRow:
+    return _failed_row(src, relative, REASON_WORKER_CRASHED)
+
+
+def _worker_error_row(src: Path, relative: str, error: BaseException) -> PlanRow:
+    logger.warning("%r: its worker failed (%s)", relative, type(error).__name__)
+    return _failed_row(src, relative, REASON_WORKER_ERROR)
 
 
 def _decide_alone(job: _Job, relative: str) -> PlanRow:
@@ -221,10 +278,15 @@ def _decide_alone(job: _Job, relative: str) -> PlanRow:
             return pool.submit(job.worker, str(job.src), relative).result()
         except BrokenProcessPool:
             return _crashed_row(job.src, relative)
+        except Exception as error:  # the worker raised: this file is skipped, the plan goes on
+            return _worker_error_row(job.src, relative, error)
 
 
 def _salvage(in_flight: dict[Future[PlanRow], str], done: dict[str, PlanRow]) -> list[str]:
-    """Keep the results that finished before the pool broke; the rest are the suspects."""
+    """Keep the results that finished before the pool broke; the rest are the suspects.
+
+    A file whose worker raised is a suspect too: run again alone, it is skipped if it raises again.
+    """
     suspects = []
     for future, relative in in_flight.items():
         if future.done() and not future.cancelled() and future.exception() is None:
@@ -264,6 +326,8 @@ def _run_pool(
                     row = future.result()
                 except BrokenProcessPool:
                     return _salvage(in_flight, done), list(queue[position:])
+                except Exception as error:  # the worker raised: this file is skipped
+                    row = _worker_error_row(job.src, in_flight[future], error)
                 done[in_flight.pop(future)] = row
                 _log_progress(len(done), job.total)
     return [], []

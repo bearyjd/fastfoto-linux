@@ -190,6 +190,6 @@ def test_a_manifest_whose_header_cannot_be_written_is_not_left_open(
     monkeypatch.setattr(manifest_module, "_write_all", fail_first)
     result = apply_plan(two_rows(lib), lib, dest)
     assert statuses(result) == {FIRST: STATUS_UNLOGGED, SECOND: STATUS_WRITTEN}
-    assert len(manifest_files(dest)) == 2  # the half-made one stays; the next row made a new one
+    assert len(manifest_files(dest)) == 1  # the half-made one is removed; the next row made one
     with pytest.raises(OSError, match="Bad file descriptor"):
         os.fstat(calls[0])

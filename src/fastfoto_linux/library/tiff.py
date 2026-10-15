@@ -16,7 +16,11 @@ import struct
 from dataclasses import dataclass
 from types import MappingProxyType
 
-from fastfoto_linux.library.exif_errors import ExifMalformedError, JpegExifError
+from fastfoto_linux.library.exif_errors import (
+    ExifDuplicateOrientationError,
+    ExifMalformedError,
+    JpegExifError,
+)
 from fastfoto_linux.library.tags import ORIENTATION_TAG
 
 TIFF_BYTE_ORDERS = MappingProxyType({b"II": "<", b"MM": ">"})
@@ -33,6 +37,7 @@ TYPE_LONG = 4
 TYPE_IFD = 13
 SHORT_SIZE = 2
 LONG_SIZE = 4
+UNKNOWN_TYPE_SIZE = 1  # a type this reader does not know is counted in bytes, still bounds-checked
 # Bytes in one value of each TIFF type that classic TIFF and Exif use.
 TYPE_SIZES = MappingProxyType(
     {
@@ -94,10 +99,7 @@ class _Walk:
         return struct.unpack_from(self.order + fmt, self.block, offset)
 
     def check_value(self, at: int, kind: int, number: int) -> None:
-        size = TYPE_SIZES.get(kind)
-        if size is None:
-            raise ExifMalformedError(f"the Exif data has an entry of unknown type {kind}")
-        total = size * number
+        total = TYPE_SIZES.get(kind, UNKNOWN_TYPE_SIZE) * number
         if total <= INLINE_VALUE_SIZE:
             return
         (offset,) = self.unpack(LONG_FORMAT, at + ENTRY_VALUE_AT)
@@ -140,15 +142,17 @@ def _header(block: bytes) -> tuple[str, int]:
 
 
 def _orientation(walk: _Walk, entries: list[tuple[int, int, int, int]]) -> OrientationEntry | None:
-    for tag, kind, number, at in entries:
-        if tag != ORIENTATION_TAG:
-            continue
-        if number != 1 or kind not in (TYPE_SHORT, TYPE_LONG):
-            raise JpegExifError("the Exif Orientation entry is not a single whole number")
-        fmt, width = (SHORT_FORMAT, SHORT_SIZE) if kind == TYPE_SHORT else (LONG_FORMAT, LONG_SIZE)
-        (value,) = walk.unpack(fmt, at + ENTRY_VALUE_AT)
-        return OrientationEntry(value, at + ENTRY_VALUE_AT, width)
-    return None
+    found = [entry for entry in entries if entry[0] == ORIENTATION_TAG]
+    if len(found) > 1:
+        raise ExifDuplicateOrientationError("the Exif data has more than one Orientation entry")
+    if not found:
+        return None
+    _, kind, number, at = found[0]
+    if number != 1 or kind not in (TYPE_SHORT, TYPE_LONG):
+        raise JpegExifError("the Exif Orientation entry is not a single whole number")
+    fmt, width = (SHORT_FORMAT, SHORT_SIZE) if kind == TYPE_SHORT else (LONG_FORMAT, LONG_SIZE)
+    (value,) = walk.unpack(fmt, at + ENTRY_VALUE_AT)
+    return OrientationEntry(value, at + ENTRY_VALUE_AT, width)
 
 
 def _sub_ifd_offsets(walk: _Walk, entries: list[tuple[int, int, int, int]]) -> list[int]:
@@ -157,14 +161,28 @@ def _sub_ifd_offsets(walk: _Walk, entries: list[tuple[int, int, int, int]]) -> l
         if tag in SUB_IFD_TAGS:
             if kind not in POINTER_TYPES or number != 1:
                 raise ExifMalformedError("the Exif data has a sub-IFD pointer of the wrong kind")
-            offsets.append(walk.unpack(LONG_FORMAT, at + ENTRY_VALUE_AT)[0])
+            target = walk.unpack(LONG_FORMAT, at + ENTRY_VALUE_AT)[0]
+            if target:  # a pointer of zero says there is no such IFD
+                offsets.append(target)
     return offsets
 
 
-def _further_ifds(walk: _Walk, offset: int, entries: list[tuple[int, int, int, int]]) -> list[int]:
-    """Offsets of the IFDs that the IFD at ``offset`` leads to: its sub-IFDs and its successor."""
+def _next_ifd(walk: _Walk, offset: int, entries: list[tuple[int, int, int, int]]) -> int | None:
+    """The IFD that follows the one at ``offset`` (IFD1 after IFD0), or ``None`` if there is none.
+
+    A pointer of zero, or one that points past the end of the block, means there is none; the
+    pointer itself is carried over untouched by the edit.
+    """
     following = walk.unpack(LONG_FORMAT, offset + IFD_COUNT_SIZE + len(entries) * IFD_ENTRY_SIZE)[0]
-    return [*_sub_ifd_offsets(walk, entries), *([following] if following else [])]
+    return following if 0 < following < len(walk.block) else None
+
+
+def _check_sub_ifds(walk: _Walk, entries: list[tuple[int, int, int, int]]) -> None:
+    """Check the Exif, GPS and Interoperability IFDs below ``entries``; their next pointers are
+    not followed, since nothing reads them."""
+    pending = _sub_ifd_offsets(walk, entries)
+    while pending:
+        pending += _sub_ifd_offsets(walk, _ifd_entries(walk, pending.pop()))
 
 
 def inspect_tiff(block: bytes) -> TiffInfo:
@@ -175,11 +193,10 @@ def inspect_tiff(block: bytes) -> TiffInfo:
     tags = [tag for tag, *_ in entries]
     insert = next((i for i, tag in enumerate(tags) if tag > ORIENTATION_TAG), len(tags))
     info = TiffInfo(order, ifd0, len(entries), insert, _orientation(walk, entries))
-    pending = _further_ifds(walk, ifd0, entries)
-    while pending:
-        offset = pending.pop()
-        entries = _ifd_entries(walk, offset)
-        pending += _further_ifds(walk, offset, entries)
+    _check_sub_ifds(walk, entries)
+    following = _next_ifd(walk, ifd0, entries)
+    if following is not None:
+        _ifd_entries(walk, following)  # IFD1: its entries are checked, its successor is ignored
     return info
 
 

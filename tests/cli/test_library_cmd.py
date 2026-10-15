@@ -194,7 +194,7 @@ def test_a_second_fix_run_reports_the_finished_copies_as_already_done(
     out = capsys.readouterr().out
     assert "written: 0" in out
     assert "already done: 2" in out
-    assert len(manifest_files(dest)) == 1
+    assert len(manifest_files(dest)) == 2  # each run lists the copies it found there too
 
 
 def test_existing_destination_files_with_other_content_are_reported_and_kept(

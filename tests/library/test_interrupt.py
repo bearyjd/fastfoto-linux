@@ -9,6 +9,7 @@ import os
 import signal
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -104,3 +105,17 @@ def test_leaving_the_pool_early_terminates_its_workers_at_once() -> None:
         pids = [process.pid for process in pool._processes.values()]
         raise KeyboardInterrupt
     assert wait_until(lambda: not any(alive(pid) for pid in pids), ORPHAN_DEADLINE_S)
+
+
+def test_stopping_workers_off_the_main_thread_leaves_the_signal_alone() -> None:
+    seen: list[object] = []
+
+    def run() -> None:
+        with decide_module._interrupts_ignored():
+            seen.append(signal.getsignal(signal.SIGINT))
+
+    before = signal.getsignal(signal.SIGINT)
+    thread = threading.Thread(target=run)
+    thread.start()
+    thread.join()
+    assert seen == [before]

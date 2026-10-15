@@ -40,6 +40,7 @@ def entry_at(fixture: TiffFixture, ifd: str, index: int) -> int:
 
 
 # The base block has an Orientation entry (index 1 of IFD0), so entries after it are bad here.
+# An unknown type, or a next-IFD pointer past the end, is not bad: see test_tiff_tolerance.
 def corrupt_cases() -> dict[str, Callable[[TiffFixture], bytes]]:
     def ifd0_end(fx: TiffFixture) -> int:
         return fx.where["ifd0"] + 2 + fx.entries_in_ifd0 * ENTRY
@@ -47,10 +48,6 @@ def corrupt_cases() -> dict[str, Callable[[TiffFixture], bytes]]:
     return {
         "ifd0 claims thousands of entries": lambda fx: poke(fx.block, fx.where["ifd0"], "H", 5000),
         "ifd0 offset outside the block": lambda fx: poke(fx.block, 4, "I", len(fx.block) + 100),
-        "unknown type after the orientation entry": lambda fx: poke(
-            fx.block, entry_at(fx, "ifd0", 2) + 2, "H", 99
-        ),
-        "type zero": lambda fx: poke(fx.block, entry_at(fx, "ifd0", 2) + 2, "H", 0),
         "value runs past the block": lambda fx: poke(
             fx.block, entry_at(fx, "ifd0", 2) + 4, "I", 0x10000000
         ),
@@ -66,20 +63,14 @@ def corrupt_cases() -> dict[str, Callable[[TiffFixture], bytes]]:
         "value offset inside the tiff header": lambda fx: poke(
             fx.block, entry_at(fx, "ifd0", 2) + 8, "I", 2
         ),
-        "next ifd outside the block": lambda fx: poke(
-            fx.block, ifd0_end(fx), "I", len(fx.block) + 50
-        ),
         "ifd0 points to itself": lambda fx: poke(fx.block, ifd0_end(fx), "I", fx.where["ifd0"]),
-        "ifd1 points back to ifd0": lambda fx: poke(
-            fx.block, fx.where["ifd1"] + 2 + 2 * ENTRY, "I", fx.where["ifd0"]
-        ),
         "exif ifd pointer outside the block": lambda fx: poke(
             fx.block, entry_at(fx, "ifd0", 4) + 8, "I", len(fx.block) + 20
         ),
         "exif ifd pointer loops to ifd0": lambda fx: poke(
             fx.block, entry_at(fx, "ifd0", 4) + 8, "I", fx.where["ifd0"]
         ),
-        "bad entry in ifd1": lambda fx: poke(fx.block, fx.where["ifd1"] + 2 + 2, "H", 99),
+        "bad entry in ifd1": lambda fx: poke(fx.block, fx.where["ifd1"] + 2 + 4, "I", 0x7FFFFFFF),
         "bad entry in the exif ifd": lambda fx: poke(
             fx.block, entry_at(fx, "exif", 1) + 4, "I", 0x7FFFFFFF
         ),
@@ -118,7 +109,7 @@ def test_a_malformed_block_is_rejected_before_any_parser_runs(
 def test_check_skips_a_file_with_a_malformed_block_and_says_why(
     tmp_path: Path, no_pillow_exif: None
 ) -> None:
-    bad = corrupt_cases()["unknown type after the orientation entry"](build_tiff(">", (SHORT, 1)))
+    bad = corrupt_cases()["value runs past the block"](build_tiff(">", (SHORT, 1)))
     sideways = rotate_cw(load_astronaut(), 90)  # tag 1: shown as stored, so it needs a turn
     write_file(tmp_path, "a.jpg", jpeg_with_exif(bad, sideways))
     row = decide_file(tmp_path, "a.jpg")

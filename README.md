@@ -80,9 +80,17 @@ uv run ffscan library fix ~/Documents/library-plan.csv \
   `fastfoto-reorient-manifest-<UTC time>.csv` for each run listing old and new tags. It refuses a
   row whose file changed since `check` (size, modification time or content hash), never overwrites
   a file in `DEST` and refuses a `DEST` that is inside the library or contains it (also when it
-  is the same folder under another name). A copy left by an interrupted run counts as done when
-  you run `fix` again. The plan and manifest are plain CSV: if you open them in a spreadsheet, a
-  file name that starts with `=`, `+`, `-` or `@` may be taken as a formula.
+  is the same folder under another name, or is reached through a link that was swapped in while
+  it ran). Folders `fix` creates get the mode of the library's folder (always writable for you).
+  A copy left by an interrupted run counts as done when you run `fix` again, and is listed in
+  that run's manifest. Staging files (`.name.<hex>.tmp`) that a killed run left behind are
+  counted in the summary and left for you to delete. The plan and manifest are plain CSV: if you
+  open them in a spreadsheet, a file name that starts with `=`, `+`, `-` or `@` may be taken as a
+  formula.
+- A photo is skipped, with the reason shown in the summary, when it cannot be changed safely:
+  malformed Exif, more than one Orientation entry in it, an Exif block too large to grow, or an
+  XMP packet with its own `tiff:Orientation` (viewers may prefer either tag, and the two must
+  never disagree). Ctrl-C stops `check` at once and writes no plan.
 - Then review `DEST` in your photo viewer and, once you are happy, copy it over the library
   yourself. Running `check` on `DEST` again proposes nothing to rotate.
 

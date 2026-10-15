@@ -4,12 +4,14 @@ import errno
 import hashlib
 import logging
 import os
+import re
+import stat
 from collections.abc import Sequence
 from contextlib import ExitStack
-from dataclasses import dataclass
-from pathlib import Path
+from dataclasses import dataclass, replace
+from pathlib import Path, PurePosixPath
 
-from fastfoto_linux.library import fdio
+from fastfoto_linux.library import confine, fdio
 from fastfoto_linux.library.exif_errors import JpegExifError
 from fastfoto_linux.library.fdio import SourceFile
 from fastfoto_linux.library.jpeg_exif import read_orientation, set_orientation
@@ -35,6 +37,11 @@ REASON_EXISTS = "the destination file already exists"
 REASON_IO = "io-error"
 REASON_MANIFEST = "manifest-error"
 REASON_UNSAFE_DESTINATION = "unsafe-destination"
+OWNER_RWX = 0o700
+# What an interrupted run leaves behind: ".<name>.<8 hex digits>.tmp".
+STAGING_NAME = re.compile(
+    rf"\..+\.[0-9a-f]{{{2 * fdio.TOKEN_BYTES}}}{re.escape(fdio.STAGING_SUFFIX)}"
+)
 
 
 @dataclass(frozen=True)
@@ -49,6 +56,7 @@ class Outcome:
 @dataclass(frozen=True)
 class ApplyResult:
     outcomes: tuple[Outcome, ...]
+    leftover_staging: int = 0  # staging files of a killed run found in the folders written to
 
     def count(self, status: str) -> int:
         return sum(1 for outcome in self.outcomes if outcome.status == status)
@@ -108,22 +116,38 @@ def _new_content(row: PlanRow, data: bytes) -> bytes:
     return set_orientation(data, row.new_tag)
 
 
+def _folder_modes(src: Path, relative: str) -> tuple[int, ...]:
+    """The modes of the library folders above ``relative``, outermost first (new copies' folders
+    get these); a folder that cannot be examined is left out and gets the default."""
+    modes = []
+    folder = src
+    for part in PurePosixPath(relative).parent.parts:
+        folder = folder / part
+        try:
+            modes.append(stat.S_IMODE(os.stat(folder).st_mode))
+        except OSError:
+            break
+    return tuple(modes)
+
+
 def _write_row(row: PlanRow, run: _Run) -> bool:
     """Publish the copy for ``row``; False if an identical one was already there."""
     source = locate_inside(run.src, row.path)
     assert_outside(locate_inside(run.dest, row.path), run.src)
     found = _read_planned_file(row, source)
     content = _new_content(row, found.data)
+    found = replace(found, folder_modes=_folder_modes(run.src, row.path))
     return fdio.publish(run.dest_fd, row.path, content, found, run.library)
 
 
-def _record(row: PlanRow, manifest: Manifest) -> Outcome:
+def _record(row: PlanRow, manifest: Manifest, status: str) -> Outcome:
+    """Add ``row`` to the manifest; ``status`` is the outcome if that works."""
     try:
         manifest.record(row)
     except OSError as error:
-        logger.warning("%r: written, but not added to the manifest (%s)", row.path, error)
+        logger.warning("%r: copy is there, but not added to the manifest (%s)", row.path, error)
         return Outcome(row.path, STATUS_UNLOGGED, REASON_MANIFEST)
-    return Outcome(row.path, STATUS_WRITTEN)
+    return Outcome(row.path, status)
 
 
 def _apply_row(row: PlanRow, run: _Run) -> Outcome:
@@ -140,14 +164,35 @@ def _apply_row(row: PlanRow, run: _Run) -> Outcome:
     except OSError as error:
         logger.warning("%r: %s", row.path, error.strerror or error)
         return Outcome(row.path, STATUS_FAILED, REASON_IO)
-    return _record(row, run.manifest) if written else Outcome(row.path, STATUS_DONE)
+    return _record(row, run.manifest, STATUS_WRITTEN if written else STATUS_DONE)
 
 
-def apply_plan(rows: Sequence[PlanRow], src: Path, dest: Path) -> ApplyResult:
+def _count_leftovers(dest: Path, rows: Sequence[PlanRow]) -> int:
+    """Staging files of a killed run in the folders the rotate rows write to (not deleted)."""
+    folders = {PurePosixPath(row.path).parent for row in rows if row.action is Action.ROTATE}
+    found = 0
+    for folder in sorted({PurePosixPath(), *folders}):
+        try:
+            names = os.listdir(dest / folder)
+        except OSError:
+            continue
+        found += sum(1 for name in names if STAGING_NAME.fullmatch(name))
+    return found
+
+
+def apply_plan(
+    rows: Sequence[PlanRow], src: Path, dest: Path, *, make_dest: bool = False
+) -> ApplyResult:
     """Write ``dest / path`` for every ``rotate`` row: the source with only its Orientation tag
-    changed. A stale, unwritable or already existing target is reported; the other rows go on."""
+    changed. A stale, unwritable or already existing target is reported; the other rows go on.
+
+    ``make_dest`` creates ``dest`` (and any missing folders above it) when it does not exist.
+    """
     src_root, dest_root = check_roots(src, dest)
     library = os.stat(src_root)
+    if make_dest:  # made through descriptors too, then opened (and checked) like any other
+        mode = stat.S_IMODE(library.st_mode) | OWNER_RWX
+        os.close(confine.open_folder(dest_root, create=True, last_mode=mode))
     with ExitStack() as stack:
         dest_fd = fdio.open_root(dest_root, library)
         stack.callback(os.close, dest_fd)
@@ -155,4 +200,4 @@ def apply_plan(rows: Sequence[PlanRow], src: Path, dest: Path) -> ApplyResult:
         stack.callback(manifest.close)
         run = _Run(src_root, dest_root, dest_fd, library, manifest)
         outcomes = tuple(_apply_row(row, run) for row in rows if row.action is Action.ROTATE)
-    return ApplyResult(outcomes)
+    return ApplyResult(outcomes, _count_leftovers(dest_root, rows))

@@ -1,12 +1,7 @@
 """Path rules that keep the library untouched: nothing is ever written inside it."""
 
 import os
-import stat
 from pathlib import Path, PurePosixPath
-
-from fastfoto_linux.library.plan_format import PLAN_COLUMNS
-
-MAX_HEADER_CHARS = 1024
 
 
 class UnsafePathError(ValueError):
@@ -96,47 +91,6 @@ def check_roots(src: Path, dest: Path) -> tuple[Path, Path]:
             "choose a destination that is neither inside the library nor holds it"
         )
     return resolved_src, resolved_dest
-
-
-def _is_plan_file(path: Path) -> bool:
-    """Whether the regular file at ``path`` starts with the plan's header line."""
-    try:
-        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
-    except OSError:
-        return False
-    with os.fdopen(fd, encoding="utf-8", errors="replace") as handle:
-        if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
-            return False
-        return handle.readline(MAX_HEADER_CHARS).rstrip("\r\n") == ",".join(PLAN_COLUMNS)
-
-
-def _check_existing_plan(target: Path, plan: Path) -> None:
-    try:
-        info = os.lstat(target)
-    except FileNotFoundError:
-        return
-    if stat.S_ISLNK(info.st_mode):
-        raise UnsafePathError(f"{plan} is a link; not writing through it")
-    if not stat.S_ISREG(info.st_mode) or not _is_plan_file(target):
-        raise UnsafePathError(f"{plan} exists and is not a plan file; not overwriting it")
-
-
-def check_plan_output(plan: Path, src: Path) -> Path:
-    """Where the plan will be written; UnsafePathError if that is inside ``src``, or an existing
-    link, special file or file that is not a plan.
-
-    The folder is resolved but the file name is not, so a link at the plan path is never followed.
-    """
-    if plan.name in ("", ".", ".."):
-        raise UnsafePathError(f"{plan} is not a file name")
-    folder = plan.parent.resolve()
-    target = folder / plan.name
-    if _is_inside(target, src.resolve()):
-        raise UnsafePathError(f"the plan file {plan} would be inside the library")
-    if not folder.is_dir():
-        raise UnsafePathError(f"the folder for the plan file {plan} does not exist")
-    _check_existing_plan(target, plan)
-    return target
 
 
 def assert_outside(path: Path, root: Path) -> None:

@@ -23,3 +23,21 @@ class ExifMalformedError(JpegExifError):
     """The Exif data points outside itself, loops or is oversized; it is not parsed any further."""
 
     reason = "exif-malformed"
+
+
+class ExifDuplicateOrientationError(JpegExifError):
+    """IFD0 holds more than one Orientation entry, so it is unclear which one a viewer obeys."""
+
+    reason = "exif-duplicate-orientation"
+
+
+class XmpOrientationError(JpegExifError):
+    """An XMP packet has its own ``tiff:Orientation``, which a viewer may prefer to the Exif one."""
+
+    reason = "xmp-orientation"
+
+
+class ImageTooLargeError(JpegExifError):
+    """The JPEG header claims more pixels than this tool decodes."""
+
+    reason = "too-large"

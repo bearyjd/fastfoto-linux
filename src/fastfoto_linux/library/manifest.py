@@ -5,6 +5,7 @@ links (so nothing planted at a fixed name is ever opened), through the destinati
 Rows are written with the csv module and flushed to disk one by one.
 """
 
+import contextlib
 import csv
 import io
 import os
@@ -72,6 +73,8 @@ class Manifest:
                 _write_all(fd, _encoded(MANIFEST_COLUMNS))
             except BaseException:
                 os.close(fd)
+                with contextlib.suppress(OSError):  # no empty manifest is left behind
+                    os.unlink(name, dir_fd=self._folder_fd)
                 raise
             return fd
         raise FileExistsError(f"every manifest name for {self._stamp} is already taken")

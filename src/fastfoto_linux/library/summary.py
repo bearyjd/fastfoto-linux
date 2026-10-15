@@ -95,6 +95,11 @@ def format_fix(result: ApplyResult, dest_name: str) -> str:
     ]
     if result.count(STATUS_UNLOGGED):
         lines.append(f"written but not in the manifest: {result.count(STATUS_UNLOGGED)}")
+    if result.leftover_staging:
+        lines.append(
+            f"leftover staging files: {result.leftover_staging} "
+            "(from an interrupted run; delete them yourself)"
+        )
     return "\n".join([*lines, f"output: {dest_name}"])
 
 

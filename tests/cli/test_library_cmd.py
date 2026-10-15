@@ -1,6 +1,8 @@
 """``ffscan library check`` and ``fix`` through ``main``: summaries, exit codes, safety."""
 
 import csv
+import os
+import stat
 from pathlib import Path
 
 import pytest
@@ -209,6 +211,26 @@ def test_existing_destination_files_with_other_content_are_reported_and_kept(
     assert "written: 1" in captured.out
     assert "already there: 1" in captured.out
     assert (dest / TURNED_90).read_bytes() == b"precious"
+
+
+def test_an_identical_copy_owned_by_someone_else_is_done_with_a_note_and_exit_0(
+    monkeypatch: pytest.MonkeyPatch, lib: Path, work: Path, tmp_path, capsys
+) -> None:
+    dest = tmp_path / "fixed"
+    assert check(lib, work) == 0
+    assert fix(work, lib, dest, "--mkdir") == 0
+    copy = dest / TURNED_90
+    other_mode = stat.S_IMODE((lib / TURNED_90).stat().st_mode) ^ 0o004  # not the source's
+    copy.chmod(other_mode)
+    real = os.geteuid()
+    monkeypatch.setattr(os, "geteuid", lambda: real + 1)
+    capsys.readouterr()
+    assert fix(work, lib, dest) == 0
+    captured = capsys.readouterr()
+    assert "already done: 2" in captured.out
+    assert "already there: 0" in captured.out
+    assert f"{TURNED_90!r}: done (already there (owned by another user;" in captured.err
+    assert stat.S_IMODE(copy.stat().st_mode) == other_mode
 
 
 def test_file_names_in_the_problem_lines_cannot_carry_terminal_escapes(

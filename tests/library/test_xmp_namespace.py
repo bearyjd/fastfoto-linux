@@ -126,3 +126,36 @@ def test_a_packet_without_an_xmp_orientation_does_not_stop_the_turn(
     ):
         write_file(tmp_path, "a.jpg", data)
         assert decide_file(tmp_path, "a.jpg").action is Action.ROTATE
+
+
+def packet_with_prefix(prefix: str, namespace: bytes, *, element: bool) -> bytes:
+    """A packet giving ``Orientation`` to ``prefix`` (UTF-8 in the bytes) bound to ``namespace``."""
+    name = prefix.encode()
+    description = b"<rdf:Description xmlns:" + name + b'="' + namespace + b'"'
+    if element:
+        body = description + b"><" + name + b":Orientation>6</" + name + b":Orientation>"
+    else:
+        body = description + b" " + name + b':Orientation="6">'
+    return b"<x:xmpmeta><rdf:RDF>" + body + b"</rdf:Description></rdf:RDF></x:xmpmeta>"
+
+
+NON_ASCII_PREFIXES = ["tïff", "写真", "é.1-ü"]  # NCName characters beyond ASCII
+
+
+@pytest.mark.parametrize("element", [True, False], ids=["element", "attribute"])
+@pytest.mark.parametrize("prefix", NON_ASCII_PREFIXES)
+def test_a_non_ascii_prefix_bound_to_the_tiff_namespace_is_found(
+    tmp_path: Path, prefix: str, element: bool
+) -> None:
+    packet = packet_with_prefix(prefix, b"http://ns.adobe.com/tiff/1.0/", element=element)
+    assert skipped_for_xmp(tmp_path, with_xmp(sideways(90), packet))
+
+
+@pytest.mark.parametrize("element", [True, False], ids=["element", "attribute"])
+@pytest.mark.parametrize("prefix", NON_ASCII_PREFIXES)
+def test_a_non_ascii_prefix_bound_to_another_namespace_is_not(
+    tmp_path: Path, prefix: str, element: bool
+) -> None:
+    packet = packet_with_prefix(prefix, b"http://example.com/ns/", element=element)
+    write_file(tmp_path, "a.jpg", with_xmp(sideways(90), packet))
+    assert decide_file(tmp_path, "a.jpg").action is Action.ROTATE

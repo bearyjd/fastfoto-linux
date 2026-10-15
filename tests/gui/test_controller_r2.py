@@ -178,12 +178,26 @@ def test_the_offer_to_process_the_kept_pages_names_the_folder_of_the_scan_it_bel
     controller.cancel()
     controller.on_finished(cancelled_scan(Path("/srv/demo/.raw/stamp"), 3))
     controller.set_field("album", "Edited Later")  # not the folder the pages are processed into
-    assert controller.process_kept_text == f"Process them now into {scanned_into}"
+    assert controller.process_kept_folder == scanned_into
     assert controller.can_process_kept
 
 
+def test_the_button_that_processes_the_kept_pages_is_static_text_without_the_folder_name(
+    out: Path, saved: list[ScanForm]
+) -> None:
+    """A button has no text format: a folder named ``<img ...>`` must not be in its text."""
+    hostile = out / "<img src=x>"
+    hostile.mkdir()
+    controller = Page(ScanForm(output_folder=str(hostile)), saved).cancelled()
+    assert controller.process_kept_text == "Process them now"
+    assert controller.process_kept_folder == str(hostile)
+    assert "<" not in controller.process_kept_text
+
+
 def test_there_is_no_offer_text_without_an_offer(page: Page) -> None:
-    assert page.ready().process_kept_text == ""
+    controller = page.ready()
+    assert controller.process_kept_text == ""
+    assert controller.process_kept_folder == ""
 
 
 def test_the_close_question_says_scan_or_processing_by_the_state(page: Page) -> None:

@@ -76,5 +76,5 @@ def test_the_button_that_processes_kept_pages_says_where_they_go(
     bridge.cancel()
     wait_until(lambda: bridge.canProcessKept, "the offer")
     button = child(window, "processKeptButton")
-    assert str(out) in bridge.processKeptText
-    assert button.property("text") == bridge.processKeptText
+    assert button.property("text") == bridge.processKeptText == "Process them now"
+    assert str(out) in child(window, "processKeptFolder").property("text")

@@ -1,4 +1,8 @@
-"""Review round 2 (12): the disk is read off the GUI thread, and the page waits for the answer."""
+"""The disk is read off the GUI thread. Review round 2 (12): a Scan press waits for the answer.
+
+Review round 3 (1): a folder check under way does not disable Scan, or the press that leaves the
+folder field (and starts that check) would lose its click; the press waits for the check instead.
+"""
 
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -76,21 +80,70 @@ def test_check_disk_hands_the_form_to_the_runner_and_shows_the_answer_when_it_co
     controller.check_disk()
     assert page.disk.forms == [controller.form]
     assert controller.errors == {}  # nothing is known yet
-    assert controller.scan_blocker == CHECKING_DISK_TEXT
+    assert controller.scan_blocker != CHECKING_DISK_TEXT  # only a Scan press waits for it
     page.disk.answer(controller)
     assert "does not exist" in controller.errors["output_folder"]
     assert controller.scan_blocker != CHECKING_DISK_TEXT
 
 
-def test_scan_waits_while_the_folder_is_being_checked(page: AsyncPage) -> None:
+def test_a_folder_check_under_way_does_not_disable_scan(page: AsyncPage) -> None:
     controller = page.ready()
     controller.check_disk()
-    assert not controller.can_scan
+    assert controller.can_scan
+    assert controller.scan_blocker == ""
+    assert not controller.busy
+    page.disk.answer(controller)
+    assert controller.can_scan
+
+
+def test_scan_pressed_while_the_folder_is_checked_waits_for_that_check_and_scans(
+    page: AsyncPage,
+) -> None:
+    controller = page.ready()
+    controller.check_disk()
+    asked = len(page.disk.forms)
+    controller.start_scan()
+    assert len(page.disk.forms) == asked  # the check under way is the one it waits for
+    assert page.worker.names == ["check"]  # no scan yet
+    assert controller.starting_scan
+    assert controller.busy
+    assert not controller.can_scan  # a second press has nothing to start
     assert controller.scan_blocker == CHECKING_DISK_TEXT
     with pytest.raises(ActionBlockedError):
         controller.start_scan()
     page.disk.answer(controller)
-    assert controller.can_scan
+    assert controller.state is State.SCANNING
+    assert page.worker.names.count("scan") == 1
+
+
+def test_scan_pressed_while_the_folder_is_checked_shows_the_field_error_when_it_says_no(
+    page: AsyncPage,
+) -> None:
+    controller = page.ready()
+    controller.check_disk()
+    controller.start_scan()
+    page.disk.answer(controller, errors={"output_folder": "The folder /srv/demo is gone."})
+    assert controller.state is State.READY
+    assert not controller.busy
+    assert controller.errors == {"output_folder": "The folder /srv/demo is gone."}
+    assert controller.banner is not None
+    assert "is gone" in controller.banner.text
+    assert "scan" not in page.worker.names
+
+
+def test_scan_pressed_after_an_edit_forgot_the_check_under_way_asks_the_disk_again(
+    page: AsyncPage, tmp_path: Path
+) -> None:
+    controller = page.ready()
+    controller.check_disk()
+    controller.set_field("output_folder", str(tmp_path))
+    asked = len(page.disk.forms)
+    controller.start_scan()
+    assert len(page.disk.forms) == asked + 1  # the answer about the old text is not the one
+    page.disk.answer(controller, 0)  # ... and the old answer comes late
+    assert "scan" not in page.worker.names
+    page.disk.answer(controller)
+    assert page.worker.names.count("scan") == 1
 
 
 def test_a_late_answer_for_another_folder_is_ignored(page: AsyncPage, tmp_path: Path) -> None:
@@ -100,9 +153,11 @@ def test_a_late_answer_for_another_folder_is_ignored(page: AsyncPage, tmp_path: 
     controller.check_disk()
     controller.on_disk(old, {"output_folder": "an answer about the old folder"})
     assert controller.errors == {}
+    controller.start_scan()
     assert controller.scan_blocker == CHECKING_DISK_TEXT  # still waiting for the right answer
     page.disk.answer(controller)
     assert "does not exist" in controller.errors["output_folder"]
+    assert "scan" not in page.worker.names
 
 
 def test_editing_the_folder_forgets_a_check_that_is_under_way(

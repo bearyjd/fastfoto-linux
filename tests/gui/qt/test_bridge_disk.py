@@ -1,4 +1,7 @@
-"""Review round 2 (12) at the Qt layer: a folder that answers slowly cannot freeze the window."""
+"""Review round 2 (12) at the Qt layer: a folder that answers slowly cannot freeze the window.
+
+Review round 3 (1): and a folder check under way does not take the Scan button away.
+"""
 
 import threading
 import time
@@ -17,6 +20,7 @@ from PySide6.QtCore import QCoreApplication
 from fastfoto_linux.gui.controller import CHECKING_DISK_TEXT
 from fastfoto_linux.gui.form import ScanForm
 from fastfoto_linux.gui.qt import bridge as bridge_module
+from tests.gui.helpers import ScriptedSession
 from tests.gui.qt import test_qml
 from tests.gui.qt.qt_helpers import child, click, wait_until
 
@@ -52,8 +56,8 @@ def test_a_bridge_does_not_wait_for_the_disk_when_it_is_made(
     begun = time.monotonic()
     bridge = make_bridge()
     assert time.monotonic() - begun < GATE_WAIT / 2
-    assert bridge.whyNotScan == CHECKING_DISK_TEXT
-    assert not bridge.canScan
+    assert bridge.whyNotScan != CHECKING_DISK_TEXT  # only a Scan press waits for the folder
+    assert not bridge.canScan  # but there is no scanner yet
     wait_until(lambda: slow_disk.threads, "the folder check to start")
     assert slow_disk.threads[0] != threading.get_ident()
     slow_disk.gate.set()
@@ -73,7 +77,7 @@ def test_leaving_the_folder_field_returns_at_once_and_the_answer_comes_later(
     begun = time.monotonic()
     bridge.checkDisk()
     assert time.monotonic() - begun < GATE_WAIT / 2
-    assert bridge.whyNotScan == CHECKING_DISK_TEXT
+    assert bridge.whyNotScan != CHECKING_DISK_TEXT
     slow_disk.gate.set()
     wait_until(lambda: bridge.errors == {}, "the answer for the folder that exists")
 
@@ -168,3 +172,23 @@ def test_the_cancel_button_is_enabled_while_a_scan_waits_for_the_folder(
     click(cancel)
     wait_until(lambda: cancel.property("enabled") is False, "Cancel to be disabled again")
     assert bridge.state == "ready"
+
+
+def test_scan_stays_enabled_while_the_folder_is_checked_and_a_press_waits_for_the_answer(
+    make_bridge: Any, slow_disk: Any, tmp_path: Path
+) -> None:
+    session = ScriptedSession(tmp_path)
+    bridge = make_bridge(form=ScanForm(output_folder=str(tmp_path)), session=session)
+    slow_disk.gate.set()
+    found(bridge)
+    slow_disk.gate.clear()
+    bridge.checkDisk()  # the user left the folder field
+    wait_until(lambda: len(slow_disk.threads) >= 2, "the folder check to start")
+    assert bridge.canScan
+    assert bridge.whyNotScan == ""
+    bridge.startScan()
+    assert bridge.startingScan
+    assert session.requests == []
+    slow_disk.gate.set()
+    wait_until(lambda: bridge.state == "done", "the scan to finish")
+    assert len(session.requests) == 1

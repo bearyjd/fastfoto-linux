@@ -16,6 +16,10 @@ SHIM = "ff680w_usb_gap.so"
 STUB_PYTHON = """#!/bin/sh
 # Stands in for /usr/bin/python3: `-c CODE` answers the version (STUB_PYTHON_VERSION) and
 # `-m venv [--upgrade|--clear] --system-site-packages DIR` makes a venv whose python is a stub.
+# Every call is noted in python3.calls: "yes ..." when it was made isolated (-I), else "no ...".
+isolated=no
+if [ "$1" = "-I" ]; then isolated=yes; shift; fi
+echo "$isolated $*" >> "$(dirname "$0")/python3.calls"
 if [ "$1" = "-c" ]; then echo "${STUB_PYTHON_VERSION:-3.14}"; exit 0; fi
 [ "$1 $2" = "-m venv" ] || { echo "unexpected: $*" >&2; exit 64; }
 shift 2
@@ -466,6 +470,17 @@ def test_every_call_of_the_environments_python_is_isolated(
     calls = venv_log(home, "pip.log")
     assert calls
     assert all(call.startswith("-I ") for call in calls), calls
+
+
+def test_every_call_of_the_system_python_is_isolated(checkout: Path, env: dict[str, str]) -> None:
+    """Review round 3: the system python imports nothing from the current folder or $PYTHONPATH."""
+    assert run(checkout, env).returncode == 0
+    assert run(checkout, env).returncode == 0  # the second run asks the version, then upgrades
+    calls = (Path(env["FASTFOTO_PYTHON"]).parent / "python3.calls").read_text().splitlines()
+    assert any(" -c " in f" {call} " for call in calls), calls
+    assert any(" -m venv " in f" {call} " for call in calls), calls
+    assert all(call.startswith("yes ") for call in calls), calls
+    assert "-I -m venv" in run(checkout, env, "--dry-run").stdout  # and the plan says so
 
 
 def test_the_script_works_from_the_checkout_whatever_the_current_folder_is(

@@ -234,6 +234,11 @@ class Controller:
         return f"Process them now into {self._scan_folder}"
 
     @property
+    def process_kept_folder(self) -> str:
+        """The folder the kept pages are processed into, shown beside the button as plain text."""
+        raise NotImplementedError("review round 3: the folder is no longer part of the button")
+
+    @property
     def close_title(self) -> str:
         return CLOSE_PROCESSING_TITLE if self._state is State.PROCESSING else CLOSE_SCAN_TITLE
 

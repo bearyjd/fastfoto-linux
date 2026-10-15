@@ -1,21 +1,28 @@
 """The plan file: one row per JPEG saying what ``fix`` should do, written by ``check``."""
 
+import csv
+import io
+import math
+import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
-PLAN_COLUMNS = (
-    "path",
-    "action",
-    "rotate_cw",
-    "old_tag",
-    "new_tag",
-    "score",
-    "reason",
-    "size",
-    "mtime_ns",
-    "sha256",
+from fastfoto_linux.library.plan_format import PLAN_COLUMNS
+from fastfoto_linux.library.safety import resolve_inside
+from fastfoto_linux.library.tags import (
+    CLOCKWISE_BY_TAG,
+    MAX_TAG,
+    MIN_TAG,
+    QUARTER_TURNS,
+    compose_tag,
 )
+
+ENCODING = "utf-8"
+ENCODING_ERRORS = "surrogateescape"  # file names that are not UTF-8 survive the round trip
+SCORE_FORMAT = ".3f"
+_SHA256 = re.compile(r"[0-9a-f]{64}")
 
 
 class Action(StrEnum):
@@ -45,11 +52,125 @@ class PlanRow:
     sha256: str
 
 
+def _blank_if_none(value: int | None) -> str:
+    return "" if value is None else str(value)
+
+
 def write_plan(path: Path, rows: tuple[PlanRow, ...]) -> None:
     """Write ``rows`` as CSV (relative POSIX paths only)."""
-    raise NotImplementedError
+    with path.open("w", encoding=ENCODING, errors=ENCODING_ERRORS, newline="") as handle:
+        writer = csv.writer(handle, lineterminator="\n")
+        writer.writerow(PLAN_COLUMNS)
+        for row in rows:
+            writer.writerow(
+                [
+                    row.path,
+                    row.action.value,
+                    row.rotate_cw,
+                    _blank_if_none(row.old_tag),
+                    _blank_if_none(row.new_tag),
+                    format(row.score, SCORE_FORMAT),
+                    row.reason,
+                    row.size,
+                    row.mtime_ns,
+                    row.sha256,
+                ]
+            )
+
+
+def _whole_number(fields: dict[str, str], name: str, low: int, high: int | None = None) -> int:
+    try:
+        value = int(fields[name])
+    except ValueError:
+        raise ValueError(f"{name} must be a whole number, got {fields[name]!r}") from None
+    if value < low or (high is not None and value > high):
+        raise ValueError(f"{name} is out of range: {value}")
+    return value
+
+
+def _optional_tag(fields: dict[str, str], name: str, allowed: Sequence[int]) -> int | None:
+    if not fields[name]:
+        return None
+    value = _whole_number(fields, name, min(allowed), max(allowed))
+    if value not in allowed:
+        raise ValueError(f"{name} must be one of {tuple(allowed)}, got {value}")
+    return value
+
+
+def _score(fields: dict[str, str]) -> float:
+    try:
+        value = float(fields["score"])
+    except ValueError:
+        raise ValueError(f"score must be a number, got {fields['score']!r}") from None
+    if not math.isfinite(value) or value < 0:
+        raise ValueError(f"score must be a finite number of at least 0, got {fields['score']!r}")
+    return value
+
+
+def _action(text: str) -> Action:
+    try:
+        return Action(text)
+    except ValueError:
+        raise ValueError(f"unknown action {text!r}") from None
+
+
+def _check_rotate(row: PlanRow) -> None:
+    if row.rotate_cw == 0 or row.old_tag is None or row.new_tag is None:
+        raise ValueError("a rotate row needs a turn, old_tag and new_tag")
+    if not _SHA256.fullmatch(row.sha256):
+        raise ValueError("a rotate row needs the sha256 of the file it was planned for")
+    if compose_tag(row.old_tag, row.rotate_cw) != row.new_tag:
+        raise ValueError(f"new_tag {row.new_tag} does not match old_tag and rotate_cw")
+
+
+def _parse_row(record: list[str], root: Path) -> PlanRow:
+    if len(record) != len(PLAN_COLUMNS):
+        raise ValueError(f"expected {len(PLAN_COLUMNS)} columns, found {len(record)}")
+    fields = dict(zip(PLAN_COLUMNS, record, strict=True))
+    resolve_inside(root, fields["path"])
+    if fields["sha256"] and not _SHA256.fullmatch(fields["sha256"]):
+        raise ValueError("sha256 must be 64 lowercase hexadecimal digits")
+    row = PlanRow(
+        path=fields["path"],
+        action=_action(fields["action"]),
+        rotate_cw=_whole_number(fields, "rotate_cw", 0, max(QUARTER_TURNS)),
+        old_tag=_optional_tag(fields, "old_tag", range(MIN_TAG, MAX_TAG + 1)),
+        new_tag=_optional_tag(fields, "new_tag", tuple(sorted(CLOCKWISE_BY_TAG))),
+        score=_score(fields),
+        reason=fields["reason"],
+        size=_whole_number(fields, "size", 0),
+        mtime_ns=_whole_number(fields, "mtime_ns", 0),
+        sha256=fields["sha256"],
+    )
+    if row.rotate_cw not in QUARTER_TURNS:
+        raise ValueError(f"rotate_cw must be one of {QUARTER_TURNS}, got {row.rotate_cw}")
+    if row.action is Action.ROTATE:
+        _check_rotate(row)
+    return row
 
 
 def read_plan(path: Path, src: Path) -> tuple[PlanRow, ...]:
     """Read a plan and validate it against the library folder ``src``; PlanError on a bad row."""
-    raise NotImplementedError
+    try:
+        text = path.read_text(encoding=ENCODING, errors=ENCODING_ERRORS)
+    except OSError as error:
+        raise PlanError(f"cannot read plan {path}: {error.strerror or error}") from error
+    reader = csv.reader(io.StringIO(text, newline=""))
+    header = next(reader, None)
+    if header is None:
+        raise PlanError(f"plan {path} is empty (it has no header line)")
+    if tuple(header) != PLAN_COLUMNS:
+        raise PlanError(f"line 1: the header must be {','.join(PLAN_COLUMNS)}")
+    root, rows, seen = src.resolve(), [], set()
+    for record in reader:
+        if not record:
+            continue
+        try:
+            row = _parse_row(record, root)
+            if row.path in seen:
+                raise ValueError(f"{row.path!r} appears twice")
+        except ValueError as error:
+            raise PlanError(f"line {reader.line_num}: {error}") from error
+        seen.add(row.path)
+        rows.append(row)
+    return tuple(rows)

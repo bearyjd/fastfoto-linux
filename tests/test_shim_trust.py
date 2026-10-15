@@ -216,8 +216,11 @@ def usb(tmp_path: Path) -> Path:
     return sysfs
 
 
-def test_the_missing_shim_error_leads_with_the_reason_and_the_fix(shim: Path, usb: Path) -> None:
+def test_the_missing_shim_error_leads_with_the_reason_and_the_fix(
+    shim: Path, usb: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     shim.parent.chmod(0o775)
+    private_group(monkeypatch, shim, [STRANGER])
     with pytest.raises(ShimMissingError) as caught:
         resolve_target(sysfs_root=usb, shim_candidates=[shim])
     message = str(caught.value)

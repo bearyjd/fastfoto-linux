@@ -1,0 +1,7 @@
+# Coverage of the Qt layer, which the default configuration omits (it needs PySide6).
+[run]
+source = fastfoto_linux.gui.qt
+branch = true
+
+[report]
+show_missing = true

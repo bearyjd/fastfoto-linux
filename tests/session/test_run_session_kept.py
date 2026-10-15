@@ -183,3 +183,52 @@ def test_stages_and_reasons_are_strings() -> None:
         "back_dropped",
         "not_deleted",
     }
+
+
+# --- only finished pages are kept pages -------------------------------------------------------
+
+
+def cut_short(page: Path) -> None:
+    """Leave ``page`` as a scanner killed part-way through writing it would."""
+    page.write_bytes(page.read_bytes()[:100])
+
+
+def test_a_cancelled_scan_lists_only_the_pages_the_scanner_finished(out, transport) -> None:
+    two_sheets(transport)
+    transport.pages_before_failure = 3
+
+    def cancelled(pages: tuple[Path, ...]) -> BaseException:
+        cut_short(pages[0].parent / page_name(4))
+        return ScanCancelledError("scan cancelled", pages=pages)
+
+    transport.failure = cancelled
+    session = run(make_request(out, policy=RawPolicy.DISCARD), transport)
+    assert names(session.kept_pages) == all_pages(3)
+    assert (session.raw_dir / page_name(4)).is_file()  # still kept on disk, just not offered
+
+
+def test_an_interrupted_scan_does_not_list_a_page_cut_off_mid_write(out, transport) -> None:
+    two_sheets(transport)
+    transport.pages_before_failure = 4
+
+    def interrupted(pages: tuple[Path, ...]) -> BaseException:
+        cut_short(pages[3])
+        return KeyboardInterrupt()
+
+    transport.failure = interrupted
+    session = run(make_request(out, policy=RawPolicy.DISCARD), transport)
+    assert session.cancelled is True
+    assert names(session.kept_pages) == all_pages(3)
+
+
+def test_a_png_is_complete_only_when_it_ends_with_the_end_chunk(tmp_path, out, transport) -> None:
+    session = run(make_request(out, policy=RawPolicy.KEEP), two_sheets(transport))
+    whole = session.kept_pages[0]
+    assert session_raw.is_complete_png(whole) is True
+    cut = tmp_path / "cut.png"
+    cut.write_bytes(whole.read_bytes()[:-1])
+    empty = tmp_path / "empty.png"
+    empty.write_bytes(b"")
+    assert session_raw.is_complete_png(cut) is False
+    assert session_raw.is_complete_png(empty) is False
+    assert session_raw.is_complete_png(tmp_path / "missing.png") is False

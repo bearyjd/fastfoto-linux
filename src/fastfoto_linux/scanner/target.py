@@ -1,8 +1,6 @@
 """Pick how to reach the scanner: USB with the gap shim, or the network."""
 
 import logging
-import os
-import stat
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,6 +13,7 @@ from fastfoto_linux.scanner.network import (
     validate_host,
     write_sane_net_config,
 )
+from fastfoto_linux.scanner.shim_trust import select_shim
 from fastfoto_linux.scanner.usb import DEFAULT_SYSFS_ROOT, find_usb_scanners
 
 logger = logging.getLogger(__name__)
@@ -84,13 +83,13 @@ def resolve_target(
     if scanners:
         if len(scanners) > 1:
             logger.warning("%d FF-680W scanners on USB; using the first", len(scanners))
-        shim, refused = _find_shim(shim_candidates)
-        if shim is not None:
+        choice = select_shim(shim_candidates)
+        if choice.path is not None:
             return ScanTarget(
-                device=scanners[0].sane_usb_device_name(), shim=validate_shim_path(shim)
+                device=scanners[0].sane_usb_device_name(), shim=validate_shim_path(choice.path)
             )
         if net_host is None:
-            raise ShimMissingError(_shim_missing_message(shim_candidates, refused))
+            raise ShimMissingError(shim_missing_message(shim_candidates, choice.refused))
         logger.warning("FF-680W found on USB but the gap shim is missing; using the network")
     if net_host is None or config_dir is None:
         raise ScannerNotFoundError("no FF-680W found on USB and no network host given")
@@ -100,48 +99,13 @@ def resolve_target(
     )
 
 
-_GROUP_OTHER_WRITE = stat.S_IWGRP | stat.S_IWOTH
-
-
-def _find_shim(candidates: Sequence[Path]) -> tuple[Path | None, list[str]]:
-    """The first candidate that exists and is safe to load, and why the others were refused.
-
-    The shim is preloaded into ``scanimage``, so whoever can change the file can run code as
-    this user: only a shim this user owns, in a folder and as a file nobody else can write, is used.
-    """
-    refused: list[str] = []
-    for candidate in candidates:
-        if not candidate.is_file():
-            continue
-        path = candidate.resolve()
-        problem = _shim_problem(path)
-        if problem is None:
-            return path, refused
-        logger.warning("not using the shim %s: %s", path, problem)
-        refused.append(f"{path} ({problem})")
-    return None, refused
-
-
-def _shim_problem(path: Path) -> str | None:
-    """Why ``path`` must not be preloaded, None when it may be."""
-    if path.stat().st_uid != os.geteuid():
-        return "it is not owned by you"
-    if path.stat().st_mode & _GROUP_OTHER_WRITE:
-        return "it is writable by group or others"
-    if path.parent.stat().st_mode & _GROUP_OTHER_WRITE:
-        return "its folder is writable by group or others"
-    return None
-
-
-def _shim_missing_message(candidates: Sequence[Path], refused: Sequence[str] = ()) -> str:
+def shim_missing_message(candidates: Sequence[Path], refused: Sequence[str] = ()) -> str:
+    """Why there is no shim: when one was refused, the reason and the fix come first."""
     searched = ", ".join(str(path) for path in candidates) or "no candidate paths"
-    unsafe = (
-        f" Refused as unsafe: {'; '.join(refused)}; make the file and its folder writable by you "
-        f"alone (chmod go-w) or build a fresh copy."
-        if refused
-        else ""
-    )
-    return (
-        f"FF-680W found on USB but {SHIM_FILENAME} is missing (searched: {searched}).{unsafe} "
-        f"Build it with `{SHIM_BUILD_COMMAND}` or set ${SHIM_ENV_VAR}; USB I/O fails without it."
-    )
+    how = f"Build it with `{SHIM_BUILD_COMMAND}` or set ${SHIM_ENV_VAR}; USB I/O fails without it."
+    if refused:
+        return (
+            f"FF-680W found on USB but the gap shim was refused as unsafe: {'; '.join(refused)}. "
+            f"(Searched: {searched}.) {how}"
+        )
+    return f"FF-680W found on USB but {SHIM_FILENAME} is missing (searched: {searched}). {how}"

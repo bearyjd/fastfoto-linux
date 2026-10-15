@@ -1,3 +1,4 @@
+import grp
 import logging
 import os
 from dataclasses import FrozenInstanceError
@@ -301,6 +302,15 @@ def test_network_target_env_points_sane_at_the_private_config(config_dir: Path) 
 # --- the shim is loaded into scanimage, so a shim anyone else could have changed is refused ---
 
 
+@pytest.fixture
+def shared_group(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every group has another member in it, as a group shared with someone else does."""
+    monkeypatch.setattr(
+        grp, "getgrgid", lambda gid: grp.struct_group(("shared", "x", gid, ["someone"]))
+    )
+
+
+@pytest.mark.usefixtures("shared_group")
 @pytest.mark.parametrize("mode", [0o775, 0o757, 0o777, 0o666])
 def test_a_group_or_world_writable_shim_is_refused_with_a_warning(
     sysfs: Path, shim: Path, mode: int, caplog: pytest.LogCaptureFixture
@@ -316,6 +326,7 @@ def test_a_group_or_world_writable_shim_is_refused_with_a_warning(
     assert "chmod" in str(excinfo.value)  # the error tells what to do about it
 
 
+@pytest.mark.usefixtures("shared_group")
 @pytest.mark.parametrize("mode", [0o775, 0o757, 0o777])
 def test_a_shim_in_a_group_or_world_writable_folder_is_refused(
     sysfs: Path, shim: Path, mode: int, caplog: pytest.LogCaptureFixture

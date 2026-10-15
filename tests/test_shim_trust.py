@@ -107,8 +107,7 @@ def test_a_group_the_system_does_not_know_may_not_write(
 def test_root_owned_files_and_folders_are_trusted(
     shim: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    everything = {shim: 0, shim.parent: 0, shim.parent.parent: 0}
-    as_owner(monkeypatch, everything)
+    as_owner(monkeypatch, {path: 0 for path in (shim, *shim.parents)})
     monkeypatch.setattr(os, "geteuid", lambda: OTHER_UID)
     assert select_shim([shim]).path == shim
 

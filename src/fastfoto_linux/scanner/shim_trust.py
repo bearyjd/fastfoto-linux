@@ -36,6 +36,8 @@ ROOT_UID = 0
 FLATPAK_INFO = Path("/.flatpak-info")  # exists only inside a Flatpak sandbox
 FLATPAK_APP_ROOT = Path("/app")  # where a Flatpak mounts the application, read-only
 OVERFLOW_UID = 65534  # how a file owned by another host user (root) looks inside the sandbox
+OVERFLOW_UID_FILE = Path("/proc/sys/kernel/overflowuid")
+FALLBACK_OVERFLOW_UID = 65534
 
 ACL_XATTR = "system.posix_acl_access"
 ACL_VERSION = 2
@@ -45,6 +47,10 @@ ACL_USER, ACL_GROUP, ACL_MASK = 0x02, 0x08, 0x10  # the tags of named users and 
 ACL_WRITE = 0o2
 ACL_ALL = 0o7
 NO_ACL_ERRORS = frozenset({errno.ENODATA, errno.ENOTSUP})  # no list, or a file system with none
+
+
+def overflow_uid() -> int:
+    raise NotImplementedError
 
 
 @dataclass(frozen=True)

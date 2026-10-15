@@ -229,3 +229,124 @@ def test_main_builds_the_build_module_from_the_requirements(tmp_path: Path) -> N
     arguments = ["build", "--requirements", str(requirements), "--output", str(out)]
     assert generator().main(arguments, lookup=releases) == 0
     assert json.loads(out.read_text())["name"] == "python-build-deps"
+
+
+# -- Review round 1, item 6 ---------------------------------------------------------------------
+
+
+def glibc_tag(minor: int, *, major: int = 2) -> str:
+    return f"manylinux_{major}_{minor}_x86_64"
+
+
+def test_the_runtime_glibc_is_the_one_of_the_kde_6_11_platform() -> None:
+    assert generator().RUNTIME_GLIBC == (2, 42)
+
+
+def test_a_wheel_that_needs_a_newer_glibc_than_the_runtime_has_is_rejected_naming_the_package() -> (
+    None
+):
+    _, minor = generator().RUNTIME_GLIBC
+    too_new = f"lib-1.0-cp313-cp313-{glibc_tag(minor + 1)}.whl"
+    with pytest.raises(generator().WheelSelectionError, match=r"lib.*glibc 2\.42"):
+        generator().runtime_wheels(lock_of(package("lib", wheels=(wheel_entry(too_new),))))
+
+
+def test_a_wheel_for_exactly_the_runtimes_glibc_is_taken() -> None:
+    major, minor = generator().RUNTIME_GLIBC
+    newest = f"lib-1.0-cp313-cp313-{glibc_tag(minor, major=major)}.whl"
+    [chosen] = generator().runtime_wheels(lock_of(package("lib", wheels=(wheel_entry(newest),))))
+    assert chosen.filename == newest
+
+
+def test_the_newest_wheel_the_runtime_can_run_wins_over_a_newer_one_it_cannot() -> None:
+    _, minor = generator().RUNTIME_GLIBC
+    fits = f"lib-1.0-cp313-cp313-{glibc_tag(minor)}.whl"
+    older = f"lib-1.0-cp313-cp313-{glibc_tag(28)}.whl"
+    too_new = f"lib-1.0-cp313-cp313-{glibc_tag(minor + 1)}.whl"
+    entries = (wheel_entry(too_new, "c"), wheel_entry(older, "a"), wheel_entry(fits, "b"))
+    [chosen] = generator().runtime_wheels(lock_of(package("lib", wheels=entries)))
+    assert chosen.filename == fits
+
+
+def test_a_wheel_with_several_tags_is_usable_when_any_one_of_them_fits_the_runtime() -> None:
+    _, minor = generator().RUNTIME_GLIBC
+    mixed = f"lib-1.0-cp313-cp313-{glibc_tag(minor + 1)}.{glibc_tag(28)}.whl"
+    [chosen] = generator().runtime_wheels(lock_of(package("lib", wheels=(wheel_entry(mixed),))))
+    assert chosen.filename == mixed
+
+
+def test_a_mixed_tag_wheel_ranks_by_the_highest_tag_that_fits_not_the_one_that_does_not() -> None:
+    _, minor = generator().RUNTIME_GLIBC
+    mixed = f"lib-1.0-cp313-cp313-{glibc_tag(minor + 5)}.{glibc_tag(28)}.whl"
+    plain = f"lib-1.0-cp313-cp313-{glibc_tag(34)}.whl"
+    entries = (wheel_entry(mixed, "a"), wheel_entry(plain, "b"))
+    [chosen] = generator().runtime_wheels(lock_of(package("lib", wheels=entries)))
+    assert chosen.filename == plain  # 2.34 beats the 2.28 that the mixed wheel runs on
+
+
+def test_the_legacy_manylinux_names_are_within_the_cap() -> None:
+    name = "lib-1.0-cp313-cp313-manylinux2014_x86_64.whl"
+    [chosen] = generator().runtime_wheels(lock_of(package("lib", wheels=(wheel_entry(name),))))
+    assert chosen.filename == name
+
+
+def test_a_wheel_too_new_for_the_runtime_makes_main_fail_with_the_reason(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _, minor = generator().RUNTIME_GLIBC
+    lock = tmp_path / "uv.lock"
+    lock.write_text(
+        LOCK_TEXT.replace(
+            "lib-1.0-py3-none-any.whl", f"lib-1.0-cp313-cp313-{glibc_tag(minor + 1)}.whl"
+        )
+    )
+    code = generator().main(["runtime", "--lock", str(lock), "--output", str(tmp_path / "x.json")])
+    assert code == 1
+    err = capsys.readouterr().err
+    assert "lib" in err
+    assert "glibc" in err
+
+
+@pytest.mark.parametrize("build", [False, True])
+def test_pip_is_told_to_install_wheels_only(build: bool) -> None:
+    plain = "lib-1.0-py3-none-any.whl"
+    if build:
+        wheels = generator().build_wheels(REQUIREMENTS, releases)
+        [command] = generator().build_module(wheels)["build-commands"]
+    else:
+        lock = lock_of(package("lib", wheels=(wheel_entry(plain),)))
+        [command] = generator().runtime_module(lock)["build-commands"]
+    assert "--only-binary=:all:" in command
+
+
+def test_the_parser_builds_when_python_runs_with_o_o_and_there_is_no_docstring(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(generator(), "__doc__", None)
+    assert generator()._parser().prog
+
+
+def test_a_dependency_with_an_environment_marker_is_an_error_naming_who_needs_what() -> None:
+    lock = lock_of(package("lib", wheels=(wheel_entry("lib-1.0-py3-none-any.whl"),)))
+    lock["package"][0]["dependencies"] = [{"name": "lib", "marker": "sys_platform == 'win32'"}]
+    with pytest.raises(generator().WheelSelectionError) as error:
+        generator().runtime_wheels(lock)
+    message = str(error.value)
+    assert "app" in message  # the package that depends on it
+    assert "lib" in message
+    assert "sys_platform == 'win32'" in message
+
+
+def test_a_marker_makes_main_fail_loudly_with_the_package_named(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    lock = tmp_path / "uv.lock"
+    lock.write_text(
+        LOCK_TEXT.replace(
+            '{ name = "lib" }', '{ name = "lib", marker = "sys_platform == \'win32\'" }'
+        )
+    )
+    code = generator().main(["runtime", "--lock", str(lock), "--output", str(tmp_path / "x.json")])
+    assert code == 1
+    assert "lib" in capsys.readouterr().err
+    assert not (tmp_path / "x.json").exists()

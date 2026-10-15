@@ -32,3 +32,29 @@ def test_the_readme_no_longer_says_the_flatpak_is_still_to_come() -> None:
 
 def test_the_readme_names_no_personal_paths() -> None:
     assert not re.search(r"/(?:var/)?home/\w", README.read_text())
+
+
+def plain_section() -> str:
+    """The Flatpak section with its line breaks gone, so a sentence can be searched for."""
+    return " ".join(section().split())
+
+
+def test_the_readme_says_plainly_what_device_all_exposes_and_why() -> None:
+    text = plain_section()
+    assert "--device=all" in text
+    assert "all device nodes" in text
+    assert "libusb" in text
+    assert "USB portal" in text
+
+
+def test_the_readme_names_what_the_base_app_adds_to_the_sandbox() -> None:
+    text = plain_section()
+    assert "session-bus" in text or "session bus" in text
+    assert "xdg-config/kdeglobals:ro" in text
+    assert "io.qt.PySide.BaseApp" in text
+
+
+def test_the_readme_says_why_the_pictures_folder_is_granted() -> None:
+    text = plain_section()
+    assert "Pictures" in text
+    assert "file locks" in text

@@ -73,3 +73,12 @@ def test_appstream_accepts_the_metainfo() -> None:
         check=False,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.skipif(shutil.which("desktop-file-validate") is None, reason="desktop-file-utils")
+def test_desktop_file_validate_accepts_the_launcher() -> None:
+    result = subprocess.run(
+        ["desktop-file-validate", str(DESKTOP)], capture_output=True, text=True, check=False
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert result.stdout == "" and result.stderr == ""

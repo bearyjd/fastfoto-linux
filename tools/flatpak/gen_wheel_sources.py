@@ -31,6 +31,7 @@ BUILD_REQUIREMENTS = "requirements-build.txt"
 BUILD_TARGET = "${FLATPAK_DEST}/build-backend"
 PYPI_RELEASE = "https://pypi.org/pypi/{name}/{version}/json"
 PYPI_TIMEOUT_SECONDS = 30
+RUNTIME_GLIBC = (2, 42)
 PROJECT_SOURCES = ({"editable": "."}, {"virtual": "."})
 
 _WHEEL = re.compile(

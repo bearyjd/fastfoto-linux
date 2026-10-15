@@ -25,13 +25,15 @@ logger = logging.getLogger(__name__)
 
 MAX_FILE_BYTES = 128 * 1024 * 1024  # a photo larger than this is skipped, never read into memory
 READ_FLAGS = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
-# Reading the library must not change its access times; only the owner (or root) may ask for that.
+# Reading the library's files must not change their access times; only the owner (or root) may ask
+# for that. (The access times of its folders still change when they are listed.)
 NO_ACCESS_TIME = getattr(os, "O_NOATIME", 0)
 FOLDER_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
 CREATE_FLAGS = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC
 PRIVATE_MODE = 0o600
 PERMISSION_BITS = 0o777  # leaves out setuid, setgid and the sticky bit
 OWNER_RWX = 0o700  # a folder we create must stay writable for us, whatever the source's mode
+ROOT_UID = 0  # may change the mode and times of any file
 STAGING_SUFFIX = ".tmp"
 TOKEN_BYTES = 4
 # link() errors that mean "this filesystem has no hard links" (FAT/exFAT, some network mounts).
@@ -109,8 +111,10 @@ def open_root(dest: Path, library: LibraryRef) -> int:
 
 
 def _refuse_library(fd: int, library: LibraryRef) -> None:
-    if as_library(library).contains(os.fstat(fd)):
+    info, inside = os.fstat(fd), as_library(library)
+    if inside.contains(info):
         raise UnsafePathError("refusing to write: a destination folder is the library itself")
+    inside.refuse_unproven(info)
 
 
 def _open_folder(parent_fd: int, name: str) -> int:
@@ -266,17 +270,22 @@ def _is_placeholder(folder_fd: int, name: str) -> bool:
     return stat.S_ISREG(info.st_mode) and info.st_size == 0
 
 
+def _exists(name: str) -> FileExistsError:
+    return FileExistsError(errno.EEXIST, "the destination file already exists", name)
+
+
 def _already_there(folder_fd: int, name: str, content: bytes, source: SourceFile | None) -> bool:
     """False if the existing file holds exactly ``content``; otherwise FileExistsError.
 
     A run killed between linking a copy and giving it its mode and times leaves exactly such a
     file; with ``source``, the file gets its mode and times now, through the descriptor that
-    just confirmed what it holds.
+    just confirmed what it holds. If that is not ours to change (see ``_repair_metadata``), the
+    file is left as it is and counts as already there.
     """
     try:
         fd = os.open(name, READ_FLAGS, dir_fd=folder_fd)
     except OSError:
-        raise FileExistsError(errno.EEXIST, "the destination file already exists", name) from None
+        raise _exists(name) from None
     with os.fdopen(fd, "rb") as handle:
         try:
             info = os.fstat(handle.fileno())
@@ -288,10 +297,22 @@ def _already_there(folder_fd: int, name: str, content: bytes, source: SourceFile
         except OSError:
             same = False
         if not same:
-            raise FileExistsError(errno.EEXIST, "the destination file already exists", name)
+            raise _exists(name)
         if source is not None and _differs(info, source):
-            _copy_metadata(handle.fileno(), source)
+            _repair_metadata(handle.fileno(), info, name, source)
     return False
+
+
+def _repair_metadata(fd: int, info: os.stat_result, name: str, source: SourceFile) -> None:
+    """``source``'s mode and times on the file ``fd``; FileExistsError, the file untouched, if
+    someone else owns it or the system refuses (the mode and times are only ours to set on our
+    own files, and a refusal there is not a failure of the row)."""
+    if os.geteuid() not in (ROOT_UID, info.st_uid):
+        raise _exists(name)
+    try:
+        _copy_metadata(fd, source)
+    except PermissionError:
+        raise _exists(name) from None
 
 
 def _differs(info: os.stat_result, source: SourceFile) -> bool:

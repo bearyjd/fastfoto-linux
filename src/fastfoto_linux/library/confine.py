@@ -112,10 +112,12 @@ def refuse_inside(fd: int, library: LibraryRef) -> None:
 
     Every level above ``fd`` is reached through ``..`` and compared by device and inode with the
     library and the folders in it, so two spellings of one folder (bind mounts, case-folding
-    filesystems) are told apart from names.
+    filesystems) are told apart from names. If some folders of the library could not be listed,
+    ``fd`` must also be on another device than the library's (UnreadableLibraryError).
     """
     inside = as_library(library)
     current, info = fd, os.fstat(fd)
+    inside.refuse_unproven(info)  # the folder itself: the ones above it are not written to
     opened: list[int] = []
     try:
         for _ in range(MAX_DEPTH):

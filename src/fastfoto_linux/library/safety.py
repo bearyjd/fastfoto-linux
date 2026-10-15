@@ -2,11 +2,16 @@
 
 import os
 from dataclasses import dataclass
+from functools import cached_property
 from pathlib import Path, PurePosixPath
 
 
 class UnsafePathError(ValueError):
     """A path would put output inside the library, or a plan path leaves the library."""
+
+
+class UnreadableLibraryError(UnsafePathError):
+    """Folders of the library could not be listed, so a folder cannot be proven to be outside it."""
 
 
 def same_directory(first: os.stat_result, second: os.stat_result) -> bool:
@@ -28,14 +33,34 @@ class Library:
 
     A bind mount of a library subfolder is another way to reach that folder, and walking ``..``
     from it leaves the library's tree; so being inside the library is judged by identity.
+
+    ``unlisted_folders`` counts the folders the walk could not list: what is below them is missing
+    from ``folders``, so a bind mount of it cannot be told from a new folder (``refuse_unproven``).
     """
 
     root: os.stat_result
     folders: frozenset[FolderId] = frozenset()
+    unlisted_folders: int = 0
 
     def contains(self, info: os.stat_result) -> bool:
         """Whether the folder ``info`` is the library or any folder below it."""
         return same_directory(info, self.root) or folder_id(info) in self.folders
+
+    @cached_property
+    def devices(self) -> frozenset[int]:
+        """The devices the library's folders are on (a bind mount shares its original's device)."""
+        return frozenset({self.root.st_dev, *(device for device, _ in self.folders)})
+
+    def refuse_unproven(self, info: os.stat_result) -> None:
+        """UnreadableLibraryError if folders could not be listed and ``info`` is on the library's
+        device: it might be a bind mount of one of them. A folder on another device cannot be."""
+        if self.unlisted_folders and folder_id(info)[0] in self.devices:
+            count = self.unlisted_folders
+            raise UnreadableLibraryError(
+                f"{count} {'folder' if count == 1 else 'folders'} in the library could not be "
+                "read, so FastFoto can't prove the output folder is outside it; fix their "
+                "permissions or pick an output folder on another drive"
+            )
 
 
 # A bare stat result stands for the library folder alone, without the folders below it.

@@ -52,12 +52,23 @@ XMP_EXTENSION_HEADER = b"http://ns.adobe.com/xmp/extension/\x00"  # Extended XMP
 XMP_GUID_SIZE = 32  # names the packet a chunk belongs to
 XMP_LENGTH_FIELD_SIZE = 4  # the packet's total length
 XMP_OFFSET_FIELD_SIZE = 4  # where this chunk's bytes belong in the packet
-XMP_ORIENTATION = b"tiff:Orientation"
-XMP_TIFF_NAMESPACE = b"ns.adobe.com/tiff/1.0/"  # the namespace may be bound to any prefix
-XMP_ORIENTATION_NAME = b"Orientation"
+XMP_TIFF_NAMESPACE = rb"http://ns\.adobe\.com/tiff/1\.0/"  # as a pattern
+XMP_TIFF_PREFIX = b"tiff"  # the usual prefix: counted even where a packet forgets to bind it
 ADOBE_HEADER = b"Adobe"  # tells the decoder how the colours are stored, so it is kept
 MAX_ADOBE_PAYLOAD = 64
 _FILL = re.compile(rb"\xff+")  # fill bytes may precede any marker
+_QUOTE = rb"""(["'])"""
+_XML_NAME = rb"[\w.-]+"
+# ``xmlns:P="<tiff namespace>"``: P is a prefix for the tiff namespace, whatever its spelling.
+_TIFF_BINDING = re.compile(
+    rb"\sxmlns:(" + _XML_NAME + rb")\s*=\s*" + _QUOTE + XMP_TIFF_NAMESPACE + rb"\2"
+)
+_TIFF_DEFAULT = re.compile(rb"\sxmlns\s*=\s*" + _QUOTE + XMP_TIFF_NAMESPACE + rb"\1")
+# ``<P:Orientation>`` or ``P:Orientation=`` (group 1 or 2 is P); not ``ex:Orientation`` for P = x.
+_PREFIXED_ORIENTATION = re.compile(
+    rb"<(" + _XML_NAME + rb"):Orientation(?=[\s/>])|\s(" + _XML_NAME + rb"):Orientation\s*="
+)
+_BARE_ORIENTATION = re.compile(rb"<Orientation(?=[\s/>])")
 
 
 @dataclass(frozen=True)
@@ -148,11 +159,20 @@ def read_orientation(data: bytes, layout: Layout | None = None) -> int | None:
 
 
 def _names_orientation(data: bytes, start: int, end: int) -> bool:
-    """Whether ``data[start:end]`` has an XMP Orientation: ``tiff:Orientation``, or the tiff
-    namespace and an Orientation, which can be under any prefix."""
-    return data.find(XMP_ORIENTATION, start, end) >= 0 or (
-        data.find(XMP_TIFF_NAMESPACE, start, end) >= 0
-        and data.find(XMP_ORIENTATION_NAME, start, end) >= 0
+    """Whether ``data[start:end]`` has an XMP Orientation in the tiff namespace.
+
+    That is ``Orientation`` under a prefix bound to the namespace (``tiff`` and any other), or,
+    where the namespace is the default one, an element without a prefix. The word elsewhere (a
+    caption, a property of another namespace) is no orientation a viewer would prefer to the
+    Exif one. One pass finds the bound prefixes and one the prefixes in use, so a hostile packet
+    with thousands of them costs no more than a long one.
+    """
+    bound = {XMP_TIFF_PREFIX, *(m[1] for m in _TIFF_BINDING.finditer(data, start, end))}
+    if any((m[1] or m[2]) in bound for m in _PREFIXED_ORIENTATION.finditer(data, start, end)):
+        return True
+    return (
+        _TIFF_DEFAULT.search(data, start, end) is not None
+        and _BARE_ORIENTATION.search(data, start, end) is not None
     )
 
 

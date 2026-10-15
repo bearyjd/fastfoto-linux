@@ -21,6 +21,8 @@ class WalkResult:
 
     ``folders`` holds the identity (device and inode) of the walked folder and of every folder
     below it, the skipped ones and their subfolders included: all of them are the library.
+    ``unlisted_folders`` counts every folder that could not be listed, skipped ones included
+    (``unreadable_folders`` is only those whose files would have counted).
     """
 
     jpegs: tuple[str, ...]
@@ -61,7 +63,7 @@ def walk_library(src: Path) -> WalkResult:
     instead, and still walked for the identities of the folders in them.
     """
     jpegs: list[str] = []
-    other_formats = symlinks = unreadable = skipped = 0
+    other_formats = symlinks = unreadable = skipped = unlisted = 0
     folders = {folder_id(os.stat(src))}
     pending = [(src, True)]  # (folder, whether its files count)
     while pending:
@@ -69,6 +71,7 @@ def walk_library(src: Path) -> WalkResult:
         entries = _list_folder(folder, report=counted)
         if entries is None:
             unreadable += counted
+            unlisted += 1
             continue
         for entry in entries:
             if entry.is_symlink():
@@ -85,5 +88,11 @@ def walk_library(src: Path) -> WalkResult:
                 else:
                     other_formats += 1
     return WalkResult(
-        tuple(sorted(jpegs)), other_formats, symlinks, unreadable, skipped, frozenset(folders)
+        tuple(sorted(jpegs)),
+        other_formats,
+        symlinks,
+        unreadable,
+        skipped,
+        frozenset(folders),
+        unlisted,
     )

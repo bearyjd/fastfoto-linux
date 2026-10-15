@@ -2,7 +2,9 @@
 
 Stopping: Ctrl-C, SIGTERM and SIGHUP (``ffscan`` turns the last two into KeyboardInterrupt) end a
 run once. While the workers are being stopped no further one may land: ``uv run`` sends a second
-Ctrl-C soon after the first, and a stop cut short leaves workers running.
+Ctrl-C soon after the first, and a stop cut short leaves workers running. Nor may one land while
+the interrupt is on its way up to ``ffscan``'s ``main``, which has still to say so: ``main`` asks
+``stop_under_way`` and ignores them until it is done (``forget_stop``).
 
 Starting: the helper process of the pool is started with ``python -c ...``, which puts the current
 folder first on its import path; the folder the user happens to be in must not supply its modules.
@@ -20,6 +22,8 @@ WORKER_JOIN_TIMEOUT_S = 2.0
 STOP_SIGNALS = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
 SAFE_PATH_VARIABLE = "PYTHONSAFEPATH"  # Python 3.11+: no current folder on the import path
 
+_stop_under_way = threading.Event()
+
 
 def ignore_interrupt() -> None:
     """Workers leave Ctrl-C to the parent, which cancels the queue and exits. They keep SIGTERM:
@@ -28,6 +32,16 @@ def ignore_interrupt() -> None:
 
 
 Handler = Callable[[int, FrameType | None], object] | int | signal.Handlers | None
+
+
+def stop_under_way() -> bool:
+    """Whether a stop signal has interrupted a pooled run since the last ``forget_stop``."""
+    return _stop_under_way.is_set()
+
+
+def forget_stop() -> None:
+    """The command is over (or about to start): the next stop signal is a first one again."""
+    _stop_under_way.clear()
 
 
 def _restore(previous: dict[signal.Signals, Handler]) -> None:
@@ -52,8 +66,9 @@ def interrupts_ignored() -> Iterator[None]:
 def first_interrupt_only() -> Iterator[None]:
     """A stop signal raises KeyboardInterrupt once; from the handler's first instruction on, all
     further ones are ignored, so they cannot cut the cleanup short. The previous handlers come
-    back afterwards. A signal that is ignored, or has no Python handler, is left as it is, and
-    off the main thread nothing changes."""
+    back afterwards, and they are told (``stop_under_way``) that the stop has begun. A signal that
+    is ignored, or has no Python handler, is left as it is, and off the main thread nothing
+    changes."""
     if threading.current_thread() is not threading.main_thread():
         yield
         return
@@ -61,6 +76,7 @@ def first_interrupt_only() -> Iterator[None]:
     handled = tuple(number for number, handler in previous.items() if callable(handler))
 
     def interrupt(signum: int, frame: FrameType | None) -> None:
+        _stop_under_way.set()
         for number in handled:
             signal.signal(number, signal.SIG_IGN)
         raise KeyboardInterrupt

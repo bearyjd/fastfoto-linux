@@ -81,10 +81,14 @@ uv run ffscan library fix ~/Documents/library-plan.csv \
   row whose file changed since `check` (size, modification time or content hash), never overwrites
   a file in `DEST` and refuses a `DEST` that is inside the library or contains it (also when it
   is the same folder under another name, a bind mount of one of the library's folders, or is
-  reached through a link or a rename that was swapped in while it ran). Folders `fix` creates get
+  reached through a link or a rename that was swapped in while it ran). If some folders of the
+  library cannot be read, a bind mount of one of them cannot be ruled out, so `check` and `fix`
+  then refuse a plan or `DEST` folder on the library's own drive: fix those folders' permissions
+  or use a folder on another drive. Folders `fix` creates get
   the mode of the library's folder (always writable for you). A copy left by an interrupted run
   counts as done when you run `fix` again (it also gets the source's mode and times if the run
-  was killed before giving them), and is listed in that run's manifest. Staging files (`.name.<hex>.tmp`) that a killed run left behind are
+  was killed before giving them; an identical file that someone else owns is left alone and
+  counted as already there), and is listed in that run's manifest. Staging files (`.name.<hex>.tmp`) that a killed run left behind are
   counted in the summary and left for you to delete. The plan and manifest are plain CSV: if you
   open them in a spreadsheet, a file name that starts with `=`, `+`, `-` or `@` may be taken as a
   formula.
@@ -93,7 +97,8 @@ uv run ffscan library fix ~/Documents/library-plan.csv \
   than 1024 markers before the image data, or an XMP packet (Extended XMP included) with its own
   Orientation in the `tiff` namespace (viewers may prefer either tag, and the two must never
   disagree). Ctrl-C, SIGTERM or SIGHUP stops `check` at once and writes no plan. `check` reads
-  the library without changing its access times where the system allows it.
+  the library's files without changing their access times where the system allows it (the access
+  times of its folders still change when they are listed).
 - Then review `DEST` in your photo viewer and, once you are happy, copy it over the library
   yourself. Running `check` on `DEST` again proposes nothing to rotate.
 

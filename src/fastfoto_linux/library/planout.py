@@ -17,7 +17,13 @@ from pathlib import Path
 
 from fastfoto_linux.library import confine, fdio
 from fastfoto_linux.library.plan_format import PLAN_COLUMNS
-from fastfoto_linux.library.safety import Library, LibraryRef, UnsafePathError, as_library
+from fastfoto_linux.library.safety import (
+    Library,
+    LibraryRef,
+    UnreadableLibraryError,
+    UnsafePathError,
+    as_library,
+)
 
 MAX_HEADER_CHARS = 1024
 INSTALL_ATTEMPTS = 3  # something else may appear at the name between looking and publishing
@@ -70,6 +76,8 @@ def _is_replaceable(target: PlanTarget) -> bool:
 def _refuse_inside(folder_fd: int, shown: Path, library: LibraryRef) -> None:
     try:
         confine.refuse_inside(folder_fd, library)
+    except UnreadableLibraryError:
+        raise  # says why, and what to do about it
     except UnsafePathError:
         raise UnsafePathError(f"the plan file {shown} would be inside the library") from None
 

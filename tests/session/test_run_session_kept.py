@@ -232,3 +232,23 @@ def test_a_png_is_complete_only_when_it_ends_with_the_end_chunk(tmp_path, out, t
     assert session_raw.is_complete_png(cut) is False
     assert session_raw.is_complete_png(empty) is False
     assert session_raw.is_complete_png(tmp_path / "missing.png") is False
+
+
+def test_a_cut_off_page_the_scanner_still_reported_is_not_listed(out, transport) -> None:
+    # run_scan reports every page file on disk after a cancel, finished or not.
+    two_sheets(transport)
+    transport.pages_before_failure = 4
+
+    def cancelled(pages: tuple[Path, ...]) -> BaseException:
+        cut_short(pages[3])
+        return ScanCancelledError("scan cancelled", pages=pages)
+
+    transport.failure = cancelled
+    session = run(make_request(out, policy=RawPolicy.DISCARD), transport)
+    assert names(session.kept_pages) == all_pages(3)
+
+
+def test_a_file_shorter_than_the_end_chunk_is_not_a_complete_png(tmp_path) -> None:
+    short = tmp_path / "short.png"
+    short.write_bytes(b"IEND")
+    assert session_raw.is_complete_png(short) is False

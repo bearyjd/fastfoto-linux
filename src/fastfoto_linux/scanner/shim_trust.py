@@ -4,14 +4,21 @@ The shim is loaded into ``scanimage``, so whoever can change the file, or a fold
 can run code as this user. A shim is used only when it and every folder above it (of the path as
 given and of the path it resolves to) belong to this user or to root, and nobody else can write
 to them: not "others" (a sticky ``/tmp`` included), and a group only when it is the user's own
-private group, which has no other members.
+private group, which has no other members besides the user.
+
+A POSIX access list can grant write to one more user or group without the mode bits showing it
+(``setfacl -m u:nobody:rwx`` raises the group bits to the mask, which a private group passes), so
+the list is read too: a named user other than this one or root, or a named group other than the
+private one, must not be able to write, after the mask has cut down what its entry grants.
 """
 
 import errno
 import grp
 import logging
 import os
+import pwd
 import stat
+import struct
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -21,6 +28,15 @@ logger = logging.getLogger(__name__)
 DEFAULT_TRUST_ROOT = Path("/")
 SHIM_TRUST_ROOT = DEFAULT_TRUST_ROOT  # the walk up the folders ends here (tests move it)
 ROOT_UID = 0
+
+ACL_XATTR = "system.posix_acl_access"
+ACL_VERSION = 2
+ACL_HEADER = struct.Struct("<I")  # the version
+ACL_ENTRY = struct.Struct("<HHI")  # tag, permissions, user or group id
+ACL_USER, ACL_GROUP, ACL_MASK = 0x02, 0x08, 0x10  # the tags of named users and groups, the mask
+ACL_WRITE = 0o2
+ACL_ALL = 0o7
+NO_ACL_ERRORS = frozenset({errno.ENODATA, errno.ENOTSUP})  # no list, or a file system with none
 
 
 @dataclass(frozen=True)
@@ -94,15 +110,52 @@ def _entry_problem(path: Path, *, is_shim: bool) -> str | None:
         return (
             f"{what} {path} is writable by group '{_group_name(info.st_gid)}'; run chmod g-w {path}"
         )
+    return _acl_problem(path, what)
+
+
+def _acl_problem(path: Path, what: str) -> str | None:
+    """Why the access list of ``path`` lets someone else write (None: it does not, or is none)."""
+    try:
+        blob = os.getxattr(path, ACL_XATTR, follow_symlinks=False)
+    except OSError as error:
+        if error.errno in NO_ACL_ERRORS:
+            return None
+        raise
+    entries = _acl_entries(blob)
+    if entries is None:
+        return f"{what} {path} has an access list that cannot be read"
+    mask = next((perms for tag, perms, _ in entries if tag == ACL_MASK), ACL_ALL)
+    for tag, perms, who in entries:
+        if not perms & mask & ACL_WRITE:
+            continue
+        if tag == ACL_USER and who not in (os.geteuid(), ROOT_UID):
+            return _acl_refusal(what, path, f"user {who}", f"u:{who}")
+        if tag == ACL_GROUP and not _private_group(who):
+            return _acl_refusal(what, path, f"group {who}", f"g:{who}")
     return None
 
 
+def _acl_refusal(what: str, path: Path, who: str, entry: str) -> str:
+    return f"{what} {path} has an access list that lets {who} write; run setfacl -x {entry} {path}"
+
+
+def _acl_entries(blob: bytes) -> list[tuple[int, int, int]] | None:
+    """The (tag, permissions, id) of each entry of a version 2 list; None for anything else."""
+    start = ACL_HEADER.size
+    if len(blob) < start or (len(blob) - start) % ACL_ENTRY.size:
+        return None
+    if ACL_HEADER.unpack_from(blob)[0] != ACL_VERSION:
+        return None
+    return [ACL_ENTRY.unpack_from(blob, at) for at in range(start, len(blob), ACL_ENTRY.size)]
+
+
 def _private_group(gid: int) -> bool:
-    """True for the user's own group when nobody else is in it (a user-private group)."""
+    """True for the user's own group when nobody but the user is in it (a user-private group)."""
     if gid != os.getegid():
         return False
     try:
-        return not grp.getgrgid(gid).gr_mem
+        members = grp.getgrgid(gid).gr_mem
+        return not members or set(members) == {pwd.getpwuid(os.geteuid()).pw_name}
     except KeyError:
         return False
 

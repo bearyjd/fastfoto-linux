@@ -48,6 +48,7 @@ _RUNNING = (State.SCANNING, State.PROCESSING)
 _REPORTING = frozenset({State.SCANNING, State.PROCESSING, State.CANCELLING})
 _DISK_FIELDS = frozenset({"output_folder", "album"})
 CHECKING_DISK_TEXT = "Checking the folder…"
+PROCESS_KEPT_TEXT = "Process them now"
 NOT_CHECKED = "The scanner has not been checked yet."
 CHECKING_TEXT = "Looking for the scanner…"
 FOUND_TEXT = "Scanner found."
@@ -175,17 +176,22 @@ class Controller:
 
     @property
     def can_scan(self) -> bool:
+        """True when Scan may be pressed.
+
+        A folder check under way does not stop it: pressing Scan leaves the folder field, which
+        starts that check, and the press must not be lost. The press waits for the answer.
+        """
         return (
             self._state in _SCANNABLE
             and self._scanner_ready
             and not self.errors
-            and self._disk_pending is None
+            and not self.starting_scan
         )
 
     @property
     def scan_blocker(self) -> str:
         """Why Scan is disabled, in words for the user; empty when it is enabled or a job runs."""
-        if self._disk_pending is not None and not is_busy(self._state):
+        if self.starting_scan:
             return CHECKING_DISK_TEXT
         if self.busy or self.can_scan:
             return ""
@@ -228,15 +234,15 @@ class Controller:
 
     @property
     def process_kept_text(self) -> str:
-        """The button that processes the kept pages: it names the folder they go to."""
-        if not self.can_process_kept or self._scan_folder is None:
-            return ""
-        return f"Process them now into {self._scan_folder}"
+        """The button that processes the kept pages. A button cannot show a user's text safely."""
+        return PROCESS_KEPT_TEXT if self.can_process_kept else ""
 
     @property
     def process_kept_folder(self) -> str:
-        """The folder the kept pages are processed into, shown beside the button as plain text."""
-        raise NotImplementedError("review round 3: the folder is no longer part of the button")
+        """The folder the kept pages go to, shown beside the button as plain text."""
+        if not self.can_process_kept or self._scan_folder is None:
+            return ""
+        return self._scan_folder
 
     @property
     def close_title(self) -> str:
@@ -290,9 +296,12 @@ class Controller:
         if self._disk_check is None:
             self._disk_errors = validate_filesystem(self._form)  # the disk may have changed since
             self._launch_scan()
-        else:
-            self._read_disk(self._disk_check, then_scan=True)  # the scan starts at ``on_disk``
-            self._changed()
+            return
+        if self._disk_pending != disk_key(self._form):
+            self._read_disk(self._disk_check, then_scan=True)
+        else:  # the check under way (it began when the user left the field) is the one to wait for
+            self._scan_when_checked = True
+        self._changed()  # either way the scan starts at ``on_disk``
 
     def _launch_scan(self) -> None:
         """The scan, once the disk has been looked at again for it."""

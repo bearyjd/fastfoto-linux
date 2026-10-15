@@ -188,12 +188,21 @@ def test_an_unexpected_error_while_scanning_ends_in_failed_not_in_a_stuck_page(
     assert bridge.state == "failed"
 
 
+def startup_folder_check_answered() -> None:
+    """Wait until the folder check the bridge makes when it starts has answered."""
+    for thread in threading.enumerate():
+        if thread.name == "fastfoto-disk":
+            thread.join(10)
+    QCoreApplication.processEvents()
+
+
 def test_a_folder_that_vanished_is_reported_when_scan_is_pressed(
     make_bridge: Any, out: Any
 ) -> None:
     bridge = make_bridge()
     bridge.checkScanner()
     wait_until(lambda: bridge.canScan, "ready")
+    startup_folder_check_answered()  # Scan no longer waits for it, and it must not see the removal
     shutil.rmtree(out)
     bridge.startScan()
     wait_until(lambda: "output_folder" in bridge.errors, "the folder check to answer")

@@ -45,14 +45,31 @@ Kirigami.Page {
                 text: bridge.keptHtml
             }
 
-            QQC2.Button {
-                objectName: "processKeptButton"
+            RowLayout {
+                Layout.fillWidth: true
                 visible: bridge.canProcessKept
-                enabled: bridge.canProcessKept
-                icon.name: "system-run"
-                text: bridge.processKeptText
-                Accessible.name: bridge.processKeptText
-                onClicked: bridge.processKept()
+                spacing: Kirigami.Units.largeSpacing
+
+                // A button has no textFormat, so its text stays static; the folder, which the
+                // user named, is a plain-text label beside it.
+                QQC2.Button {
+                    objectName: "processKeptButton"
+                    enabled: bridge.canProcessKept
+                    icon.name: "system-run"
+                    text: bridge.processKeptText
+                    Accessible.name: qsTr("Process them now")
+                    Accessible.description: qsTr("into %1").arg(bridge.processKeptFolder)
+                    onClicked: bridge.processKept()
+                }
+
+                QQC2.Label {
+                    objectName: "processKeptFolder"
+                    Layout.fillWidth: true
+                    text: qsTr("into %1").arg(bridge.processKeptFolder)
+                    textFormat: Text.PlainText
+                    elide: Text.ElideMiddle
+                    color: Kirigami.Theme.disabledTextColor
+                }
             }
 
             Kirigami.InlineMessage {

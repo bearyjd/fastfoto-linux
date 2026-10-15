@@ -276,6 +276,11 @@ class Bridge(QObject):
         return self.controller.process_kept_text
 
     @Property(str, notify=changed)
+    def processKeptFolder(self) -> str:
+        """The folder those pages go to: QML shows it as plain text beside the button."""
+        return self.controller.process_kept_folder
+
+    @Property(str, notify=changed)
     def closeTitle(self) -> str:
         return self.controller.close_title
 

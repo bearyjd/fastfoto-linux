@@ -91,7 +91,7 @@ act() {
 }
 
 python_version() {
-  "$1" -c 'import sys; print("%d.%d" % sys.version_info[:2])'
+  "$1" -I -c 'import sys; print("%d.%d" % sys.version_info[:2])'
 }
 
 venv_version() {
@@ -110,7 +110,7 @@ make_venv() {
       mode=(--clear)
     fi
   fi
-  "$PYTHON" -m venv ${mode[@]+"${mode[@]}"} --system-site-packages "$VENV"
+  "$PYTHON" -I -m venv ${mode[@]+"${mode[@]}"} --system-site-packages "$VENV"
 }
 
 # Nothing is fetched without a hash: first the build backend (hatchling), then the dependencies,
@@ -219,7 +219,7 @@ check_qt() {
 }
 
 install_all() {
-  act "create the environment $VENV ($PYTHON -m venv --system-site-packages)" make_venv
+  act "create the environment $VENV ($PYTHON -I -m venv --system-site-packages)" make_venv
   act "install the build backend from $BUILD_REQUIREMENTS and the dependencies from $REQUIREMENTS (hashes checked, wheels only), then $REPO without them" install_package
   act "build the USB gap shim: make -C $REPO/tools/usb-gap-shim" build_shim
   act "copy the shim to $SHIM (a private folder, replaced atomically)" copy_shim

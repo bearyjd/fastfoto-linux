@@ -176,7 +176,7 @@ def test_a_failed_scan_that_kept_pages_says_where_and_how_to_process_them() -> N
     assert banner is not None
     assert banner.kind == "error"
     assert str(RAW) in banner.text
-    assert "ffscan process" in banner.text
+    assert "ffscan process --out" in banner.text  # `ffscan process` cannot run without --out
     assert banner.text.count(str(RAW)) == 1
 
 

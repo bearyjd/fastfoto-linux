@@ -50,7 +50,7 @@ _DISK_FIELDS = frozenset({"output_folder", "album"})
 NOT_CHECKED = "The scanner has not been checked yet."
 CHECKING_TEXT = "Looking for the scanner…"
 FOUND_TEXT = "Scanner found."
-NO_SCANNER_HINT = "Connect the scanner, then press Check again."
+NO_SCANNER_HINT = "Press Check again to look for the scanner."
 
 
 class WorkerPort(Protocol):

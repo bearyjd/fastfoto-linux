@@ -80,7 +80,11 @@ def error_banner(
     processing that failed part-way has already written some photos and would write them twice.
     """
     reason_note = _raw_note(raw_dir, reason)
-    hint = " To process them later, run `ffscan process` on those pages." if process_hint else ""
+    hint = (
+        " To process them later, run `ffscan process --out <output folder>` on those pages."
+        if process_hint
+        else ""
+    )
     return Banner("error", f"The scan failed. {_sentence(error_text(error))}{reason_note}{hint}")
 
 

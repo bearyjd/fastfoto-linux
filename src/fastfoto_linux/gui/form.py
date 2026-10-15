@@ -55,19 +55,31 @@ class FormInvalidError(ValueError):
         self.errors = errors
 
 
+def _expand(text: str) -> Path | None:
+    """The path ``text`` names with ``~`` expanded; None when it is ``~name`` for no such user."""
+    try:
+        return Path(text.strip()).expanduser()
+    except RuntimeError:
+        return None
+
+
 def _folder(form: ScanForm) -> Path:
-    return Path(form.output_folder.strip()).expanduser()
+    return _expand(form.output_folder) or Path(form.output_folder.strip())
 
 
 def absolute_folder(text: str) -> str:
     """The output folder as a full path (``~`` expanded), empty when it is blank or relative."""
-    path = Path(text.strip()).expanduser() if text.strip() else None
+    path = _expand(text) if text.strip() else None
     return str(path) if path is not None and path.is_absolute() else ""
 
 
 def _check_folder_text(form: ScanForm) -> str | None:
     if not form.output_folder.strip():
         return "Choose the folder the photos are saved in."
+    if _expand(form.output_folder) is None:
+        user = form.output_folder.strip().split("/")[0].removeprefix("~")
+        whose = f"of {user!r}" if user else "of this user"
+        return f"Cannot find the home folder {whose}; use a full path instead."
     if not _folder(form).is_absolute():
         return "Use a full path (one that starts with / or ~/), not a relative one."
     return None

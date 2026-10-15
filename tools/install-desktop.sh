@@ -5,9 +5,11 @@
 #   - an application menu entry with its icon, and `fastfoto` / `ffscan` in ~/.local/bin.
 # Safe to run again (it updates what it installed). --uninstall removes what it installed (it
 # keeps a list in installed.txt); the settings in ~/.config/fastfoto-linux and your photos are
-# never touched. The Python dependencies come from packaging/requirements-desktop.txt, which
-# pins every package by hash (it is generated from uv.lock; a test keeps the two in step).
+# never touched. Everything pip fetches is pinned by hash and installed as a wheel: the
+# dependencies from packaging/requirements-desktop.txt (generated from uv.lock; a test keeps the
+# two in step) and the build backend from packaging/requirements-build.txt.
 set -euo pipefail
+umask 022 # files are readable by others whatever the user's umask is
 
 APP_ID="io.github.bearyjd.FastFotoLinux"
 LAUNCHERS=(fastfoto ffscan)
@@ -37,9 +39,29 @@ for argument in "$@"; do
   esac
 done
 
+fail() {
+  echo "install-desktop.sh: $*" >&2
+  exit 1
+}
+
+# A control character (a line break above all) in a base folder would end the launcher's Exec line
+# early, so it is refused before anything is done, a dry run included.
+refuse_control_characters() {
+  local LC_ALL=C name value
+  for name in HOME XDG_DATA_HOME; do
+    value=${!name:-}
+    if [[ "$value" =~ [[:cntrl:]] ]]; then
+      fail "$name contains a control character (such as a line break); refusing to continue"
+    fi
+  done
+}
+
 : "${HOME:?HOME is not set}"
+refuse_control_characters
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$SCRIPT_DIR/.." && pwd)"
+# Whatever the caller's folder is, nothing is read from it (python would import from it).
+cd "$REPO"
 # The XDG specification: a base directory that is not an absolute path is invalid, ignore it.
 case "${XDG_DATA_HOME:-}" in
   /*) DATA_HOME=$XDG_DATA_HOME ;;
@@ -50,6 +72,7 @@ APP_DATA="$DATA_HOME/fastfoto-linux"
 VENV="$APP_DATA/venv"
 RECORD="$APP_DATA/installed.txt"
 REQUIREMENTS="$REPO/packaging/requirements-desktop.txt"
+BUILD_REQUIREMENTS="$REPO/packaging/requirements-build.txt"
 LIB_DIR="$HOME/.local/lib/fastfoto-linux"
 SHIM="$LIB_DIR/ff680w_usb_gap.so"
 BIN_DIR="$HOME/.local/bin"
@@ -67,16 +90,6 @@ act() {
   fi
 }
 
-fail() {
-  echo "install-desktop.sh: $*" >&2
-  exit 1
-}
-
-# Everything below that removes or clears the environment goes through this first.
-check_venv_path() {
-  [[ "$VENV" == */fastfoto-linux/venv ]] || fail "refusing to touch an unexpected path: $VENV"
-}
-
 python_version() {
   "$1" -c 'import sys; print("%d.%d" % sys.version_info[:2])'
 }
@@ -87,7 +100,6 @@ venv_version() {
 
 make_venv() {
   [[ -x "$PYTHON" ]] || fail "$PYTHON not found; set FASTFOTO_PYTHON to the Python that has PySide6"
-  check_venv_path
   mkdir -p "$APP_DATA"
   local mode=()
   if [[ -f "$VENV/pyvenv.cfg" ]]; then
@@ -101,13 +113,18 @@ make_venv() {
   "$PYTHON" -m venv ${mode[@]+"${mode[@]}"} --system-site-packages "$VENV"
 }
 
+# Nothing is fetched without a hash: first the build backend (hatchling), then the dependencies,
+# both as wheels only (no build step runs for them); this checkout then goes in on top, built with
+# that backend and without looking for dependencies again (pip would keep an installed package of
+# the same version, so it is reinstalled to make sure its code is what is installed).
 install_package() {
-  [[ -f "$REQUIREMENTS" ]] || fail "$REQUIREMENTS is missing; is this a complete checkout?"
-  # The dependencies are checked against the hashes of the lock file; this checkout then goes in
-  # on top without looking for dependencies again (pip would keep an installed package of the
-  # same version, so it is reinstalled to make sure its code is what is installed).
-  "$VENV/bin/python" -m pip install --require-hashes -r "$REQUIREMENTS"
-  "$VENV/bin/python" -m pip install --force-reinstall --no-deps "$REPO"
+  local file
+  for file in "$BUILD_REQUIREMENTS" "$REQUIREMENTS"; do
+    [[ -f "$file" ]] || fail "$file is missing; is this a complete checkout?"
+  done
+  "$VENV/bin/python" -I -m pip install --require-hashes --only-binary=:all: -r "$BUILD_REQUIREMENTS"
+  "$VENV/bin/python" -I -m pip install --require-hashes --only-binary=:all: -r "$REQUIREMENTS"
+  "$VENV/bin/python" -I -m pip install --no-build-isolation --no-deps --force-reinstall "$REPO"
 }
 
 build_shim() {
@@ -115,17 +132,23 @@ build_shim() {
   make -C "$REPO/tools/usb-gap-shim"
 }
 
-INSTALLED=()
-
 recorded() {
   [[ -f "$RECORD" ]] && grep -qxF -- "$1" "$RECORD"
+}
+
+# installed PATH: note a file in installed.txt the moment it is in place, so that a run that stops
+# half way can still be undone with --uninstall.
+installed() {
+  mkdir -p "$APP_DATA"
+  recorded "$1" || printf '%s\n' "$1" >> "$RECORD"
 }
 
 # The shim is loaded into scanimage: its folder is private to the user and the file is put in
 # place by renaming a new one over the old, never by writing into a file a scan may have mapped.
 copy_shim() {
   if [[ -e "$SHIM" || -L "$SHIM" ]] && ! recorded "$SHIM"; then
-    echo "install-desktop.sh: leaving $SHIM alone: this installer did not put it there" >&2
+    echo "install-desktop.sh: leaving $SHIM alone: this installer did not put it there;" >&2
+    echo "  to use the shim built from this checkout, remove $SHIM and run this installer again" >&2
     return 0
   fi
   install -d -m 0700 "$LIB_DIR"
@@ -137,7 +160,7 @@ copy_shim() {
     return 1
   }
   mv -f -- "$staged" "$SHIM"
-  INSTALLED+=("$SHIM")
+  installed "$SHIM"
 }
 
 # The Exec line goes in as data (ENVIRON, not `awk -v`, which would read backslashes as escapes).
@@ -151,7 +174,7 @@ write_desktop() {
       for (i = 1; i <= length(path); i++) {
         c = substr(path, i, 1)
         if (c == "\\") out = out "\\\\\\\\"
-        else if (c == "\"" || c == "`" || c == "$") out = out "\\" c
+        else if (c == "\"" || c == "`" || c == "$") out = out "\\\\" c
         else if (c == "%") out = out "%%"
         else out = out c
       }
@@ -169,13 +192,13 @@ write_desktop() {
     /^TryExec=/ { print "TryExec=" plain(ENVIRON["EXEC_PATH"]); next }
     { print }
   ' "$REPO/packaging/$APP_ID.desktop" > "$DESKTOP"
-  INSTALLED+=("$DESKTOP")
+  installed "$DESKTOP"
 }
 
 copy_icon() {
   mkdir -p "$(dirname "$ICON")"
   cp "$REPO/packaging/$APP_ID.svg" "$ICON"
-  INSTALLED+=("$ICON")
+  installed "$ICON"
 }
 
 link_launcher() {
@@ -188,14 +211,8 @@ link_launcher() {
   ln -sfn "$VENV/bin/$name" "$link"
 }
 
-# What was installed, one path per line: --uninstall removes these and nothing else.
-write_record() {
-  mkdir -p "$APP_DATA"
-  printf '%s\n' "${INSTALLED[@]}" > "$RECORD"
-}
-
 check_qt() {
-  if ! "$VENV/bin/python" -c 'import PySide6.QtQml' 2> /dev/null; then
+  if ! "$VENV/bin/python" -I -c 'import PySide6.QtQml' 2> /dev/null; then
     echo "warning: PySide6 was not found; the app will not start until it is installed," >&2
     echo "  e.g. on Fedora: sudo dnf install python3-pyside6 kf6-kirigami" >&2
   fi
@@ -203,7 +220,7 @@ check_qt() {
 
 install_all() {
   act "create the environment $VENV ($PYTHON -m venv --system-site-packages)" make_venv
-  act "install the dependencies from $REQUIREMENTS (hashes checked), then $REPO without them" install_package
+  act "install the build backend from $BUILD_REQUIREMENTS and the dependencies from $REQUIREMENTS (hashes checked, wheels only), then $REPO without them" install_package
   act "build the USB gap shim: make -C $REPO/tools/usb-gap-shim" build_shim
   act "copy the shim to $SHIM (a private folder, replaced atomically)" copy_shim
   act "write the launcher $DESKTOP" write_desktop
@@ -212,7 +229,6 @@ install_all() {
   for name in "${LAUNCHERS[@]}"; do
     act "link $BIN_DIR/$name -> $VENV/bin/$name" link_launcher "$name"
   done
-  act "record what was installed in $RECORD" write_record
   if ((!DRY_RUN)); then
     check_qt
     echo "Installed. Start FastFoto Linux from the application menu, or run: fastfoto"
@@ -254,7 +270,6 @@ remove_recorded() {
 
 # Checked before anything is removed: the environment folder is deleted whole.
 check_uninstall() {
-  check_venv_path
   if [[ -e "$VENV" && ! -f "$VENV/pyvenv.cfg" ]]; then
     fail "$VENV has no pyvenv.cfg, so it is not an environment this installer made; nothing was removed"
   fi

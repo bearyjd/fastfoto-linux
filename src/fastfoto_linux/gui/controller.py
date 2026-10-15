@@ -47,6 +47,7 @@ _SCANNABLE = frozenset({State.READY, State.DONE, State.FAILED, State.CANCELLED})
 _RUNNING = (State.SCANNING, State.PROCESSING)
 _REPORTING = frozenset({State.SCANNING, State.PROCESSING, State.CANCELLING})
 _DISK_FIELDS = frozenset({"output_folder", "album"})
+CHECKING_DISK_TEXT = "Checking the folder…"
 NOT_CHECKED = "The scanner has not been checked yet."
 CHECKING_TEXT = "Looking for the scanner…"
 FOUND_TEXT = "Scanner found."
@@ -61,6 +62,16 @@ CLOSE_PROCESSING_TEXT = (
     "Processing is running. The photos already saved stay saved, "
     "and the scanned pages are kept so you can process them later."
 )
+
+
+DiskKey = tuple[str, str]
+DiskCheck = Callable[[ScanForm], None]
+"""Starts reading the disk for a form and returns at once; the answer goes to ``on_disk``."""
+
+
+def disk_key(form: ScanForm) -> DiskKey:
+    """What a read of the disk depends on: the output folder and the album."""
+    return (form.output_folder.strip(), form.album.strip())
 
 
 def _lost(error: BaseException | None) -> bool:
@@ -87,8 +98,10 @@ class Controller:
         *,
         save_form: Callable[[ScanForm], None] | None = None,
         on_change: Callable[[], None] | None = None,
+        disk_check: DiskCheck | None = None,
     ) -> None:
         self._worker = worker
+        self._disk_check = disk_check
         self._save_form = save_form
         self._on_change = on_change
         self._state = State.IDLE
@@ -328,6 +341,9 @@ class Controller:
         self._set_scanner(error)
         self._state = transition(self._state, State.READY if error is None else State.NO_SCANNER)
         self._changed()
+
+    def on_disk(self, key: DiskKey, errors: dict[str, str]) -> None:
+        raise NotImplementedError
 
     def on_stage(self, stage: Stage) -> None:
         if stage is Stage.PROCESSING and self._state is State.SCANNING:

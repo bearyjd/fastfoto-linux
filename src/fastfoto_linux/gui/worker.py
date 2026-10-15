@@ -82,7 +82,7 @@ class Worker:
 
         self._start(job)
 
-    def scan(self, form: ScanForm) -> None:
+    def scan(self, form: ScanForm, *, checked: bool = False) -> None:
         """Scan with the form's settings. Raises FormInvalidError before anything starts."""
         errors = validate(form)
         if errors:

@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 
+from fastfoto_linux.gui import form as form_module
 from fastfoto_linux.gui import worker as worker_module
 from fastfoto_linux.gui.form import FormInvalidError, ScanForm
 from fastfoto_linux.gui.worker import Worker, WorkerBusyError
@@ -327,3 +328,35 @@ def test_the_worker_uses_the_real_collaborators_unless_given_fakes(
     worker.join(WAIT)
     assert seen == ["discover", "session"]
     assert isinstance(sink.value("finished"), SessionResult)
+
+
+# -- review round 2 (12): a scan the page has just checked does not read the disk on its thread --
+
+
+def test_a_checked_scan_reads_the_disk_only_on_the_jobs_thread(
+    out: Path, form: ScanForm, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: list[int] = []
+    real = form_module.validate_filesystem
+
+    def spy(checked: ScanForm) -> dict[str, str]:
+        seen.append(threading.get_ident())
+        return real(checked)
+
+    monkeypatch.setattr(form_module, "validate_filesystem", spy)
+    worker = worker_for(RecordingSink(), session=FakeSession(clean_result(out), out))
+    worker.scan(form, checked=True)
+    worker.join(WAIT)
+    assert seen
+    assert threading.get_ident() not in seen
+    seen.clear()
+    worker.scan(form)  # unchecked: the caller's thread looks too
+    worker.join(WAIT)
+    assert threading.get_ident() in seen
+
+
+def test_a_checked_scan_still_refuses_a_form_that_is_wrong_in_itself() -> None:
+    worker = worker_for(RecordingSink(), session=FakeSession(SessionResult(), Path()))
+    with pytest.raises(FormInvalidError):
+        worker.scan(ScanForm(), checked=True)
+    assert not worker.busy

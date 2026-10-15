@@ -2,6 +2,7 @@
 
 import contextlib
 import logging
+import os
 import re
 import shutil
 import tempfile
@@ -17,6 +18,8 @@ KEPT_DIR_NAME = ".raw"
 TEMP_PREFIX = ".ffscan-raw-"
 # No ':' in the stamp: FAT and exFAT drives refuse it in a folder name.
 STAMP_FORMAT = "%Y%m%dT%H%M%SZ"
+# Every PNG ends with this IEND chunk (empty data, fixed CRC).
+_PNG_END = b"\x00\x00\x00\x00IEND\xaeB`\x82"
 _PAGE = re.compile(rf"{re.escape(DEFAULT_FILE_PREFIX)}-([0-9]{{4,}})\.png")
 
 
@@ -42,6 +45,19 @@ def list_pages(folder: Path) -> tuple[Path, ...]:
         return ()
     numbered = [(int(m.group(1)), p) for p in entries if (m := _PAGE.fullmatch(p.name))]
     return tuple(path for _, path in sorted(numbered))
+
+
+def is_complete_png(path: Path) -> bool:
+    """Whether ``path`` ends with the PNG end chunk; a page cut off mid-write does not."""
+    try:
+        with path.open("rb") as page:
+            size = page.seek(0, os.SEEK_END)
+            if size < len(_PNG_END):
+                return False
+            page.seek(-len(_PNG_END), os.SEEK_END)
+            return page.read() == _PNG_END
+    except OSError:
+        return False
 
 
 def create_raw_dir(root: Path, *, keep: bool) -> Path:

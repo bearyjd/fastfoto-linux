@@ -24,7 +24,12 @@ from fastfoto_linux.scanner import (
     Source,
     run_scan,
 )
-from fastfoto_linux.session.raw import create_raw_dir, list_pages, settle_raw_dir
+from fastfoto_linux.session.raw import (
+    create_raw_dir,
+    is_complete_png,
+    list_pages,
+    settle_raw_dir,
+)
 from fastfoto_linux.session.request import RawPolicy, ScanRequest
 from fastfoto_linux.session.result import RawReason, SessionResult, Stage
 
@@ -156,8 +161,18 @@ def _settle(request: ScanRequest, raw: Path, outcome: _Outcome) -> SessionResult
         raw_reason=reason if kept is not None else None,
         error=outcome.error,
         cancelled=outcome.cancelled,
-        kept_pages=() if kept is None else list_pages(kept),
+        kept_pages=() if kept is None else _finished_pages(kept, outcome.pages),
     )
+
+
+def _finished_pages(kept: Path, reported: tuple[Path, ...]) -> tuple[Path, ...]:
+    """The pages in ``kept`` the scanner finished: the ones it reported, or, when the scan ended
+    before it could report them (an interrupt), every page there that is a complete PNG."""
+    on_disk = list_pages(kept)
+    if reported:
+        finished = {page.name for page in reported}
+        return tuple(page for page in on_disk if page.name in finished)
+    return tuple(page for page in on_disk if is_complete_png(page))
 
 
 def _announce_done(result: SessionResult, hooks: _Hooks) -> SessionResult:

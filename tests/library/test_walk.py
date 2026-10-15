@@ -56,3 +56,30 @@ def test_an_unreadable_folder_is_counted_and_the_rest_is_walked(tmp_path: Path) 
 def test_an_empty_library_has_nothing(tmp_path: Path) -> None:
     result = walk_library(tmp_path)
     assert (result.jpegs, result.other_formats, result.symlinks) == ((), 0, 0)
+
+
+def test_hidden_folders_and_synology_metadata_are_skipped_and_counted(tmp_path: Path) -> None:
+    for name in (
+        "a.jpg",
+        "album/e.jpg",
+        ".hidden/b.jpg",
+        "album/@eaDir/c.jpg",
+        "album/.thumbs/d.jpg",
+    ):
+        touch(tmp_path, name)
+    result = walk_library(tmp_path)
+    assert result.jpegs == ("a.jpg", "album/e.jpg")
+    assert result.skipped_folders == 3
+
+
+def test_a_dot_inside_a_name_or_in_a_hidden_file_does_not_hide_anything(tmp_path: Path) -> None:
+    touch(tmp_path, "v1.0/a.jpg")
+    touch(tmp_path, "v1.0/.hidden-file.jpg")
+    result = walk_library(tmp_path)
+    assert result.jpegs == ("v1.0/.hidden-file.jpg", "v1.0/a.jpg")
+    assert result.skipped_folders == 0
+
+
+def test_a_library_folder_that_is_itself_hidden_is_still_walked(tmp_path: Path) -> None:
+    touch(tmp_path / ".library", "a.jpg")
+    assert walk_library(tmp_path / ".library").jpegs == ("a.jpg",)

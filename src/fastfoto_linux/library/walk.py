@@ -18,6 +18,7 @@ class WalkResult:
     other_formats: int
     symlinks: int
     unreadable_folders: int
+    skipped_folders: int = 0
 
 
 def walk_library(src: Path) -> WalkResult:

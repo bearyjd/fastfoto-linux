@@ -4,6 +4,7 @@ The photo is the public-domain astronaut portrait. ``displayed`` always means th
 viewer shows after applying the Orientation tag; ``stored`` is what the file's pixels hold.
 """
 
+import csv
 import hashlib
 import io
 import os
@@ -181,3 +182,18 @@ def tree_snapshot(root: Path) -> dict[str, str]:
         key = path.relative_to(root).as_posix()
         snapshot[key] = "dir" if path.is_dir() else hashlib.sha256(path.read_bytes()).hexdigest()
     return snapshot
+
+
+MANIFEST_GLOB = "fastfoto-reorient-manifest-*.csv"
+
+
+def manifest_files(dest: Path) -> list[Path]:
+    """The manifests a ``fix`` run left in ``dest``."""
+    return sorted(dest.glob(MANIFEST_GLOB))
+
+
+def manifest_rows(dest: Path) -> list[list[str]]:
+    """The rows (header first) of the single manifest in ``dest``, parsed with the csv module."""
+    (path,) = manifest_files(dest)
+    with path.open(encoding="utf-8", newline="") as handle:
+        return list(csv.reader(handle))

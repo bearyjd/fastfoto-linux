@@ -32,6 +32,7 @@ class CheckSummary:
     undecided: int
     skipped_by_reason: dict[str, int]
     backs_like_fronts: int
+    skipped_folders: int = 0
 
 
 def summarize_check(walk: WalkResult, rows: Sequence[PlanRow]) -> CheckSummary:

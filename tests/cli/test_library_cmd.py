@@ -6,12 +6,14 @@ from pathlib import Path
 import pytest
 
 from fastfoto_linux.cli import main
-from fastfoto_linux.library.apply import MANIFEST_NAME
+from fastfoto_linux.library import decide as decide_module
 from fastfoto_linux.library.plan import PLAN_COLUMNS
 from tests.face_images import load_astronaut, textured_photo_without_faces
 from tests.library.jpeg_helpers import (
     displayed_array,
     make_jpeg,
+    manifest_files,
+    manifest_rows,
     same_picture,
     sideways_jpeg,
     stored_array,
@@ -132,14 +134,15 @@ def test_fix_writes_upright_copies_and_a_manifest(lib: Path, work: Path, tmp_pat
     assert fix(work, lib, dest, "--mkdir") == 0
     assert "written: 2" in capsys.readouterr().out
     written = {p.relative_to(dest).as_posix() for p in dest.rglob("*") if p.is_file()}
-    assert written == {TURNED_90, TURNED_270, MANIFEST_NAME}
+    (manifest,) = manifest_files(dest)
+    assert written == {TURNED_90, TURNED_270, manifest.name}
     for name in (TURNED_90, TURNED_270):
         data = (dest / name).read_bytes()
         assert same_picture(displayed_array(data), load_astronaut())
         assert stored_array(data).tobytes() == stored_array((lib / name).read_bytes()).tobytes()
-    manifest = (dest / MANIFEST_NAME).read_text(encoding="utf-8").splitlines()
-    assert manifest[0] == "path,old_tag,new_tag"
-    assert sorted(manifest[1:]) == [f"{TURNED_90},1,8", f"{TURNED_270},6,3"]
+    rows = manifest_rows(dest)
+    assert rows[0] == ["path", "old_tag", "new_tag"]
+    assert sorted(rows[1:]) == [[TURNED_90, "1", "8"], [TURNED_270, "6", "3"]]
 
 
 def test_a_second_check_of_the_fixed_copies_proposes_nothing(
@@ -180,17 +183,47 @@ def test_a_stale_row_is_reported_and_the_rest_is_written(
     assert (dest / TURNED_270).exists() and not (dest / TURNED_90).exists()
 
 
-def test_existing_destination_files_are_reported_and_kept(
+def test_a_second_fix_run_reports_the_finished_copies_as_already_done(
     lib: Path, work: Path, tmp_path, capsys
 ) -> None:
     dest = tmp_path / "fixed"
     assert check(lib, work) == 0
     assert fix(work, lib, dest, "--mkdir") == 0
     capsys.readouterr()
-    assert fix(work, lib, dest) == 1
+    assert fix(work, lib, dest) == 0
     out = capsys.readouterr().out
     assert "written: 0" in out
-    assert "already there: 2" in out
+    assert "already done: 2" in out
+    assert len(manifest_files(dest)) == 1
+
+
+def test_existing_destination_files_with_other_content_are_reported_and_kept(
+    lib: Path, work: Path, tmp_path, capsys
+) -> None:
+    dest = tmp_path / "fixed"
+    write_file(dest, TURNED_90, b"precious")
+    assert check(lib, work) == 0
+    capsys.readouterr()
+    assert fix(work, lib, dest) == 1
+    captured = capsys.readouterr()
+    assert "written: 1" in captured.out
+    assert "already there: 1" in captured.out
+    assert (dest / TURNED_90).read_bytes() == b"precious"
+
+
+def test_file_names_in_the_problem_lines_cannot_carry_terminal_escapes(
+    work: Path, tmp_path, capsys
+) -> None:
+    library, dest = tmp_path / "escapes", tmp_path / "fixed"
+    nasty = "a\x1b[31mred.jpg"  # an ANSI colour escape inside the name
+    write_file(library, nasty, sideways_jpeg(90, None))
+    assert check(library, work) == 0
+    write_file(library, nasty, sideways_jpeg(90, None, date=True))  # stale by the time of fix
+    capsys.readouterr()
+    assert fix(work, library, dest, "--mkdir") == 1
+    err = capsys.readouterr().err
+    assert "\x1b" not in err
+    assert repr(nasty) in err
 
 
 # --- usage errors ---------------------------------------------------------------------
@@ -297,3 +330,41 @@ def test_a_missing_plan_or_library_is_a_usage_error(
     assert check(lib, work) == 0
     assert fix(work, tmp_path / "gone", dest) == 2
     assert "not a folder" in one_line_error(capsys)
+
+
+def test_check_refuses_a_plan_path_that_is_a_dangling_link(lib: Path, work: Path, capsys) -> None:
+    victim = work / "victim.txt"
+    (work / "plan.csv").symlink_to(victim)
+    assert check(lib, work) == 2
+    assert "link" in one_line_error(capsys)
+    assert not victim.exists()
+
+
+def test_the_summary_counts_hidden_and_metadata_folders_that_were_skipped(
+    lib: Path, work: Path, capsys
+) -> None:
+    write_file(lib, ".cache/x.jpg", b"x")
+    write_file(lib, "2001/@eaDir/y.jpg", b"y")
+    assert check(lib, work) == 0
+    out = capsys.readouterr().out
+    assert "folders skipped (hidden or @eaDir): 2" in out
+    assert "JPEG: 7" in out
+
+
+class _InterruptedPool:
+    def __init__(self, *_args: object, **_kwargs: object) -> None:
+        pass
+
+    def submit(self, *_args: object, **_kwargs: object) -> None:
+        raise KeyboardInterrupt
+
+    def shutdown(self, wait: bool = True, *, cancel_futures: bool = False) -> None:
+        pass
+
+
+def test_ctrl_c_during_check_exits_130_and_writes_no_plan(
+    monkeypatch: pytest.MonkeyPatch, lib: Path, work: Path
+) -> None:
+    monkeypatch.setattr(decide_module, "ProcessPoolExecutor", _InterruptedPool)
+    assert check(lib, work, "--jobs", "2") == 130
+    assert list(work.iterdir()) == []

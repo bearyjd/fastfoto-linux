@@ -1,5 +1,6 @@
 """Path rules that keep the library untouched: nothing is ever written inside it."""
 
+import os
 from pathlib import Path, PurePosixPath
 
 from fastfoto_linux.library.plan_format import PLAN_COLUMNS
@@ -7,6 +8,11 @@ from fastfoto_linux.library.plan_format import PLAN_COLUMNS
 
 class UnsafePathError(ValueError):
     """A path would put output inside the library, or a plan path leaves the library."""
+
+
+def same_directory(first: os.stat_result, second: os.stat_result) -> bool:
+    """Whether two stat results are the same folder (bind mounts and case-folding included)."""
+    return os.path.samestat(first, second)
 
 
 def _plain_relative(relative: str) -> PurePosixPath:

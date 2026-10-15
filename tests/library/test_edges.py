@@ -1,15 +1,13 @@
 """Rare paths: odd JPEG layouts, failing writes, unusual plans and summaries."""
 
 import logging
-import shutil
+import os
 import struct
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
-from PIL import Image
 
-from fastfoto_linux.library import apply as apply_module
 from fastfoto_linux.library import decide as decide_module
 from fastfoto_linux.library import jpeg_exif
 from fastfoto_linux.library.apply import STATUS_FAILED, STATUS_STALE, apply_plan
@@ -29,7 +27,7 @@ from tests.library.jpeg_helpers import (
     sideways_jpeg,
     write_file,
 )
-from tests.library.test_jpeg_exif import raw_exif_with_long_orientation, with_exif_segment
+from tests.library.test_jpeg_exif import with_exif_segment
 
 TIFF_SHORT = 3
 
@@ -67,19 +65,9 @@ def test_an_orientation_entry_that_is_not_one_number_is_refused() -> None:
         read_orientation(with_exif_segment(photo(None), payload))
 
 
-def test_a_parser_failure_while_rebuilding_is_a_clear_error(monkeypatch) -> None:
-    def boom(self, data):
-        raise ValueError("boom")
-
-    monkeypatch.setattr(Image.Exif, "load", boom)
-    data = with_exif_segment(photo(None), raw_exif_with_long_orientation(6))
-    with pytest.raises(JpegExifError, match="cannot be rebuilt"):
-        set_orientation(data, 8)
-
-
 @pytest.mark.parametrize(
     ("broken", "message"),
-    [(lambda data, at, order, tag: data, "confirmed"), (lambda *_: b"garbage", "re-read")],
+    [(lambda data, *_a, **_k: data, "confirmed"), (lambda *_a, **_k: b"garbage", "re-read")],
     ids=["tag unchanged", "unreadable result"],
 )
 def test_a_result_that_does_not_check_out_is_never_returned(
@@ -113,24 +101,24 @@ def test_a_write_error_fails_that_row_and_leaves_no_file(
 ) -> None:
     lib, dest = lib_and_dest
 
-    def full_disk(items):
+    def full_disk(_fd: int) -> None:
         raise OSError(28, "No space left on device")
 
-    monkeypatch.setattr(apply_module, "write_new_files", full_disk)
+    monkeypatch.setattr(os, "fsync", full_disk)
     result = apply_plan([rotate_row(lib, "a.jpg", 90, 1, 6)], lib, dest)
     assert [(o.status, o.reason) for o in result.outcomes] == [(STATUS_FAILED, "io-error")]
     assert list(dest.iterdir()) == []
 
 
-def test_a_failure_copying_times_removes_the_copy(
+def test_a_failure_setting_times_removes_the_copy(
     monkeypatch, lib_and_dest: tuple[Path, Path]
 ) -> None:
     lib, dest = lib_and_dest
 
-    def refuse(source, target):
+    def refuse(*_args: object, **_kwargs: object) -> None:
         raise PermissionError(1, "Operation not permitted")
 
-    monkeypatch.setattr(shutil, "copystat", refuse)
+    monkeypatch.setattr(os, "utime", refuse)
     result = apply_plan([rotate_row(lib, "a.jpg", 90, 1, 6)], lib, dest)
     assert [o.status for o in result.outcomes] == [STATUS_FAILED]
     assert list(dest.iterdir()) == []
@@ -180,3 +168,8 @@ def test_the_summary_mentions_links_and_unreadable_folders_only_when_there_are_s
     quiet = format_check(CheckSummary(0, 0, 0, 0, {90: 0}, 0, 0, {}, 0), "plan.csv")
     assert "symlinks" not in quiet and "folders" not in quiet
     assert WalkResult((), 0, 0, 0).jpegs == ()
+
+
+def test_skipped_folders_are_counted_in_the_summary_only_when_there_are_some() -> None:
+    summary = CheckSummary(0, 0, 0, 0, {90: 0}, 0, 0, {}, 0, 5)
+    assert "folders skipped (hidden or @eaDir): 5" in format_check(summary, "plan.csv")

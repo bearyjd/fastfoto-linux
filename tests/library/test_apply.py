@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from fastfoto_linux.library.apply import (
-    MANIFEST_NAME,
+    REASON_UNSAFE_DESTINATION,
     STATUS_EXISTS,
     STATUS_FAILED,
     STATUS_STALE,
@@ -18,50 +18,22 @@ from fastfoto_linux.library.apply import (
 from fastfoto_linux.library.jpeg_exif import read_orientation
 from fastfoto_linux.library.plan import Action
 from fastfoto_linux.library.safety import UnsafePathError
-from tests.face_images import load_astronaut
+from tests.library.apply_helpers import (
+    FIRST,
+    MTIME_NS,
+    SECOND,
+    THIRD,
+    statuses,
+    two_rows,
+)
 from tests.library.jpeg_helpers import (
-    exif_bytes,
-    make_jpeg,
+    manifest_files,
+    manifest_rows,
     rotate_row,
     stored_array,
     tree_snapshot,
     write_file,
 )
-
-MTIME_NS = 1_100_000_000_123_456_789
-FIRST, SECOND, THIRD = "2001/trip_0001_a.jpg", "2001/trip_0002_a.jpg", "b.jpg"
-
-
-def jpeg(tag: int | None) -> bytes:
-    return make_jpeg(load_astronaut(), exif=None if tag is None else exif_bytes(tag, date=True))
-
-
-@pytest.fixture
-def lib(tmp_path: Path) -> Path:
-    root = tmp_path / "lib"
-    write_file(root, FIRST, jpeg(None), mtime_ns=MTIME_NS)
-    write_file(root, SECOND, jpeg(6), mtime_ns=MTIME_NS + 10)
-    write_file(root, THIRD, jpeg(1), mtime_ns=MTIME_NS + 20)
-    return root
-
-
-@pytest.fixture
-def dest(tmp_path: Path) -> Path:
-    path = tmp_path / "dest"
-    path.mkdir()
-    return path
-
-
-def two_rows(lib: Path):
-    return (
-        rotate_row(lib, FIRST, 90, 1, 6),
-        rotate_row(lib, SECOND, 90, 6, 3),
-    )
-
-
-def statuses(result) -> dict[str, str]:
-    return {outcome.path: outcome.status for outcome in result.outcomes}
-
 
 # --- what gets written ----------------------------------------------------------------
 
@@ -90,10 +62,8 @@ def test_other_actions_write_nothing(lib: Path, dest: Path) -> None:
     others.append(replace(rotate, path=THIRD, action=Action.REVIEW))
     result = apply_plan([*others, rotate], lib, dest)
     assert [outcome.path for outcome in result.outcomes] == [FIRST]
-    assert sorted(p.relative_to(dest).as_posix() for p in dest.rglob("*") if p.is_file()) == [
-        FIRST,
-        MANIFEST_NAME,
-    ]
+    written = [p for p in dest.rglob("*") if p.is_file() and p not in manifest_files(dest)]
+    assert [p.relative_to(dest).as_posix() for p in written] == [FIRST]
 
 
 def test_the_destination_mirrors_the_relative_paths(lib: Path, dest: Path) -> None:
@@ -122,7 +92,9 @@ def test_the_library_is_byte_identical_afterwards(lib: Path, dest: Path) -> None
 def test_no_staging_files_are_left_behind(lib: Path, dest: Path) -> None:
     apply_plan(two_rows(lib), lib, dest)
     names = sorted(p.name for p in dest.rglob("*") if p.is_file())
-    assert names == sorted([Path(FIRST).name, Path(SECOND).name, MANIFEST_NAME])
+    manifests = [path.name for path in manifest_files(dest)]
+    assert len(manifests) == 1
+    assert names == sorted([Path(FIRST).name, Path(SECOND).name, *manifests])
 
 
 # --- existing files and stale rows ----------------------------------------------------
@@ -233,41 +205,39 @@ def test_a_library_inside_the_destination_is_refused(lib: Path, tmp_path: Path) 
         apply_plan(two_rows(lib), lib, tmp_path)
 
 
-def test_a_destination_folder_linked_into_the_library_is_caught_at_the_write(
+def test_a_destination_folder_linked_into_the_library_is_refused_for_that_row(
     lib: Path, dest: Path
 ) -> None:
     (dest / "2001").symlink_to(lib / "2001", target_is_directory=True)
     before = tree_snapshot(lib)
-    with pytest.raises(UnsafePathError):
-        apply_plan([rotate_row(lib, FIRST, 90, 1, 6)], lib, dest)
+    rows = [*two_rows(lib), rotate_row(lib, THIRD, 90, 1, 6)]
+    result = apply_plan(rows, lib, dest)
+    assert {o.path: (o.status, o.reason) for o in result.outcomes} == {
+        FIRST: (STATUS_FAILED, REASON_UNSAFE_DESTINATION),
+        SECOND: (STATUS_FAILED, REASON_UNSAFE_DESTINATION),
+        THIRD: (STATUS_WRITTEN, ""),
+    }
     assert tree_snapshot(lib) == before
 
 
-def test_a_row_path_that_leaves_the_library_is_refused(lib: Path, dest: Path) -> None:
-    row = replace(rotate_row(lib, FIRST, 90, 1, 6), path="../elsewhere.jpg")
-    with pytest.raises(UnsafePathError):
-        apply_plan([row], lib, dest)
+def test_a_row_path_that_leaves_the_library_fails_alone(lib: Path, dest: Path) -> None:
+    bad = replace(rotate_row(lib, FIRST, 90, 1, 6), path="../elsewhere.jpg")
+    result = apply_plan([bad, rotate_row(lib, SECOND, 90, 6, 3)], lib, dest)
+    assert [(o.status, o.reason) for o in result.outcomes] == [
+        (STATUS_FAILED, REASON_UNSAFE_DESTINATION),
+        (STATUS_WRITTEN, ""),
+    ]
 
 
-# --- manifest -------------------------------------------------------------------------
-
-
-def manifest_lines(dest: Path) -> list[str]:
-    return (dest / MANIFEST_NAME).read_text(encoding="utf-8").splitlines()
+# --- manifest ---------------------------------------------------------------------------
 
 
 def test_the_manifest_lists_what_was_written(lib: Path, dest: Path) -> None:
     write_file(dest, SECOND, b"already here")
     apply_plan(two_rows(lib), lib, dest)
-    assert manifest_lines(dest) == ["path,old_tag,new_tag", f"{FIRST},1,6"]
-
-
-def test_a_second_run_adds_to_the_manifest_without_a_second_header(lib: Path, dest: Path) -> None:
-    apply_plan([rotate_row(lib, FIRST, 90, 1, 6)], lib, dest)
-    apply_plan([rotate_row(lib, SECOND, 90, 6, 3)], lib, dest)
-    assert manifest_lines(dest) == ["path,old_tag,new_tag", f"{FIRST},1,6", f"{SECOND},6,3"]
+    assert manifest_rows(dest) == [["path", "old_tag", "new_tag"], [FIRST, "1", "6"]]
 
 
 def test_no_manifest_is_made_when_nothing_was_written(lib: Path, dest: Path) -> None:
     apply_plan([], lib, dest)
-    assert not (dest / MANIFEST_NAME).exists()
+    assert manifest_files(dest) == []

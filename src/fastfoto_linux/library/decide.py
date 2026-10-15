@@ -6,7 +6,7 @@ import itertools
 import logging
 import math
 import multiprocessing
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 from types import MappingProxyType
@@ -35,6 +35,9 @@ REASON_UNREADABLE = "unreadable"
 REASON_MIRRORED = "mirrored-tag"
 REASON_INVALID_TAG = "invalid-tag"
 REASON_ROTATE = "faces-upright-after-turn"
+REASON_TOO_LARGE = "too-large"
+REASON_WORKER_CRASHED = "worker-crashed"
+MAX_IMAGE_PIXELS = 200_000_000
 BACK_SUFFIX = "_b"
 # decide_orientation works at a fixed pixel size and ignores the dpi it is asked to validate.
 DETECTION_DPI = 600
@@ -162,7 +165,12 @@ def _chunk_size(count: int, jobs: int) -> int:
     return min(MAX_CHUNK, max(1, count // (jobs * CHUNKS_PER_WORKER)))
 
 
-def decide_files(src: Path, relatives: Sequence[str], jobs: int) -> tuple[PlanRow, ...]:
+def decide_files(
+    src: Path,
+    relatives: Sequence[str],
+    jobs: int,
+    worker: Callable[[str, str], PlanRow] = _decide_in_worker,
+) -> tuple[PlanRow, ...]:
     """``decide_file`` for every path, rows in the order given; ``jobs`` > 1 uses processes."""
     if jobs < 1:
         raise ValueError(f"jobs must be at least 1, got {jobs}")

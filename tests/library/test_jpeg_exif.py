@@ -6,13 +6,13 @@ import struct
 import pytest
 from PIL import ExifTags, Image
 
-from fastfoto_linux.library.jpeg_exif import (
+from fastfoto_linux.library.exif_errors import (
+    ExifMalformedError,
     ExifTooLargeError,
     JpegExifError,
     NotAJpegError,
-    read_orientation,
-    set_orientation,
 )
+from fastfoto_linux.library.jpeg_exif import read_orientation, set_orientation
 from tests.face_images import load_astronaut
 from tests.library.jpeg_helpers import (
     APP0,
@@ -103,10 +103,12 @@ def test_going_back_restores_the_original_bytes() -> None:
     assert set_orientation(set_orientation(data, 8), 6) == data
 
 
-def test_a_long_typed_tag_is_rebuilt_not_patched() -> None:
+def test_a_long_typed_tag_is_patched_in_place() -> None:
     data = with_exif_segment(photo(None), raw_exif_with_long_orientation(6))
     result = set_orientation(data, 8)
     assert read_orientation(result) == 8
+    value_at = data.index(EXIF_HEADER) + len(EXIF_HEADER) + 8 + 2 + 8  # IFD0 entry 0, its value
+    assert set(differing_positions(data, result)) <= set(range(value_at, value_at + 4))
     assert stored_array(result).tobytes() == stored_array(data).tobytes()
 
 
@@ -136,7 +138,7 @@ def test_every_segment_but_the_exif_one_and_the_scan_are_identical(start: int | 
 
 
 @pytest.mark.parametrize("start", [None, 1])
-def test_other_exif_fields_survive_in_both_paths(start: int | None) -> None:
+def test_pillow_reads_every_exif_field_after_a_patch_or_an_append(start: int | None) -> None:
     data = make_jpeg(load_astronaut(), exif=exif_bytes(start, date=True, ImageDescription="hi"))
     with Image.open(io.BytesIO(set_orientation(data, 6))) as image:
         exif = image.getexif()
@@ -192,7 +194,7 @@ def test_a_nearly_full_exif_segment_is_still_patched_in_place() -> None:
     assert read_orientation(set_orientation(data, 8)) == 8
 
 
-def test_a_rebuild_that_would_overflow_the_segment_is_refused() -> None:
+def test_an_appended_ifd_that_would_overflow_the_segment_is_refused() -> None:
     data = make_jpeg(load_astronaut(), exif=oversized_exif(tag=None))
     with pytest.raises(ExifTooLargeError) as raised:
         set_orientation(data, 6)
@@ -230,7 +232,7 @@ def test_garbled_files_raise_a_clear_error_and_nothing_else(name: str) -> None:
     snapshot = bytes(data)
     with pytest.raises(JpegExifError) as raised:
         set_orientation(data, 8)
-    assert raised.value.reason in {"unreadable", "bad-exif"}
+    assert raised.value.reason in {"unreadable", "bad-exif", "exif-malformed"}
     assert str(raised.value)
     assert data == snapshot
 
@@ -239,6 +241,7 @@ def test_error_reasons_are_short_codes() -> None:
     assert JpegExifError.reason == "bad-exif"
     assert NotAJpegError.reason == "unreadable"
     assert ExifTooLargeError.reason == "exif-too-large"
+    assert ExifMalformedError.reason == "exif-malformed"
 
 
 def test_read_orientation_rejects_garbled_files_too() -> None:

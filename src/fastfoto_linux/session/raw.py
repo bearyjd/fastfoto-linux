@@ -51,10 +51,7 @@ def is_complete_png(path: Path) -> bool:
     """Whether ``path`` ends with the PNG end chunk; a page cut off mid-write does not."""
     try:
         with path.open("rb") as page:
-            size = page.seek(0, os.SEEK_END)
-            if size < len(_PNG_END):
-                return False
-            page.seek(-len(_PNG_END), os.SEEK_END)
+            page.seek(-len(_PNG_END), os.SEEK_END)  # OSError when the file is shorter
             return page.read() == _PNG_END
     except OSError:
         return False

@@ -38,8 +38,8 @@ class SessionResult:
     listed). ``pages_scanned`` counts the pages the scanner delivered, 0 when the scan ended
     by an exception that did not say. ``raw_dir`` is where the raw pages are now, None when
     they were deleted (or there were none), and ``raw_reason`` says why they stay: both are
-    set, or neither. ``kept_pages`` are the finished page files in ``raw_dir`` (a page the scanner
-    was still writing when it stopped stays on disk but is not listed), in page order, whether or
+    set, or neither. ``kept_pages`` are the finished page files in ``raw_dir`` (a page cut off
+    mid-write when the scan stopped stays on disk but is not listed), in page order, whether or
     not processing got to them (empty when ``raw_dir`` is None): after a cancel during the scan
     they are the pages scanned so far, none processed, which a front end can offer to process
     later. ``error`` is what stopped the session early: a scanner failure (the pages scanned

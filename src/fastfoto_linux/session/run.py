@@ -166,13 +166,15 @@ def _settle(request: ScanRequest, raw: Path, outcome: _Outcome) -> SessionResult
 
 
 def _finished_pages(kept: Path, reported: tuple[Path, ...]) -> tuple[Path, ...]:
-    """The pages in ``kept`` the scanner finished: the ones it reported, or, when the scan ended
-    before it could report them (an interrupt), every page there that is a complete PNG."""
-    on_disk = list_pages(kept)
-    if reported:
-        finished = {page.name for page in reported}
-        return tuple(page for page in on_disk if page.name in finished)
-    return tuple(page for page in on_disk if is_complete_png(page))
+    """The pages in ``kept`` the scanner finished: complete PNGs, and only the reported ones
+    when the scan reported any (a cancel or a kill can leave the last page cut off mid-write,
+    and ``run_scan`` reports every page file it finds)."""
+    finished = {page.name for page in reported}
+    return tuple(
+        page
+        for page in list_pages(kept)
+        if (not finished or page.name in finished) and is_complete_png(page)
+    )
 
 
 def _announce_done(result: SessionResult, hooks: _Hooks) -> SessionResult:

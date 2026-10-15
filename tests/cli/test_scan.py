@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from fastfoto_linux.cli import main, rawdir
+from fastfoto_linux.cli import main
 from fastfoto_linux.scanner import (
     NoDocumentsError,
     ScanError,
@@ -12,6 +12,7 @@ from fastfoto_linux.scanner import (
     ShimMissingError,
     Source,
 )
+from fastfoto_linux.session import raw as rawdir
 from tests._output_helpers import names
 from tests.cli.fakes import DEVICE, HOST
 from tests.process_helpers import page_name, plain_sheet, written_sheet

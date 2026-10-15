@@ -6,6 +6,7 @@ import os
 from fastfoto_linux.cli.errors import EXIT_OK, EXIT_SCANNER, CliError
 from fastfoto_linux.cli.options import common_parent, host
 from fastfoto_linux.scanner import default_shim_candidates, find_usb_scanners, sane_net_device_name
+from fastfoto_linux.scanner.shim_trust import select_shim
 from fastfoto_linux.scanner.target import SHIM_BUILD_COMMAND, SHIM_ENV_VAR
 
 
@@ -23,7 +24,8 @@ def add_parser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]"
 
 def run(args: argparse.Namespace) -> int:
     scanners = find_usb_scanners()
-    shim = next((path for path in default_shim_candidates(os.environ) if path.is_file()), None)
+    choice = select_shim(default_shim_candidates(os.environ))
+    shim = choice.path
     print(f"USB scanners: {len(scanners)}")
     for scanner in scanners:
         print(f"  {scanner.sane_usb_device_name()}")
@@ -31,6 +33,8 @@ def run(args: argparse.Namespace) -> int:
         print(f"USB gap shim: found ({shim})")
     else:
         print(f"USB gap shim: missing (build it with `{SHIM_BUILD_COMMAND}`)")
+        for reason in choice.refused:
+            print(f"  refused: {reason}")
     if args.net is not None:
         print(f"Network scanner: {sane_net_device_name(args.net)}")
         return EXIT_OK
@@ -40,8 +44,9 @@ def run(args: argparse.Namespace) -> int:
             EXIT_SCANNER,
         )
     if shim is None:
+        refused = f" (refused as unsafe: {'; '.join(choice.refused)})" if choice.refused else ""
         raise CliError(
-            f"the USB gap shim is missing, USB I/O fails without it; build it with "
+            f"the USB gap shim is missing{refused}, USB I/O fails without it; build it with "
             f"`{SHIM_BUILD_COMMAND}` or set ${SHIM_ENV_VAR}",
             EXIT_SCANNER,
         )

@@ -1,14 +1,15 @@
 """Turn raw scanner pages into album files: assemble, orient, enhance and write.
 
-``process_pages`` is the one entry point the CLI (and later the desktop app) calls. It works one
+``process_pages`` is the one entry point the CLI and the desktop app call. It works one
 sheet at a time, so only one sheet is in memory, and one bad sheet never loses the others: its
 problem is recorded in the returned ``ProcessResult`` instead of being raised. A failing optional
 step (the orienter or an enhancer) costs a sheet only its enhanced copy.
 """
 
 import logging
+import threading
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
@@ -98,7 +99,9 @@ class ProcessResult:
     (they keep their back, whatever the back policy), or only one page of the sheet was
     scanned. ``dropped_backs`` names the back pages the ``AUTO`` policy left out for want of
     writing, so that dropping one is never silent. ``unchanged`` counts the sheets whose
-    enhancers left the picture byte-identical: they get no ``_a`` copy.
+    enhancers left the picture byte-identical: they get no ``_a`` copy. ``cancelled`` is True
+    when the caller's cancel event stopped the run before every sheet was handled: what is listed
+    is only the part that was done.
     """
 
     written: tuple[WrittenFiles, ...] = ()
@@ -107,6 +110,7 @@ class ProcessResult:
     degraded: tuple[SheetIssue, ...] = ()
     dropped_backs: tuple[str, ...] = ()
     unchanged: int = 0
+    cancelled: bool = False
 
     @property
     def photos(self) -> int:
@@ -126,7 +130,7 @@ class ProcessResult:
 
     @property
     def ok(self) -> bool:
-        return not self.failed and not self.degraded
+        return not self.failed and not self.degraded and not self.cancelled
 
 
 @dataclass(frozen=True)
@@ -151,7 +155,58 @@ class _Handled:
     uncertain: str | None = None
 
 
-def process_pages(pages: Sequence[Path], settings: ProcessSettings) -> ProcessResult:
+@dataclass
+class _Tally:
+    """What ``process_pages`` has found so far; private, updated in place sheet by sheet."""
+
+    paths: tuple[Path, ...]
+    duplex: bool
+    written: list[WrittenFiles] = field(default_factory=list)
+    failed: list[SheetIssue] = field(default_factory=list)
+    uncertain: list[SheetIssue] = field(default_factory=list)
+    degraded: list[SheetIssue] = field(default_factory=list)
+    dropped: list[str] = field(default_factory=list)
+    unchanged: int = 0
+
+    def fail(self, sheet: int | None, reason: str) -> None:
+        self.failed.append(_sheet_issue(sheet, self.paths, self.duplex, reason))
+
+    def add(self, sheet: int, handled: _Handled) -> WrittenFiles | None:
+        """Record what became of one sheet; its files if it was written."""
+        if handled.files is None:
+            self.fail(sheet, handled.failure or "")
+            return None
+        self.written.append(handled.files)
+        self.unchanged += handled.unchanged
+        for reason, issues in (
+            (handled.degraded, self.degraded),
+            (handled.uncertain, self.uncertain),
+        ):
+            if reason is not None:
+                issues.append(_sheet_issue(sheet, self.paths, self.duplex, reason))
+        if handled.dropped_back is not None:
+            self.dropped.append(handled.dropped_back)
+        return handled.files
+
+    def result(self, *, cancelled: bool) -> ProcessResult:
+        return ProcessResult(
+            tuple(self.written),
+            tuple(self.failed),
+            tuple(self.uncertain),
+            tuple(self.degraded),
+            tuple(self.dropped),
+            self.unchanged,
+            cancelled,
+        )
+
+
+def process_pages(
+    pages: Sequence[Path],
+    settings: ProcessSettings,
+    *,
+    on_photo: Callable[[WrittenFiles], None] | None = None,
+    cancel: threading.Event | None = None,
+) -> ProcessResult:
     """Process the pages of one scan batch (in scan order) into the album folder.
 
     Per sheet: crop and pair the sides, turn the front upright, write the original, run the
@@ -163,6 +218,13 @@ def process_pages(pages: Sequence[Path], settings: ProcessSettings) -> ProcessRe
     is listed as incomplete). The scan time of a photo is the modification time of its page file.
     Raises ``OutputRootMissingError`` before reading anything when the output folder does not
     exist.
+
+    ``on_photo(files)`` is called on the calling thread right after a photo's files are
+    written, in order; it should be quick, because the next sheet waits for it. An exception it
+    raises propagates (it is not a failed sheet): the run stops there and the photos already
+    written stay on disk. ``cancel`` is checked before each sheet is loaded, so a sheet that is
+    being processed is finished first; once it is set, the sheets not yet handled are left alone
+    and the partial result comes back with ``cancelled`` True (unless nothing was left to do).
     """
     paths = tuple(pages)
     if not settings.output_root.is_dir():
@@ -173,43 +235,36 @@ def process_pages(pages: Sequence[Path], settings: ProcessSettings) -> ProcessRe
         logger.warning(
             "odd number of pages (%d) in a duplex batch; the last is a front", len(paths)
         )
-    failed: list[SheetIssue] = []
-    written: list[WrittenFiles] = []
-    uncertain: list[SheetIssue] = []
-    degraded: list[SheetIssue] = []
-    dropped: list[str] = []
-    unchanged = 0
     total = (len(paths) + 1) // 2 if settings.duplex else len(paths)
+    tally = _Tally(paths, settings.duplex)
     batch = iter_photos(
         paths,
         duplex=settings.duplex,
         back_policy=settings.back_policy,
         expect_front_first=settings.expect_front_first,
         allow_odd=True,
-        on_sheet_error=lambda error: failed.append(
-            _sheet_issue(error.sheet, paths, settings.duplex, str(error))
-        ),
+        on_sheet_error=lambda error: tally.fail(error.sheet, str(error)),
     )
-    for photo in batch:
-        sheet = photo.index + 1
+    done = 0  # the sheets up to this number are settled: written, failed or skipped
+    while not (cancelled := _cancelled_early(cancel, done, total)):
+        photo = next(batch, None)
+        if photo is None:
+            break
+        done = photo.index + 1
         handled = _handle(photo, settings)
         del photo  # the next sheet is loaded while this loop waits; do not hold the last one
-        if handled.files is None:
-            failed.append(_sheet_issue(sheet, paths, settings.duplex, handled.failure or ""))
+        files = tally.add(done, handled)
+        if files is None:
             continue
-        logger.info(
-            "sheet %d/%d: wrote %s", sheet, total, ", ".join(p.name for p in handled.files.paths)
-        )
-        written.append(handled.files)
-        unchanged += handled.unchanged
-        for reason, issues in ((handled.degraded, degraded), (handled.uncertain, uncertain)):
-            if reason is not None:
-                issues.append(_sheet_issue(sheet, paths, settings.duplex, reason))
-        if handled.dropped_back is not None:
-            dropped.append(handled.dropped_back)
-    return ProcessResult(
-        tuple(written), tuple(failed), tuple(uncertain), tuple(degraded), tuple(dropped), unchanged
-    )
+        logger.info("sheet %d/%d: wrote %s", done, total, ", ".join(p.name for p in files.paths))
+        if on_photo is not None:
+            on_photo(files)
+    return tally.result(cancelled=cancelled)
+
+
+def _cancelled_early(cancel: threading.Event | None, done: int, total: int) -> bool:
+    """Whether ``cancel`` is set while sheets are still waiting to be handled."""
+    return cancel is not None and cancel.is_set() and done < total
 
 
 def _handle(photo: Photo, settings: ProcessSettings) -> _Handled:

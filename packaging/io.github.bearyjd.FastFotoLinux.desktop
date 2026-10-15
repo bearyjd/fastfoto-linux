@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=FastFoto Linux
+GenericName=Photo scanner
+Comment=Scan photos with the Epson FastFoto FF-680W
+TryExec=fastfoto
+Exec=fastfoto
+Icon=io.github.bearyjd.FastFotoLinux
+Terminal=false
+Categories=Graphics;Scanning;Qt;KDE;
+Keywords=scanner;photo;scan;fastfoto;epson;
+StartupNotify=true

@@ -10,8 +10,9 @@ from pathlib import Path
 
 import pytest
 
-from fastfoto_linux.cli import cmd_scan, main, rawdir
+from fastfoto_linux.cli import cmd_scan, main
 from fastfoto_linux.scanner import ScanTarget, run_scan
+from fastfoto_linux.session import raw as rawdir
 from tests._fake_scanimage import fake_env, install
 from tests._output_helpers import names
 from tests.cli.fakes import DEVICE, write_dummy_page

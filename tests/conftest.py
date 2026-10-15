@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from fastfoto_linux.scanner import shim_trust
 from tests._skips import scans_dir_from_env, skip_reason
 
 REAL_SCANS_DIR = scans_dir_from_env(os.environ, Path(__file__).parent.parent / "test-scans")
@@ -28,3 +29,12 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 @pytest.fixture
 def real_scans_dir() -> Path:
     return REAL_SCANS_DIR
+
+
+@pytest.fixture(autouse=True)
+def shim_trust_root(
+    monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory
+) -> None:
+    """Test files live under /tmp, which anyone can write to, so the shim policy would refuse
+    every one of them: its walk up the folders stops at pytest's own (private) base folder."""
+    monkeypatch.setattr(shim_trust, "SHIM_TRUST_ROOT", tmp_path_factory.getbasetemp())

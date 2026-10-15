@@ -13,6 +13,7 @@ from fastfoto_linux.scanner.network import (
     validate_host,
     write_sane_net_config,
 )
+from fastfoto_linux.scanner.shim_trust import select_shim
 from fastfoto_linux.scanner.usb import DEFAULT_SYSFS_ROOT, find_usb_scanners
 
 logger = logging.getLogger(__name__)
@@ -82,13 +83,13 @@ def resolve_target(
     if scanners:
         if len(scanners) > 1:
             logger.warning("%d FF-680W scanners on USB; using the first", len(scanners))
-        shim = _first_existing(shim_candidates)
-        if shim is not None:
+        choice = select_shim(shim_candidates)
+        if choice.path is not None:
             return ScanTarget(
-                device=scanners[0].sane_usb_device_name(), shim=validate_shim_path(shim)
+                device=scanners[0].sane_usb_device_name(), shim=validate_shim_path(choice.path)
             )
         if net_host is None:
-            raise ShimMissingError(_shim_missing_message(shim_candidates))
+            raise ShimMissingError(shim_missing_message(shim_candidates, choice.refused))
         logger.warning("FF-680W found on USB but the gap shim is missing; using the network")
     if net_host is None or config_dir is None:
         raise ScannerNotFoundError("no FF-680W found on USB and no network host given")
@@ -98,13 +99,13 @@ def resolve_target(
     )
 
 
-def _first_existing(candidates: Sequence[Path]) -> Path | None:
-    return next((path.resolve() for path in candidates if path.is_file()), None)
-
-
-def _shim_missing_message(candidates: Sequence[Path]) -> str:
+def shim_missing_message(candidates: Sequence[Path], refused: Sequence[str] = ()) -> str:
+    """Why there is no shim: when one was refused, the reason and the fix come first."""
     searched = ", ".join(str(path) for path in candidates) or "no candidate paths"
-    return (
-        f"FF-680W found on USB but {SHIM_FILENAME} is missing (searched: {searched}). "
-        f"Build it with `{SHIM_BUILD_COMMAND}` or set ${SHIM_ENV_VAR}; USB I/O fails without it."
-    )
+    how = f"Build it with `{SHIM_BUILD_COMMAND}` or set ${SHIM_ENV_VAR}; USB I/O fails without it."
+    if refused:
+        return (
+            f"FF-680W found on USB but the gap shim was refused as unsafe: {'; '.join(refused)}. "
+            f"(searched: {searched}) {how}"
+        )
+    return f"FF-680W found on USB but {SHIM_FILENAME} is missing (searched: {searched}). {how}"

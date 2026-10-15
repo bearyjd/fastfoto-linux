@@ -97,9 +97,40 @@ uv run ffscan library fix ~/Documents/library-plan.csv \
 - Then review `DEST` in your photo viewer and, once you are happy, copy it over the library
   yourself. Running `check` on `DEST` again proposes nothing to rotate.
 
+## Desktop app (preview)
+
+`fastfoto` is a KDE desktop app over the same scan session as `ffscan`: pick an output folder, album
+and date, press **Scan**, and the photos appear in the window as they are saved (originals or
+enhanced copies, with each back beside its front). **Cancel** stops the scan; the pages scanned
+so far are kept and **Process them now** turns them into photos later. Closing the window during
+a scan asks to cancel first, and the settings you used are remembered for next time.
+
+Install it for your user (no root; nothing to do with `uv` or pip):
+
+```sh
+sudo dnf install python3-pyside6 kf6-kirigami     # Fedora; the app needs the distribution's Qt
+tools/install-desktop.sh --dry-run                # list what it would do
+tools/install-desktop.sh                          # install; run it again to update
+tools/install-desktop.sh --uninstall              # remove it again
+```
+
+The installer creates a virtual environment that can see the system PySide6 and installs the
+dependencies into it from `packaging/requirements-desktop.txt`, which pins every package by hash
+(it is generated from `uv.lock`), after the build backend from `packaging/requirements-build.txt`
+(also pinned by hash); only wheels are installed, and the checkout is built with that backend. It builds the USB gap shim (`make` and `gcc` are needed) into
+`~/.local/lib/fastfoto-linux/` (a folder only you can use), adds an application menu entry and
+icon, and links `fastfoto` and `ffscan` into `~/.local/bin`. What it installed is listed in
+`~/.local/share/fastfoto-linux/installed.txt`; `--uninstall` removes only that. PySide6 is not a pip
+dependency on purpose: the PyPI wheel bundles its own Qt and cannot load the system Kirigami
+plugin. Without PySide6 and Kirigami, `fastfoto` says what to install and exits with status 3.
+
+A Flatpak, which brings its own Qt and Kirigami, is coming. Not done yet: editing photos after
+the scan (rotate, fix the date, re-run the enhancement), the scanner's Start button, and
+processing while still scanning. A scan through the app on real hardware is still to be tried.
+
 ## Planned interfaces
 
-1. KDE desktop app (native + Flatpak)
+1. KDE desktop app (native preview above; Flatpak to come)
 2. Local web page (127.0.0.1)
 3. CLI + watched folder
 

@@ -7,6 +7,8 @@ from fnmatch import fnmatch
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from fastfoto_linux.scanner.target import SHIM_ENV_VAR, SHIM_FILENAME
 from tests.flatpak.helpers import (
     APP_ID,
@@ -267,6 +269,13 @@ def test_the_pictures_grant_says_why_it_is_there() -> None:
     assert "lock" in reason  # the portal's folders have no file locks
 
 
+def test_the_pictures_grant_does_not_say_photos_go_there_by_default() -> None:
+    # The output folder starts empty: the user chooses it, so nothing "normally" goes anywhere.
+    reason = comment_above("- --filesystem=xdg-pictures").lower()
+    assert "normally" not in reason
+    assert "any folder under pictures" in reason
+
+
 def test_the_device_grant_says_why_it_is_so_broad() -> None:
     reason = comment_above("- --device=all").lower()
     assert "libusb" in reason
@@ -332,3 +341,51 @@ def test_the_cleanup_removes_nothing_the_app_imports() -> None:
         words = shlex.split(command)
         if words[:1] == ["rm"]:  # exact paths: none may be a package the app imports
             assert not {f"{SITE_PACKAGES}/shiboken6", PYSIDE_FOLDER} & set(words), command
+
+
+# A cleanup ``find`` runs on the base app's files, which this manifest does not control: without
+# ``-maxdepth 1`` and a ``-name`` (that is not just ``*``) it could remove far more than it names.
+
+
+def unbounded_finds(commands: list[str]) -> list[str]:
+    """The ``find`` commands that remove files without ``-maxdepth 1`` and a specific ``-name``."""
+    bad: list[str] = []
+    for command in commands:
+        words = shlex.split(command)
+        if words[:1] != ["find"] or not {"-delete", "-exec"} & set(words):
+            continue
+        depth = [words[i + 1] for i, word in enumerate(words[:-1]) if word == "-maxdepth"]
+        names = [words[i + 1] for i, word in enumerate(words[:-1]) if word == "-name"]
+        if depth != ["1"] or not names or any(name.strip("*") == "" for name in names):
+            bad.append(command)
+    return bad
+
+
+def test_every_cleanup_find_that_removes_files_has_a_depth_and_a_name() -> None:
+    assert unbounded_finds(cleanup_commands()) == []
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "find /app/lib -delete",
+        "find /app/lib -maxdepth 1 -delete",
+        "find /app/lib -name 'libLLVM*' -delete",
+        "find /app/lib -maxdepth 2 -name 'libclang*' -delete",
+        "find /app/lib -maxdepth 1 -name '*' -delete",
+        "find /app -maxdepth 1 -exec rm -r {} +",
+        "find /app/lib -exec rm -r {} + -maxdepth 1",
+    ],
+)
+def test_the_check_catches_a_find_without_a_depth_or_a_specific_name(command: str) -> None:
+    assert unbounded_finds([command]) == [command]
+
+
+def test_the_check_accepts_the_shapes_the_manifest_uses() -> None:
+    good = [
+        "find /app/lib -maxdepth 1 -name 'libLLVM*' -delete",
+        "find /app/lib/site-packages -maxdepth 1 -name 'shiboken6_generator*' -exec rm -r {} +",
+        "rm -f /app/bin/shiboken6",
+        "/app/cleanup-BaseApp.sh",
+    ]
+    assert unbounded_finds(good) == []

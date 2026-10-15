@@ -372,6 +372,11 @@ class Bridge(QObject):
         except OSError as error:
             logger.warning("could not remember the settings: %s", error)
 
+    @property
+    def job_alive(self) -> bool:
+        """True while the job's thread is still running (it may have been cancelled already)."""
+        return self._worker.alive
+
     def abort(self) -> None:
         """Stop waiting for the job (a second signal): cancel it and let ``shutdown`` end soon.
 

@@ -58,3 +58,10 @@ def test_the_readme_says_why_the_pictures_folder_is_granted() -> None:
     text = plain_section()
     assert "Pictures" in text
     assert "file locks" in text
+
+
+def test_the_readme_does_not_say_photos_go_to_pictures_by_default() -> None:
+    text = plain_section()
+    assert "normally" not in text  # the output folder starts empty; the user chooses it
+    assert "any folder under Pictures" in text
+    assert "folder dialog" in text

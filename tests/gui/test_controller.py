@@ -467,7 +467,7 @@ class RefusingWorker(FakeWorker):
         super().__init__()
         self.error = error
 
-    def scan(self, form: ScanForm) -> None:
+    def scan(self, form: ScanForm, *, checked: bool = False) -> None:
         raise self.error
 
 

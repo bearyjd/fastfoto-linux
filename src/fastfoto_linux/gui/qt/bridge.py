@@ -12,8 +12,14 @@ from typing import Any
 
 from PySide6.QtCore import Property, QObject, Qt, QUrl, Signal, Slot
 
-from fastfoto_linux.gui.controller import Controller
-from fastfoto_linux.gui.form import BACK_CHOICES, FEED_CHOICES, ScanForm, absolute_folder
+from fastfoto_linux.gui.controller import Controller, disk_key
+from fastfoto_linux.gui.form import (
+    BACK_CHOICES,
+    FEED_CHOICES,
+    ScanForm,
+    absolute_folder,
+    validate_filesystem,
+)
 from fastfoto_linux.gui.prefs import load_form, save_form
 from fastfoto_linux.gui.qt.photos_model import PhotosModel, file_url
 from fastfoto_linux.gui.state import ActionBlockedError
@@ -80,6 +86,7 @@ class Bridge(QObject):
     changed = Signal()
     closeReady = Signal()
     _event = Signal(str, object)
+    _disk = Signal(object, object)
 
     def __init__(
         self,
@@ -99,12 +106,15 @@ class Bridge(QObject):
             start,
             save_form=save_form if remember else None,
             on_change=self._on_change,
+            disk_check=self._start_disk_check,
         )
         self._close_signalled = False
         self._closed = False
         self._shut_down = False
         self._aborted = threading.Event()
         self._event.connect(self._dispatch, Qt.ConnectionType.QueuedConnection)
+        self._disk.connect(self._disk_answered, Qt.ConnectionType.QueuedConnection)
+        self.checkDisk()  # the folder of the remembered form, looked at off the GUI thread
 
     # -- the worker's sink (called on the worker's thread) ----------------------------------
 
@@ -127,13 +137,36 @@ class Bridge(QObject):
         self._send("on_error", error)
 
     def _send(self, name: str, payload: object) -> None:
+        self._emit(self._event, name, payload)
+
+    def _emit(self, signal: Any, *args: object) -> None:
         """Hand an event to the GUI thread, unless the window is gone (the job may outlive it)."""
         if self._closed:
             return
         try:
-            self._event.emit(name, payload)
+            signal.emit(*args)
         except RuntimeError:  # the Qt object was deleted under a worker still reporting
             self._closed = True
+
+    def _start_disk_check(self, form: ScanForm) -> None:
+        """Look at the disk for ``form`` on a thread of its own and return at once."""
+        threading.Thread(
+            target=self._read_disk, args=(form,), name="fastfoto-disk", daemon=True
+        ).start()
+
+    def _read_disk(self, form: ScanForm) -> None:
+        """On a thread of its own: a hung network mount may take a long while to answer."""
+        try:
+            errors = validate_filesystem(form)
+        except Exception as error:
+            logger.exception("could not look at the folder")
+            errors = {"output_folder": f"Could not look at the folder: {error}"}
+        self._emit(self._disk, disk_key(form), errors)
+
+    @Slot(object, object)
+    @_guarded(None)
+    def _disk_answered(self, key: Any, errors: Any) -> None:
+        self.controller.on_disk(key, errors)
 
     @Slot(str, object)
     @_guarded(None, job=True)

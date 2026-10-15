@@ -7,7 +7,13 @@ import threading
 from collections.abc import Callable
 from typing import Protocol
 
-from fastfoto_linux.gui.form import FormInvalidError, ScanForm, to_request, validate
+from fastfoto_linux.gui.form import (
+    FormInvalidError,
+    ScanForm,
+    to_request,
+    validate,
+    validate_syntax,
+)
 from fastfoto_linux.output import WrittenFiles
 from fastfoto_linux.pipeline.process import ProcessResult, process_pages
 from fastfoto_linux.scanner import ScanTarget, default_shim_candidates, resolve_target
@@ -83,8 +89,12 @@ class Worker:
         self._start(job)
 
     def scan(self, form: ScanForm, *, checked: bool = False) -> None:
-        """Scan with the form's settings. Raises FormInvalidError before anything starts."""
-        errors = validate(form)
+        """Scan with the form's settings. Raises FormInvalidError before anything starts.
+
+        ``checked``: the caller has just read the disk for this form, so only the form's text is
+        looked at here, on the caller's thread (the job looks at the disk again on its own).
+        """
+        errors = validate_syntax(form) if checked else validate(form)
         if errors:
             raise FormInvalidError(errors)
         self._start(lambda cancel: self._scan(form, cancel))

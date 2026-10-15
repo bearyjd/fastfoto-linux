@@ -60,7 +60,7 @@ class FakeWorker:
     def check(self) -> None:
         self.calls.append(("check", None))
 
-    def scan(self, form: ScanForm) -> None:
+    def scan(self, form: ScanForm, *, checked: bool = False) -> None:
         self.calls.append(("scan", form))
 
     def process_kept(self, kept: SessionResult) -> None:

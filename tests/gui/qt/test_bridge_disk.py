@@ -27,17 +27,14 @@ def slow_disk(monkeypatch: pytest.MonkeyPatch) -> Any:
     """``validate_filesystem`` as a hung network mount: it waits for ``gate``."""
     gate = threading.Event()
     threads: list[int] = []
-    real = (
-        bridge_module.validate_filesystem if hasattr(bridge_module, "validate_filesystem") else None
-    )
+    real = bridge_module.validate_filesystem
 
     def slow(form: ScanForm) -> dict[str, str]:
         threads.append(threading.get_ident())
         gate.wait(GATE_WAIT)
-        assert real is not None
         return real(form)
 
-    monkeypatch.setattr(bridge_module, "validate_filesystem", slow, raising=False)
+    monkeypatch.setattr(bridge_module, "validate_filesystem", slow)
     yield SimpleNamespace(gate=gate, threads=threads)
     gate.set()
 

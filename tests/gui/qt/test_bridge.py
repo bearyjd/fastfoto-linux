@@ -53,7 +53,7 @@ def test_a_check_finds_the_scanner(make_bridge: Any) -> None:
     bridge.checkScanner()
     assert bridge.busy
     wait_until(lambda: bridge.state == "ready", "the scanner to be found")
-    assert bridge.canScan
+    wait_until(lambda: bridge.canScan, "the folder check, which runs on its own thread, to answer")
     assert not bridge.canCancel
     assert not bridge.busy
 
@@ -196,8 +196,8 @@ def test_a_folder_that_vanished_is_reported_when_scan_is_pressed(
     wait_until(lambda: bridge.canScan, "ready")
     shutil.rmtree(out)
     bridge.startScan()
+    wait_until(lambda: "output_folder" in bridge.errors, "the folder check to answer")
     assert bridge.state == "ready"
-    assert "output_folder" in bridge.errors
     assert bridge.bannerKind == "error"
     assert "does not exist" in bridge.bannerText
     assert not bridge.canScan
@@ -210,12 +210,14 @@ def test_the_disk_is_checked_when_the_user_is_done_editing_the_folder(
     bridge.setField("output_folder", str(tmp_path / "nowhere"))
     assert bridge.errors == {}
     bridge.checkDisk()
+    wait_until(lambda: "output_folder" in bridge.errors, "the folder check to answer")
     assert "does not exist" in bridge.errors["output_folder"]
 
 
 def test_choosing_a_missing_folder_is_reported_at_once(make_bridge: Any, tmp_path: Any) -> None:
     bridge = make_bridge()
     bridge.setOutputFolderUrl(QUrl.fromLocalFile(str(tmp_path / "nowhere")))
+    wait_until(lambda: "output_folder" in bridge.errors, "the folder check to answer")
     assert "does not exist" in bridge.errors["output_folder"]
 
 

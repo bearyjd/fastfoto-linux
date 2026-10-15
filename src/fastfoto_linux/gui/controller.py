@@ -83,7 +83,7 @@ class WorkerPort(Protocol):
     """What the controller asks of the worker."""
 
     def check(self) -> None: ...
-    def scan(self, form: ScanForm) -> None: ...
+    def scan(self, form: ScanForm, *, checked: bool = False) -> None: ...
     def process_kept(self, kept: SessionResult) -> None: ...
     def cancel(self) -> None: ...
 
@@ -114,7 +114,9 @@ class Controller:
         self._close_requested = False
         self._scan_folder: str | None = None
         self._disk_errors: dict[str, str] = {}
-        self._set_form(form or ScanForm(), disk=True)
+        self._disk_pending: DiskKey | None = None  # the folder check we are waiting for
+        self._scan_when_checked = False  # ... and it is the one that starts a scan
+        self._set_form(form or ScanForm(), disk=disk_check is None)
 
     # -- what the page shows -------------------------------------------------------------
 
@@ -158,7 +160,8 @@ class Controller:
 
     @property
     def busy(self) -> bool:
-        return is_busy(self._state)
+        """True while a job runs, or while the folder is looked at before a scan starts."""
+        return is_busy(self._state) or self._scan_when_checked
 
     @property
     def running(self) -> bool:
@@ -172,11 +175,18 @@ class Controller:
 
     @property
     def can_scan(self) -> bool:
-        return self._state in _SCANNABLE and self._scanner_ready and not self.errors
+        return (
+            self._state in _SCANNABLE
+            and self._scanner_ready
+            and not self.errors
+            and self._disk_pending is None
+        )
 
     @property
     def scan_blocker(self) -> str:
         """Why Scan is disabled, in words for the user; empty when it is enabled or a job runs."""
+        if self._disk_pending is not None and not is_busy(self._state):
+            return CHECKING_DISK_TEXT
         if self.busy or self.can_scan:
             return ""
         errors = self.errors
@@ -238,11 +248,19 @@ class Controller:
         keep = {} if name in _DISK_FIELDS else self._disk_errors
         self._set_form(update_field(self._form, name, value), disk=False)
         self._disk_errors = keep
+        if name in _DISK_FIELDS:
+            self._forget_disk_check()  # what it will say is about the text before this edit
         self._changed()
 
     def check_disk(self) -> None:
-        """Look at the disk for the output folder and album, once the user is done editing."""
-        self._disk_errors = validate_filesystem(self._form)
+        """Look at the disk for the output folder and album, once the user is done editing.
+
+        With a ``disk_check`` runner the page does not wait: the answer comes to ``on_disk``.
+        """
+        if self._disk_check is None:
+            self._disk_errors = validate_filesystem(self._form)
+        else:
+            self._read_disk(self._disk_check, then_scan=self._scan_when_checked)
         self._changed()
 
     def check_scanner(self) -> None:
@@ -259,13 +277,21 @@ class Controller:
     def start_scan(self) -> None:
         if not self.can_scan:
             raise ActionBlockedError(f"cannot start a scan now: {self._why_not_scan()}")
-        self._disk_errors = validate_filesystem(self._form)  # the disk may have changed since
+        if self._disk_check is None:
+            self._disk_errors = validate_filesystem(self._form)  # the disk may have changed since
+            self._launch_scan()
+        else:
+            self._read_disk(self._disk_check, then_scan=True)  # the scan starts at ``on_disk``
+            self._changed()
+
+    def _launch_scan(self) -> None:
+        """The scan, once the disk has been looked at again for it."""
         if self.errors:
             self._refuse("; ".join(self.errors.values()))
             return
         self._remember_form()
         try:
-            self._worker.scan(self._form)
+            self._worker.scan(self._form, checked=True)
         except FormInvalidError as error:  # it looked again and the form had gone bad
             self._disk_errors = {**self._disk_errors, **error.errors}
             self._refuse("; ".join(error.errors.values()))
@@ -343,7 +369,16 @@ class Controller:
         self._changed()
 
     def on_disk(self, key: DiskKey, errors: dict[str, str]) -> None:
-        raise NotImplementedError
+        """What the disk said about the folder and album ``key`` stands for."""
+        if key != self._disk_pending:
+            return self._drop("folder check")
+        self._disk_pending = None
+        self._disk_errors = errors
+        if self._scan_when_checked:
+            self._scan_when_checked = False
+            self._launch_scan()
+        else:
+            self._changed()
 
     def on_stage(self, stage: Stage) -> None:
         if stage is Stage.PROCESSING and self._state is State.SCANNING:
@@ -396,6 +431,17 @@ class Controller:
         self._syntax_errors = validate_syntax(form)
         self._disk_errors = validate_filesystem(form) if disk else {}
         self._destination = destination(form)
+
+    def _read_disk(self, check: DiskCheck, *, then_scan: bool) -> None:
+        self._disk_pending, self._scan_when_checked = disk_key(self._form), then_scan
+        try:
+            check(self._form)
+        except Exception:
+            self._forget_disk_check()
+            raise
+
+    def _forget_disk_check(self) -> None:
+        self._disk_pending, self._scan_when_checked = None, False
 
     def _refuse(self, why: str, *, what: str = "The scan did not start") -> None:
         """Something that did not start: say why, and keep the page as it was."""

@@ -1,6 +1,9 @@
 """The object QML talks to: the controller's properties and slots, on the GUI thread."""
 
+import functools
+import html
 import logging
+from collections.abc import Callable
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -8,7 +11,7 @@ from typing import Any
 from PySide6.QtCore import Property, QObject, Qt, QUrl, Signal, Slot
 
 from fastfoto_linux.gui.controller import Controller
-from fastfoto_linux.gui.form import BACK_CHOICES, FEED_CHOICES, ScanForm
+from fastfoto_linux.gui.form import BACK_CHOICES, FEED_CHOICES, ScanForm, absolute_folder
 from fastfoto_linux.gui.prefs import load_form, save_form
 from fastfoto_linux.gui.qt.photos_model import PhotosModel, file_url
 from fastfoto_linux.gui.worker import DiscoverFn, ProcessFn, SessionFn, Worker
@@ -16,7 +19,38 @@ from fastfoto_linux.scanner import SUPPORTED_DPI
 
 logger = logging.getLogger(__name__)
 
-JOIN_TIMEOUT = 30.0  # seconds to wait for a cancelled job to wind down on shutdown
+SHUTDOWN_WAIT = 10.0  # seconds to wait for a cancelled job to wind down on shutdown
+
+
+def rich_text(text: str) -> str:
+    """``text`` for a Kirigami message, which shows what looks like markup as markup.
+
+    InlineMessage has no ``textFormat``; its label guesses (AutoText). Escaping the text and
+    wrapping it in a tag makes the guess "rich text", in which the escapes show the text as it is.
+    """
+    return f"<span>{html.escape(text, quote=False)}</span>" if text else ""
+
+
+def _guarded[**P, R](default: R) -> Callable[[Callable[P, R]], Callable[P, R]]:
+    """A slot that never raises: QML would print the traceback and leave the page looking dead.
+
+    Anything unexpected becomes the FAILED state with a banner (and the job is told to stop),
+    so a page cannot stay stuck in SCANNING or CANCELLING.
+    """
+
+    def decorate(method: Callable[P, R]) -> Callable[P, R]:
+        @functools.wraps(method)
+        def guarded(*args: P.args, **kwargs: P.kwargs) -> R:
+            bridge: Any = args[0]
+            try:
+                return method(*args, **kwargs)
+            except Exception as error:
+                bridge._fail(error)
+                return default
+
+        return guarded
+
+    return decorate
 
 
 class Bridge(QObject):
@@ -50,31 +84,48 @@ class Bridge(QObject):
             on_change=self._on_change,
         )
         self._close_signalled = False
+        self._closed = False
         self._event.connect(self._dispatch, Qt.ConnectionType.QueuedConnection)
 
     # -- the worker's sink (called on the worker's thread) ----------------------------------
 
     def on_scanner(self, error: Exception | None) -> None:
-        self._event.emit("on_scanner", error)
+        self._send("on_scanner", error)
 
     def on_stage(self, stage: object) -> None:
-        self._event.emit("on_stage", stage)
+        self._send("on_stage", stage)
 
     def on_page(self, number: int) -> None:
-        self._event.emit("on_page", number)
+        self._send("on_page", number)
 
     def on_photo(self, files: object) -> None:
-        self._event.emit("on_photo", files)
+        self._send("on_photo", files)
 
     def on_finished(self, result: object) -> None:
-        self._event.emit("on_finished", result)
+        self._send("on_finished", result)
 
     def on_error(self, error: Exception) -> None:
-        self._event.emit("on_error", error)
+        self._send("on_error", error)
+
+    def _send(self, name: str, payload: object) -> None:
+        """Hand an event to the GUI thread, unless the window is gone (the job may outlive it)."""
+        if self._closed:
+            return
+        try:
+            self._event.emit(name, payload)
+        except RuntimeError:  # the Qt object was deleted under a worker still reporting
+            self._closed = True
 
     @Slot(str, object)
+    @_guarded(None)
     def _dispatch(self, name: str, payload: Any) -> None:
         getattr(self.controller, name)(payload)
+
+    def _fail(self, error: Exception) -> None:
+        try:
+            self.controller.fail(error)
+        except Exception:
+            logger.exception("could not show the error %r", error)
 
     def _on_change(self) -> None:
         self._photos.set_items(self.controller.photos)
@@ -147,6 +198,21 @@ class Bridge(QObject):
         banner = self.controller.banner
         return "" if banner is None else banner.text
 
+    @Property(str, notify=changed)
+    def bannerHtml(self) -> str:
+        """``bannerText`` made safe for Kirigami's InlineMessage (see ``rich_text``)."""
+        return rich_text(self.bannerText)
+
+    @Property(str, notify=changed)
+    def keptHtml(self) -> str:
+        """What the offer to process the pages a cancel kept says (empty when there is none)."""
+        return rich_text(self.controller.kept_text)
+
+    @Property(str, notify=changed)
+    def whyNotScan(self) -> str:
+        """Why the Scan button is disabled, in words; empty when it is enabled."""
+        return self.controller.scan_blocker
+
     @Property(int, notify=changed)
     def photoCount(self) -> int:
         return len(self.controller.photos)
@@ -156,7 +222,8 @@ class Bridge(QObject):
         """The folder "Open folder" opens: where the photos went, else the output folder."""
         folder = self.controller.results_folder
         if folder is None and "output_folder" not in self.controller.errors:
-            folder = Path(self.controller.form.output_folder.strip()).expanduser()
+            typed = absolute_folder(self.controller.form.output_folder)
+            folder = Path(typed) if typed else None
         return file_url(folder)
 
     @Property(QObject, constant=True)
@@ -178,30 +245,44 @@ class Bridge(QObject):
     # -- what QML does ----------------------------------------------------------------------
 
     @Slot(str, "QVariant")
+    @_guarded(None)
     def setField(self, name: str, value: Any) -> None:
         self.controller.set_field(name, value)
 
+    @Slot()
+    @_guarded(None)
+    def checkDisk(self) -> None:
+        """The user left the folder or album field: look at the disk now."""
+        self.controller.check_disk()
+
     @Slot(QUrl)
+    @_guarded(None)
     def setOutputFolderUrl(self, url: QUrl) -> None:
         self.controller.set_field("output_folder", url.toLocalFile())
+        self.controller.check_disk()
 
     @Slot()
+    @_guarded(None)
     def checkScanner(self) -> None:
         self.controller.check_scanner()
 
     @Slot()
+    @_guarded(None)
     def startScan(self) -> None:
         self.controller.start_scan()
 
     @Slot()
+    @_guarded(None)
     def cancel(self) -> None:
         self.controller.cancel()
 
     @Slot()
+    @_guarded(None)
     def processKept(self) -> None:
         self.controller.process_kept()
 
     @Slot(result=bool)
+    @_guarded(True)
     def requestClose(self) -> bool:
         """True when the window may close now; otherwise a cancel is under way (closeReady)."""
         self._close_signalled = False
@@ -217,6 +298,10 @@ class Bridge(QObject):
             logger.warning("could not remember the settings: %s", error)
 
     def shutdown(self) -> None:
-        """Stop the running job, if any, and wait for it before the app goes away."""
+        """Stop the running job, if any, and wait for it (a while) before the app goes away.
+
+        From here on the bridge ignores what the job reports: the window is going.
+        """
+        self._closed = True
         self._worker.cancel()
-        self._worker.join(JOIN_TIMEOUT)
+        self._worker.join(SHUTDOWN_WAIT)

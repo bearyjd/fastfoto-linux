@@ -29,8 +29,10 @@ _TRANSITIONS: Mapping[State, frozenset[State]] = MappingProxyType(
     {
         State.IDLE: frozenset({State.CHECKING}),
         State.CHECKING: frozenset({State.READY, State.NO_SCANNER}),
-        State.READY: frozenset({State.CHECKING, State.SCANNING}),
-        State.NO_SCANNER: frozenset({State.CHECKING}),
+        # The pages a cancelled scan kept can be processed once the scanner has been checked
+        # again, and processing needs no scanner.
+        State.READY: frozenset({State.CHECKING, State.SCANNING, State.PROCESSING}),
+        State.NO_SCANNER: frozenset({State.CHECKING, State.PROCESSING}),
         State.SCANNING: frozenset(
             {State.PROCESSING, State.CANCELLING, State.FAILED, State.CANCELLED, State.NO_SCANNER}
         ),

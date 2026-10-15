@@ -10,7 +10,13 @@ from dataclasses import fields
 from pathlib import Path
 from typing import Any
 
-from fastfoto_linux.gui.form import BACK_CHOICES, FEED_CHOICES, FIELD_NAMES, ScanForm
+from fastfoto_linux.gui.form import (
+    BACK_CHOICES,
+    FEED_CHOICES,
+    FIELD_NAMES,
+    ScanForm,
+    absolute_folder,
+)
 from fastfoto_linux.scanner import SUPPORTED_DPI
 
 logger = logging.getLogger(__name__)
@@ -24,9 +30,15 @@ _TYPES = {field.name: field.type for field in fields(ScanForm)}
 
 
 def prefs_path(env: Mapping[str, str] = os.environ) -> Path:
-    """``$XDG_CONFIG_HOME/fastfoto-linux/gui.json`` (``~/.config`` when it is unset)."""
-    base = env.get("XDG_CONFIG_HOME") or str(Path(env.get("HOME") or Path.home()) / ".config")
-    return Path(base) / PREFS_DIR / PREFS_FILE
+    """``$XDG_CONFIG_HOME/fastfoto-linux/gui.json`` (``~/.config`` when it is unset or relative).
+
+    The XDG specification says a base directory that is not an absolute path is invalid and
+    must be ignored.
+    """
+    configured = env.get("XDG_CONFIG_HOME") or ""
+    if configured and Path(configured).is_absolute():
+        return Path(configured) / PREFS_DIR / PREFS_FILE
+    return Path(env.get("HOME") or Path.home()) / ".config" / PREFS_DIR / PREFS_FILE
 
 
 def load_form(path: Path | None = None) -> ScanForm:
@@ -64,6 +76,9 @@ def save_form(form: ScanForm, path: Path | None = None) -> None:
     path = prefs_path() if path is None else path
     path.parent.mkdir(parents=True, exist_ok=True)
     data = {name: getattr(form, name) for name in REMEMBERED}
+    data["output_folder"] = absolute_folder(
+        form.output_folder
+    )  # a relative one means nothing next time
     handle, temporary = tempfile.mkstemp(dir=path.parent, prefix=".gui-", suffix=".tmp")
     try:
         with os.fdopen(handle, "w", encoding="utf-8") as stream:

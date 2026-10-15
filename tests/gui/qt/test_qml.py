@@ -12,6 +12,7 @@ require_qt()
 
 
 from PySide6.QtCore import Q_ARG, Q_RETURN_ARG, QMetaObject, QObject
+from PySide6.QtQuick import QQuickItem
 
 from fastfoto_linux.gui.form import ScanForm
 from fastfoto_linux.gui.qt.app import create_engine
@@ -317,7 +318,8 @@ def test_the_scan_button_has_its_reason_beside_it(make_bridge: Any, open_window:
     bridge = make_bridge(form=ScanForm())
     window, _ = open_window(bridge)
     reason = child(window, "scanBlocker")
-    ready(bridge)  # a scanner, but no folder
+    bridge.checkScanner()
+    wait_until(lambda: bridge.state == "ready", "the scanner to be found")  # but no folder yet
     settle()
     assert child(window, "scanButton").property("enabled") is False
     assert reason.property("visible") is True
@@ -347,6 +349,24 @@ def test_the_results_grid_can_be_walked_with_the_keyboard_and_shows_where_it_is(
     assert grid.property("highlight") is not None
 
 
+def named_items(root: Any, name: str) -> list[Any]:
+    """Every item below ``root`` called ``name``, found through the visual tree."""
+    found = [root] if root.objectName() == name else []
+    for item in root.childItems():
+        found += named_items(item, name)
+    return found
+
+
+def cells_of(grid: Any) -> list[Any]:
+    """The grid's delegate items (they are not QObject children of the grid)."""
+    count = grid.property("count")
+    cells = [
+        QMetaObject.invokeMethod(grid, "itemAtIndex", Q_RETURN_ARG(QQuickItem), Q_ARG(int, row))
+        for row in range(count)
+    ]
+    return [cell for cell in cells if cell is not None]
+
+
 def test_every_photo_cell_is_the_same_size_with_or_without_a_back(
     make_bridge: Any, open_window: Any
 ) -> None:
@@ -357,16 +377,20 @@ def test_every_photo_cell_is_the_same_size_with_or_without_a_back(
     wait_until(lambda: bridge.state == "done", "the scan to finish")
     settle()
 
+    grid = child(window, "photosGrid")
+
     def laid_out() -> bool:
-        found = window.findChildren(QObject, "frontFrame")
-        return len(found) == 3 and all(frame.property("width") > 0 for frame in found)
+        cells = cells_of(grid)
+        frames = [f for cell in cells for f in named_items(cell, "frontFrame")]
+        return len(frames) == 3 and all(frame.property("width") > 0 for frame in frames)
 
     wait_until(laid_out, "the three cells")
-    frames = window.findChildren(QObject, "frontFrame")
+    cells = cells_of(grid)
+    frames = [f for cell in cells for f in named_items(cell, "frontFrame")]
     assert len({(f.property("width"), f.property("height")) for f in frames}) == 1
-    images = window.findChildren(QObject, "frontImage")
-    assert {int(image.property("fillMode")) for image in images} == {1}  # PreserveAspectFit
+    images = [i for cell in cells for i in named_items(cell, "frontImage")]
     assert {image.property("width") for image in images} == {frames[0].property("width")}
+    assert {image.property("height") for image in images} == {frames[0].property("height")}
 
 
 def rendered_text(banner: QObject) -> str:

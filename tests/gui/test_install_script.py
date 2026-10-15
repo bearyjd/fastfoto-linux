@@ -297,7 +297,15 @@ def test_the_hashed_requirements_are_what_the_lock_file_says() -> None:
     uv = shutil.which("uv")
     if uv is None:
         pytest.skip("uv is not installed")
-    command = [uv, "export", "--locked", "--no-dev", "--no-emit-project", "--hashes"]
+    command = [
+        uv,
+        "export",
+        "--locked",
+        "--no-dev",
+        "--no-emit-project",
+        "--hashes",
+        "--no-annotate",
+    ]
     exported = subprocess.run(
         [*command, "--no-header", "--quiet"], cwd=ROOT, capture_output=True, text=True, check=False
     )
@@ -383,7 +391,9 @@ def test_a_relative_xdg_data_home_is_ignored(
 def exec_arguments(value: str) -> list[str]:
     """The arguments the Desktop Entry spec reads out of an Exec value."""
     text = re.sub(
-        r"\\(.)", lambda m: {"s": " ", "n": "\n", "t": "\t", "r": "\r"}.get(m[1], m[1]), value
+        r"\\(.)",
+        lambda m: {"s": " ", "n": "\n", "t": "\t", "r": "\r", "\\": "\\"}.get(m[1], m[0]),
+        value,
     )
     arguments, current, quoted, started = [], "", False, False
     characters = iter(text)

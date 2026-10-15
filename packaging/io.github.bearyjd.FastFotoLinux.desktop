@@ -3,6 +3,7 @@ Type=Application
 Name=FastFoto Linux
 GenericName=Photo scanner
 Comment=Scan photos with the Epson FastFoto FF-680W
+TryExec=fastfoto
 Exec=fastfoto
 Icon=io.github.bearyjd.FastFotoLinux
 Terminal=false

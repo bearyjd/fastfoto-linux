@@ -68,17 +68,28 @@ def _sentence(text: str) -> str:
 
 
 def error_banner(
-    error: BaseException, raw_dir: Path | None = None, reason: RawReason | None = None
+    error: BaseException,
+    raw_dir: Path | None = None,
+    reason: RawReason | None = None,
+    *,
+    process_hint: bool = False,
 ) -> Banner:
-    """The error banner: what went wrong, and where the raw pages are and why."""
+    """The error banner: what went wrong, and where the raw pages are and why.
+
+    ``process_hint`` adds how to process those pages later: not offered as a button, because
+    processing that failed part-way has already written some photos and would write them twice.
+    """
     reason_note = _raw_note(raw_dir, reason)
-    return Banner("error", f"The scan failed. {_sentence(error_text(error))}{reason_note}")
+    hint = " To process them later, run `ffscan process` on those pages." if process_hint else ""
+    return Banner("error", f"The scan failed. {_sentence(error_text(error))}{reason_note}{hint}")
 
 
 def result_banner(state: State, result: SessionResult) -> Banner | None:
     """The message a finished session needs, None when it ended cleanly with nothing to say."""
     if state is State.FAILED and result.error is not None:
-        return error_banner(result.error, result.raw_dir, result.raw_reason)
+        return error_banner(
+            result.error, result.raw_dir, result.raw_reason, process_hint=bool(result.kept_pages)
+        )
     if state is State.CANCELLED:
         return _cancelled(result)
     if state is State.DONE and result.process is not None:
@@ -86,19 +97,21 @@ def result_banner(state: State, result: SessionResult) -> Banner | None:
     return None
 
 
-def _cancelled(result: SessionResult) -> Banner:
+def kept_text(result: SessionResult) -> str:
+    """ "N pages were scanned before you cancelled — kept in <folder>"; what the offer says."""
     kept = len(result.kept_pages)
+    verb = "was" if kept == 1 else "were"
+    return f"{_count(kept, 'page')} {verb} scanned before you cancelled — kept in {result.raw_dir}"
+
+
+def _cancelled(result: SessionResult) -> Banner:
     if result.process is not None:
         saved = result.process.photos
         verb = "was" if saved == 1 else "were"
         text = f"Cancelled. {_count(saved, 'photo')} {verb} saved.{_raw_note(result.raw_dir, None)}"
         return Banner("info", text)
-    if kept:
-        verb = "was" if kept == 1 else "were"
-        text = (
-            f"{_count(kept, 'page')} {verb} scanned before you cancelled — kept in {result.raw_dir}"
-        )
-        return Banner("info", text)
+    if result.kept_pages:
+        return Banner("info", kept_text(result))
     return Banner("info", "Cancelled. Nothing was scanned.")
 
 

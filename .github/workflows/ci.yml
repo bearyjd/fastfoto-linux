@@ -26,6 +26,8 @@ jobs:
       - run: uv sync --locked --only-dev --python 3.13
       - run: uv run --no-sync ruff check .
       - run: uv run --no-sync ruff format --check .
+      - name: The desktop installer's hashed requirements match uv.lock
+        run: uv export --locked --no-dev --no-emit-project --hashes --no-header --no-annotate --quiet | diff - packaging/requirements-desktop.txt
 
   test:
     runs-on: ubuntu-latest
@@ -52,8 +54,8 @@ jobs:
           grep -q 'dist-info/licenses/.*LICENSE-YuNet' "$RUNNER_TEMP/wheel-files.txt"
       - name: Wheel ships the QML and the fastfoto launcher
         run: |
-          for name in Main ScanPage FormPanel ResultsView; do
-            grep -q "fastfoto_linux/gui/qml/$name\.qml" "$RUNNER_TEMP/wheel-files.txt"
+          for qml in src/fastfoto_linux/gui/qml/*.qml; do
+            grep -q "fastfoto_linux/gui/qml/$(basename "$qml")" "$RUNNER_TEMP/wheel-files.txt"
           done
           python3 -m zipfile -e "$RUNNER_TEMP"/wheel/*.whl "$RUNNER_TEMP/unpacked"
           grep -q 'fastfoto = fastfoto_linux.gui.qt.app:main' "$RUNNER_TEMP"/unpacked/*.dist-info/entry_points.txt
@@ -66,7 +68,9 @@ jobs:
     name: gui (fedora)
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    container: fedora:44
+    # fedora:44 on Docker Hub, pinned by digest so that a changed image cannot change this job;
+    # to update, look up the new digest of the tag (skopeo inspect docker://fedora:44) and edit here.
+    container: fedora:44@sha256:43b29f65a41eb9c35e1cd5323e3bdf3b655c2357a9f4f1ff2f9c2798e5045d80
     env:
       QT_QPA_PLATFORM: offscreen
       QT_QUICK_BACKEND: software

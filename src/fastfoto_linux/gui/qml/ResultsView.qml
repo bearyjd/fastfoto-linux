@@ -27,7 +27,7 @@ ColumnLayout {
             objectName: "enhancedSwitch"
             text: qsTr("Show enhanced copies")
             checked: results.showEnhanced
-            Accessible.name: qsTr("Show the enhanced copy of each photo instead of the original")
+            Accessible.name: qsTr("Show enhanced copies")
             onToggled: results.showEnhanced = checked
         }
 
@@ -36,7 +36,7 @@ ColumnLayout {
             text: qsTr("Open folder")
             icon.name: "document-open-folder"
             enabled: bridge.outputUrl !== ""
-            Accessible.name: qsTr("Open the photos folder")
+            Accessible.name: qsTr("Open folder")
             onClicked: Qt.openUrlExternally(bridge.outputUrl)
         }
     }
@@ -55,8 +55,18 @@ ColumnLayout {
             cellWidth: Kirigami.Units.gridUnit * 13
             cellHeight: Kirigami.Units.gridUnit * 12
             activeFocusOnTab: true
+            keyNavigationEnabled: true
+            highlightFollowsCurrentItem: true
             Accessible.name: qsTr("Scanned photos")
             Accessible.role: Accessible.List
+
+            // Shows where the keyboard is, only while the grid has the focus.
+            highlight: Rectangle {
+                visible: grid.activeFocus
+                color: Kirigami.Theme.highlightColor
+                opacity: 0.25
+                radius: Kirigami.Units.smallSpacing
+            }
 
             QQC2.ScrollBar.vertical: QQC2.ScrollBar {}
 

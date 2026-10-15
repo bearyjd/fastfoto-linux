@@ -6,15 +6,25 @@ end that runs the worker on another thread hands every sink call over to that th
 
 import logging
 from collections.abc import Callable
+from dataclasses import replace
 from pathlib import Path
 from typing import Protocol
 
-from fastfoto_linux.gui.form import ScanForm, destination, update_field, validate
+from fastfoto_linux.gui.form import (
+    FormInvalidError,
+    ScanForm,
+    destination,
+    merge_errors,
+    update_field,
+    validate_filesystem,
+    validate_syntax,
+)
 from fastfoto_linux.gui.photos import PhotoItem, item_from_files
 from fastfoto_linux.gui.report import (
     Banner,
     error_banner,
     error_text,
+    kept_text,
     progress_text,
     result_banner,
 )
@@ -26,6 +36,7 @@ from fastfoto_linux.gui.state import (
     is_busy,
     transition,
 )
+from fastfoto_linux.gui.worker import WorkerBusyError
 from fastfoto_linux.output import WrittenFiles
 from fastfoto_linux.scanner import ScannerError, ScannerNotFoundError, ShimMissingError
 from fastfoto_linux.session import SessionResult, Stage
@@ -33,11 +44,13 @@ from fastfoto_linux.session import SessionResult, Stage
 logger = logging.getLogger(__name__)
 
 _SCANNABLE = frozenset({State.READY, State.DONE, State.FAILED, State.CANCELLED})
-_KEPT_OFFERED = frozenset({State.FAILED, State.CANCELLED})
 _RUNNING = (State.SCANNING, State.PROCESSING)
+_REPORTING = frozenset({State.SCANNING, State.PROCESSING, State.CANCELLING})
+_DISK_FIELDS = frozenset({"output_folder", "album"})
 NOT_CHECKED = "The scanner has not been checked yet."
 CHECKING_TEXT = "Looking for the scanner…"
 FOUND_TEXT = "Scanner found."
+NO_SCANNER_HINT = "Connect the scanner, then press Check again."
 
 
 class WorkerPort(Protocol):
@@ -71,7 +84,8 @@ class Controller:
         self._banner: Banner | None = None
         self._result: SessionResult | None = None
         self._close_requested = False
-        self._set_form(form or ScanForm())
+        self._disk_errors: dict[str, str] = {}
+        self._set_form(form or ScanForm(), disk=True)
 
     # -- what the page shows -------------------------------------------------------------
 
@@ -85,7 +99,8 @@ class Controller:
 
     @property
     def errors(self) -> dict[str, str]:
-        return dict(self._errors)
+        """A message per bad field: the text checked at every edit, the disk when it was read."""
+        return merge_errors(self._syntax_errors, self._disk_errors)
 
     @property
     def destination(self) -> str | None:
@@ -128,7 +143,17 @@ class Controller:
 
     @property
     def can_scan(self) -> bool:
-        return self._state in _SCANNABLE and self._scanner_ready and not self._errors
+        return self._state in _SCANNABLE and self._scanner_ready and not self.errors
+
+    @property
+    def scan_blocker(self) -> str:
+        """Why Scan is disabled, in words for the user; empty when it is enabled or a job runs."""
+        if self.busy or self.can_scan:
+            return ""
+        errors = self.errors
+        if errors:
+            return next(iter(errors.values()))
+        return "" if self._scanner_ready else NO_SCANNER_HINT
 
     @property
     def can_cancel(self) -> bool:
@@ -140,13 +165,22 @@ class Controller:
 
     @property
     def can_process_kept(self) -> bool:
+        """True while the last result is a cancelled scan whose raw pages are waiting."""
         result = self._result
         return (
-            self._state in _KEPT_OFFERED
+            not self.busy
             and result is not None
+            and result.cancelled
+            and result.error is None
             and result.process is None
             and bool(result.kept_pages)
         )
+
+    @property
+    def kept_text(self) -> str:
+        """What the offer to process the kept pages says, empty when there is no offer."""
+        result = self._result
+        return kept_text(result) if self.can_process_kept and result is not None else ""
 
     @property
     def close_ready(self) -> bool:
@@ -156,7 +190,15 @@ class Controller:
     # -- what the user does --------------------------------------------------------------
 
     def set_field(self, name: str, value: object) -> None:
-        self._set_form(update_field(self._form, name, value))
+        """Change one field. Only its text is checked: the disk is read by ``check_disk``."""
+        keep = {} if name in _DISK_FIELDS else self._disk_errors
+        self._set_form(update_field(self._form, name, value), disk=False)
+        self._disk_errors = keep
+        self._changed()
+
+    def check_disk(self) -> None:
+        """Look at the disk for the output folder and album, once the user is done editing."""
+        self._disk_errors = validate_filesystem(self._form)
         self._changed()
 
     def check_scanner(self) -> None:
@@ -169,8 +211,20 @@ class Controller:
     def start_scan(self) -> None:
         if not self.can_scan:
             raise InvalidTransitionError(f"cannot start a scan now: {self._why_not_scan()}")
+        self._disk_errors = validate_filesystem(self._form)  # the disk may have changed since
+        if self.errors:
+            self._refuse("; ".join(self.errors.values()))
+            return
         self._remember_form()
-        self._worker.scan(self._form)
+        try:
+            self._worker.scan(self._form)
+        except FormInvalidError as error:  # it looked again and the form had gone bad
+            self._disk_errors = {**self._disk_errors, **error.errors}
+            self._refuse("; ".join(error.errors.values()))
+            return
+        except WorkerBusyError as error:
+            self._refuse(str(error))
+            return
         self._state = transition(self._state, State.SCANNING)
         self._pages = 0
         self._photos = ()
@@ -192,6 +246,20 @@ class Controller:
         self._worker.process_kept(kept)
         self._state = transition(self._state, State.PROCESSING)
         self._banner = None
+        # Offered once: if this fails part-way some photos are written, and a second go
+        # would write them again. The folder is still known for the error message.
+        self._result = replace(kept, kept_pages=())
+        self._changed()
+
+    def fail(self, error: BaseException) -> None:
+        """An unexpected error in the page itself: show it, stop any job, leave a usable state."""
+        logger.error("the scan page failed: %s", error, exc_info=error)
+        try:
+            self._worker.cancel()
+        except Exception:
+            logger.exception("could not stop the job after the page failed")
+        self._banner = error_banner(error)
+        self._state = State.FAILED
         self._changed()
 
     def request_close(self) -> bool:
@@ -219,14 +287,20 @@ class Controller:
             self._changed()
 
     def on_page(self, number: int) -> None:
+        if self._state not in _REPORTING:
+            return self._drop("page")
         self._pages = number
         self._changed()
 
     def on_photo(self, files: WrittenFiles) -> None:
+        if self._state not in _REPORTING:
+            return self._drop("photo")
         self._photos = (*self._photos, item_from_files(files))
         self._changed()
 
     def on_finished(self, result: SessionResult) -> None:
+        if self._state not in _REPORTING:
+            return self._drop("result")
         final = final_state(result)
         self._state = transition(self._state, final)
         self._result = result
@@ -236,6 +310,8 @@ class Controller:
         self._changed()
 
     def on_error(self, error: Exception) -> None:
+        if self._state not in (State.CHECKING, *_REPORTING):
+            return self._drop("error")
         lost = isinstance(error, ScannerNotFoundError | ShimMissingError)
         if self._state is State.CHECKING or (lost and self._state is State.SCANNING):
             self._set_scanner(error)
@@ -243,24 +319,35 @@ class Controller:
         else:
             if isinstance(error, ScannerError):
                 self._set_scanner(error)
-            self._banner = error_banner(error)
+            kept = self._result
+            raw = (kept.raw_dir, kept.raw_reason) if kept is not None else (None, None)
+            self._banner = error_banner(error, *raw)
             self._state = transition(self._state, State.FAILED)
         self._changed()
 
     # -- helpers -------------------------------------------------------------------------
 
-    def _set_form(self, form: ScanForm) -> None:
+    def _set_form(self, form: ScanForm, *, disk: bool) -> None:
         self._form = form
-        self._errors = validate(form)
+        self._syntax_errors = validate_syntax(form)
+        self._disk_errors = validate_filesystem(form) if disk else {}
         self._destination = destination(form)
+
+    def _refuse(self, why: str) -> None:
+        """A scan that did not start: say why, and keep the page as it was."""
+        self._banner = Banner("error", f"The scan did not start: {why.rstrip('.')}.")
+        self._changed()
+
+    def _drop(self, what: str) -> None:
+        logger.debug("ignoring a late %s while %s", what, self._state.value)
 
     def _set_scanner(self, error: Exception | None) -> None:
         self._scanner_ready = error is None
         self._scanner_message = FOUND_TEXT if error is None else error_text(error)
 
     def _why_not_scan(self) -> str:
-        if self._errors:
-            return f"the form has errors in {', '.join(self._errors)}"
+        if self.errors:
+            return f"the form has errors in {', '.join(self.errors)}"
         if not self._scanner_ready:
             return "no scanner has been found"
         return f"the page is {self._state.value}"

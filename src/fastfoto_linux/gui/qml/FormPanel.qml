@@ -31,8 +31,9 @@ QQC2.ScrollView {
                 text: bridge.form.output_folder
                 placeholderText: qsTr("Choose a folder")
                 enabled: panel.editable
-                Accessible.name: qsTr("Output folder")
+                Accessible.name: qsTr("Save photos in")
                 onTextEdited: bridge.setField("output_folder", text)
+                onEditingFinished: bridge.checkDisk()
             }
 
             QQC2.Button {
@@ -40,7 +41,7 @@ QQC2.ScrollView {
                 icon.name: "folder-open"
                 text: qsTr("Choose…")
                 enabled: panel.editable
-                Accessible.name: qsTr("Choose the output folder")
+                Accessible.name: qsTr("Choose…")
                 onClicked: folderDialog.open()
             }
         }
@@ -50,6 +51,7 @@ QQC2.ScrollView {
             Layout.fillWidth: true
             visible: bridge.form.output_folder !== "" && panel.error("output_folder") !== ""
             text: panel.error("output_folder")
+            textFormat: Text.PlainText
             wrapMode: Text.WordWrap
             color: Kirigami.Theme.negativeTextColor
         }
@@ -62,8 +64,9 @@ QQC2.ScrollView {
             text: bridge.form.album
             placeholderText: qsTr("Optional, becomes a folder")
             enabled: panel.editable
-            Accessible.name: qsTr("Album name")
+            Accessible.name: qsTr("Album")
             onTextEdited: bridge.setField("album", text)
+            onEditingFinished: bridge.checkDisk()
         }
 
         QQC2.Label {
@@ -71,6 +74,7 @@ QQC2.ScrollView {
             Layout.fillWidth: true
             visible: panel.error("album") !== ""
             text: panel.error("album")
+            textFormat: Text.PlainText
             wrapMode: Text.WordWrap
             color: Kirigami.Theme.negativeTextColor
         }
@@ -82,6 +86,7 @@ QQC2.ScrollView {
             Layout.minimumWidth: 0
             visible: bridge.destination !== ""
             text: qsTr("Saved as %1").arg(bridge.destination)
+            textFormat: Text.PlainText
             elide: Text.ElideMiddle
             color: Kirigami.Theme.disabledTextColor
             font: Kirigami.Theme.smallFont
@@ -95,7 +100,7 @@ QQC2.ScrollView {
             text: bridge.form.date
             placeholderText: qsTr("1975, 1975-06 or 1970/1979")
             enabled: panel.editable
-            Accessible.name: qsTr("Date of the photos")
+            Accessible.name: qsTr("Date")
             onTextEdited: bridge.setField("date", text)
         }
 
@@ -104,6 +109,7 @@ QQC2.ScrollView {
             Layout.fillWidth: true
             visible: panel.error("date") !== ""
             text: panel.error("date")
+            textFormat: Text.PlainText
             wrapMode: Text.WordWrap
             color: Kirigami.Theme.negativeTextColor
         }
@@ -116,7 +122,7 @@ QQC2.ScrollView {
             text: bridge.form.notes
             placeholderText: qsTr("Stored in every photo")
             enabled: panel.editable
-            Accessible.name: qsTr("Notes for every photo")
+            Accessible.name: qsTr("Notes")
             onTextEdited: bridge.setField("notes", text)
         }
 
@@ -144,7 +150,7 @@ QQC2.ScrollView {
             valueRole: "value"
             currentIndex: Math.max(0, indexOfValue(bridge.form.feed))
             enabled: panel.editable
-            Accessible.name: qsTr("How the photos are loaded")
+            Accessible.name: qsTr("Loaded")
             onActivated: bridge.setField("feed", currentValue)
         }
 
@@ -171,7 +177,7 @@ QQC2.ScrollView {
             valueRole: "value"
             currentIndex: Math.max(0, indexOfValue(bridge.form.backs))
             enabled: panel.editable
-            Accessible.name: qsTr("Which photo backs to keep")
+            Accessible.name: qsTr("Keep backs")
             onActivated: bridge.setField("backs", currentValue)
         }
 
@@ -184,7 +190,7 @@ QQC2.ScrollView {
             displayText: qsTr("%1 dpi").arg(currentText)
             currentIndex: Math.max(0, bridge.dpiChoices.indexOf(bridge.form.dpi))
             enabled: panel.editable
-            Accessible.name: qsTr("Scan resolution in dots per inch")
+            Accessible.name: qsTr("Resolution")
             onActivated: bridge.setField("dpi", currentValue)
         }
 
@@ -198,7 +204,7 @@ QQC2.ScrollView {
             text: qsTr("Turn upright by faces")
             checked: bridge.form.orient
             enabled: panel.editable
-            Accessible.name: qsTr("Turn photos upright")
+            Accessible.name: qsTr("Turn upright by faces")
             onToggled: bridge.setField("orient", checked)
         }
 
@@ -215,11 +221,21 @@ QQC2.ScrollView {
             objectName: "redeyeBox"
             text: qsTr("Remove red eyes (experimental)")
             checked: bridge.form.redeye
-            QQC2.ToolTip.visible: hovered
-            QQC2.ToolTip.text: qsTr("Off by default: about 1 fix in 6 is visibly wrong.")
             enabled: panel.editable
-            Accessible.name: qsTr("Remove red eyes")
+            Accessible.name: qsTr("Remove red eyes (experimental)")
             onToggled: bridge.setField("redeye", checked)
+        }
+
+        QQC2.Label {
+            objectName: "redeyeWarning"
+            Layout.fillWidth: true
+            Layout.preferredWidth: Kirigami.Units.gridUnit * 16
+            Layout.minimumWidth: 0
+            text: qsTr("Experimental: about 1 fix in 6 is visibly wrong, so it is off by default.")
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+            color: Kirigami.Theme.disabledTextColor
+            font: Kirigami.Theme.smallFont
         }
 
         QQC2.CheckBox {
@@ -227,7 +243,7 @@ QQC2.ScrollView {
             text: qsTr("Keep the plain original too")
             checked: bridge.form.keep_original
             enabled: panel.editable
-            Accessible.name: qsTr("Keep the plain original next to the enhanced copy")
+            Accessible.name: qsTr("Keep the plain original too")
             onToggled: bridge.setField("keep_original", checked)
         }
     }

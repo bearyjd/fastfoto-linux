@@ -66,9 +66,12 @@ tools/install-desktop.sh                          # install; run it again to upd
 tools/install-desktop.sh --uninstall              # remove it again
 ```
 
-The installer creates a virtual environment that can see the system PySide6, builds the USB gap
-shim (`make` and `gcc` are needed) into `~/.local/lib/fastfoto-linux/`, adds an application menu
-entry and icon, and links `fastfoto` and `ffscan` into `~/.local/bin`. PySide6 is not a pip
+The installer creates a virtual environment that can see the system PySide6 and installs the
+dependencies into it from `packaging/requirements-desktop.txt`, which pins every package by hash
+(it is generated from `uv.lock`). It builds the USB gap shim (`make` and `gcc` are needed) into
+`~/.local/lib/fastfoto-linux/` (a folder only you can use), adds an application menu entry and
+icon, and links `fastfoto` and `ffscan` into `~/.local/bin`. What it installed is listed in
+`~/.local/share/fastfoto-linux/installed.txt`; `--uninstall` removes only that. PySide6 is not a pip
 dependency on purpose: the PyPI wheel bundles its own Qt and cannot load the system Kirigami
 plugin. Without PySide6 and Kirigami, `fastfoto` says what to install and exits with status 3.
 

@@ -96,8 +96,8 @@ def test_a_second_signal_while_waiting_does_not_start_a_second_cancel(
 ) -> None:
     bridge = started(make_bridge, out)
     cancels: list[int] = []
-    original = bridge.cancel
-    bridge.cancel = lambda: (cancels.append(1), original())[1]  # type: ignore[method-assign]
+    original = bridge.controller.cancel
+    bridge.controller.cancel = lambda: (cancels.append(1), original())[1]  # type: ignore[method-assign]
     quit_when: list[str] = []
     handlers(bridge, lambda: quit_when.append(bridge.state))
     os.kill(os.getpid(), signal.SIGTERM)

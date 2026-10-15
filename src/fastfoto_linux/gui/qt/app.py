@@ -2,6 +2,8 @@
 
 import logging
 import os
+import signal
+import socket
 import sys
 from collections.abc import Callable
 from importlib.resources import files
@@ -11,6 +13,9 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 EXIT_MISSING_QT = 3
+STOP_SIGNALS = (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)  # kill, Ctrl+C, logout
+SIGNAL_SETTLE_SECONDS = 10.0  # how long a signalled app waits for the scan to stop
+SIGNAL_READ_BYTES = 4096
 APP_ID = "io.github.bearyjd.FastFotoLinux"
 APP_NAME = "fastfoto-linux"
 DISPLAY_NAME = "FastFoto Linux"
@@ -106,9 +111,58 @@ def main(run_loop: Callable[[], int] | None = None) -> int:
     return _run(run_loop or app.exec)
 
 
-def handle_signals(bridge: Any, quit_: Callable[[], None], *, settle_timeout: float = 10.0):
-    """Stub (red commit): stop a running scan cleanly on SIGTERM, SIGINT and SIGHUP."""
-    raise NotImplementedError
+def handle_signals(
+    bridge: Any, quit_: Callable[[], None], *, settle_timeout: float = SIGNAL_SETTLE_SECONDS
+) -> Callable[[], None]:
+    """Stop cleanly on SIGTERM, SIGINT and SIGHUP: cancel a running scan, wait, then ``quit_``.
+
+    Without this a logout or ``kill`` ends the app in the middle of a scan, leaving scanimage
+    running and the raw pages unsettled. Python only runs a signal handler when Python code is
+    running, which a Qt event loop waiting for input never is, so the signal also writes a byte
+    to a socket that a ``QSocketNotifier`` watches. The wait for the scan to settle is bounded
+    by ``settle_timeout``. Returns the function that puts the previous handlers back.
+    """
+    from PySide6.QtCore import QSocketNotifier, QTimer  # noqa: PLC0415
+
+    reader, writer = socket.socketpair()
+    reader.setblocking(False)
+    writer.setblocking(False)
+    previous = {number: signal.signal(number, lambda *_: None) for number in STOP_SIGNALS}
+    old_fd = signal.set_wakeup_fd(writer.fileno(), warn_on_full_buffer=False)
+    notifier = QSocketNotifier(reader.fileno(), QSocketNotifier.Type.Read)
+    state = {"stopping": False, "quit": False}
+
+    def quit_once() -> None:
+        if not state["quit"]:
+            state["quit"] = True
+            quit_()
+
+    def on_signal() -> None:
+        try:
+            reader.recv(SIGNAL_READ_BYTES)
+        except BlockingIOError:
+            return
+        if state["stopping"]:
+            return
+        state["stopping"] = True
+        if bridge.requestClose():  # nothing is running
+            quit_once()
+            return
+        bridge.closeReady.connect(quit_once)  # the cancel has settled
+        QTimer.singleShot(round(settle_timeout * 1000), quit_once)
+
+    notifier.activated.connect(on_signal)
+
+    def undo() -> None:
+        notifier.setEnabled(False)
+        notifier.deleteLater()
+        signal.set_wakeup_fd(old_fd)
+        for number, handler in previous.items():
+            signal.signal(number, handler)
+        reader.close()
+        writer.close()
+
+    return undo
 
 
 def _run(run_loop: Callable[[], int]) -> int:
@@ -119,10 +173,16 @@ def _run(run_loop: Callable[[], int]) -> int:
     if not engine.rootObjects():
         print(f"fastfoto: the window could not be loaded: {'; '.join(warnings)}", file=sys.stderr)
         return 1
+    from PySide6.QtWidgets import QApplication  # noqa: PLC0415
+
+    app = QApplication.instance()
+    undo_signals = handle_signals(bridge, app.quit)
+    app.aboutToQuit.connect(bridge.shutdown)  # a quit from anywhere stops the job first
     bridge.checkScanner()
     try:
         return run_loop()
     finally:
+        undo_signals()
         bridge.remember()
         bridge.shutdown()
         engine.deleteLater()

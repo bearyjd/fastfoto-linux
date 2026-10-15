@@ -33,7 +33,8 @@ Kirigami.Page {
                 Layout.fillWidth: true
                 type: Kirigami.MessageType.Error
                 visible: bridge.bannerKind === "error"
-                text: bridge.bannerKind === "error" ? bridge.bannerText : ""
+                // InlineMessage has no textFormat: the bridge hands it escaped text.
+                text: bridge.bannerKind === "error" ? bridge.bannerHtml : ""
             }
 
             Kirigami.InlineMessage {
@@ -41,7 +42,7 @@ Kirigami.Page {
                 Layout.fillWidth: true
                 type: Kirigami.MessageType.Information
                 visible: bridge.canProcessKept
-                text: bridge.canProcessKept ? bridge.bannerText : ""
+                text: bridge.keptHtml
             }
 
             QQC2.Button {
@@ -50,7 +51,7 @@ Kirigami.Page {
                 enabled: bridge.canProcessKept
                 icon.name: "system-run"
                 text: qsTr("Process them now")
-                Accessible.name: qsTr("Process the pages that were scanned before cancelling")
+                Accessible.name: qsTr("Process them now")
                 onClicked: bridge.processKept()
             }
 
@@ -59,7 +60,7 @@ Kirigami.Page {
                 Layout.fillWidth: true
                 type: page.messageType(bridge.bannerKind)
                 visible: bridge.bannerText !== "" && bridge.bannerKind !== "error" && !bridge.canProcessKept
-                text: visible ? bridge.bannerText : ""
+                text: visible ? bridge.bannerHtml : ""
             }
         }
 
@@ -98,7 +99,6 @@ Kirigami.Page {
                 closable: false
                 checkable: false
                 enabled: true
-                Accessible.name: qsTr("Scanner status: %1").arg(text)
             }
 
             QQC2.Button {
@@ -106,7 +106,7 @@ Kirigami.Page {
                 text: qsTr("Check again")
                 icon.name: "view-refresh"
                 enabled: bridge.canCheck
-                Accessible.name: qsTr("Check again for the scanner")
+                Accessible.name: qsTr("Check again")
                 onClicked: bridge.checkScanner()
             }
 
@@ -115,6 +115,7 @@ Kirigami.Page {
                 Layout.fillWidth: true
                 visible: !bridge.scannerOk && bridge.state !== "checking" && bridge.state !== "idle"
                 text: bridge.scannerText
+                textFormat: Text.PlainText
                 wrapMode: Text.WordWrap
                 elide: Text.ElideRight
                 maximumLineCount: 2
@@ -126,6 +127,7 @@ Kirigami.Page {
                 Layout.fillWidth: !(!bridge.scannerOk && bridge.state !== "checking" && bridge.state !== "idle")
                 visible: bridge.progressText !== ""
                 text: bridge.progressText
+                textFormat: Text.PlainText
                 horizontalAlignment: Text.AlignRight
             }
 
@@ -136,12 +138,25 @@ Kirigami.Page {
                 implicitWidth: Kirigami.Units.iconSizes.medium
             }
 
+            QQC2.Label {
+                objectName: "scanBlocker"
+                Layout.fillWidth: true
+                visible: text !== ""
+                text: bridge.whyNotScan
+                textFormat: Text.PlainText
+                wrapMode: Text.WordWrap
+                maximumLineCount: 2
+                elide: Text.ElideRight
+                horizontalAlignment: Text.AlignRight
+                color: Kirigami.Theme.disabledTextColor
+            }
+
             QQC2.Button {
                 objectName: "cancelButton"
                 text: qsTr("Cancel")
                 icon.name: "dialog-cancel"
                 enabled: bridge.canCancel
-                Accessible.name: qsTr("Cancel the scan")
+                Accessible.name: qsTr("Cancel")
                 onClicked: bridge.cancel()
             }
 
@@ -151,7 +166,7 @@ Kirigami.Page {
                 icon.name: "scanner"
                 highlighted: true
                 enabled: bridge.canScan
-                Accessible.name: qsTr("Scan the photos in the feeder")
+                Accessible.name: qsTr("Scan")
                 onClicked: bridge.startScan()
             }
         }

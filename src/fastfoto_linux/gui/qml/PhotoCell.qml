@@ -30,36 +30,52 @@ Item {
             Layout.fillHeight: true
             spacing: Kirigami.Units.smallSpacing
 
-            Image {
+            // The front always gets the same frame, and the back its own fixed room whether
+            // or not there is one, so every cell is laid out alike.
+            Item {
+                objectName: "frontFrame"
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                source: cell.pictureUrl
-                sourceSize.width: 256
-                sourceSize.height: 256
-                fillMode: Image.PreserveAspectFit
-                asynchronous: true
-            }
-
-            ColumnLayout {
-                Layout.alignment: Qt.AlignTop
-                visible: cell.hasBack
-                spacing: 0
 
                 Image {
-                    Layout.preferredWidth: Kirigami.Units.gridUnit * 4
-                    Layout.preferredHeight: Kirigami.Units.gridUnit * 4
-                    source: cell.backUrl
-                    sourceSize.width: 128
-                    sourceSize.height: 128
+                    objectName: "frontImage"
+                    anchors.fill: parent
+                    source: cell.pictureUrl
+                    sourceSize.width: 256
+                    sourceSize.height: 256
                     fillMode: Image.PreserveAspectFit
                     asynchronous: true
                 }
+            }
 
-                QQC2.Label {
-                    Layout.alignment: Qt.AlignHCenter
-                    text: qsTr("back")
-                    color: Kirigami.Theme.disabledTextColor
-                    font: Kirigami.Theme.smallFont
+            Item {
+                Layout.preferredWidth: Kirigami.Units.gridUnit * 4
+                Layout.fillHeight: true
+
+                ColumnLayout {
+                    anchors.top: parent.top
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    visible: cell.hasBack
+                    spacing: 0
+
+                    Image {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: Kirigami.Units.gridUnit * 4
+                        source: cell.backUrl
+                        sourceSize.width: 128
+                        sourceSize.height: 128
+                        fillMode: Image.PreserveAspectFit
+                        asynchronous: true
+                    }
+
+                    QQC2.Label {
+                        Layout.alignment: Qt.AlignHCenter
+                        text: qsTr("back")
+                        textFormat: Text.PlainText
+                        color: Kirigami.Theme.disabledTextColor
+                        font: Kirigami.Theme.smallFont
+                    }
                 }
             }
         }
@@ -67,6 +83,7 @@ Item {
         QQC2.Label {
             Layout.fillWidth: true
             text: cell.title
+            textFormat: Text.PlainText
             elide: Text.ElideRight
             horizontalAlignment: Text.AlignHCenter
         }

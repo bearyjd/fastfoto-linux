@@ -20,7 +20,7 @@ from fastfoto_linux.session import RawPolicy, ScanRequest
 
 FEED_CHOICES = (FEED_FACE_DOWN, FEED_FACE_UP)
 BACK_CHOICES = tuple(policy.value for policy in BackPolicy)
-FIRST_NUMBER = 1
+NUMBER_PATTERN = "####"  # the real number is only known when the photo is written
 
 
 @dataclass(frozen=True)
@@ -59,9 +59,21 @@ def _folder(form: ScanForm) -> Path:
     return Path(form.output_folder.strip()).expanduser()
 
 
-def _check_folder(form: ScanForm) -> str | None:
+def absolute_folder(text: str) -> str:
+    """The output folder as a full path (``~`` expanded), empty when it is blank or relative."""
+    path = Path(text.strip()).expanduser() if text.strip() else None
+    return str(path) if path is not None and path.is_absolute() else ""
+
+
+def _check_folder_text(form: ScanForm) -> str | None:
     if not form.output_folder.strip():
         return "Choose the folder the photos are saved in."
+    if not _folder(form).is_absolute():
+        return "Use a full path (one that starts with / or ~/), not a relative one."
+    return None
+
+
+def _check_folder_disk(form: ScanForm) -> str | None:
     folder = _folder(form)
     if not folder.exists():
         return f"The folder {folder} does not exist."
@@ -72,14 +84,23 @@ def _check_folder(form: ScanForm) -> str | None:
     return None
 
 
-def _check_album(form: ScanForm) -> str | None:
+def _check_album_text(form: ScanForm) -> str | None:
     album = form.album.strip()
     if not album:
         return None
     try:
         sanitise_album(album)
-        if _check_folder(form) is None:
-            album_dir(_folder(form), album)
+    except InvalidAlbumError as error:
+        return str(error)
+    return None
+
+
+def _check_album_disk(form: ScanForm) -> str | None:
+    album = form.album.strip()
+    if not album or _check_folder_disk(form) is not None:
+        return None
+    try:
+        album_dir(_folder(form), album)
     except InvalidAlbumError as error:
         return str(error)
     return None
@@ -105,31 +126,52 @@ def _choice(name: str, value: object, choices: tuple[object, ...]) -> str | None
     return f"Unsupported {name} {value!r}; use one of {', '.join(map(str, choices))}."
 
 
-_CHECKS: tuple[tuple[str, Callable[[ScanForm], str | None]], ...] = (
-    ("output_folder", _check_folder),
-    ("album", _check_album),
+_Check = Callable[[ScanForm], str | None]
+_SYNTAX_CHECKS: tuple[tuple[str, _Check], ...] = (
+    ("output_folder", _check_folder_text),
+    ("album", _check_album_text),
     ("date", _check_date),
     ("notes", _check_notes),
     ("feed", lambda form: _choice("feed", form.feed, FEED_CHOICES)),
     ("backs", lambda form: _choice("backs setting", form.backs, BACK_CHOICES)),
     ("dpi", lambda form: _choice("resolution", form.dpi, SUPPORTED_DPI)),
 )
+_DISK_CHECKS: tuple[tuple[str, _Check], ...] = (
+    ("output_folder", _check_folder_disk),
+    ("album", _check_album_disk),
+)
+_ORDER = tuple(name for name, _ in _SYNTAX_CHECKS)
 
 
-def validate(form: ScanForm) -> dict[str, str]:
-    """A message per bad field, empty when the form can be scanned."""
-    checked = ((name, check(form)) for name, check in _CHECKS)
-    return {name: message for name, message in checked if message is not None}
+def _run(checks: tuple[tuple[str, _Check], ...], form: ScanForm) -> dict[str, str]:
+    results = ((name, check(form)) for name, check in checks)
+    return {name: message for name, message in results if message is not None}
 
 
 def validate_syntax(form: ScanForm) -> dict[str, str]:
-    """Stub (red commit): the checks that need only the text."""
-    raise NotImplementedError
+    """A message per field whose text is wrong; looks at nothing but the form itself."""
+    return _run(_SYNTAX_CHECKS, form)
 
 
 def validate_filesystem(form: ScanForm) -> dict[str, str]:
-    """Stub (red commit): the checks that look at the disk."""
-    raise NotImplementedError
+    """A message per field the disk disagrees with (a field whose text is bad is skipped)."""
+    unreadable = validate_syntax(form).keys()
+    return _run(tuple(check for check in _DISK_CHECKS if check[0] not in unreadable), form)
+
+
+def merge_errors(*parts: dict[str, str]) -> dict[str, str]:
+    """The messages of ``parts`` in form order, the first part's message winning for a field."""
+    merged: dict[str, str] = {}
+    for name in _ORDER:
+        message = next((part[name] for part in parts if name in part), None)
+        if message is not None:
+            merged[name] = message
+    return merged
+
+
+def validate(form: ScanForm) -> dict[str, str]:
+    """A message per bad field, empty when the form can be scanned (reads the disk)."""
+    return merge_errors(validate_syntax(form), validate_filesystem(form))
 
 
 def parse_date(text: str) -> PhotoDate | DateRange | None:
@@ -145,8 +187,12 @@ def parse_date(text: str) -> PhotoDate | DateRange | None:
 
 
 def destination(form: ScanForm) -> str | None:
-    """Where the photos will go and what they will be called, None when that is not known yet."""
-    if _check_folder(form) is not None or _check_album(form) is not None:
+    """Where the photos will go and what they will be called, None when that is not known yet.
+
+    The number is shown as ``####``: which numbers are free is up to the folder, and looking
+    would read the disk on every keystroke.
+    """
+    if validate_syntax(form).keys() & {"output_folder", "album"}:
         return None
     album = form.album.strip() or None
     try:
@@ -154,7 +200,7 @@ def destination(form: ScanForm) -> str | None:
         folder = _folder(form) if album is None else _folder(form) / sanitise_album(album)
     except InvalidAlbumError:
         return None
-    return f"{folder}/{prefix}_{FIRST_NUMBER:04d}.jpg"
+    return f"{folder}/{prefix}_{NUMBER_PATTERN}.jpg"
 
 
 def update_field(form: ScanForm, name: str, value: object) -> ScanForm:

@@ -28,13 +28,15 @@ _ROLES = (
 
 
 def file_url(path: Path | None) -> str:
-    """The percent-encoded ``file:`` URL of a path, empty for none (QML shows nothing then)."""
-    return "" if path is None else bytes(QUrl.fromLocalFile(str(path)).toEncoded()).decode()
+    """The percent-encoded ``file:`` URL of a path, empty for none or for a relative one."""
+    if path is None or not path.is_absolute():
+        return ""
+    return bytes(QUrl.fromLocalFile(str(path)).toEncoded()).decode()
 
 
 def _values(item: PhotoItem) -> dict[str, object]:
     return {
-        "title": f"{item.album} {item.index}",
+        "title": item.title,
         "album": item.album,
         "number": item.index,
         "frontUrl": file_url(item.front),

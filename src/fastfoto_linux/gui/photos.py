@@ -5,6 +5,8 @@ from pathlib import Path
 
 from fastfoto_linux.output import WrittenFiles
 
+ENHANCED_SUFFIX = "_a"  # the enhanced copy is "<name>_a.jpg" beside "<name>.jpg"
+
 
 @dataclass(frozen=True)
 class PhotoItem:
@@ -20,6 +22,15 @@ class PhotoItem:
     def album(self) -> str:
         """The name of the folder the photo is in."""
         return self.directory.name
+
+    @property
+    def title(self) -> str:
+        """The photo's file name without the extension: the folder may be the output folder."""
+        if self.original is not None:
+            return self.original.stem
+        if self.enhanced is not None:
+            return self.enhanced.stem.removesuffix(ENHANCED_SUFFIX)
+        return f"Photo {self.index}"
 
     @property
     def front(self) -> Path | None:

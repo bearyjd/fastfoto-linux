@@ -181,6 +181,16 @@ def test_the_inline_messages_show_escaped_text_because_they_have_no_text_format(
         text = qml.read_text()
         for match in re.finditer(r"Kirigami\.InlineMessage\b", text):
             block = _block(text, match.end())
-            if "Html" not in block or re.search(r"bridge\.(banner|kept)Text", block):
+            raw_text = re.search(r"^\s*text:.*bridge\.(banner|kept)Text", block, re.MULTILINE)
+            if "Html" not in block or raw_text:
                 problems.append(f"{qml.name}:{text.count(chr(10), 0, match.start()) + 1}")
     assert not problems, problems
+
+
+def test_every_picture_of_a_photo_cell_is_scaled_to_fit_not_stretched() -> None:
+    text = (QML_DIR / "PhotoCell.qml").read_text()
+    images = [
+        _block(text, match.end()) for match in re.finditer(r"^\s*Image\b", text, re.MULTILINE)
+    ]
+    assert len(images) == 2
+    assert all("fillMode: Image.PreserveAspectFit" in block for block in images)

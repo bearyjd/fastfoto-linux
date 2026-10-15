@@ -7,6 +7,7 @@ step (the orienter or an enhancer) costs a sheet only its enhanced copy.
 """
 
 import logging
+import threading
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -107,6 +108,7 @@ class ProcessResult:
     degraded: tuple[SheetIssue, ...] = ()
     dropped_backs: tuple[str, ...] = ()
     unchanged: int = 0
+    cancelled: bool = False
 
     @property
     def photos(self) -> int:
@@ -151,7 +153,13 @@ class _Handled:
     uncertain: str | None = None
 
 
-def process_pages(pages: Sequence[Path], settings: ProcessSettings) -> ProcessResult:
+def process_pages(
+    pages: Sequence[Path],
+    settings: ProcessSettings,
+    *,
+    on_photo: Callable[[WrittenFiles], None] | None = None,
+    cancel: threading.Event | None = None,
+) -> ProcessResult:
     """Process the pages of one scan batch (in scan order) into the album folder.
 
     Per sheet: crop and pair the sides, turn the front upright, write the original, run the

@@ -58,7 +58,9 @@ ADOBE_HEADER = b"Adobe"  # tells the decoder how the colours are stored, so it i
 MAX_ADOBE_PAYLOAD = 64
 _FILL = re.compile(rb"\xff+")  # fill bytes may precede any marker
 _QUOTE = rb"""(["'])"""
-_XML_NAME = rb"[\w.-]+"
+# An XML name: ASCII word characters, ``.`` and ``-``, and any non-ASCII character (UTF-8 bytes
+# from 0x80 on); a colon is not part of one.
+_XML_NAME = rb"[\w.\x80-\xff-]+"
 # ``xmlns:P="<tiff namespace>"``: P is a prefix for the tiff namespace, whatever its spelling.
 _TIFF_BINDING = re.compile(
     rb"\sxmlns:(" + _XML_NAME + rb")\s*=\s*" + _QUOTE + XMP_TIFF_NAMESPACE + rb"\2"

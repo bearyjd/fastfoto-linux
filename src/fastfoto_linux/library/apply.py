@@ -36,10 +36,20 @@ STATUS_STALE = "stale"
 STATUS_EXISTS = "exists"
 STATUS_FAILED = "failed"
 REASON_EXISTS = "the destination file already exists"
+# A done row's note: the copy is right, but it is not ours to change.
+NOTE_NOT_OURS = (
+    "already there (owned by another user; its permissions and times were left as they are)"
+)
 REASON_IO = "io-error"
 REASON_MANIFEST = "manifest-error"
 REASON_UNSAFE_DESTINATION = "unsafe-destination"
 OWNER_RWX = 0o700
+# A row that did not fail: its status and its note.
+_STATUS_OF = {
+    fdio.Placed.WRITTEN: (STATUS_WRITTEN, ""),
+    fdio.Placed.IDENTICAL: (STATUS_DONE, ""),
+    fdio.Placed.IDENTICAL_NOT_OURS: (STATUS_DONE, NOTE_NOT_OURS),
+}
 # What an interrupted run leaves behind: ".<name>.<8 hex digits>.tmp".
 STAGING_NAME = re.compile(
     rf"\..+\.[0-9a-f]{{{2 * fdio.TOKEN_BYTES}}}{re.escape(fdio.STAGING_SUFFIX)}"
@@ -133,8 +143,8 @@ def _folder_modes(src: Path, relative: str) -> tuple[int, ...]:
     return tuple(modes)
 
 
-def _write_row(row: PlanRow, run: _Run) -> bool:
-    """Publish the copy for ``row``; False if an identical one was already there."""
+def _write_row(row: PlanRow, run: _Run) -> fdio.Placed:
+    """Publish the copy for ``row``, unless an identical one is already there."""
     source = locate_inside(run.src, row.path)
     assert_outside(locate_inside(run.dest, row.path), run.src)
     found = _read_planned_file(row, source)
@@ -143,31 +153,37 @@ def _write_row(row: PlanRow, run: _Run) -> bool:
     return fdio.publish(run.dest_fd, row.path, content, found, run.library)
 
 
-def _record(row: PlanRow, manifest: Manifest, status: str) -> Outcome:
-    """Add ``row`` to the manifest; ``status`` is the outcome if that works."""
+def _record(row: PlanRow, manifest: Manifest, status: str, note: str = "") -> Outcome:
+    """Add ``row`` to the manifest; ``status`` (with ``note``) is the outcome if that works."""
     try:
         manifest.record(row)
     except OSError as error:
         logger.warning("%r: copy is there, but not added to the manifest (%s)", row.path, error)
         return Outcome(row.path, STATUS_UNLOGGED, REASON_MANIFEST)
-    return Outcome(row.path, status)
+    return Outcome(row.path, status, note)
+
+
+def _exists(row: PlanRow, error: FileExistsError) -> Outcome:
+    """Another file is there, or an identical one whose mode or times the system refused."""
+    refused = isinstance(error, fdio.MetadataRefusedError)
+    return Outcome(row.path, STATUS_EXISTS, str(error.strerror) if refused else REASON_EXISTS)
 
 
 def _apply_row(row: PlanRow, run: _Run) -> Outcome:
     try:
-        written = _write_row(row, run)
+        placed = _write_row(row, run)
     except _Stale as stale:
         return Outcome(row.path, STATUS_STALE, str(stale))
     except UnsafePathError:
         return Outcome(row.path, STATUS_FAILED, REASON_UNSAFE_DESTINATION)
     except JpegExifError as error:
         return Outcome(row.path, STATUS_FAILED, error.reason)
-    except FileExistsError:
-        return Outcome(row.path, STATUS_EXISTS, REASON_EXISTS)
+    except FileExistsError as error:
+        return _exists(row, error)
     except OSError as error:
         logger.warning("%r: %s", row.path, error.strerror or error)
         return Outcome(row.path, STATUS_FAILED, REASON_IO)
-    return _record(row, run.manifest, STATUS_WRITTEN if written else STATUS_DONE)
+    return _record(row, run.manifest, *_STATUS_OF[placed])
 
 
 def _count_leftovers(dest: Path, rows: Sequence[PlanRow]) -> int:

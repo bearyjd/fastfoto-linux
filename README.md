@@ -84,11 +84,12 @@ uv run ffscan library fix ~/Documents/library-plan.csv \
   reached through a link or a rename that was swapped in while it ran). If some folders of the
   library cannot be read, a bind mount of one of them cannot be ruled out, so `check` and `fix`
   then refuse a plan or `DEST` folder on the library's own drive: fix those folders' permissions
-  or use a folder on another drive. Folders `fix` creates get
+  or use a folder on another drive. (That guard is coarse by design: it does not cover a separate
+  filesystem mounted under an unreadable folder.) Folders `fix` creates get
   the mode of the library's folder (always writable for you). A copy left by an interrupted run
   counts as done when you run `fix` again (it also gets the source's mode and times if the run
-  was killed before giving them; an identical file that someone else owns is left alone and
-  counted as already there), and is listed in that run's manifest. Staging files (`.name.<hex>.tmp`) that a killed run left behind are
+  was killed before giving them; an identical file that someone else owns is left as it is,
+  counted as done and mentioned with a note), and is listed in that run's manifest. Staging files (`.name.<hex>.tmp`) that a killed run left behind are
   counted in the summary and left for you to delete. The plan and manifest are plain CSV: if you
   open them in a spreadsheet, a file name that starts with `=`, `+`, `-` or `@` may be taken as a
   formula.

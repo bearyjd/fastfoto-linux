@@ -12,6 +12,7 @@ from fastfoto_linux.library.apply import (
     STATUS_UNLOGGED,
     STATUS_WRITTEN,
     ApplyResult,
+    Outcome,
 )
 from fastfoto_linux.library.decide import (
     REASON_BACK_LOOKS_LIKE_FRONT,
@@ -103,11 +104,25 @@ def format_fix(result: ApplyResult, dest_name: str) -> str:
     return "\n".join([*lines, f"output: {dest_name}"])
 
 
+def _line(outcome: Outcome) -> str:
+    return f"  {outcome.path!r}: {outcome.status} ({outcome.reason})"
+
+
 def fix_problems(result: ApplyResult) -> tuple[str, ...]:
     """One line per row that needs attention, for stderr; names are shown as ``repr`` so that
     nothing in a file name can drive the terminal."""
     return tuple(
-        f"  {outcome.path!r}: {outcome.status} ({outcome.reason})"
+        _line(outcome)
         for outcome in result.outcomes
         if outcome.status not in (STATUS_WRITTEN, STATUS_DONE)
+    )
+
+
+def fix_notes(result: ApplyResult) -> tuple[str, ...]:
+    """One line per row that is done but has something to say (a copy that is not ours to
+    change); like ``fix_problems``, for stderr, but they do not make the run fail."""
+    return tuple(
+        _line(outcome)
+        for outcome in result.outcomes
+        if outcome.status == STATUS_DONE and outcome.reason
     )

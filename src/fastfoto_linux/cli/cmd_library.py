@@ -15,7 +15,13 @@ from fastfoto_linux.library.decide import decide_files
 from fastfoto_linux.library.plan import PlanError, read_plan, write_plan
 from fastfoto_linux.library.planout import open_plan_target
 from fastfoto_linux.library.safety import Library, UnsafePathError, check_roots
-from fastfoto_linux.library.summary import fix_problems, format_check, format_fix, summarize_check
+from fastfoto_linux.library.summary import (
+    fix_notes,
+    fix_problems,
+    format_check,
+    format_fix,
+    summarize_check,
+)
 from fastfoto_linux.library.walk import walk_library
 
 logger = logging.getLogger(__name__)
@@ -132,6 +138,6 @@ def run_fix(args: argparse.Namespace) -> int:
         result = apply_plan(rows, src, args.out, make_dest=args.mkdir)
     print(format_fix(result, args.out))
     problems = fix_problems(result)
-    for line in problems:
+    for line in (*fix_notes(result), *problems):
         print(line, file=sys.stderr)
     return EXIT_PROCESSING_ERROR if problems else EXIT_OK

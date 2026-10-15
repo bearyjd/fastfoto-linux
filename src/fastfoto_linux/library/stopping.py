@@ -6,6 +6,12 @@ Ctrl-C soon after the first, and a stop cut short leaves workers running. Nor ma
 the interrupt is on its way up to ``ffscan``'s ``main``, which has still to say so: ``main`` asks
 ``stop_under_way`` and ignores them until it is done (``forget_stop``).
 
+A signal handler runs on the thread it interrupts, between two of its instructions, so nothing a
+handler does may wait for something that thread could be holding: no lock, no ``threading.Event``
+(its ``set`` takes a lock that is not re-entrant), no ``logging`` and no ``print`` (both lock).
+The two handlers (``first_interrupt_only``'s and ``ffscan``'s) only read and assign a plain flag,
+call ``signal.signal`` and raise.
+
 Starting: the helper process of the pool is started with ``python -c ...``, which puts the current
 folder first on its import path; the folder the user happens to be in must not supply its modules.
 """
@@ -22,7 +28,7 @@ WORKER_JOIN_TIMEOUT_S = 2.0
 STOP_SIGNALS = (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)
 SAFE_PATH_VARIABLE = "PYTHONSAFEPATH"  # Python 3.11+: no current folder on the import path
 
-_stop_under_way = threading.Event()
+_stop_under_way = False  # a plain flag: the handlers read and assign it, and nothing here locks
 
 
 def ignore_interrupt() -> None:
@@ -36,12 +42,13 @@ Handler = Callable[[int, FrameType | None], object] | int | signal.Handlers | No
 
 def stop_under_way() -> bool:
     """Whether a stop signal has interrupted a pooled run since the last ``forget_stop``."""
-    return _stop_under_way.is_set()
+    return _stop_under_way
 
 
 def forget_stop() -> None:
     """The command is over (or about to start): the next stop signal is a first one again."""
-    _stop_under_way.clear()
+    global _stop_under_way  # noqa: PLW0603 -- see the module docstring: no lock, so no Event
+    _stop_under_way = False
 
 
 def _restore(previous: dict[signal.Signals, Handler]) -> None:
@@ -64,11 +71,12 @@ def interrupts_ignored() -> Iterator[None]:
 
 @contextlib.contextmanager
 def first_interrupt_only() -> Iterator[None]:
-    """A stop signal raises KeyboardInterrupt once; from the handler's first instruction on, all
-    further ones are ignored, so they cannot cut the cleanup short. The previous handlers come
-    back afterwards, and they are told (``stop_under_way``) that the stop has begun. A signal that
-    is ignored, or has no Python handler, is left as it is, and off the main thread nothing
-    changes."""
+    """A stop signal raises KeyboardInterrupt once; the handler first switches all further ones to
+    ignored, so they cannot cut the cleanup short, then marks the stop as under way. A signal that
+    lands before the switch runs the handler again, inside the first run; that run does the same
+    and its KeyboardInterrupt is the one that ends the block. The previous handlers come back
+    afterwards, and they are told (``stop_under_way``) that the stop has begun. A signal that is
+    ignored, or has no Python handler, is left as it is, and off the main thread nothing changes."""
     if threading.current_thread() is not threading.main_thread():
         yield
         return
@@ -76,9 +84,10 @@ def first_interrupt_only() -> Iterator[None]:
     handled = tuple(number for number, handler in previous.items() if callable(handler))
 
     def interrupt(signum: int, frame: FrameType | None) -> None:
-        _stop_under_way.set()
+        global _stop_under_way  # noqa: PLW0603 -- see the module docstring: no lock, so no Event
         for number in handled:
             signal.signal(number, signal.SIG_IGN)
+        _stop_under_way = True  # after the loop: from here on no stop signal can land
         raise KeyboardInterrupt
 
     for number in handled:

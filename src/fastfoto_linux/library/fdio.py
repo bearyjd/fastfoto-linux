@@ -9,6 +9,7 @@ is still private; only then does it get the source's mode and times, through the
 """
 
 import contextlib
+import enum
 import errno
 import functools
 import logging
@@ -42,6 +43,8 @@ _NO_HARD_LINKS = frozenset({errno.EPERM, errno.ENOTSUP, errno.ENOSYS})
 _NO_FOLDER_SYNC = frozenset({errno.EINVAL, errno.ENOTSUP, errno.ENOSYS})
 # Filesystems without Unix permissions refuse chmod; the times still carry over.
 _NO_MODES = frozenset({errno.EPERM, errno.ENOTSUP})
+_APPLIED = "now match the source's"
+_NOT_APPLIED = "could not be set"
 # What opening a link or a plain file as a folder (without following links) reports.
 _NOT_A_FOLDER = frozenset({errno.ELOOP, errno.ENOTDIR})
 
@@ -56,6 +59,19 @@ class TooLargeError(OSError):
 
 class ChangedWhileReadingError(OSError):
     """The file's size changed while it was being read."""
+
+
+class MetadataRefusedError(FileExistsError):
+    """An identical file is there, our own, and the system refused to give it the source's mode or
+    times. ``strerror`` says which of the two it got."""
+
+
+class Placed(enum.Enum):
+    """What became of a copy: written now, or an identical file was already there."""
+
+    WRITTEN = enum.auto()
+    IDENTICAL = enum.auto()  # there already, with (or given) the source's mode and times
+    IDENTICAL_NOT_OURS = enum.auto()  # there already, another user's: its mode and times left as is
 
 
 @dataclass(frozen=True)
@@ -150,12 +166,14 @@ def _enter_folder(parent_fd: int, name: str, source_mode: int | None) -> int:
 
 def publish(
     root_fd: int, relative: str, content: bytes, source: SourceFile, library: LibraryRef
-) -> bool:
+) -> Placed:
     """Write ``content`` as ``relative`` below the destination, with ``source``'s mode and times.
 
-    True when the file was written now; False when a file with exactly these bytes was already
-    there. A different file already there raises FileExistsError and is left alone. A folder on
-    the way that is a link, or the library itself, raises UnsafePathError.
+    ``WRITTEN`` when the file was written now; otherwise a file with exactly these bytes was
+    already there (``IDENTICAL``, or ``IDENTICAL_NOT_OURS`` when it is another user's and so could
+    not be given the mode and times). A different file already there raises FileExistsError and
+    is left alone. A folder on the way that is a link, or the library itself, raises
+    UnsafePathError.
     """
     pure = PurePosixPath(relative)
     with contextlib.ExitStack() as stack:
@@ -170,7 +188,7 @@ def publish(
 
 def _publish_in(
     folder_fd: int, name: str, content: bytes, source: SourceFile, library: LibraryRef
-) -> bool:
+) -> Placed:
     # The folder was checked when it was opened; it may have been moved into the library since,
     # so it is checked again before anything is written to it and again before the copy is linked.
     confine.refuse_inside(folder_fd, library)
@@ -182,15 +200,15 @@ def _publish_in(
             handle.flush()
             os.fsync(handle.fileno())
             confine.refuse_inside(folder_fd, library)
-            written = link_new(folder_fd, staging, name, content, source)
-            if written:
+            placed = link_new(folder_fd, staging, name, content, source)
+            if placed is Placed.WRITTEN:
                 _finish_published(handle.fileno(), folder_fd, name, source)
     finally:
         with contextlib.suppress(FileNotFoundError):
             os.unlink(staging, dir_fd=folder_fd)
-    if written:
+    if placed is Placed.WRITTEN:
         sync_folder(folder_fd)
-    return written
+    return placed
 
 
 def _finish_published(fd: int, folder_fd: int, name: str, source: SourceFile) -> None:
@@ -229,10 +247,10 @@ def _copy_metadata(fd: int, source: SourceFile) -> None:
 
 def link_new(
     folder_fd: int, staging: str, name: str, content: bytes, source: SourceFile | None = None
-) -> bool:
-    """Link the staged file in as ``name``. True if it was linked; False if a file with exactly
-    ``content`` is there already (it then gets ``source``'s mode and times, if given and different).
-    A different file there is FileExistsError."""
+) -> Placed:
+    """Link the staged file in as ``name``: ``WRITTEN``. If a file with exactly ``content`` is
+    there already, it gets ``source``'s mode and times, if given and different (see
+    ``_already_there``). A different file there is FileExistsError."""
     try:
         os.link(staging, name, src_dir_fd=folder_fd, dst_dir_fd=folder_fd, follow_symlinks=False)
     except FileExistsError:
@@ -241,12 +259,12 @@ def link_new(
         if error.errno not in _NO_HARD_LINKS:
             raise
         return _reserve_then_rename(folder_fd, staging, name, content, source)
-    return True
+    return Placed.WRITTEN
 
 
 def _reserve_then_rename(
     folder_fd: int, staging: str, name: str, content: bytes, source: SourceFile | None
-) -> bool:
+) -> Placed:
     """For filesystems without hard links: claim the name exclusively, then swap the file in."""
     try:
         os.close(os.open(name, CREATE_FLAGS, PRIVATE_MODE, dir_fd=folder_fd))
@@ -258,7 +276,7 @@ def _reserve_then_rename(
     except BaseException:
         os.unlink(name, dir_fd=folder_fd)
         raise
-    return True
+    return Placed.WRITTEN
 
 
 def _is_placeholder(folder_fd: int, name: str) -> bool:
@@ -274,13 +292,14 @@ def _exists(name: str) -> FileExistsError:
     return FileExistsError(errno.EEXIST, "the destination file already exists", name)
 
 
-def _already_there(folder_fd: int, name: str, content: bytes, source: SourceFile | None) -> bool:
-    """False if the existing file holds exactly ``content``; otherwise FileExistsError.
+def _already_there(folder_fd: int, name: str, content: bytes, source: SourceFile | None) -> Placed:
+    """``IDENTICAL`` if the existing file holds exactly ``content``; otherwise FileExistsError.
 
     A run killed between linking a copy and giving it its mode and times leaves exactly such a
     file; with ``source``, the file gets its mode and times now, through the descriptor that
-    just confirmed what it holds. If that is not ours to change (see ``_repair_metadata``), the
-    file is left as it is and counts as already there.
+    just confirmed what it holds. If it is another user's, it is left as it is (see
+    ``_repair_metadata``) and counts as done all the same: the content is right, and no later
+    run could change that.
     """
     try:
         fd = os.open(name, READ_FLAGS, dir_fd=folder_fd)
@@ -298,21 +317,36 @@ def _already_there(folder_fd: int, name: str, content: bytes, source: SourceFile
             same = False
         if not same:
             raise _exists(name)
-        if source is not None and _differs(info, source):
-            _repair_metadata(handle.fileno(), info, name, source)
-    return False
+        if source is None or not _differs(info, source):
+            return Placed.IDENTICAL
+        return _repair_metadata(handle.fileno(), info, name, source)
 
 
-def _repair_metadata(fd: int, info: os.stat_result, name: str, source: SourceFile) -> None:
-    """``source``'s mode and times on the file ``fd``; FileExistsError, the file untouched, if
-    someone else owns it or the system refuses (the mode and times are only ours to set on our
-    own files, and a refusal there is not a failure of the row)."""
+def _repair_metadata(fd: int, info: os.stat_result, name: str, source: SourceFile) -> Placed:
+    """``source``'s mode and times on the file ``fd``. They are only ours to set on our own
+    files: another user's is left exactly as it is (``IDENTICAL_NOT_OURS``). If the system refuses
+    on our own, MetadataRefusedError says what the file has and has not got by then."""
     if os.geteuid() not in (ROOT_UID, info.st_uid):
-        raise _exists(name)
+        return Placed.IDENTICAL_NOT_OURS
     try:
         _copy_metadata(fd, source)
-    except PermissionError:
-        raise _exists(name) from None
+    except PermissionError as error:
+        raise _refused(os.fstat(fd), name, source, error) from None
+    return Placed.IDENTICAL
+
+
+def _refused(
+    now: os.stat_result, name: str, source: SourceFile, error: PermissionError
+) -> MetadataRefusedError:
+    """What the file ``now`` has of ``source``'s mode and times, after the system refused."""
+    mode_set = stat.S_IMODE(now.st_mode) == source.mode & PERMISSION_BITS
+    times_set = now.st_mtime_ns == source.mtime_ns
+    reason = (
+        "identical file already there; "
+        f"its permissions {_APPLIED if mode_set else _NOT_APPLIED}, "
+        f"its times {_APPLIED if times_set else _NOT_APPLIED} ({error.strerror or error})"
+    )
+    return MetadataRefusedError(errno.EEXIST, reason, name)
 
 
 def _differs(info: os.stat_result, source: SourceFile) -> bool:

@@ -161,3 +161,26 @@ def test_raw_pages_kept_after_a_clean_run_are_mentioned_calmly() -> None:
 @pytest.mark.parametrize("state", [State.IDLE, State.READY, State.SCANNING])
 def test_there_is_nothing_to_say_before_a_session_has_ended(state: State) -> None:
     assert result_banner(state, SessionResult()) is None
+
+
+def test_a_failed_scan_that_kept_pages_says_where_and_how_to_process_them() -> None:
+    kept = (RAW / "page-0001.png", RAW / "page-0002.png")
+    result = SessionResult(
+        error=ScanError("scanimage timed out"),
+        raw_dir=RAW,
+        raw_reason=RawReason.SCAN_ERROR,
+        pages_scanned=2,
+        kept_pages=kept,
+    )
+    banner = result_banner(State.FAILED, result)
+    assert banner is not None
+    assert banner.kind == "error"
+    assert str(RAW) in banner.text
+    assert "ffscan process" in banner.text
+    assert banner.text.count(str(RAW)) == 1
+
+
+def test_a_failure_without_kept_pages_does_not_mention_processing() -> None:
+    banner = result_banner(State.FAILED, SessionResult(error=OSError("no space")))
+    assert banner is not None
+    assert "ffscan process" not in banner.text

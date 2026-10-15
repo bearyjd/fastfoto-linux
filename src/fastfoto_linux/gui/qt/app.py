@@ -106,6 +106,11 @@ def main(run_loop: Callable[[], int] | None = None) -> int:
     return _run(run_loop or app.exec)
 
 
+def handle_signals(bridge: Any, quit_: Callable[[], None], *, settle_timeout: float = 10.0):
+    """Stub (red commit): stop a running scan cleanly on SIGTERM, SIGINT and SIGHUP."""
+    raise NotImplementedError
+
+
 def _run(run_loop: Callable[[], int]) -> int:
     from fastfoto_linux.gui.qt.bridge import Bridge  # noqa: PLC0415
 

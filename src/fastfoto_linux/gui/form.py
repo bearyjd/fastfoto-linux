@@ -122,6 +122,16 @@ def validate(form: ScanForm) -> dict[str, str]:
     return {name: message for name, message in checked if message is not None}
 
 
+def validate_syntax(form: ScanForm) -> dict[str, str]:
+    """Stub (red commit): the checks that need only the text."""
+    raise NotImplementedError
+
+
+def validate_filesystem(form: ScanForm) -> dict[str, str]:
+    """Stub (red commit): the checks that look at the disk."""
+    raise NotImplementedError
+
+
 def parse_date(text: str) -> PhotoDate | DateRange | None:
     """The date the text means (a year, month, day or a range), None when it is blank.
 

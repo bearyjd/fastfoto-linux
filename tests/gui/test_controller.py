@@ -1,12 +1,15 @@
 import logging
+import os
+import shutil
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from fastfoto_linux.gui.controller import Controller
-from fastfoto_linux.gui.form import ScanForm
+from fastfoto_linux.gui.form import FormInvalidError, ScanForm
 from fastfoto_linux.gui.state import InvalidTransitionError, State
+from fastfoto_linux.gui.worker import WorkerBusyError
 from fastfoto_linux.pipeline.process import ProcessResult
 from fastfoto_linux.scanner import ScanError, ScannerNotFoundError
 from fastfoto_linux.session import RawReason, SessionResult, Stage
@@ -435,3 +438,241 @@ def test_a_close_request_while_cancelling_just_waits(page: Page) -> None:
 def test_an_initial_valid_form_has_no_errors(out: Path, saved: list[ScanForm]) -> None:
     controller = Page(replace(ScanForm(), output_folder=str(out)), saved).controller
     assert controller.errors == {}
+
+
+# -- Scan re-checks the form: the folder may have gone since the last edit (item 1) -----------
+
+
+def test_a_folder_that_vanished_is_reported_instead_of_silently_doing_nothing(
+    page: Page, out: Path, saved: list[ScanForm]
+) -> None:
+    controller = page.ready()
+    assert controller.can_scan
+    shutil.rmtree(out)
+    controller.start_scan()  # the button was enabled: this must answer, not raise
+    assert controller.state is State.READY
+    assert "scan" not in page.worker.names
+    assert "output_folder" in controller.errors
+    assert not controller.can_scan
+    assert controller.banner is not None
+    assert controller.banner.kind == "error"
+    assert "does not exist" in controller.banner.text
+    assert saved == []
+
+
+class RefusingWorker(FakeWorker):
+    """A worker whose scan refuses, as the real one does when the form went bad or it is busy."""
+
+    def __init__(self, error: Exception) -> None:
+        super().__init__()
+        self.error = error
+
+    def scan(self, form: ScanForm) -> None:
+        raise self.error
+
+
+def test_a_worker_that_finds_the_form_invalid_gives_field_errors_not_an_exception(
+    out: Path,
+) -> None:
+    worker = RefusingWorker(FormInvalidError({"output_folder": "The folder is gone."}))
+    controller = Controller(worker, ScanForm(output_folder=str(out)))
+    controller.check_scanner()
+    controller.on_scanner(None)
+    controller.start_scan()
+    assert controller.state is State.READY
+    assert controller.errors["output_folder"] == "The folder is gone."
+    assert controller.banner is not None
+    assert "The folder is gone." in controller.banner.text
+
+
+def test_a_busy_worker_gives_a_banner_not_an_exception(out: Path) -> None:
+    worker = RefusingWorker(WorkerBusyError("the scanner is busy with another job"))
+    controller = Controller(worker, ScanForm(output_folder=str(out)))
+    controller.check_scanner()
+    controller.on_scanner(None)
+    controller.start_scan()
+    assert controller.state is State.READY
+    assert controller.banner is not None
+    assert controller.banner.kind == "error"
+    assert "busy" in controller.banner.text
+
+
+# -- An unexpected error in the page itself must not leave it stuck (item 1 / 5) ---------------
+
+
+@pytest.mark.parametrize("starter", ["idle", "ready", "scanning", "cancelling", "processing"])
+def test_fail_leaves_a_page_the_user_can_leave(page: Page, starter: str) -> None:
+    controller = {
+        "idle": lambda: page.controller,
+        "ready": page.ready,
+        "scanning": page.scanning,
+        "processing": page.processing,
+        "cancelling": lambda: (page.scanning(), page.controller.cancel(), page.controller)[-1],
+    }[starter]()
+    controller.fail(RuntimeError("model blew up"))
+    assert controller.state is State.FAILED
+    assert not controller.busy
+    assert not controller.running
+    assert controller.banner is not None
+    assert controller.banner.kind == "error"
+    assert "model blew up" in controller.banner.text
+    if starter in ("scanning", "processing"):
+        assert page.worker.names[-1] == "cancel"  # a job that may still run is told to stop
+    assert controller.can_check
+
+
+def test_events_a_failed_page_gets_late_are_dropped_not_raised(page: Page, out: Path) -> None:
+    controller = page.scanning()
+    controller.fail(RuntimeError("model blew up"))
+    banner = controller.banner
+    controller.on_finished(cancelled_scan(Path("/srv/demo/.raw/stamp")))
+    controller.on_error(RuntimeError("late"))
+    controller.on_stage(Stage.PROCESSING)
+    controller.on_page(9)
+    assert controller.state is State.FAILED
+    assert controller.banner == banner
+
+
+# -- "Process them now": only after a cancel, and for as long as that is the last result -------
+
+
+def test_a_failed_scan_does_not_offer_processing_and_has_one_banner(page: Page) -> None:
+    controller = page.scanning()
+    raw = Path("/srv/demo/.raw/stamp")
+    controller.on_finished(
+        SessionResult(
+            error=ScanError("scanimage timed out"),
+            raw_dir=raw,
+            raw_reason=RawReason.SCAN_ERROR,
+            pages_scanned=2,
+            kept_pages=(raw / "page-0001.png", raw / "page-0002.png"),
+        )
+    )
+    assert controller.state is State.FAILED
+    assert not controller.can_process_kept
+    assert controller.kept_text == ""
+    assert controller.banner is not None
+    assert str(raw) in controller.banner.text
+    assert "ffscan process" in controller.banner.text
+
+
+@pytest.mark.parametrize("answer", [None, ScannerNotFoundError("unplugged")])
+def test_checking_again_after_a_cancel_keeps_the_offer(
+    page: Page, answer: Exception | None
+) -> None:
+    controller = page.cancelled(pages=3)
+    assert controller.can_process_kept
+    controller.check_scanner()
+    assert not controller.can_process_kept  # a check is running: nothing else may start
+    controller.on_scanner(answer)
+    assert controller.state is (State.READY if answer is None else State.NO_SCANNER)
+    assert controller.can_process_kept
+    assert "3 pages" in controller.kept_text
+    assert "/srv/demo/.raw/stamp" in controller.kept_text
+
+
+def test_the_pages_kept_can_be_processed_after_a_check(page: Page) -> None:
+    controller = page.cancelled()
+    kept = page.kept
+    controller.check_scanner()
+    controller.on_scanner(None)
+    controller.process_kept()
+    assert controller.state is State.PROCESSING
+    assert page.worker.calls[-1] == ("process_kept", kept)
+    assert not controller.can_process_kept
+
+
+def test_the_offer_is_gone_once_a_new_scan_starts(page: Page) -> None:
+    controller = page.cancelled()
+    assert controller.can_process_kept
+    controller.start_scan()
+    assert not controller.can_process_kept
+    assert controller.kept_text == ""
+
+
+def test_the_offer_is_not_made_twice_when_processing_the_pages_fails(page: Page) -> None:
+    controller = page.cancelled()
+    controller.process_kept()
+    controller.on_error(RuntimeError("disk full"))
+    assert controller.state is State.FAILED
+    assert not controller.can_process_kept  # part of it may be written: do not duplicate it
+    assert controller.banner is not None
+    assert "disk full" in controller.banner.text
+    assert "/srv/demo/.raw/stamp" in controller.banner.text
+
+
+# -- Why Scan is disabled (item 9) ----------------------------------------------------------------
+
+
+def test_the_blocker_says_what_is_missing(saved: list[ScanForm], out: Path) -> None:
+    controller = Page(ScanForm(), saved).controller
+    controller.check_scanner()
+    controller.on_scanner(None)
+    assert controller.scan_blocker == "Choose the folder the photos are saved in."
+    controller.set_field("output_folder", str(out))
+    controller.set_field("date", "soon")
+    assert "date" in controller.scan_blocker.lower()
+    controller.set_field("date", "")
+    assert controller.scan_blocker == ""
+    assert controller.can_scan
+
+
+def test_the_blocker_asks_for_a_scanner_when_none_was_found(page: Page) -> None:
+    controller = page.controller
+    assert "Check again" in controller.scan_blocker
+    controller.check_scanner()
+    assert controller.scan_blocker == ""  # the check is running; the chip says so
+    controller.on_scanner(ScannerNotFoundError("none"))
+    assert "Check again" in controller.scan_blocker
+
+
+def test_the_blocker_is_empty_while_a_job_runs(page: Page) -> None:
+    assert page.scanning().scan_blocker == ""
+
+
+# -- Editing looks at the text; the disk is read when the user is done (item 11) ---------------
+
+
+def test_editing_a_field_never_reads_the_disk(page: Page, monkeypatch: pytest.MonkeyPatch) -> None:
+    reads: list[str] = []
+
+    def watch(owner: object, name: str) -> None:
+        original = getattr(owner, name)
+
+        def watched(*args: object, **kwargs: object) -> object:
+            reads.append(name)
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(owner, name, watched)
+
+    watch(os, "access")
+    for method in ("exists", "is_dir", "stat"):
+        watch(Path, method)
+    controller = page.controller
+    for text in ("/", "/s", "/sr", "/srv", "/srv/demo"):
+        controller.set_field("output_folder", text)
+    controller.set_field("album", "Rome")
+    assert reads == []
+
+
+def test_a_missing_folder_is_reported_when_the_user_is_done_typing(page: Page, out: Path) -> None:
+    controller = page.controller
+    controller.set_field("output_folder", str(out / "not-yet"))
+    assert controller.errors == {}
+    controller.check_disk()
+    assert "does not exist" in controller.errors["output_folder"]
+    controller.set_field("output_folder", str(out))  # editing again drops the stale message
+    assert controller.errors == {}
+
+
+def test_a_folder_that_is_missing_at_the_start_is_reported_at_once(
+    saved: list[ScanForm], out: Path
+) -> None:
+    controller = Page(ScanForm(output_folder=str(out / "gone")), saved).controller
+    assert "does not exist" in controller.errors["output_folder"]
+
+
+def test_a_relative_folder_is_an_error_while_typing(page: Page) -> None:
+    page.controller.set_field("output_folder", "photos")
+    assert "full path" in page.controller.errors["output_folder"]
+    assert page.controller.destination is None

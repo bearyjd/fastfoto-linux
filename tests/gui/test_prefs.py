@@ -42,6 +42,31 @@ def test_without_xdg_config_home_it_is_dot_config(env: dict[str, str]) -> None:
     assert prefs_path(env) == Path("/h/.config/fastfoto-linux/gui.json")
 
 
+@pytest.mark.parametrize("relative", ["config", "./config", "../x", "~/config"])
+def test_a_relative_xdg_config_home_is_ignored(relative: str) -> None:
+    """The XDG spec: a base directory that is not absolute is invalid and must be ignored."""
+    env = {"HOME": "/h", "XDG_CONFIG_HOME": relative}
+    assert prefs_path(env) == Path("/h/.config/fastfoto-linux/gui.json")
+
+
+def test_the_output_folder_is_remembered_as_a_full_path(
+    path: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "Pictures").mkdir()
+    monkeypatch.setenv("HOME", str(tmp_path))
+    save_form(ScanForm(output_folder="~/Pictures"), path)
+    assert json.loads(path.read_text())["output_folder"] == str(tmp_path / "Pictures")
+    assert load_form(path).output_folder == str(tmp_path / "Pictures")
+
+
+@pytest.mark.parametrize("relative", ["photos", "./photos", "../photos"])
+def test_a_relative_output_folder_is_not_remembered(path: Path, relative: str) -> None:
+    save_form(ScanForm(output_folder=relative, album="Rome"), path)
+    saved = json.loads(path.read_text())
+    assert saved["output_folder"] == ""
+    assert saved["album"] == "Rome"
+
+
 def test_a_saved_form_comes_back(path: Path) -> None:
     save_form(CUSTOM, path)
     assert load_form(path) == CUSTOM

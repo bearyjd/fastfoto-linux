@@ -18,7 +18,9 @@ ALLOWED = [
     (State.CHECKING, State.NO_SCANNER),
     (State.READY, State.CHECKING),
     (State.READY, State.SCANNING),
+    (State.READY, State.PROCESSING),  # the pages a cancel kept can be processed after a check
     (State.NO_SCANNER, State.CHECKING),
+    (State.NO_SCANNER, State.PROCESSING),  # processing needs no scanner
     (State.SCANNING, State.PROCESSING),
     (State.SCANNING, State.CANCELLING),
     (State.SCANNING, State.FAILED),

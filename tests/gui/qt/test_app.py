@@ -3,7 +3,7 @@ from typing import Any
 
 import pytest
 
-from tests.gui.qt import require_qt
+from tests.gui.qt import require_qt, unavailable
 
 require_qt()
 
@@ -23,7 +23,7 @@ def test_the_kde_desktop_style_is_used_when_it_is_installed(qapp: Any) -> None:
     app.configure_style()
     assert QQuickStyle.name() in ("org.kde.desktop", "Fusion", "Basic")
     if QQuickStyle.name() != "org.kde.desktop":
-        pytest.skip("qqc2-desktop-style is not installed")
+        unavailable("qqc2-desktop-style is not installed")
 
 
 def test_the_engine_loads_the_window_without_warnings(
@@ -71,4 +71,65 @@ def test_main_runs_the_event_loop_and_remembers_the_form(
     assert loops == ["fastfoto-linux"]
     assert QApplication.desktopFileName() == app.APP_ID
     assert (config / PREFS_DIR / PREFS_FILE).is_file()
+    settle()
+
+
+# -- Quitting while a scan runs: logout, `kill`, Ctrl+C in a terminal (item 7) ------------------
+
+
+def test_closing_the_app_cancels_and_joins_a_running_scan_first(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, kirigami: None, qapp: Any
+) -> None:
+    from fastfoto_linux.gui.qt import bridge as bridge_module
+    from tests.gui.helpers import ScriptedSession
+    from tests.gui.qt.qt_helpers import wait_until
+
+    out = tmp_path / "out"
+    out.mkdir()
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    monkeypatch.setattr(worker_module, "default_discover", lambda: ScanTarget(device=DEVICE))
+    session = ScriptedSession(out, hold=True)
+    monkeypatch.setattr(worker_module, "run_session", session)
+    seen: list[Any] = []
+
+    class Spy(bridge_module.Bridge):
+        def __init__(self) -> None:
+            super().__init__(form=bridge_module.ScanForm(output_folder=str(out)))
+            seen.append(self)
+
+    monkeypatch.setattr(bridge_module, "Bridge", Spy)
+    after: list[bool] = []
+
+    def run_loop() -> int:
+        bridge = seen[0]
+        wait_until(lambda: bridge.canScan, "ready")
+        bridge.startScan()
+        wait_until(lambda: bridge.canCancel, "the scan to hold")
+        QApplication.instance().aboutToQuit.emit()  # what Qt does as the loop ends
+        after.append(bridge._worker.busy)
+        return 0
+
+    assert app.main(run_loop=run_loop) == 0
+    assert after == [False]
+    settle()
+
+
+def test_the_signal_handlers_are_undone_when_the_app_is_done(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, kirigami: None, qapp: Any
+) -> None:
+    import signal
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    monkeypatch.setattr(worker_module, "default_discover", lambda: ScanTarget(device=DEVICE))
+    names = (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)
+    before = [signal.getsignal(name) for name in names]
+    inside: list[list[Any]] = []
+
+    def run_loop() -> int:
+        inside.append([signal.getsignal(name) for name in names])
+        return 0
+
+    assert app.main(run_loop=run_loop) == 0
+    assert inside[0] != before  # the app took the signals over while it ran
+    assert [signal.getsignal(name) for name in names] == before
     settle()

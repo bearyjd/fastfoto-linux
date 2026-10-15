@@ -39,3 +39,30 @@ def test_the_front_is_the_enhanced_copy_when_only_that_was_kept() -> None:
 
 def test_an_item_with_no_picture_has_no_front() -> None:
     assert item_from_files(files(original=None, enhanced=None)).front is None
+
+
+def test_the_title_is_the_name_of_the_file_not_of_the_folder() -> None:
+    assert item_from_files(files()).title == "Family Trips_0003"
+
+
+def test_a_photo_in_the_output_folder_itself_is_not_called_after_that_folder() -> None:
+    plain = Path("/srv/demo/Pictures")
+    item = item_from_files(
+        WrittenFiles(
+            directory=plain,
+            index=7,
+            original=plain / "FastFoto_0007.jpg",
+            enhanced=plain / "FastFoto_0007_a.jpg",
+            back=None,
+        )
+    )
+    assert item.title == "FastFoto_0007"
+    assert "Pictures" not in item.title
+
+
+def test_the_title_of_an_enhanced_only_photo_drops_the_copy_suffix() -> None:
+    assert item_from_files(files(original=None, back=None)).title == "Family Trips_0003"
+
+
+def test_the_title_of_a_photo_without_files_is_its_number() -> None:
+    assert item_from_files(files(original=None, enhanced=None, back=None)).title == "Photo 3"

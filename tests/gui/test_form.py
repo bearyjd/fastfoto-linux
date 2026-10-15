@@ -22,6 +22,8 @@ from fastfoto_linux.gui.form import (
     to_settings,
     update_field,
     validate,
+    validate_filesystem,
+    validate_syntax,
 )
 from fastfoto_linux.output import DateRange, PhotoDate
 from fastfoto_linux.pipeline.sides import BackPolicy
@@ -194,14 +196,14 @@ def test_the_destination_shows_the_sanitised_album_folder(out: Path, form: ScanF
     shown = destination(replace(form, album="Trips/2019: Rome"))
     assert shown is not None
     assert str(out.resolve() / "Trips 2019: Rome") in shown
-    assert "Trips 2019: Rome_0001.jpg" in shown
+    assert "Trips 2019: Rome_####.jpg" in shown
 
 
 def test_the_destination_without_an_album_is_the_output_folder(out: Path, form: ScanForm) -> None:
     shown = destination(form)
     assert shown is not None
     assert str(out.resolve()) in shown
-    assert "FastFoto_0001.jpg" in shown
+    assert "FastFoto_####.jpg" in shown
 
 
 def test_the_destination_is_unknown_for_a_bad_folder_or_album(out: Path, form: ScanForm) -> None:
@@ -223,3 +225,102 @@ def test_update_field_rejects_unknown_names_and_values(form: ScanForm) -> None:
         update_field(form, "colour", "red")
     with pytest.raises(ValueError, match="dpi"):
         update_field(form, "dpi", "fast")
+
+
+def test_the_destination_never_promises_a_number_the_folder_has_already_used(
+    out: Path, form: ScanForm
+) -> None:
+    for number in (1, 2, 3):
+        (out / f"FastFoto_{number:04d}.jpg").write_bytes(b"")
+    shown = destination(form)
+    assert shown is not None
+    assert "_0001" not in shown
+    assert shown.endswith("FastFoto_####.jpg")
+
+
+# -- a relative output folder is not a place (item 6) ------------------------------------------
+
+
+@pytest.mark.parametrize("text", ["photos", "./photos", "../photos", "a/b"])
+def test_a_relative_output_folder_is_rejected_with_a_hint(
+    text: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "photos").mkdir()
+    (tmp_path / "a" / "b").mkdir(parents=True)
+    monkeypatch.chdir(tmp_path)
+    errors = validate(ScanForm(output_folder=text))
+    assert "full path" in errors["output_folder"]
+    assert destination(ScanForm(output_folder=text)) is None
+    with pytest.raises(FormInvalidError):
+        to_settings(ScanForm(output_folder=text))
+
+
+def test_a_home_relative_folder_is_a_full_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "Pictures").mkdir()
+    monkeypatch.setenv("HOME", str(tmp_path))
+    assert validate(ScanForm(output_folder="~/Pictures")) == {}
+    assert to_settings(ScanForm(output_folder="~/Pictures")).output_root == tmp_path / "Pictures"
+
+
+# -- editing checks the text only; the disk is looked at when the user is done (item 11) -------
+
+
+def test_syntax_validation_never_touches_the_filesystem(
+    form: ScanForm, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    reads: list[str] = []
+
+    def watch(owner: object, name: str) -> None:
+        original = getattr(owner, name)
+
+        def watched(*args: object, **kwargs: object) -> object:
+            reads.append(name)
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(owner, name, watched)
+
+    watch(os, "access")
+    for method in ("exists", "is_dir", "stat"):
+        watch(Path, method)
+    assert validate_syntax(replace(form, album="Rome", date="1975")) == {}
+    assert validate_syntax(ScanForm(output_folder="/no/such/folder")) == {}
+    problems = validate_syntax(ScanForm(date="soon", output_folder="x"))
+    assert set(problems) == {"output_folder", "date"}
+    assert destination(replace(form, album="Rome")) is not None
+    assert reads == []
+
+
+def test_syntax_validation_asks_for_a_folder_and_checks_album_date_and_notes() -> None:
+    errors = validate_syntax(ScanForm(album="..", date="soon", notes="x" * 100_000))
+    assert set(errors) == {"output_folder", "album", "date", "notes"}
+
+
+def test_filesystem_validation_finds_a_missing_or_unwritable_folder(
+    tmp_path: Path, form: ScanForm
+) -> None:
+    assert validate_filesystem(form) == {}
+    assert (
+        "does not exist"
+        in validate_filesystem(replace(form, output_folder=str(tmp_path / "gone")))["output_folder"]
+    )
+    plain_file = tmp_path / "file"
+    plain_file.write_text("x")
+    assert (
+        "not a folder"
+        in validate_filesystem(replace(form, output_folder=str(plain_file)))["output_folder"]
+    )
+
+
+def test_filesystem_validation_leaves_what_the_text_check_already_rejected(
+    tmp_path: Path,
+) -> None:
+    assert validate_filesystem(ScanForm(output_folder="relative")) == {}
+    assert validate_filesystem(ScanForm()) == {}
+
+
+def test_the_full_validation_is_both_checks(tmp_path: Path, form: ScanForm) -> None:
+    gone = replace(form, output_folder=str(tmp_path / "gone"), date="soon")
+    assert set(validate(gone)) == {"output_folder", "date"}
+    assert validate(gone) == {**validate_filesystem(gone), **validate_syntax(gone)}

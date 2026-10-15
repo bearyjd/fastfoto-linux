@@ -1,3 +1,4 @@
+import shutil
 import threading
 from pathlib import Path
 from typing import Any
@@ -8,12 +9,12 @@ from tests.gui.qt import require_qt
 
 require_qt()
 
-from PySide6.QtCore import QUrl
+import shiboken6
+from PySide6.QtCore import QCoreApplication, QUrl
 from PySide6.QtTest import QSignalSpy
 
 from fastfoto_linux.gui.form import ScanForm
-from fastfoto_linux.gui.state import InvalidTransitionError
-from fastfoto_linux.scanner import ScannerNotFoundError
+from fastfoto_linux.scanner import ScanError, ScannerNotFoundError
 from fastfoto_linux.session import SessionResult, Stage
 from tests.gui.helpers import ScriptedSession, written
 from tests.gui.qt.qt_helpers import wait_until
@@ -159,8 +160,164 @@ def test_closing_while_scanning_cancels_first_and_then_says_so(make_bridge: Any,
 
 
 @pytest.mark.parametrize("name", ["startScan", "cancel", "processKept"])
-def test_actions_that_are_not_allowed_raise_instead_of_doing_nothing(
+def test_a_slot_never_raises_a_blocked_action_shows_a_banner_instead(
     make_bridge: Any, name: str
 ) -> None:
-    with pytest.raises(InvalidTransitionError):
-        getattr(make_bridge(), name)()
+    bridge = make_bridge()
+    getattr(bridge, name)()  # QML would swallow a traceback to stderr and the page would look dead
+    assert bridge.state == "failed"
+    assert bridge.bannerKind == "error"
+    assert bridge.bannerText
+    assert bridge.canCheck
+
+
+def test_an_unexpected_error_while_scanning_ends_in_failed_not_in_a_stuck_page(
+    make_bridge: Any, out: Any
+) -> None:
+    session = ScriptedSession(out, hold=True)
+    bridge = make_bridge(session=session)
+    bridge.checkScanner()
+    wait_until(lambda: bridge.canScan, "ready")
+    bridge.startScan()
+    wait_until(lambda: bridge.canCancel, "the scan to hold")
+    bridge.on_photo(object())  # not a WrittenFiles: the controller raises while handling it
+    wait_until(lambda: bridge.state == "failed", "the page to fail")
+    assert bridge.bannerKind == "error"
+    assert not bridge.running
+    wait_until(lambda: not bridge._worker.busy, "the job to be told to stop")
+    wait_until(lambda: bridge.canCheck, "the page to be usable")
+    for _ in range(20):  # the late result of the stopped job is dropped, not applied
+        QCoreApplication.processEvents()
+    assert bridge.state == "failed"
+
+
+def test_a_folder_that_vanished_is_reported_when_scan_is_pressed(
+    make_bridge: Any, out: Any
+) -> None:
+    bridge = make_bridge()
+    bridge.checkScanner()
+    wait_until(lambda: bridge.canScan, "ready")
+    shutil.rmtree(out)
+    bridge.startScan()
+    assert bridge.state == "ready"
+    assert "output_folder" in bridge.errors
+    assert bridge.bannerKind == "error"
+    assert "does not exist" in bridge.bannerText
+    assert not bridge.canScan
+
+
+def test_the_disk_is_checked_when_the_user_is_done_editing_the_folder(
+    make_bridge: Any, tmp_path: Any
+) -> None:
+    bridge = make_bridge()
+    bridge.setField("output_folder", str(tmp_path / "nowhere"))
+    assert bridge.errors == {}
+    bridge.checkDisk()
+    assert "does not exist" in bridge.errors["output_folder"]
+
+
+def test_choosing_a_missing_folder_is_reported_at_once(make_bridge: Any, tmp_path: Any) -> None:
+    bridge = make_bridge()
+    bridge.setOutputFolderUrl(QUrl.fromLocalFile(str(tmp_path / "nowhere")))
+    assert "does not exist" in bridge.errors["output_folder"]
+
+
+def test_the_scan_button_says_why_it_is_disabled(make_bridge: Any, out: Any) -> None:
+    bridge = make_bridge(form=ScanForm())
+    assert bridge.whyNotScan
+    bridge.setField("output_folder", str(out))
+    bridge.checkScanner()
+    wait_until(lambda: bridge.canScan, "ready")
+    assert bridge.whyNotScan == ""
+
+
+def test_open_folder_never_gets_a_relative_url(
+    make_bridge: Any, out: Any, tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "photos").mkdir()
+    monkeypatch.chdir(tmp_path)
+    bridge = make_bridge()
+    assert bridge.outputUrl.startswith("file:///")
+    bridge.setField("output_folder", "photos")
+    assert "output_folder" in bridge.errors
+    assert bridge.outputUrl == ""
+
+
+def test_the_kept_pages_offer_survives_checking_the_scanner_again(
+    make_bridge: Any, out: Any
+) -> None:
+    bridge = make_bridge(session=ScriptedSession(out, hold=True))
+    bridge.checkScanner()
+    wait_until(lambda: bridge.canScan, "ready")
+    bridge.startScan()
+    wait_until(lambda: bridge.canCancel, "the scan to hold")
+    bridge.cancel()
+    wait_until(lambda: bridge.state == "cancelled", "the cancel")
+    assert bridge.canProcessKept
+    bridge.checkScanner()
+    wait_until(lambda: bridge.state == "ready", "the second check")
+    assert bridge.canProcessKept
+    assert "before you cancelled" in bridge.keptHtml
+    bridge.processKept()
+    wait_until(lambda: bridge.state == "done", "the pages to be processed")
+    assert bridge.photoCount == 3
+
+
+def test_text_from_the_user_or_the_disk_reaches_the_banners_escaped(
+    make_bridge: Any, out: Any
+) -> None:
+    hostile = '<b>bold</b> <img src="file:///etc/passwd"> & more'
+    failed = SessionResult(error=ScanError(hostile))
+    bridge = make_bridge(session=ScriptedSession(out, photos=0, result=failed))
+    bridge.checkScanner()
+    wait_until(lambda: bridge.canScan, "ready")
+    bridge.startScan()
+    wait_until(lambda: bridge.state == "failed", "the failure")
+    assert hostile in bridge.bannerText  # the plain text is untouched
+    html = bridge.bannerHtml
+    assert "<b>" not in html
+    assert "<img" not in html
+    assert "&lt;b&gt;bold&lt;/b&gt;" in html
+    assert "&amp; more" in html
+    assert html.startswith("<")  # Qt takes it as rich text, so the entities are shown as text
+
+
+def test_a_stopped_bridge_drops_what_a_late_worker_sends(make_bridge: Any) -> None:
+    bridge = make_bridge()
+    bridge.shutdown()
+    errors: list[BaseException] = []
+
+    def send() -> None:
+        try:
+            bridge.on_photo(written(Path("/srv/demo"), 1))
+            bridge.on_finished(SessionResult())
+        except BaseException as error:
+            errors.append(error)
+
+    sender = threading.Thread(target=send)
+    sender.start()
+    sender.join()
+    for _ in range(10):
+        QCoreApplication.processEvents()
+    assert errors == []
+    assert bridge.photoCount == 0
+
+
+def test_a_worker_that_outlives_the_bridge_object_cannot_crash_the_thread(
+    make_bridge: Any,
+) -> None:
+    bridge = make_bridge()
+    shiboken6.delete(bridge)
+    errors: list[BaseException] = []
+
+    def send() -> None:
+        try:
+            bridge.on_page(1)
+            bridge.on_error(RuntimeError("late"))
+        except BaseException as error:
+            errors.append(error)
+
+    sender = threading.Thread(target=send)
+    sender.start()
+    sender.join()
+    assert errors == []

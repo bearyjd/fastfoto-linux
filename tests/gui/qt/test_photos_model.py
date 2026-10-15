@@ -63,7 +63,7 @@ def test_a_row_serves_file_urls_and_flags(model: PhotosModel) -> None:
     assert model.data(row, role(model, "hasBack")) is True
     assert model.data(row, role(model, "album")) == "Family Trips"
     assert model.data(row, role(model, "number")) == 7
-    assert model.data(row, role(model, "title")) == "Family Trips 7"
+    assert model.data(row, role(model, "title")) == "Family Trips_0007"
 
 
 def test_missing_files_are_empty_urls_and_false_flags(model: PhotosModel) -> None:
@@ -110,3 +110,8 @@ def test_a_different_list_resets_the_model(model: PhotosModel) -> None:
 def test_a_row_outside_the_model_has_no_data(model: PhotosModel) -> None:
     model.set_items((item(1),))
     assert model.data(model.index(5, 0), role(model, "title")) is None
+
+
+def test_a_photo_is_titled_by_its_file_name_not_its_folder(model: PhotosModel) -> None:
+    model.set_items((item(3),))
+    assert model.data(model.index(0, 0), role(model, "title")) == "Family Trips_0003"

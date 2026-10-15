@@ -106,6 +106,6 @@ def shim_missing_message(candidates: Sequence[Path], refused: Sequence[str] = ()
     if refused:
         return (
             f"FF-680W found on USB but the gap shim was refused as unsafe: {'; '.join(refused)}. "
-            f"(Searched: {searched}.) {how}"
+            f"(searched: {searched}) {how}"
         )
     return f"FF-680W found on USB but {SHIM_FILENAME} is missing (searched: {searched}). {how}"

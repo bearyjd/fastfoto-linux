@@ -14,7 +14,7 @@ from fastfoto_linux.library.apply import apply_plan
 from fastfoto_linux.library.decide import decide_files
 from fastfoto_linux.library.plan import PlanError, read_plan, write_plan
 from fastfoto_linux.library.planout import open_plan_target
-from fastfoto_linux.library.safety import UnsafePathError, check_roots
+from fastfoto_linux.library.safety import Library, UnsafePathError, check_roots
 from fastfoto_linux.library.summary import fix_problems, format_check, format_fix, summarize_check
 from fastfoto_linux.library.walk import walk_library
 
@@ -101,9 +101,10 @@ def _existing_folder(path: Path) -> Path:
 
 def run_check(args: argparse.Namespace) -> int:
     src = _existing_folder(args.src)
-    with _as_usage_errors(), open_plan_target(args.plan, os.stat(src)) as target:
+    walk = walk_library(src)  # first: the plan's folder is checked against every folder found
+    library = Library(os.stat(src), walk.folders)
+    with _as_usage_errors(), open_plan_target(args.plan, library) as target:
         # the plan's folder stays open from here to the write, however long the scan takes
-        walk = walk_library(src)
         logger.info("found %d JPEG files; deciding with %d worker(s)", len(walk.jpegs), args.jobs)
         rows = decide_files(src, walk.jpegs, args.jobs)
         write_plan(target, rows)

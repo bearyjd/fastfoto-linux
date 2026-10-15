@@ -106,7 +106,7 @@ def test_every_folder_entered_below_the_destination_is_checked_against_the_set(
     """A library subfolder bind-mounted at DEST/album is not a path under the library either."""
     dest = tmp_path / "dest"
     (dest / "album").mkdir(parents=True)
-    row = rotate_row(library, "album/b.jpg", 90, 1, 6)
+    row = rotate_row(library, "album/b.jpg", 90, 6, 3)
     source = fdio.read_regular(library / "album" / "b.jpg")
     root = Library(os.stat(library), frozenset({ident(dest / "album")}))
     root_fd = fdio.open_root(dest, root)
@@ -158,7 +158,7 @@ def test_a_folder_below_the_destination_that_is_a_library_folder_is_not_written_
     (dest / "album").mkdir(parents=True)
     alias_as(monkeypatch, dest / "album", library / "album")
     before = tree_snapshot(library)
-    result = apply_plan([rotate_row(library, "album/b.jpg", 90, 1, 6)], library, dest)
+    result = apply_plan([rotate_row(library, "album/b.jpg", 90, 6, 3)], library, dest)
     assert [(o.status, o.reason) for o in result.outcomes] == [
         (STATUS_FAILED, "unsafe-destination")
     ]

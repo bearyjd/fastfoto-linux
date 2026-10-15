@@ -10,12 +10,15 @@ import signal
 import subprocess
 import sys
 import time
+from concurrent.futures import ALL_COMPLETED
 from pathlib import Path
 
 import pytest
 
 from fastfoto_linux.cli import app as app_module
 from fastfoto_linux.library import decide as decide_module
+from fastfoto_linux.library import stopping
+from tests.library import crash_worker
 from tests.library.jpeg_helpers import sideways_jpeg, write_file
 from tests.library.test_interrupt import (
     EXIT_DEADLINE_S,
@@ -37,6 +40,7 @@ PAIRS = [
     (signal.SIGHUP, signal.SIGTERM),
     (signal.SIGTERM, signal.SIGTERM),
 ]
+MAX_SLICE_S = 1.0
 PAIR_IDS = [f"{first.name}-then-{second.name}" for first, second in PAIRS]
 
 
@@ -47,7 +51,7 @@ def handlers() -> dict[signal.Signals, object]:
 def test_the_teardown_ignores_every_stop_signal_and_puts_them_back() -> None:
     with app_module._signals_as_interrupt():
         before = handlers()
-        with decide_module._interrupts_ignored():
+        with stopping.interrupts_ignored():
             assert {number: signal.getsignal(number) for number in STOP_SIGNALS} == dict.fromkeys(
                 STOP_SIGNALS, signal.SIG_IGN
             )
@@ -60,7 +64,7 @@ def test_the_first_stop_signal_interrupts_and_every_further_one_is_ignored(
 ) -> None:
     with app_module._signals_as_interrupt():
         before = handlers()
-        with decide_module._first_interrupt_only():
+        with stopping.first_interrupt_only():
             with pytest.raises(KeyboardInterrupt):
                 signal.raise_signal(first)
             for number in STOP_SIGNALS:
@@ -147,3 +151,26 @@ def test_two_stop_signals_to_check_leave_no_plan_and_no_workers(
         with contextlib.suppress(ProcessLookupError):
             os.killpg(process.pid, signal.SIGKILL)
         process.wait()
+
+
+@pytest.mark.timeout(120)
+def test_waits_for_workers_are_made_in_slices_so_a_stray_signal_is_acted_on(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The kernel may hand a signal to a thread other than the main one, which then stays blocked
+    in an untimed wait; every wait for a worker therefore has a timeout."""
+    names = [f"{c}.jpg" for c in "abc"] + [crash_worker.POISON]
+    for name in names:
+        write_file(tmp_path, name, sideways_jpeg(90, None))
+    timeouts: list[float | None] = []
+    real = decide_module.wait
+
+    def spy(futures, timeout=None, return_when=ALL_COMPLETED):
+        timeouts.append(timeout)
+        return real(futures, timeout=timeout, return_when=return_when)
+
+    monkeypatch.setattr(decide_module, "wait", spy)
+    rows = decide_module.decide_files(tmp_path, sorted(names), 2, worker=crash_worker.die_on_poison)
+    assert len(rows) == len(names)  # the pool, and the lone retry of the file that kills it, ran
+    assert timeouts
+    assert all(seconds is not None and seconds <= MAX_SLICE_S for seconds in timeouts)

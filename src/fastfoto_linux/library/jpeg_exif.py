@@ -21,6 +21,7 @@ from fastfoto_linux.library.exif_errors import (
     ExifTooLargeError,
     JpegExifError,
     NotAJpegError,
+    TooManySegmentsError,
     XmpOrientationError,
 )
 from fastfoto_linux.library.tags import MAX_TAG, MIN_TAG, ORIENTATION_TAG
@@ -47,7 +48,10 @@ MAX_SEGMENT_PAYLOAD = 65533  # a segment's length field counts itself and holds 
 EXIF_HEADER = b"Exif\x00\x00"
 JFIF_HEADER = b"JFIF\x00"
 XMP_HEADER = b"http://ns.adobe.com/xap/1.0/\x00"
+XMP_EXTENSION_HEADER = b"http://ns.adobe.com/xmp/extension/\x00"  # Extended XMP chunks
 XMP_ORIENTATION = b"tiff:Orientation"
+XMP_TIFF_NAMESPACE = b"ns.adobe.com/tiff/1.0/"  # the namespace may be bound to any prefix
+XMP_ORIENTATION_NAME = b"Orientation"
 ADOBE_HEADER = b"Adobe"  # tells the decoder how the colours are stored, so it is kept
 MAX_ADOBE_PAYLOAD = 64
 _FILL = re.compile(rb"\xff+")  # fill bytes may precede any marker
@@ -65,17 +69,24 @@ class _Segment:
 
 
 @dataclass(frozen=True)
-class _Layout:
+class Layout:
+    """Where the segments before the scan are; parsed once and passed to the functions below."""
+
     segments: list[_Segment]
     scan_start: int  # offset of the SOS marker
 
+    @classmethod
+    def of(cls, data: bytes) -> "Layout":
+        """The layout of ``data``; NotAJpegError (TooManySegmentsError) if it is not one we edit."""
+        return _layout(data)
 
-def _layout(data: bytes) -> _Layout:
+
+def _layout(data: bytes) -> Layout:
     if data[: len(SOI)] != SOI:
         raise NotAJpegError("not a JPEG: it does not start with a start-of-image marker")
     segments: list[_Segment] = []
     position = len(SOI)
-    while True:
+    for _ in range(MAX_SEGMENTS):  # every marker counts, with or without a length
         if position + MARKER_SIZE > len(data):
             raise NotAJpegError("the JPEG ends before its image data")
         if data[position] != MARKER_PREFIX:
@@ -86,7 +97,7 @@ def _layout(data: bytes) -> _Layout:
             raise NotAJpegError("the JPEG ends before its image data")
         marker = data[position + 1]
         if marker == MARKER_SOS:
-            return _Layout(segments, position)
+            return Layout(segments, position)
         if marker == MARKER_EOI:
             raise NotAJpegError("the JPEG has no image data")
         if marker in STANDALONE_MARKERS:
@@ -95,6 +106,7 @@ def _layout(data: bytes) -> _Layout:
         segment = _read_segment(data, position)
         segments.append(segment)
         position = segment.end
+    raise TooManySegmentsError(f"the JPEG has more than {MAX_SEGMENTS} markers before its image")
 
 
 def _read_segment(data: bytes, position: int) -> _Segment:
@@ -118,26 +130,42 @@ def _tiff_block(data: bytes, exif: _Segment) -> bytes:
     return data[exif.payload_start + len(EXIF_HEADER) : exif.end]
 
 
-def read_orientation(data: bytes) -> int | None:
+def read_orientation(data: bytes, layout: Layout | None = None) -> int | None:
     """The Orientation tag of the JPEG in ``data``; ``None`` when it has no Exif or no tag.
 
     The whole Exif block is checked first, so a malformed one is an error even when the tag is
-    found early.
+    found early. ``layout`` is ``Layout.of(data)`` when the caller has it already.
     """
-    exif = _find_exif(data, _layout(data).segments)
+    layout = Layout.of(data) if layout is None else layout
+    exif = _find_exif(data, layout.segments)
     if exif is None:
         return None
     entry = inspect_tiff(_tiff_block(data, exif)).orientation
     return None if entry is None else entry.value
 
 
-def _xmp_has_orientation(data: bytes, segments: list[_Segment]) -> bool:
-    return any(
-        segment.marker == MARKER_APP1
-        and data.startswith(XMP_HEADER, segment.payload_start)
-        and data.find(XMP_ORIENTATION, segment.payload_start, segment.end) >= 0
-        for segment in segments
+def _names_orientation(data: bytes, start: int, end: int) -> bool:
+    """Whether ``data[start:end]`` has an XMP Orientation: ``tiff:Orientation``, or the tiff
+    namespace and an Orientation, which can be under any prefix."""
+    return data.find(XMP_ORIENTATION, start, end) >= 0 or (
+        data.find(XMP_TIFF_NAMESPACE, start, end) >= 0
+        and data.find(XMP_ORIENTATION_NAME, start, end) >= 0
     )
+
+
+def _xmp_has_orientation(data: bytes, segments: list[_Segment]) -> bool:
+    """Whether an XMP packet, or the Extended XMP chunks together, name an Orientation."""
+    chunks = []
+    for segment in segments:
+        if segment.marker != MARKER_APP1:
+            continue
+        if data.startswith(XMP_HEADER, segment.payload_start):
+            if _names_orientation(data, segment.payload_start, segment.end):
+                return True
+        elif data.startswith(XMP_EXTENSION_HEADER, segment.payload_start):
+            chunks.append(data[segment.payload_start : segment.end])
+    joined = b"".join(chunks)  # the chunks of one packet: a name can be split between them
+    return bool(chunks) and _names_orientation(joined, 0, len(joined))
 
 
 def _segment_bytes(payload: bytes) -> bytes:
@@ -165,13 +193,14 @@ def _verified(result: bytes, tag: int) -> bytes:
     Our reader goes first: it checks the whole Exif block, so Pillow only ever sees a checked one.
     """
     try:
-        ours = read_orientation(result)
+        layout = Layout.of(result)
+        ours = read_orientation(result, layout)
     except JpegExifError as error:
         raise JpegExifError(
             f"the edited JPEG could not be re-read ({type(error).__name__})"
         ) from error
     try:
-        with Image.open(io.BytesIO(decoder_copy(result))) as image:
+        with Image.open(io.BytesIO(decoder_copy(result, layout))) as image:
             pillow_tag = image.getexif().get(ORIENTATION_TAG)
     except Exception as error:  # an unreadable result must never be handed out
         name = type(error).__name__
@@ -181,7 +210,7 @@ def _verified(result: bytes, tag: int) -> bytes:
     return result
 
 
-def set_orientation(data: bytes, tag: int) -> bytes:
+def set_orientation(data: bytes, tag: int, layout: Layout | None = None) -> bytes:
     """``data`` with its Orientation tag set to ``tag`` (1-8) and every other byte unchanged.
 
     A missing tag is added in an appended copy of IFD0; a JPEG without Exif gets a new segment
@@ -190,7 +219,7 @@ def set_orientation(data: bytes, tag: int) -> bytes:
     """
     if not MIN_TAG <= tag <= MAX_TAG:
         raise ValueError(f"the orientation must be between {MIN_TAG} and {MAX_TAG}, got {tag}")
-    segments = _layout(data).segments
+    segments = (Layout.of(data) if layout is None else layout).segments
     if _xmp_has_orientation(data, segments):
         raise XmpOrientationError("the XMP data has an Orientation of its own")
     exif = _find_exif(data, segments)
@@ -209,9 +238,9 @@ def _splice(data: bytes, start: int, length: int, payload: bytes) -> bytes:
     return b"".join((view[:start], _segment_bytes(payload), view[start + length :]))
 
 
-def pixel_count(data: bytes) -> int:
+def pixel_count(data: bytes, layout: Layout | None = None) -> int:
     """Width times height as the JPEG's own frame header states them."""
-    layout = _layout(data)
+    layout = Layout.of(data) if layout is None else layout
     for segment in layout.segments:
         if segment.marker in FRAME_MARKERS:
             if segment.end - segment.payload_start < FRAME_PAYLOAD_SIZE:
@@ -232,14 +261,14 @@ def _keep_for_decoder(data: bytes, segment: _Segment, exif: _Segment | None) -> 
     return adobe and segment.end - segment.payload_start <= MAX_ADOBE_PAYLOAD
 
 
-def decoder_copy(data: bytes) -> bytes:
+def decoder_copy(data: bytes, layout: Layout | None = None) -> bytes:
     """A copy of the JPEG for Pillow: the same picture, with only the segments it needs.
 
     Kept: APP0 (JFIF), the Exif APP1 (after ``inspect_tiff`` has checked it), a short Adobe APP14
     (the colour transform) and every segment that is not an application segment. MPF, ICC, XMP,
     Photoshop and the other application segments are left out, so Pillow never parses them.
     """
-    layout = _layout(data)
+    layout = Layout.of(data) if layout is None else layout
     exif = _find_exif(data, layout.segments)
     if exif is not None:
         inspect_tiff(_tiff_block(data, exif))

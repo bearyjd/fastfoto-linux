@@ -16,7 +16,10 @@ from tests.library.jpeg_helpers import sideways_jpeg, write_file
 
 SAFE_PATH = "PYTHONSAFEPATH"
 PLANTED = ("struct", "json", "socket")
-RUNNER = "import sys\nfrom fastfoto_linux.cli.app import main\nsys.exit(main(sys.argv[1:]))\n"
+RUNNER = (
+    "import sys\nfrom fastfoto_linux.cli.app import main\n"
+    "if __name__ == '__main__':\n    sys.exit(main(sys.argv[1:]))\n"
+)
 DEADLINE_S = 120
 
 

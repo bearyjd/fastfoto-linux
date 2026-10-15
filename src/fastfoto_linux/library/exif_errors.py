@@ -13,6 +13,12 @@ class NotAJpegError(JpegExifError):
     reason = "unreadable"
 
 
+class TooManySegmentsError(NotAJpegError):
+    """The JPEG has more markers before its image data than a real photo has."""
+
+    reason = "too-many-segments"
+
+
 class ExifTooLargeError(JpegExifError):
     """The Exif segment would not fit the 64 KiB a JPEG segment can hold."""
 

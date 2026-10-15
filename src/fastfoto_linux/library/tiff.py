@@ -167,14 +167,20 @@ def _sub_ifd_offsets(walk: _Walk, entries: list[tuple[int, int, int, int]]) -> l
     return offsets
 
 
+def _is_ifd_pointer(pointer: int, block_size: int) -> bool:
+    """Whether ``pointer`` can point at an IFD: not zero, not into the header, not past the end."""
+    return TIFF_HEADER_SIZE <= pointer < block_size
+
+
 def _next_ifd(walk: _Walk, offset: int, entries: list[tuple[int, int, int, int]]) -> int | None:
     """The IFD that follows the one at ``offset`` (IFD1 after IFD0), or ``None`` if there is none.
 
-    A pointer of zero, or one that points past the end of the block, means there is none; the
-    pointer itself is carried over untouched by the edit.
+    A pointer that cannot point at an IFD (zero, into the header, past the end of the block) means
+    there is none. The edit leaves such a pointer where it is, but writes zero in its copy of IFD0
+    (see ``_appended``): the copy is followed by bytes that are not an IFD.
     """
     following = walk.unpack(LONG_FORMAT, offset + IFD_COUNT_SIZE + len(entries) * IFD_ENTRY_SIZE)[0]
-    return following if 0 < following < len(walk.block) else None
+    return following if _is_ifd_pointer(following, len(walk.block)) else None
 
 
 def _check_sub_ifds(walk: _Walk, entries: list[tuple[int, int, int, int]]) -> None:
@@ -207,12 +213,14 @@ def _appended(block: bytes, info: TiffInfo, tag: int) -> bytes:
     split = first + info.insert_index * IFD_ENTRY_SIZE
     entries_end = first + info.ifd0_count * IFD_ENTRY_SIZE
     entry = struct.pack(f"{order}HHIHH", ORIENTATION_TAG, TYPE_SHORT, 1, tag, 0)
+    (following,) = struct.unpack_from(f"{order}{LONG_FORMAT}", block, entries_end)
+    kept = following if _is_ifd_pointer(following, len(block)) else 0  # IFD1 stays reachable
     copy = (
         struct.pack(f"{order}{SHORT_FORMAT}", info.ifd0_count + 1)
         + block[first:split]
         + entry
         + block[split:entries_end]
-        + block[entries_end : entries_end + NEXT_IFD_SIZE]  # IFD1 stays reachable as it was
+        + struct.pack(f"{order}{LONG_FORMAT}", kept)
     )
     padding = bytes(len(block) % 2)  # the copy starts on an even offset
     start = len(block) + len(padding)

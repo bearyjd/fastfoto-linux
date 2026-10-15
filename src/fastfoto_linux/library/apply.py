@@ -18,12 +18,14 @@ from fastfoto_linux.library.jpeg_exif import read_orientation, set_orientation
 from fastfoto_linux.library.manifest import Manifest
 from fastfoto_linux.library.plan import Action, PlanRow
 from fastfoto_linux.library.safety import (
+    Library,
     UnsafePathError,
     assert_outside,
     check_roots,
     locate_inside,
 )
 from fastfoto_linux.library.tags import MAX_TAG, MIN_TAG, TAG_UPRIGHT
+from fastfoto_linux.library.walk import walk_library
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +71,7 @@ class _Run:
     src: Path
     dest: Path
     dest_fd: int
-    library: os.stat_result
+    library: Library
     manifest: Manifest
 
 
@@ -189,9 +191,10 @@ def apply_plan(
     ``make_dest`` creates ``dest`` (and any missing folders above it) when it does not exist.
     """
     src_root, dest_root = check_roots(src, dest)
-    library = os.stat(src_root)
+    # Every folder of the library, so that a bind mount of any of them is told from a new folder.
+    library = Library(os.stat(src_root), walk_library(src_root).folders)
     if make_dest:  # made through descriptors too, then opened (and checked) like any other
-        mode = stat.S_IMODE(library.st_mode) | OWNER_RWX
+        mode = stat.S_IMODE(library.root.st_mode) | OWNER_RWX
         os.close(confine.open_folder(dest_root, create=True, last_mode=mode, library=library))
     with ExitStack() as stack:
         dest_fd = fdio.open_root(dest_root, library)

@@ -46,7 +46,8 @@ def run_once(hook):
 
 
 def expected_after(before: dict[str, str]) -> dict[str, str]:
-    return {**before, f"sub/{MOVED}": "dir"}
+    """The library after a folder (holding the folders ``fix`` made in it so far) moved in."""
+    return {**before, f"sub/{MOVED}": "dir", f"sub/{MOVED}/sub": "dir"}
 
 
 # --- fix: the destination -----------------------------------------------------------------------
@@ -112,15 +113,19 @@ def test_a_plan_folder_moved_into_the_library_during_the_scan_gets_no_plan(
     out.mkdir()
     if older_plan:
         write_plan(out / "plan.csv", ())
+    older = (out / "plan.csv").read_bytes() if older_plan else None
     scan_hook(monkeypatch, lambda: moves_into(out, library))
     before = tree_snapshot(library)
     argv = ["library", "check", str(library), "--plan", str(out / "plan.csv"), "--jobs", "1"]
     assert main(argv) == EXIT_USAGE
-    after = tree_snapshot(library)
-    assert set(after) - set(before) == {f"sub/{MOVED}"}  # the moved folder, and nothing in it
-    assert not any(name.startswith(f"sub/{MOVED}/.") for name in after)  # no staging file
+    moved = library / "sub" / MOVED
+    assert sorted(path.name for path in moved.iterdir()) == (["plan.csv"] if older_plan else [])
     if older_plan:
-        assert "sub/a.jpg" not in (library / "sub" / MOVED / "plan.csv").read_text()
+        assert (moved / "plan.csv").read_bytes() == older  # not replaced
+    assert set(tree_snapshot(library)) - set(before) == {
+        *(f"sub/{MOVED}/{name}" for name in (["plan.csv"] if older_plan else [])),
+        f"sub/{MOVED}",
+    }
 
 
 def test_a_plan_folder_moved_into_the_library_after_the_plan_was_staged_gets_no_plan(
@@ -139,4 +144,4 @@ def test_a_plan_folder_moved_into_the_library_after_the_plan_was_staged_gets_no_
     before = tree_snapshot(library)
     argv = ["library", "check", str(library), "--plan", str(out / "plan.csv"), "--jobs", "1"]
     assert main(argv) == EXIT_USAGE
-    assert tree_snapshot(library) == expected_after(before)
+    assert tree_snapshot(library) == {**before, f"sub/{MOVED}": "dir"}

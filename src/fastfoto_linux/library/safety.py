@@ -24,13 +24,26 @@ def folder_id(info: os.stat_result) -> FolderId:
 
 @dataclass(frozen=True)
 class Library:
-    """The library folder and the identity of every folder below it (see ``folder_id``)."""
+    """The library folder and the identity of every folder below it (see ``folder_id``).
+
+    A bind mount of a library subfolder is another way to reach that folder, and walking ``..``
+    from it leaves the library's tree; so being inside the library is judged by identity.
+    """
 
     root: os.stat_result
     folders: frozenset[FolderId] = frozenset()
 
     def contains(self, info: os.stat_result) -> bool:
-        raise NotImplementedError
+        """Whether the folder ``info`` is the library or any folder below it."""
+        return same_directory(info, self.root) or folder_id(info) in self.folders
+
+
+# A bare stat result stands for the library folder alone, without the folders below it.
+LibraryRef = Library | os.stat_result
+
+
+def as_library(library: LibraryRef) -> Library:
+    return library if isinstance(library, Library) else Library(library)
 
 
 def _plain_relative(relative: str) -> PurePosixPath:

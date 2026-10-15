@@ -12,7 +12,7 @@ import stat
 from dataclasses import dataclass
 from pathlib import Path
 
-from fastfoto_linux.library.safety import UnsafePathError, same_directory
+from fastfoto_linux.library.safety import LibraryRef, UnsafePathError, as_library, same_directory
 
 # Intermediate folders only need to be passed through, which does not take read permission.
 STEP_FLAGS = getattr(os, "O_PATH", os.O_RDONLY) | os.O_DIRECTORY | os.O_CLOEXEC
@@ -56,7 +56,7 @@ def _make_below(parent_fd: int, name: str, mode: int | None) -> int:
 class _Guard:
     """Whether the folder about to be made has been checked against ``library`` yet."""
 
-    library: os.stat_result | None
+    library: LibraryRef | None
     checked: bool = False
 
 
@@ -82,7 +82,7 @@ def open_folder(
     *,
     create: bool = False,
     last_mode: int | None = None,
-    library: os.stat_result | None = None,
+    library: LibraryRef | None = None,
 ) -> int:
     """A descriptor for the folder at ``path``, opened from ``/`` without following any link.
 
@@ -107,17 +107,19 @@ def open_folder(
     return fd
 
 
-def refuse_inside(fd: int, library: os.stat_result) -> None:
+def refuse_inside(fd: int, library: LibraryRef) -> None:
     """UnsafePathError if the folder ``fd`` is the library or lies anywhere below it.
 
-    Every level above ``fd`` is reached through ``..`` and compared by device and inode, so two
-    spellings of one folder (bind mounts, case-folding filesystems) are told apart from names.
+    Every level above ``fd`` is reached through ``..`` and compared by device and inode with the
+    library and the folders in it, so two spellings of one folder (bind mounts, case-folding
+    filesystems) are told apart from names.
     """
+    inside = as_library(library)
     current, info = fd, os.fstat(fd)
     opened: list[int] = []
     try:
         for _ in range(MAX_DEPTH):
-            if same_directory(info, library):
+            if inside.contains(info):
                 raise UnsafePathError("refusing to write: the folder is the library or inside it")
             current = os.open("..", STEP_FLAGS, dir_fd=current)
             opened.append(current)

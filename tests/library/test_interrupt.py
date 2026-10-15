@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 
 from fastfoto_linux.library import decide as decide_module
+from fastfoto_linux.library import stopping
 from tests.library import crash_worker
 from tests.library.jpeg_helpers import sideways_jpeg, write_file
 
@@ -115,7 +116,7 @@ def test_stopping_workers_off_the_main_thread_leaves_the_signal_alone() -> None:
     seen: list[object] = []
 
     def run() -> None:
-        with decide_module._interrupts_ignored():
+        with stopping.interrupts_ignored():
             seen.append(signal.getsignal(signal.SIGINT))
 
     before = signal.getsignal(signal.SIGINT)

@@ -10,6 +10,7 @@ from typing import ClassVar
 import pytest
 
 from fastfoto_linux.library import decide as decide_module
+from fastfoto_linux.library import stopping
 from fastfoto_linux.library.decide import decide_files
 from fastfoto_linux.library.plan import Action
 from tests.library import crash_worker
@@ -124,7 +125,7 @@ def test_results_that_finished_before_the_pool_broke_are_kept() -> None:
 def test_workers_are_told_to_ignore_ctrl_c(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[tuple[int, object]] = []
     monkeypatch.setattr(signal, "signal", lambda number, handler: calls.append((number, handler)))
-    decide_module._ignore_interrupt()
+    stopping.ignore_interrupt()
     assert calls == [(signal.SIGINT, signal.SIG_IGN)]
 
 

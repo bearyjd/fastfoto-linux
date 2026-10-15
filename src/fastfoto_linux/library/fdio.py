@@ -18,13 +18,15 @@ import stat
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from fastfoto_linux.library import confine, safety
-from fastfoto_linux.library.safety import UnsafePathError
+from fastfoto_linux.library import confine
+from fastfoto_linux.library.safety import LibraryRef, UnsafePathError, as_library
 
 logger = logging.getLogger(__name__)
 
 MAX_FILE_BYTES = 128 * 1024 * 1024  # a photo larger than this is skipped, never read into memory
 READ_FLAGS = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
+# Reading the library must not change its access times; only the owner (or root) may ask for that.
+NO_ACCESS_TIME = getattr(os, "O_NOATIME", 0)
 FOLDER_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
 CREATE_FLAGS = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC
 PRIVATE_MODE = 0o600
@@ -66,9 +68,20 @@ class SourceFile:
     folder_modes: tuple[int, ...] = ()  # the modes of the folders above it, outermost first
 
 
+def _open_for_reading(path: Path) -> int:
+    """``path`` opened without following a link, and without touching its access time if allowed."""
+    if NO_ACCESS_TIME:
+        try:
+            return os.open(path, READ_FLAGS | NO_ACCESS_TIME)
+        except OSError as error:
+            if error.errno != errno.EPERM:  # EPERM: not the owner, so the time cannot be spared
+                raise
+    return os.open(path, READ_FLAGS)
+
+
 def read_regular(path: Path) -> SourceFile:
     """The bytes and metadata of the regular file at ``path`` (a link is not followed)."""
-    fd = os.open(path, READ_FLAGS)
+    fd = _open_for_reading(path)
     with os.fdopen(fd, "rb") as handle:
         info = os.fstat(handle.fileno())
         if not stat.S_ISREG(info.st_mode):
@@ -81,7 +94,7 @@ def read_regular(path: Path) -> SourceFile:
     return SourceFile(data, info.st_size, info.st_mtime_ns, info.st_atime_ns, info.st_mode)
 
 
-def open_root(dest: Path, library: os.stat_result) -> int:
+def open_root(dest: Path, library: LibraryRef) -> int:
     """A descriptor for the destination folder, opened from ``/`` without following links.
 
     UnsafePathError if it is the library or lies anywhere below it.
@@ -95,8 +108,8 @@ def open_root(dest: Path, library: os.stat_result) -> int:
     return fd
 
 
-def _refuse_library(fd: int, library: os.stat_result) -> None:
-    if safety.same_directory(os.fstat(fd), library):
+def _refuse_library(fd: int, library: LibraryRef) -> None:
+    if as_library(library).contains(os.fstat(fd)):
         raise UnsafePathError("refusing to write: a destination folder is the library itself")
 
 
@@ -132,7 +145,7 @@ def _enter_folder(parent_fd: int, name: str, source_mode: int | None) -> int:
 
 
 def publish(
-    root_fd: int, relative: str, content: bytes, source: SourceFile, library: os.stat_result
+    root_fd: int, relative: str, content: bytes, source: SourceFile, library: LibraryRef
 ) -> bool:
     """Write ``content`` as ``relative`` below the destination, with ``source``'s mode and times.
 
@@ -148,10 +161,15 @@ def publish(
             folder_fd = _enter_folder(folder_fd, part, modes[depth] if depth < len(modes) else None)
             stack.callback(os.close, folder_fd)
             _refuse_library(folder_fd, library)
-        return _publish_in(folder_fd, pure.name, content, source)
+        return _publish_in(folder_fd, pure.name, content, source, library)
 
 
-def _publish_in(folder_fd: int, name: str, content: bytes, source: SourceFile) -> bool:
+def _publish_in(
+    folder_fd: int, name: str, content: bytes, source: SourceFile, library: LibraryRef
+) -> bool:
+    # The folder was checked when it was opened; it may have been moved into the library since,
+    # so it is checked again before anything is written to it and again before the copy is linked.
+    confine.refuse_inside(folder_fd, library)
     staging = f".{name}.{secrets.token_hex(TOKEN_BYTES)}{STAGING_SUFFIX}"
     fd = os.open(staging, CREATE_FLAGS, PRIVATE_MODE, dir_fd=folder_fd)
     try:
@@ -159,7 +177,8 @@ def _publish_in(folder_fd: int, name: str, content: bytes, source: SourceFile) -
             handle.write(content)
             handle.flush()
             os.fsync(handle.fileno())
-            written = link_new(folder_fd, staging, name, content)
+            confine.refuse_inside(folder_fd, library)
+            written = link_new(folder_fd, staging, name, content, source)
             if written:
                 _finish_published(handle.fileno(), folder_fd, name, source)
     finally:
@@ -204,25 +223,32 @@ def _copy_metadata(fd: int, source: SourceFile) -> None:
     os.utime(fd, ns=(source.atime_ns, source.mtime_ns))
 
 
-def link_new(folder_fd: int, staging: str, name: str, content: bytes) -> bool:
+def link_new(
+    folder_fd: int, staging: str, name: str, content: bytes, source: SourceFile | None = None
+) -> bool:
+    """Link the staged file in as ``name``. True if it was linked; False if a file with exactly
+    ``content`` is there already (it then gets ``source``'s mode and times, if given and different).
+    A different file there is FileExistsError."""
     try:
         os.link(staging, name, src_dir_fd=folder_fd, dst_dir_fd=folder_fd, follow_symlinks=False)
     except FileExistsError:
-        return _already_there(folder_fd, name, content)
+        return _already_there(folder_fd, name, content, source)
     except OSError as error:
         if error.errno not in _NO_HARD_LINKS:
             raise
-        return _reserve_then_rename(folder_fd, staging, name, content)
+        return _reserve_then_rename(folder_fd, staging, name, content, source)
     return True
 
 
-def _reserve_then_rename(folder_fd: int, staging: str, name: str, content: bytes) -> bool:
+def _reserve_then_rename(
+    folder_fd: int, staging: str, name: str, content: bytes, source: SourceFile | None
+) -> bool:
     """For filesystems without hard links: claim the name exclusively, then swap the file in."""
     try:
         os.close(os.open(name, CREATE_FLAGS, PRIVATE_MODE, dir_fd=folder_fd))
     except FileExistsError:
         if not _is_placeholder(folder_fd, name):
-            return _already_there(folder_fd, name, content)
+            return _already_there(folder_fd, name, content, source)
     try:
         os.rename(staging, name, src_dir_fd=folder_fd, dst_dir_fd=folder_fd)
     except BaseException:
@@ -240,22 +266,39 @@ def _is_placeholder(folder_fd: int, name: str) -> bool:
     return stat.S_ISREG(info.st_mode) and info.st_size == 0
 
 
-def _already_there(folder_fd: int, name: str, content: bytes) -> bool:
-    """False if the existing file holds exactly ``content``; otherwise FileExistsError."""
+def _already_there(folder_fd: int, name: str, content: bytes, source: SourceFile | None) -> bool:
+    """False if the existing file holds exactly ``content``; otherwise FileExistsError.
+
+    A run killed between linking a copy and giving it its mode and times leaves exactly such a
+    file; with ``source``, the file gets its mode and times now, through the descriptor that
+    just confirmed what it holds.
+    """
     try:
         fd = os.open(name, READ_FLAGS, dir_fd=folder_fd)
-        with os.fdopen(fd, "rb") as handle:
+    except OSError:
+        raise FileExistsError(errno.EEXIST, "the destination file already exists", name) from None
+    with os.fdopen(fd, "rb") as handle:
+        try:
             info = os.fstat(handle.fileno())
             same = (
                 stat.S_ISREG(info.st_mode)
                 and info.st_size == len(content)
                 and handle.read(len(content) + 1) == content
             )
-    except OSError:
-        same = False
-    if not same:
-        raise FileExistsError(errno.EEXIST, "the destination file already exists", name)
+        except OSError:
+            same = False
+        if not same:
+            raise FileExistsError(errno.EEXIST, "the destination file already exists", name)
+        if source is not None and _differs(info, source):
+            _copy_metadata(handle.fileno(), source)
     return False
+
+
+def _differs(info: os.stat_result, source: SourceFile) -> bool:
+    """Whether the file's mode or modification time is not the source's (reading changes atime)."""
+    return stat.S_IMODE(info.st_mode) != source.mode & PERMISSION_BITS or (
+        info.st_mtime_ns != source.mtime_ns
+    )
 
 
 def sync_folder(fd: int) -> None:

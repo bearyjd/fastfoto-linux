@@ -88,13 +88,12 @@ def test_a_sub_ifd_pointer_of_zero_means_there_is_none(order: str, pointer: int)
 
 
 @ORDERS
-def test_a_next_ifd_pointer_past_the_end_is_carried_over_unchanged_when_ifd0_is_copied(
-    order: str,
-) -> None:
+def test_a_next_ifd_pointer_past_the_end_is_zero_in_the_copy_of_ifd0(order: str) -> None:
+    """Left in the copy it would point into the bytes appended after it (see the pointer tests)."""
     tiff = block(order, [entry(order, 0x010E, ASCII, 4, b"abc\0")], ifd0_next=BEYOND_THE_BLOCK)
     new = edited(tiff)
     assert new.startswith(tiff[:4]) and new[8 : len(tiff)] == tiff[8:]  # old bytes unmoved
-    assert new[-4:] == struct.pack(order + "I", BEYOND_THE_BLOCK)
+    assert new[-4:] == bytes(4)
 
 
 @ORDERS

@@ -68,7 +68,8 @@ tools/install-desktop.sh --uninstall              # remove it again
 
 The installer creates a virtual environment that can see the system PySide6 and installs the
 dependencies into it from `packaging/requirements-desktop.txt`, which pins every package by hash
-(it is generated from `uv.lock`). It builds the USB gap shim (`make` and `gcc` are needed) into
+(it is generated from `uv.lock`), after the build backend from `packaging/requirements-build.txt`
+(also pinned by hash); only wheels are installed, and the checkout is built with that backend. It builds the USB gap shim (`make` and `gcc` are needed) into
 `~/.local/lib/fastfoto-linux/` (a folder only you can use), adds an application menu entry and
 icon, and links `fastfoto` and `ffscan` into `~/.local/bin`. What it installed is listed in
 `~/.local/share/fastfoto-linux/installed.txt`; `--uninstall` removes only that. PySide6 is not a pip

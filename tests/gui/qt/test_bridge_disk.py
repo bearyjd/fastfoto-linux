@@ -116,3 +116,16 @@ def test_closing_the_window_while_the_disk_is_read_is_harmless(
     slow_disk.gate.set()
     time.sleep(0.2)
     QCoreApplication.processEvents()  # the late answer is dropped, nothing raises
+
+
+def test_a_folder_check_that_raises_is_a_field_error_and_not_a_page_that_waits_for_ever(
+    make_bridge: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def broken(form: ScanForm) -> dict[str, str]:
+        raise PermissionError("access denied")
+
+    monkeypatch.setattr(bridge_module, "validate_filesystem", broken)
+    bridge = make_bridge()
+    wait_until(lambda: "output_folder" in bridge.errors, "the folder check to answer")
+    assert "access denied" in bridge.errors["output_folder"]
+    assert bridge.whyNotScan != CHECKING_DISK_TEXT

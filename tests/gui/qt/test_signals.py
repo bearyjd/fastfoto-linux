@@ -4,6 +4,7 @@ import os
 import signal
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -17,9 +18,11 @@ require_qt()
 from PySide6.QtCore import QCoreApplication
 
 from fastfoto_linux.gui.form import ScanForm
+from fastfoto_linux.gui.qt import bridge as bridge_module
 from fastfoto_linux.gui.qt.app import handle_signals
 from tests.gui.helpers import ScriptedSession
 from tests.gui.qt.qt_helpers import wait_until
+from tests.gui.qt.test_bridge_r2 import stubborn_bridge
 
 ROOT = Path(__file__).resolve().parents[3]
 SIGNALS = [signal.SIGTERM, signal.SIGINT, signal.SIGHUP]
@@ -107,6 +110,48 @@ def test_a_second_signal_while_waiting_does_not_start_a_second_cancel(
         QCoreApplication.processEvents()
     assert cancels == [1]
     assert len(quit_when) >= 1
+
+
+def test_a_second_signal_quits_at_once_with_the_cancel_already_set(
+    handlers: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    stop, seen = threading.Event(), []
+    bridge = stubborn_bridge(stop, seen)  # a scan that ignores the cancel
+    quit_at: list[float] = []
+    handlers(bridge, lambda: quit_at.append(time.monotonic()), settle_timeout=30)
+    os.kill(os.getpid(), signal.SIGTERM)
+    wait_until(lambda: bridge.state == "cancelling", "the cancel")
+    for _ in range(20):
+        QCoreApplication.processEvents()
+        time.sleep(0.01)
+    assert quit_at == []  # the first signal waits for the scan
+    second = time.monotonic()
+    os.kill(os.getpid(), signal.SIGTERM)
+    wait_until(lambda: quit_at, "the second signal to quit")
+    assert quit_at[0] - second < 2
+    assert bridge._worker._cancel.is_set()  # the scan was told to stop before the app went
+    stop.set()
+    bridge.shutdown()
+
+
+def test_a_second_signal_during_the_final_wait_ends_it(
+    handlers: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(bridge_module, "SHUTDOWN_WAIT", 30)
+    stop, seen = threading.Event(), []
+    bridge = stubborn_bridge(stop, seen)
+    handlers(bridge, lambda: None, settle_timeout=30)
+
+    def two_signals() -> None:
+        for _ in range(2):
+            time.sleep(0.2)
+            os.kill(os.getpid(), signal.SIGTERM)
+
+    threading.Thread(target=two_signals).start()
+    begun = time.monotonic()
+    bridge.shutdown()  # blocks the GUI thread: only the Python-level handler can see the signals
+    assert time.monotonic() - begun < 6
+    stop.set()
 
 
 def test_the_previous_handlers_come_back(make_bridge: Any) -> None:

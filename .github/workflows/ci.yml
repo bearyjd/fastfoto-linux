@@ -80,7 +80,7 @@ jobs:
         run: >
           dnf install -y --setopt=install_weak_deps=False
           python3-pyside6 kf6-kirigami qt6-qtdeclarative kf6-qqc2-desktop-style
-          kf6-breeze-icons google-noto-sans-fonts uv git make gcc gawk desktop-file-utils
+          kf6-breeze-icons google-noto-sans-fonts python3-gobject-base uv git make gcc gawk desktop-file-utils
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false

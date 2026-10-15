@@ -24,6 +24,10 @@ class InvalidTransitionError(RuntimeError):
     """A move the scan page never makes: it is a bug, not something the user did."""
 
 
+class ActionBlockedError(InvalidTransitionError):
+    """The user asked for something that cannot be done right now; nothing has changed."""
+
+
 _AFTER_A_SESSION = frozenset({State.CHECKING, State.SCANNING})
 _TRANSITIONS: Mapping[State, frozenset[State]] = MappingProxyType(
     {

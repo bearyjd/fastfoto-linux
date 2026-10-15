@@ -16,6 +16,7 @@ from fastfoto_linux.gui.form import (
     FIELD_NAMES,
     FormInvalidError,
     ScanForm,
+    absolute_folder,
     destination,
     parse_date,
     to_request,
@@ -324,3 +325,11 @@ def test_the_full_validation_is_both_checks(tmp_path: Path, form: ScanForm) -> N
     gone = replace(form, output_folder=str(tmp_path / "gone"), date="soon")
     assert set(validate(gone)) == {"output_folder", "date"}
     assert validate(gone) == {**validate_filesystem(gone), **validate_syntax(gone)}
+
+
+def test_a_home_folder_that_does_not_exist_is_a_field_error_not_a_crash() -> None:
+    form = ScanForm(output_folder="~no-such-user-zzq/photos")
+    assert "output_folder" in validate_syntax(form)
+    assert "output_folder" in validate(form)
+    assert destination(form) is None
+    assert absolute_folder(form.output_folder) == ""

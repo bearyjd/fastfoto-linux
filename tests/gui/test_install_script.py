@@ -43,6 +43,7 @@ for name in fastfoto ffscan; do
   chmod +x "$dir/$name"
 done
 echo "$@" >> "$dir/pip.log"
+echo "$PWD" >> "$dir/cwd.log"
 INNER
 chmod +x "$dir/bin/python"
 """
@@ -242,7 +243,7 @@ def lib_dir(home: Path) -> Path:
 
 def pip_lines(home: Path) -> list[str]:
     log = home / ".local" / "share" / "fastfoto-linux" / "venv" / "bin" / "pip.log"
-    return [line for line in log.read_text().splitlines() if line.startswith("-m pip install")]
+    return [line for line in log.read_text().splitlines() if line.startswith("-I -m pip install")]
 
 
 def python_calls(env: dict[str, str]) -> list[str]:
@@ -281,16 +282,21 @@ def test_the_shim_is_replaced_by_a_new_file_never_written_over(
     assert sorted(path.name for path in lib_dir(home).iterdir()) == [SHIM]
 
 
-def test_dependencies_come_from_the_hashed_requirements_and_the_checkout_has_none(
+def test_the_build_backend_and_dependencies_are_hashed_wheels_and_the_checkout_builds_with_them(
     checkout: Path, env: dict[str, str], home: Path
 ) -> None:
     assert run(checkout, env).returncode == 0
-    first, second = pip_lines(home)
-    assert "--require-hashes" in first
-    assert f"-r {checkout}/{REQUIREMENTS}" in first
-    assert "--no-deps" in second
-    assert str(checkout) in second
-    assert "-r" not in second.split()
+    build, runtime, package = pip_lines(home)
+    for line in (build, runtime):
+        assert "--require-hashes" in line
+        assert "--only-binary=:all:" in line
+    assert f"-r {checkout}/packaging/requirements-build.txt" in build
+    assert f"-r {checkout}/{REQUIREMENTS}" in runtime
+    assert "--no-build-isolation" in package
+    assert "--no-deps" in package
+    assert "--force-reinstall" in package
+    assert str(checkout) in package
+    assert "-r" not in package.split()
 
 
 def test_the_hashed_requirements_are_what_the_lock_file_says() -> None:
@@ -388,13 +394,12 @@ def test_a_relative_xdg_data_home_is_ignored(
 # -- the launcher: the path goes in as data, not as awk or shell syntax -----------------------
 
 
+STRING_ESCAPES = {"s": " ", "n": "\n", "t": "\t", "r": "\r", "\\": "\\"}  # the only valid ones
+
+
 def exec_arguments(value: str) -> list[str]:
     """The arguments the Desktop Entry spec reads out of an Exec value."""
-    text = re.sub(
-        r"\\(.)",
-        lambda m: {"s": " ", "n": "\n", "t": "\t", "r": "\r", "\\": "\\"}.get(m[1], m[0]),
-        value,
-    )
+    text = re.sub(r"\\(.)", lambda m: STRING_ESCAPES[m[1]], value)
     arguments, current, quoted, started = [], "", False, False
     characters = iter(text)
     for character in characters:
@@ -444,3 +449,111 @@ def test_the_installed_launcher_checks_that_the_program_is_there(
     desktop = home / ".local" / "share" / "applications" / f"{APP_ID}.desktop"
     venv = home / ".local" / "share" / "fastfoto-linux" / "venv"
     assert f"TryExec={venv}/bin/fastfoto" in desktop.read_text().splitlines()
+
+
+# -- review round 2: the installer's own hygiene ------------------------------------------------
+
+
+def venv_log(home: Path, name: str) -> list[str]:
+    log = home / ".local" / "share" / "fastfoto-linux" / "venv" / "bin" / name
+    return log.read_text().splitlines()
+
+
+def test_every_call_of_the_environments_python_is_isolated(
+    checkout: Path, env: dict[str, str], home: Path
+) -> None:
+    assert run(checkout, env).returncode == 0
+    calls = venv_log(home, "pip.log")
+    assert calls
+    assert all(call.startswith("-I ") for call in calls), calls
+
+
+def test_the_script_works_from_the_checkout_whatever_the_current_folder_is(
+    checkout: Path, env: dict[str, str], home: Path, tmp_path: Path
+) -> None:
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    done = subprocess.run(
+        ["bash", str(checkout / "tools" / "install-desktop.sh")],
+        env=env,
+        cwd=elsewhere,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=60,
+    )
+    assert done.returncode == 0, done.stderr
+    assert set(venv_log(home, "cwd.log")) == {str(checkout)}  # not a folder with a json.py in it
+
+
+def test_files_are_made_readable_whatever_the_users_umask(
+    checkout: Path, env: dict[str, str], home: Path
+) -> None:
+    script = str(checkout / "tools" / "install-desktop.sh")
+    done = subprocess.run(
+        ["bash", "-c", f'umask 077; exec bash "{script}"'],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=60,
+    )
+    assert done.returncode == 0, done.stderr
+    desktop = home / ".local" / "share" / "applications" / f"{APP_ID}.desktop"
+    assert stat.S_IMODE(desktop.stat().st_mode) == 0o644
+
+
+def test_each_file_is_recorded_as_it_is_installed_so_a_failed_run_can_be_undone(
+    checkout: Path, env: dict[str, str], home: Path
+) -> None:
+    icons = home / ".local" / "share" / "icons" / "hicolor" / "scalable"
+    icons.mkdir(parents=True)
+    (icons / "apps").write_text("a file where the icon folder should be")
+    done = run(checkout, env)
+    assert done.returncode != 0
+    record = home / ".local" / "share" / "fastfoto-linux" / "installed.txt"
+    listed = record.read_text().splitlines()
+    assert str(lib_dir(home) / SHIM) in listed
+    assert str(home / ".local" / "share" / "applications" / f"{APP_ID}.desktop") in listed
+
+
+def test_a_foreign_shim_is_left_alone_and_the_warning_says_how_to_replace_it(
+    checkout: Path, env: dict[str, str], home: Path
+) -> None:
+    lib_dir(home).mkdir(parents=True)
+    (lib_dir(home) / SHIM).write_text("built by hand")
+    done = run(checkout, env)
+    assert f"remove {lib_dir(home) / SHIM} and run this installer again" in done.stderr
+
+
+@pytest.mark.parametrize("variable", ["HOME", "XDG_DATA_HOME"])
+@pytest.mark.parametrize("flags", [[], ["--dry-run"]])
+def test_a_control_character_in_a_base_folder_is_refused_before_anything_is_done(
+    checkout: Path, env: dict[str, str], tmp_path: Path, variable: str, flags: list[str]
+) -> None:
+    bad = tmp_path / "line\nbreak"
+    bad.mkdir()
+    done = run(checkout, {**env, variable: str(bad)}, *flags)
+    assert done.returncode != 0
+    assert "control character" in done.stderr
+    assert not any(bad.iterdir())
+
+
+def test_the_launcher_survives_a_round_trip_through_glib(
+    checkout: Path, env: dict[str, str], tmp_path: Path
+) -> None:
+    """GLib is what the desktop uses to read the file: the strongest test of the escaping."""
+    try:
+        from gi.repository import GLib  # noqa: PLC0415
+    except (ImportError, ValueError) as error:
+        pytest.skip(f"PyGObject (python3-gobject) is not available: {error}")
+    nasty = tmp_path / 'my "home" $HOME `date` back\\slash 50%x'
+    nasty.mkdir()
+    assert run(checkout, {**env, "HOME": str(nasty)}).returncode == 0
+    desktop = nasty / ".local" / "share" / "applications" / f"{APP_ID}.desktop"
+    keys = GLib.KeyFile()
+    keys.load_from_file(str(desktop), GLib.KeyFileFlags.NONE)
+    exec_line = keys.get_string("Desktop Entry", "Exec").replace("%%", "%")  # the field codes
+    argv = GLib.shell_parse_argv(exec_line)[1]
+    venv = nasty / ".local" / "share" / "fastfoto-linux" / "venv"
+    assert argv == [f"{venv}/bin/fastfoto"]

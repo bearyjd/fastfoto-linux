@@ -194,3 +194,43 @@ def test_every_picture_of_a_photo_cell_is_scaled_to_fit_not_stretched() -> None:
     ]
     assert len(images) == 2
     assert all("fillMode: Image.PreserveAspectFit" in block for block in images)
+
+
+# -- the build backend is pinned by hash like everything else the installer fetches ------------
+
+BUILD_IN = ROOT / "packaging" / "requirements-build.in"
+BUILD_TXT = ROOT / "packaging" / "requirements-build.txt"
+
+
+def pinned_blocks(path: Path) -> list[list[str]]:
+    """The requirement entries of a pip requirements file, each with its continuation lines."""
+    blocks: list[list[str]] = []
+    for line in path.read_text().splitlines():
+        if line.startswith("#") or not line.strip():
+            continue
+        if line.startswith(" ") and blocks:
+            blocks[-1].append(line.strip())
+        else:
+            blocks.append([line.strip()])
+    return blocks
+
+
+def test_every_build_requirement_is_pinned_and_has_hashes() -> None:
+    blocks = pinned_blocks(BUILD_TXT)
+    names = {block[0].split("==")[0].lower() for block in blocks}
+    assert "hatchling" in names
+    for block in blocks:
+        assert "==" in block[0], block
+        assert any("--hash=sha256:" in part for part in block), block
+
+
+def test_the_build_requirements_start_from_the_backend_pyproject_asks_for() -> None:
+    wanted = pyproject()["build-system"]["requires"]
+    assert [line for line in BUILD_IN.read_text().splitlines() if line and line[0] != "#"] == wanted
+
+
+def test_ci_installs_the_gui_job_from_the_hashed_files() -> None:
+    text = CI.read_text()
+    assert "uv pip install -e . --group dev" not in text
+    assert "--require-hashes" in text
+    assert "python3-gobject-base" in text  # the launcher's GLib round-trip test runs there

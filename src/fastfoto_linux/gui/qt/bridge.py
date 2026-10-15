@@ -213,6 +213,19 @@ class Bridge(QObject):
         """Why the Scan button is disabled, in words; empty when it is enabled."""
         return self.controller.scan_blocker
 
+    @Property(str, notify=changed)
+    def processKeptText(self) -> str:
+        """What the button that processes the pages a cancel kept says."""
+        return self.controller.process_kept_text
+
+    @Property(str, notify=changed)
+    def closeTitle(self) -> str:
+        return self.controller.close_title
+
+    @Property(str, notify=changed)
+    def closeText(self) -> str:
+        return self.controller.close_text
+
     @Property(int, notify=changed)
     def photoCount(self) -> int:
         return len(self.controller.photos)
@@ -296,6 +309,9 @@ class Bridge(QObject):
             save_form(self.controller.form)
         except OSError as error:
             logger.warning("could not remember the settings: %s", error)
+
+    def abort(self) -> None:
+        raise NotImplementedError
 
     def shutdown(self) -> None:
         """Stop the running job, if any, and wait for it (a while) before the app goes away.

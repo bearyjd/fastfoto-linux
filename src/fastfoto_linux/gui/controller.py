@@ -183,6 +183,18 @@ class Controller:
         return kept_text(result) if self.can_process_kept and result is not None else ""
 
     @property
+    def process_kept_text(self) -> str:
+        return ""
+
+    @property
+    def close_title(self) -> str:
+        return ""
+
+    @property
+    def close_text(self) -> str:
+        return ""
+
+    @property
     def close_ready(self) -> bool:
         """True once a requested close may go ahead: nothing is running any more."""
         return self._close_requested and not self.busy
@@ -251,7 +263,7 @@ class Controller:
         self._result = replace(kept, kept_pages=())
         self._changed()
 
-    def fail(self, error: BaseException) -> None:
+    def fail(self, error: BaseException, *, job: bool = False) -> None:
         """An unexpected error in the page itself: show it, stop any job, leave a usable state."""
         logger.error("the scan page failed: %s", error, exc_info=error)
         try:

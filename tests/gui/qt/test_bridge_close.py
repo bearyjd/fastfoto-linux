@@ -106,7 +106,7 @@ def test_threads_reporting_while_the_bridge_is_closed_and_deleted_do_not_crash()
             timeout=STRESS_TIMEOUT,
         )
     except subprocess.TimeoutExpired:
-        pytest.fail(f"the stress run did not finish within {STRESS_TIMEOUT} s (a hang)")
+        pytest.fail(f"the stress run did not finish within {STRESS_TIMEOUT} s (a deadlock)")
     assert done.returncode == 0, f"exit {done.returncode}: {done.stderr[-800:]}"
     assert f"done {STRESS_ROUNDS}" in done.stdout
 

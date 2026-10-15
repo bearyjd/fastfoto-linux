@@ -7,7 +7,7 @@ from fastfoto_linux.cli.errors import EXIT_OK, EXIT_SCANNER, CliError
 from fastfoto_linux.cli.options import common_parent, host
 from fastfoto_linux.scanner import default_shim_candidates, find_usb_scanners, sane_net_device_name
 from fastfoto_linux.scanner.shim_trust import select_shim
-from fastfoto_linux.scanner.target import SHIM_BUILD_COMMAND, SHIM_ENV_VAR
+from fastfoto_linux.scanner.target import shim_remedy
 
 
 def add_parser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
@@ -32,7 +32,7 @@ def run(args: argparse.Namespace) -> int:
     if shim is not None:
         print(f"USB gap shim: found ({shim})")
     else:
-        print(f"USB gap shim: missing (build it with `{SHIM_BUILD_COMMAND}`)")
+        print(f"USB gap shim: missing ({shim_remedy()})")
         for reason in choice.refused:
             print(f"  refused: {reason}")
     if args.net is not None:
@@ -46,8 +46,7 @@ def run(args: argparse.Namespace) -> int:
     if shim is None:
         refused = f" (refused as unsafe: {'; '.join(choice.refused)})" if choice.refused else ""
         raise CliError(
-            f"the USB gap shim is missing{refused}, USB I/O fails without it; build it with "
-            f"`{SHIM_BUILD_COMMAND}` or set ${SHIM_ENV_VAR}",
+            f"the USB gap shim is missing{refused}, USB I/O fails without it; {shim_remedy()}",
             EXIT_SCANNER,
         )
     return EXIT_OK

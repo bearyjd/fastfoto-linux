@@ -159,10 +159,11 @@ do:
   scanner's. It is needed because libusb and SANE open `/dev/bus/usb/...` themselves and do not
   use the USB portal.
 - **Network**: for the Wi-Fi fallback.
-- **Files**: your Pictures folder, where photos normally go. Pick any other output folder in the
-  app's folder dialog, which grants that folder through the desktop portal (photos are written
-  there as usual; the portal's file system has no file locks, so two scans into one such folder at
-  once are not serialised).
+- **Files**: your Pictures folder. You can pick any folder under Pictures as the output folder
+  and the app writes there directly, with file locks. Any other folder is chosen in the app's folder
+  dialog, which grants that folder through the desktop portal (photos are written there as usual;
+  the portal's file system has no file locks, so two scans into one such folder at once are not
+  serialised).
 - **Display**: Wayland, X11 as a fallback, and IPC.
 - **From the PySide6 base app (`io.qt.PySide.BaseApp`)**: talk access to a few session-bus names
   (`org.kde.KGlobalSettings`, `org.kde.kconfig.notify`, `com.canonical.AppMenu.Registrar`) and

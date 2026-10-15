@@ -1,8 +1,9 @@
 """Threads report to a bridge while it is closed and deleted; run in its own process.
 
 ``test_bridge_close.py`` runs this with a timeout: a thread that is still inside ``signal.emit``
-when the bridge is deleted takes the whole process down (a segmentation fault), which must fail one
-test and not kill pytest. Prints ``done N`` when every round survived.
+when the bridge is deleted takes the whole process down (a segmentation fault) or deadlocks with the
+thread that deletes it, which must fail one test and not kill or stall pytest. Prints ``done N``
+when every round survived.
 """
 
 import faulthandler
@@ -16,7 +17,7 @@ from PySide6.QtWidgets import QApplication
 from fastfoto_linux.gui.qt.app import destroy_now
 from fastfoto_linux.gui.qt.bridge import Bridge
 
-THREADS = 4
+THREADS = 32  # enough that one is nearly always inside an emit when the GUI thread gets the GIL
 MAX_RUN_SECONDS = 0.004  # how long the reporters run before the bridge is closed
 SEED = 1
 
@@ -37,8 +38,8 @@ def one_round(app: QApplication, rng: random.Random) -> None:
     while time.monotonic() < deadline:
         app.processEvents()  # the GUI thread keeps running, like the real app
     bridge.shutdown()
-    destroy_now(bridge)  # straight after: a reporter may still be inside the emit
-    stop.set()
+    stop.set()  # the reporters leave; one may still be inside the emit, waiting for the GIL
+    destroy_now(bridge)
     for thread in threads:
         thread.join()
     app.processEvents()

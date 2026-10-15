@@ -89,6 +89,24 @@ def destroy_now(item: Any) -> None:
         shiboken6.delete(item)
 
 
+_LEFT_ALONE: list[Any] = []  # bridges kept alive on purpose, see ``release_bridge``
+
+
+def release_bridge(bridge: Any) -> None:
+    """Delete the bridge, unless the job's thread is still running (it is left alone then).
+
+    ``shutdown`` waits a bounded time for the job, so a stubborn one can outlive it. Its thread
+    holds the bridge as its sink: deleting the Qt object under it is not worth the risk when the
+    process is about to exit anyway, so the bridge is kept (and never reported to again, as
+    ``shutdown`` closed it).
+    """
+    if bridge.job_alive:
+        logger.debug("the job is still running; the bridge is left to the end of the process")
+        _LEFT_ALONE.append(bridge)
+        return
+    destroy_now(bridge)
+
+
 def show_error_dialog(text: str) -> None:
     """Tell the user in a dialog too: a launcher has no terminal to print to."""
     from PySide6.QtWidgets import QMessageBox  # noqa: PLC0415
@@ -197,8 +215,9 @@ def _run(run_loop: Callable[[], int]) -> int:
     engine, warnings = create_engine(bridge)
     if not engine.rootObjects():
         print(f"fastfoto: the window could not be loaded: {'; '.join(warnings)}", file=sys.stderr)
+        bridge.shutdown()  # closed before it is deleted: its threads may still be reporting
         destroy_now(engine)
-        destroy_now(bridge)
+        release_bridge(bridge)
         return 1
     from PySide6.QtWidgets import QApplication  # noqa: PLC0415
 
@@ -213,4 +232,4 @@ def _run(run_loop: Callable[[], int]) -> int:
         bridge.remember()
         bridge.shutdown()
         destroy_now(engine)  # the window first: it is bound to the bridge
-        destroy_now(bridge)
+        release_bridge(bridge)

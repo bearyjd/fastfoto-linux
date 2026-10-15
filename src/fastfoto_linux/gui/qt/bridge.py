@@ -110,6 +110,7 @@ class Bridge(QObject):
         )
         self._close_signalled = False
         self._closed = False
+        self._emit_lock = threading.Lock()  # guards ``_closed`` and every emit from a thread
         self._shut_down = False
         self._aborted = threading.Event()
         self._event.connect(self._dispatch, Qt.ConnectionType.QueuedConnection)
@@ -140,12 +141,23 @@ class Bridge(QObject):
         self._emit(self._event, name, payload)
 
     def _emit(self, signal: Any, *args: object) -> None:
-        """Hand an event to the GUI thread, unless the window is gone (the job may outlive it)."""
-        if self._closed:
-            return
-        try:
-            signal.emit(*args)
-        except RuntimeError:  # the Qt object was deleted under a worker still reporting
+        """Hand an event to the GUI thread, unless the window is gone (the job may outlive it).
+
+        The check and the emit are one step under ``_emit_lock``, which ``_close_events`` takes too:
+        once that has returned, no thread is inside an emit, so the bridge may be deleted. (The
+        signals are queued, so the emit only posts an event and the lock is held for a moment.)
+        """
+        with self._emit_lock:
+            if self._closed:
+                return
+            try:
+                signal.emit(*args)
+            except RuntimeError:  # the Qt object was deleted under a worker still reporting
+                self._closed = True
+
+    def _close_events(self) -> None:
+        """Stop handing events to the GUI thread; returns once no thread is in the middle of one."""
+        with self._emit_lock:
             self._closed = True
 
     def _start_disk_check(self, form: ScanForm) -> None:
@@ -395,7 +407,7 @@ class Bridge(QObject):
         if self._shut_down:
             return
         self._shut_down = True
-        self._closed = True
+        self._close_events()
         self._worker.cancel()
         deadline = time.monotonic() + SHUTDOWN_WAIT
         while self._worker.alive and time.monotonic() < deadline:

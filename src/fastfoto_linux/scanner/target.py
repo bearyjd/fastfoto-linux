@@ -104,13 +104,22 @@ def resolve_target(
     )
 
 
+def shim_remedy() -> str:
+    """What fixes a missing or refused shim: build it, or (it is built in) reinstall the Flatpak."""
+    if inside_flatpak():
+        return "reinstall or update the Flatpak"
+    return f"build it with `{SHIM_BUILD_COMMAND}` or set ${SHIM_ENV_VAR}"
+
+
 def shim_missing_message(candidates: Sequence[Path], refused: Sequence[str] = ()) -> str:
     """Why there is no shim: when one was refused, the reason and the fix come first."""
     searched = ", ".join(str(path) for path in candidates) or "no candidate paths"
-    how = f"Build it with `{SHIM_BUILD_COMMAND}` or set ${SHIM_ENV_VAR}; USB I/O fails without it."
+    remedy = shim_remedy()
+    how = f"{remedy[:1].upper()}{remedy[1:]}; USB I/O fails without it."
     if refused:
         return (
             f"FF-680W found on USB but the gap shim was refused as unsafe: {'; '.join(refused)}. "
             f"(searched: {searched}) {how}"
         )
-    return f"FF-680W found on USB but {SHIM_FILENAME} is missing (searched: {searched}). {how}"
+    name = "the app's bundled gap shim" if inside_flatpak() else SHIM_FILENAME
+    return f"FF-680W found on USB but {name} is missing (searched: {searched}). {how}"

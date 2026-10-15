@@ -18,9 +18,10 @@ finish-args:
   - --device=all
   # The Wi-Fi fallback (`ffscan scan --net HOST`) talks to the scanner over TCP.
   - --share=network
-  # Photos normally go to ~/Pictures, so the app may write there without asking. Any other folder
-  # is chosen in the portal's folder picker and works too, but the portal's file system has no
-  # file locks, so two writers in one such folder are not serialised.
+  # With this grant the user can type or pick any folder under Pictures and the app writes there
+  # directly, with file locks. A folder elsewhere is chosen in the portal's folder picker and works
+  # too, but the portal's file system has no file locks, so two writers in one such folder are
+  # not serialised.
   - --filesystem=xdg-pictures
   # Always the shim built into this Flatpak, never one built on the host under ~/.local.
   - --env=FF680W_SHIM=/app/lib/fastfoto-linux/ff680w_usb_gap.so

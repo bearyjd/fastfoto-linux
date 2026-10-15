@@ -49,7 +49,7 @@ def test_inside_the_flatpak_a_missing_shim_says_the_bundled_one_is_gone(
     message = shim_missing_message([searched])
     assert "bundled" in message
     assert "missing" in message
-    assert "reinstall or update the Flatpak" in message.lower()
+    assert "reinstall or update the flatpak" in message.lower()
     assert str(searched) in message
     assert "make -C" not in message
     assert "Build it" not in message
@@ -62,7 +62,7 @@ def test_inside_the_flatpak_a_refused_shim_keeps_the_reason_and_says_to_reinstal
     flatpak(monkeypatch, inside=True)
     message = shim_missing_message([tmp_path / "x.so"], ["owned by uid 1000"])
     assert "refused as unsafe: owned by uid 1000" in message
-    assert "reinstall or update the Flatpak" in message.lower()
+    assert "reinstall or update the flatpak" in message.lower()
     assert NATIVE_HINT not in message
 
 
@@ -75,7 +75,7 @@ def test_resolving_a_target_inside_the_flatpak_without_the_shim_gives_that_messa
     add_usb_device(sysfs, "1-1")
     with pytest.raises(ShimMissingError) as excinfo:
         resolve_target(sysfs_root=sysfs, shim_candidates=[tmp_path / "nope.so"])
-    assert "reinstall or update the Flatpak" in str(excinfo.value).lower()
+    assert "reinstall or update the flatpak" in str(excinfo.value).lower()
     assert NATIVE_HINT not in str(excinfo.value)
 
 
@@ -89,7 +89,7 @@ def test_ffscan_devices_inside_the_flatpak_does_not_tell_the_user_to_run_make(
     assert DEVICE in out
     assert "shim: missing" in out
     assert NATIVE_HINT not in out + err
-    assert "reinstall or update the Flatpak" in err.lower()
+    assert "reinstall or update the flatpak" in err.lower()
 
 
 def test_ffscan_devices_natively_still_says_to_build_the_shim(

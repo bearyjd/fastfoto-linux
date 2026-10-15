@@ -88,6 +88,10 @@ def corrupt_cases() -> dict[str, Callable[[TiffFixture], bytes]]:
         ),
         "entries run past the block": lambda fx: fx.block[: fx.where["ifd0"] + 30],
         "next pointer missing": lambda fx: fx.block[: ifd0_end(fx) + 2],
+        "ifd0 inside the tiff header": lambda fx: poke(fx.block, 4, "I", 4),
+        "sub-ifd pointer of the wrong kind": lambda fx: poke(
+            fx.block, entry_at(fx, "ifd0", 4) + 2, "H", SHORT
+        ),
     }
 
 
@@ -152,7 +156,7 @@ def test_an_honest_large_ifd_is_still_accepted() -> None:
     count, slot = 300, 8
     first_value = len(HEADER) + 2 + count * ENTRY + 4
     entries = b"".join(
-        struct.pack(">HHII", 0x0100 + i, 2, slot, first_value + i * slot) for i in range(count)
+        struct.pack(">HHII", 0x1000 + i, 2, slot, first_value + i * slot) for i in range(count)
     )
     block = HEADER + struct.pack(">H", count) + entries + bytes(4) + bytes(count * slot)
     data = jpeg_with_exif(block)

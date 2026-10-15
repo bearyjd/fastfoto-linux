@@ -248,3 +248,21 @@ def test_a_failure_while_writing_leaves_the_old_plan_and_no_staging_file(
         write_plan(plan, (a_row(), a_row()))
     assert plan.read_bytes() == original
     assert sorted(p.name for p in tmp_path.iterdir()) == ["plan.csv"]
+
+
+@pytest.mark.parametrize("name", ["..", ".", "/"])
+def test_a_plan_path_without_a_file_name_is_refused(src: Path, name: str) -> None:
+    with pytest.raises(UnsafePathError, match="not a file name"):
+        check_plan_output(Path(name), src)
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores file permissions")
+def test_an_unreadable_old_plan_is_not_overwritten(src: Path, tmp_path: Path) -> None:
+    old = tmp_path / "plan.csv"
+    write_plan(old, (a_row(),))
+    old.chmod(0)
+    try:
+        with pytest.raises(UnsafePathError, match="not a plan"):
+            check_plan_output(old, src)
+    finally:
+        old.chmod(0o600)

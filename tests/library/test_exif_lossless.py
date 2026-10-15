@@ -135,10 +135,10 @@ def padded_to(length: int) -> bytes:
 def test_the_whole_payload_including_the_appended_ifd_must_fit_one_segment() -> None:
     entries = build_tiff(">", None).entries_in_ifd0
     growth = 2 + (entries + 1) * ENTRY + 4
-    fits = MAX_PAYLOAD - len(EXIF_HEADER) - growth
-    assert fits % 2 == 0
-    result = set_orientation(jpeg_with_exif(padded_to(fits)), 6)
-    assert len(exif_block(result)) + len(EXIF_HEADER) == MAX_PAYLOAD
+    largest = MAX_PAYLOAD - len(EXIF_HEADER) - growth  # without a padding byte
+    assert largest % 2 == 1  # so the even block just below it is the largest that still fits
+    result = set_orientation(jpeg_with_exif(padded_to(largest - 1)), 6)
+    assert len(EXIF_HEADER) + len(exif_block(result)) == MAX_PAYLOAD - 1
     with pytest.raises(ExifTooLargeError) as raised:
-        set_orientation(jpeg_with_exif(padded_to(fits + 1)), 6)  # the padding byte tips it over
+        set_orientation(jpeg_with_exif(padded_to(largest)), 6)  # odd length: the pad tips it over
     assert raised.value.reason == "exif-too-large"

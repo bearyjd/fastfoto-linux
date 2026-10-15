@@ -5,9 +5,11 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from fastfoto_linux.library.apply import (
+    STATUS_DONE,
     STATUS_EXISTS,
     STATUS_FAILED,
     STATUS_STALE,
+    STATUS_UNLOGGED,
     STATUS_WRITTEN,
     ApplyResult,
 )
@@ -49,6 +51,7 @@ def summarize_check(walk: WalkResult, rows: Sequence[PlanRow]) -> CheckSummary:
         undecided=keeps[REASON_UNDECIDED],
         skipped_by_reason=dict(sorted(skips.items())),
         backs_like_fronts=skips[REASON_BACK_LOOKS_LIKE_FRONT],
+        skipped_folders=walk.skipped_folders,
     )
 
 
@@ -68,6 +71,8 @@ def format_check(summary: CheckSummary, plan_name: str) -> str:
         lines.append(f"symlinks ignored: {summary.symlinks}")
     if summary.unreadable_folders:
         lines.append(f"folders that could not be read: {summary.unreadable_folders}")
+    if summary.skipped_folders:
+        lines.append(f"folders skipped (hidden or @eaDir): {summary.skipped_folders}")
     lines += [
         f"to rotate: {rotate} ({_breakdown(summary.rotate_by_angle)})",
         f"already upright: {summary.upright}",
@@ -80,22 +85,24 @@ def format_check(summary: CheckSummary, plan_name: str) -> str:
 
 
 def format_fix(result: ApplyResult, dest_name: str) -> str:
-    """The counts ``fix`` prints on stdout."""
-    return "\n".join(
-        [
-            f"written: {result.count(STATUS_WRITTEN)}",
-            f"stale: {result.count(STATUS_STALE)}",
-            f"already there: {result.count(STATUS_EXISTS)}",
-            f"failed: {result.count(STATUS_FAILED)}",
-            f"output: {dest_name}",
-        ]
-    )
+    """The counts ``fix`` prints on stdout; the manifest line only when a row is missing from it."""
+    lines = [
+        f"written: {result.count(STATUS_WRITTEN)}",
+        f"already done: {result.count(STATUS_DONE)}",
+        f"stale: {result.count(STATUS_STALE)}",
+        f"already there: {result.count(STATUS_EXISTS)}",
+        f"failed: {result.count(STATUS_FAILED)}",
+    ]
+    if result.count(STATUS_UNLOGGED):
+        lines.append(f"written but not in the manifest: {result.count(STATUS_UNLOGGED)}")
+    return "\n".join([*lines, f"output: {dest_name}"])
 
 
 def fix_problems(result: ApplyResult) -> tuple[str, ...]:
-    """One line per row that was not written, for stderr."""
+    """One line per row that needs attention, for stderr; names are shown as ``repr`` so that
+    nothing in a file name can drive the terminal."""
     return tuple(
-        f"  {outcome.path}: {outcome.status} ({outcome.reason})"
+        f"  {outcome.path!r}: {outcome.status} ({outcome.reason})"
         for outcome in result.outcomes
-        if outcome.status != STATUS_WRITTEN
+        if outcome.status not in (STATUS_WRITTEN, STATUS_DONE)
     )

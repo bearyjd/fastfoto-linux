@@ -132,7 +132,7 @@ def test_a_back_that_shows_a_face_is_reported_as_looking_like_a_front(
         (lambda good: good[: len(good) // 2], "unreadable"),
         (
             lambda good: good[:2] + segment(APP1, EXIF_HEADER + b"junk, not a TIFF") + good[2:],
-            "bad-exif",
+            "exif-malformed",
         ),
     ],
     ids=["not an image", "truncated", "junk exif"],

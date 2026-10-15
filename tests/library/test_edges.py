@@ -73,7 +73,7 @@ def test_an_orientation_entry_that_is_not_one_number_is_refused() -> None:
 def test_a_result_that_does_not_check_out_is_never_returned(
     monkeypatch, broken, message: str
 ) -> None:
-    monkeypatch.setattr(jpeg_exif, "_patched", broken)
+    monkeypatch.setattr(jpeg_exif, "with_orientation", broken)
     with pytest.raises(JpegExifError, match=message):
         set_orientation(photo(1), 6)
 

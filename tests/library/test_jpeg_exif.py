@@ -249,3 +249,9 @@ def test_read_orientation_rejects_garbled_files_too() -> None:
         read_orientation(b"nope")
     with pytest.raises(JpegExifError):
         read_orientation(garbled_cases()["tiff header is junk"])
+
+
+def test_a_result_that_pillow_cannot_open_is_never_returned() -> None:
+    no_frame_header = SOI + b"\xff\xda\x00\x02" + bytes(8)  # parses as segments, has no image
+    with pytest.raises(JpegExifError, match="re-read"):
+        set_orientation(no_frame_header, 6)

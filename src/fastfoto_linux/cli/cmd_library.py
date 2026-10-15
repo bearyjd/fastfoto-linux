@@ -105,7 +105,8 @@ def run_check(args: argparse.Namespace) -> int:
     walk = walk_library(src)
     logger.info("found %d JPEG files; deciding with %d worker(s)", len(walk.jpegs), args.jobs)
     rows = decide_files(src, walk.jpegs, args.jobs)
-    write_plan(plan_path, rows)
+    with _as_usage_errors():
+        write_plan(plan_path, rows)
     print(format_check(summarize_check(walk, rows), args.plan))
     return EXIT_OK
 

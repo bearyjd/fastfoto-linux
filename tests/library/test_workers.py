@@ -1,6 +1,9 @@
 """The process pool: a worker that dies costs one file, and Ctrl-C stops everything at once."""
 
 import logging
+import signal
+from concurrent.futures import Future
+from concurrent.futures.process import BrokenProcessPool
 from pathlib import Path
 from typing import ClassVar
 
@@ -94,3 +97,63 @@ def test_progress_is_still_logged_when_the_pool_works_file_by_file(
     with caplog.at_level(logging.INFO, logger=decide_module.logger.name):
         decide_files(tmp_path, names, jobs=2)
     assert any("checked 4 of 4" in record.getMessage() for record in caplog.records)
+
+
+def test_a_crash_row_for_a_file_that_has_vanished_has_no_size(tmp_path: Path) -> None:
+    row = decide_module._crashed_row(tmp_path, "gone.jpg")
+    assert (row.action, row.reason, row.size, row.mtime_ns) == (
+        Action.SKIP,
+        "worker-crashed",
+        0,
+        0,
+    )
+
+
+def test_results_that_finished_before_the_pool_broke_are_kept() -> None:
+    finished, lost, broken = Future(), Future(), Future()
+    row = decide_module._crashed_row(Path("."), "x.jpg")
+    finished.set_result(row)
+    lost.set_exception(BrokenProcessPool("a worker died"))
+    broken.cancel()
+    done: dict[str, object] = {}
+    suspects = decide_module._salvage({finished: "a.jpg", lost: "b.jpg", broken: "c.jpg"}, done)
+    assert done == {"a.jpg": row}
+    assert suspects == ["b.jpg", "c.jpg"]
+
+
+def test_workers_are_told_to_ignore_ctrl_c(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[int, object]] = []
+    monkeypatch.setattr(signal, "signal", lambda number, handler: calls.append((number, handler)))
+    decide_module._ignore_interrupt()
+    assert calls == [(signal.SIGINT, signal.SIG_IGN)]
+
+
+class BreakingPool:
+    """Runs each call at once in this process; its third ``submit`` finds the pool broken."""
+
+    calls = 0
+
+    def __init__(self, *_args: object, **_kwargs: object) -> None:
+        pass
+
+    def submit(self, function, *args: object) -> Future:
+        BreakingPool.calls += 1
+        if BreakingPool.calls == 3:
+            raise BrokenProcessPool("a worker died just before this call")
+        future: Future = Future()
+        future.set_result(function(*args))
+        return future
+
+    def shutdown(self, wait: bool = True, *, cancel_futures: bool = False) -> None:
+        pass
+
+
+def test_a_pool_that_breaks_while_files_are_being_submitted_loses_no_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    BreakingPool.calls = 0
+    monkeypatch.setattr(decide_module, "ProcessPoolExecutor", BreakingPool)
+    names = photos(tmp_path, [f"{c}.jpg" for c in "abcdef"])
+    rows = decide_files(tmp_path, names, jobs=2)
+    assert [row.path for row in rows] == names
+    assert {row.reason for row in rows} == {"faces-upright-after-turn"}

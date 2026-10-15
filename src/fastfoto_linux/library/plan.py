@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+from fastfoto_linux.library.fdio import write_replacing
 from fastfoto_linux.library.plan_format import PLAN_COLUMNS
 from fastfoto_linux.library.safety import resolve_inside
 from fastfoto_linux.library.tags import (
@@ -57,25 +58,27 @@ def _blank_if_none(value: int | None) -> str:
 
 
 def write_plan(path: Path, rows: tuple[PlanRow, ...]) -> None:
-    """Write ``rows`` as CSV (relative POSIX paths only)."""
-    with path.open("w", encoding=ENCODING, errors=ENCODING_ERRORS, newline="") as handle:
-        writer = csv.writer(handle, lineterminator="\n")
-        writer.writerow(PLAN_COLUMNS)
-        for row in rows:
-            writer.writerow(
-                [
-                    row.path,
-                    row.action.value,
-                    row.rotate_cw,
-                    _blank_if_none(row.old_tag),
-                    _blank_if_none(row.new_tag),
-                    format(row.score, SCORE_FORMAT),
-                    row.reason,
-                    row.size,
-                    row.mtime_ns,
-                    row.sha256,
-                ]
-            )
+    """Write ``rows`` as CSV (relative POSIX paths only) through a staging file renamed over
+    ``path``; a link, special file or other non-regular file at ``path`` is refused."""
+    buffer = io.StringIO(newline="")
+    writer = csv.writer(buffer, lineterminator="\n")
+    writer.writerow(PLAN_COLUMNS)
+    for row in rows:
+        writer.writerow(
+            [
+                row.path,
+                row.action.value,
+                row.rotate_cw,
+                _blank_if_none(row.old_tag),
+                _blank_if_none(row.new_tag),
+                format(row.score, SCORE_FORMAT),
+                row.reason,
+                row.size,
+                row.mtime_ns,
+                row.sha256,
+            ]
+        )
+    write_replacing(path, buffer.getvalue().encode(ENCODING, ENCODING_ERRORS))
 
 
 def _whole_number(fields: dict[str, str], name: str, low: int, high: int | None = None) -> int:

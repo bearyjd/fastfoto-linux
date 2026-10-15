@@ -1,9 +1,12 @@
 """Path rules that keep the library untouched: nothing is ever written inside it."""
 
 import os
+import stat
 from pathlib import Path, PurePosixPath
 
 from fastfoto_linux.library.plan_format import PLAN_COLUMNS
+
+MAX_HEADER_CHARS = 1024
 
 
 class UnsafePathError(ValueError):
@@ -50,13 +53,43 @@ def locate_inside(root: Path, relative: str) -> Path:
     return folder / pure.name
 
 
+def _existing_stats(path: Path) -> list[os.stat_result]:
+    """Stat results of ``path`` and of each of its ancestors that exists (links followed)."""
+    found = []
+    for candidate in (path, *path.parents):
+        try:
+            found.append(os.stat(candidate))
+        except OSError:
+            continue
+    return found
+
+
+def _is_same_folder_or_below(inner: Path, outer: Path) -> bool:
+    """Whether ``inner`` is ``outer`` or lies below it, judged by what the folders are on disk.
+
+    Paths can name one folder in different ways (bind mounts, case-folding filesystems), so some
+    existing ancestor-or-self of ``inner`` is compared with ``outer`` by device and inode.
+    """
+    try:
+        outer_stat = os.stat(outer)
+    except OSError:
+        return False
+    return any(same_directory(known, outer_stat) for known in _existing_stats(inner))
+
+
 def check_roots(src: Path, dest: Path) -> tuple[Path, Path]:
-    """Both folders resolved (symlinks followed); UnsafePathError if they overlap either way."""
+    """Both folders resolved (symlinks followed); UnsafePathError if they overlap either way.
+
+    Overlap is judged by path and, again, by identity on disk, so two spellings of one folder
+    are caught too.
+    """
     resolved_src, resolved_dest = src.resolve(), dest.resolve()
     if (
         resolved_src == resolved_dest
         or _is_inside(resolved_dest, resolved_src)
         or _is_inside(resolved_src, resolved_dest)
+        or _is_same_folder_or_below(resolved_dest, resolved_src)
+        or _is_same_folder_or_below(resolved_src, resolved_dest)
     ):
         raise UnsafePathError(
             f"the folders overlap ({resolved_src} and {resolved_dest}); "
@@ -66,22 +99,43 @@ def check_roots(src: Path, dest: Path) -> tuple[Path, Path]:
 
 
 def _is_plan_file(path: Path) -> bool:
-    if not path.is_file():
+    """Whether the regular file at ``path`` starts with the plan's header line."""
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+    except OSError:
         return False
-    with path.open(encoding="utf-8", errors="replace") as handle:
-        return handle.readline().rstrip("\r\n") == ",".join(PLAN_COLUMNS)
+    with os.fdopen(fd, encoding="utf-8", errors="replace") as handle:
+        if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
+            return False
+        return handle.readline(MAX_HEADER_CHARS).rstrip("\r\n") == ",".join(PLAN_COLUMNS)
+
+
+def _check_existing_plan(target: Path, plan: Path) -> None:
+    try:
+        info = os.lstat(target)
+    except FileNotFoundError:
+        return
+    if stat.S_ISLNK(info.st_mode):
+        raise UnsafePathError(f"{plan} is a link; not writing through it")
+    if not stat.S_ISREG(info.st_mode) or not _is_plan_file(target):
+        raise UnsafePathError(f"{plan} exists and is not a plan file; not overwriting it")
 
 
 def check_plan_output(plan: Path, src: Path) -> Path:
-    """The plan path resolved; UnsafePathError if it is inside ``src`` or would replace a file
-    that is not a plan."""
-    target = plan.resolve()
+    """Where the plan will be written; UnsafePathError if that is inside ``src``, or an existing
+    link, special file or file that is not a plan.
+
+    The folder is resolved but the file name is not, so a link at the plan path is never followed.
+    """
+    if plan.name in ("", ".", ".."):
+        raise UnsafePathError(f"{plan} is not a file name")
+    folder = plan.parent.resolve()
+    target = folder / plan.name
     if _is_inside(target, src.resolve()):
         raise UnsafePathError(f"the plan file {plan} would be inside the library")
-    if not target.parent.is_dir():
+    if not folder.is_dir():
         raise UnsafePathError(f"the folder for the plan file {plan} does not exist")
-    if target.exists() and not _is_plan_file(target):
-        raise UnsafePathError(f"{plan} exists and is not a plan file; not overwriting it")
+    _check_existing_plan(target, plan)
     return target
 
 

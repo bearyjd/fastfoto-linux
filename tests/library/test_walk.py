@@ -83,3 +83,11 @@ def test_a_dot_inside_a_name_or_in_a_hidden_file_does_not_hide_anything(tmp_path
 def test_a_library_folder_that_is_itself_hidden_is_still_walked(tmp_path: Path) -> None:
     touch(tmp_path / ".library", "a.jpg")
     assert walk_library(tmp_path / ".library").jpegs == ("a.jpg",)
+
+
+def test_pipes_and_other_special_files_are_neither_listed_nor_counted(tmp_path: Path) -> None:
+    touch(tmp_path, "a.jpg")
+    os.mkfifo(tmp_path / "pipe.jpg")
+    result = walk_library(tmp_path)
+    assert result.jpegs == ("a.jpg",)
+    assert (result.other_formats, result.symlinks) == (0, 0)

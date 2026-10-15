@@ -64,7 +64,8 @@ uv run ffscan library fix ~/Documents/library-plan.csv \
     --source ~/Pictures/MyLibrary --out ~/Pictures/MyLibrary-fixed --mkdir
 ```
 
-- `check` walks the folder (symlinks are not followed; `.jpg`/`.jpeg` in any case), prints how
+- `check` walks the folder (symlinks are not followed; hidden folders and `@eaDir` are skipped;
+  `.jpg`/`.jpeg` in any case), prints how
   many files it would rotate by 90, 180 and 270 degrees, how many look upright already, how many
   it cannot decide (no faces, or faces that disagree) and why others were skipped. The plan is a
   CSV with one row per JPEG (`path` relative to the library, `action`, `rotate_cw`, the old and
@@ -75,9 +76,13 @@ uv run ffscan library fix ~/Documents/library-plan.csv \
   that show a face, in case a front was filed as a back. Photos stored mirrored (EXIF
   orientation 2, 4, 5 or 7) are skipped.
 - `fix` writes `DEST/<same relative path>` for every `rotate` row, keeping the file's times and
-  permissions, and a `fastfoto-reorient-manifest.csv` listing old and new tags. It refuses a row
-  whose file changed since `check` (size, modification time or content hash), never overwrites a
-  file in `DEST` and refuses a `DEST` that is inside the library or contains it.
+  permissions (not setuid bits or extended attributes), and a new
+  `fastfoto-reorient-manifest-<UTC time>.csv` for each run listing old and new tags. It refuses a
+  row whose file changed since `check` (size, modification time or content hash), never overwrites
+  a file in `DEST` and refuses a `DEST` that is inside the library or contains it (also when it
+  is the same folder under another name). A copy left by an interrupted run counts as done when
+  you run `fix` again. The plan and manifest are plain CSV: if you open them in a spreadsheet, a
+  file name that starts with `=`, `+`, `-` or `@` may be taken as a formula.
 - Then review `DEST` in your photo viewer and, once you are happy, copy it over the library
   yourself. Running `check` on `DEST` again proposes nothing to rotate.
 

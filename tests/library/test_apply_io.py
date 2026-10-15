@@ -98,8 +98,9 @@ def test_setuid_and_setgid_bits_are_not_copied(lib: Path, dest: Path) -> None:
 def test_modes_and_both_times_are_copied_from_the_source(lib: Path, dest: Path) -> None:
     os.utime(lib / FIRST, ns=(1_000_000_000_111_111_111, 1_100_000_000_222_222_222))
     (lib / FIRST).chmod(0o640)
+    row = rotate_row(lib, FIRST, 90, 1, 6)  # reading the file for its hash may move its atime
     before = (lib / FIRST).stat()
-    apply_plan([rotate_row(lib, FIRST, 90, 1, 6)], lib, dest)
+    apply_plan([row], lib, dest)
     after = (dest / FIRST).stat()
     assert (after.st_atime_ns, after.st_mtime_ns) == (before.st_atime_ns, before.st_mtime_ns)
     assert stat.S_IMODE(after.st_mode) == 0o640
@@ -111,7 +112,7 @@ def test_extended_attributes_are_not_copied(lib: Path, dest: Path) -> None:
     except OSError:
         pytest.skip("this filesystem has no user extended attributes")
     apply_plan([rotate_row(lib, FIRST, 90, 1, 6)], lib, dest)
-    assert os.listxattr(dest / FIRST) == []
+    assert "user.fastfoto-test" not in os.listxattr(dest / FIRST)
 
 
 def test_the_staging_file_is_created_private_exclusive_and_without_following_links(

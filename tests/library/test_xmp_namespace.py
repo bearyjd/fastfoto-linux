@@ -1,0 +1,101 @@
+"""An XMP orientation is found by its namespace and name, whatever prefix the packet gives it.
+
+The tiff namespace can be bound to any prefix, and a large packet is split into Extended XMP
+chunks; either way a viewer may still prefer that orientation to the Exif one.
+"""
+
+import struct
+from pathlib import Path
+
+import pytest
+
+from fastfoto_linux.library.decide import decide_file
+from fastfoto_linux.library.exif_errors import JpegExifError
+from fastfoto_linux.library.jpeg_exif import set_orientation
+from fastfoto_linux.library.plan import Action
+from tests.library.jpeg_helpers import APP1, segment, write_file
+from tests.library.untrusted_helpers import insert_after_jfif, sideways, with_xmp
+
+REASON = "xmp-orientation"
+EXTENSION_HEADER = b"http://ns.adobe.com/xmp/extension/\x00"
+GUID = b"0123456789ABCDEF0123456789ABCDEF"
+TIFF_NS = b'xmlns:t="http://ns.adobe.com/tiff/1.0/"'
+RDF_NS = b'xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"'
+OTHER_PREFIX_ATTRIBUTE = (
+    b'<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF ' + RDF_NS + b"><rdf:Description "
+    b"" + TIFF_NS + b' t:Orientation="6"/></rdf:RDF></x:xmpmeta>'
+)
+OTHER_PREFIX_ELEMENT = (
+    b"<x:xmpmeta><rdf:RDF><rdf:Description " + TIFF_NS + b"><t:Orientation>8</t:Orientation>"
+    b"</rdf:Description></rdf:RDF></x:xmpmeta>"
+)
+TIFF_WITHOUT_ORIENTATION = (
+    b"<x:xmpmeta><rdf:RDF><rdf:Description " + TIFF_NS + b' t:Make="TestCam"/>'
+    b"</rdf:RDF></x:xmpmeta>"
+)
+ORIENTATION_ELSEWHERE = (
+    b'<x:xmpmeta><rdf:RDF><rdf:Description xmlns:ex="http://example.com/ns/" '
+    b'ex:Orientation="portrait"/></rdf:RDF></x:xmpmeta>'
+)
+
+
+def extended(chunk: bytes, offset: int = 0, total: int | None = None) -> bytes:
+    """An Extended XMP APP1 segment holding ``chunk``."""
+    size = len(chunk) if total is None else total
+    payload = EXTENSION_HEADER + GUID + struct.pack(">II", size, offset) + chunk
+    return segment(APP1, payload)
+
+
+def skipped_for_xmp(tmp_path: Path, data: bytes) -> bool:
+    write_file(tmp_path, "a.jpg", data)
+    row = decide_file(tmp_path, "a.jpg")
+    return (row.action, row.reason) == (Action.SKIP, REASON)
+
+
+@pytest.mark.parametrize(
+    "packet", [OTHER_PREFIX_ATTRIBUTE, OTHER_PREFIX_ELEMENT], ids=["attribute", "element"]
+)
+def test_an_orientation_in_the_tiff_namespace_under_another_prefix_is_found(
+    tmp_path: Path, packet: bytes
+) -> None:
+    assert skipped_for_xmp(tmp_path, with_xmp(sideways(90), packet))
+
+
+@pytest.mark.parametrize(
+    "packet", [OTHER_PREFIX_ATTRIBUTE, OTHER_PREFIX_ELEMENT], ids=["attribute", "element"]
+)
+def test_an_orientation_in_extended_xmp_is_found(tmp_path: Path, packet: bytes) -> None:
+    data = insert_after_jfif(sideways(90), extended(packet))
+    assert skipped_for_xmp(tmp_path, data)
+
+
+def test_an_orientation_split_across_extended_xmp_chunks_is_found(tmp_path: Path) -> None:
+    cut = OTHER_PREFIX_ATTRIBUTE.index(b" t:Orientation")
+    first, second = OTHER_PREFIX_ATTRIBUTE[:cut], OTHER_PREFIX_ATTRIBUTE[cut:]
+    total = len(OTHER_PREFIX_ATTRIBUTE)
+    chunks = extended(first, 0, total) + extended(second, len(first), total)
+    assert skipped_for_xmp(tmp_path, insert_after_jfif(sideways(90), chunks))
+
+
+def test_the_edit_itself_refuses_these_files() -> None:
+    for data in (
+        with_xmp(sideways(90), OTHER_PREFIX_ATTRIBUTE),
+        insert_after_jfif(sideways(90), extended(OTHER_PREFIX_ELEMENT)),
+    ):
+        with pytest.raises(JpegExifError) as caught:
+            set_orientation(data, 6)
+        assert caught.value.reason == REASON
+
+
+@pytest.mark.parametrize(
+    "packet", [TIFF_WITHOUT_ORIENTATION, ORIENTATION_ELSEWHERE], ids=["tiff-make", "other-name"]
+)
+def test_a_packet_without_an_xmp_orientation_does_not_stop_the_turn(
+    tmp_path: Path, packet: bytes
+) -> None:
+    for data in (
+        with_xmp(sideways(90), packet),
+        insert_after_jfif(sideways(90), extended(packet)),
+    ):
+        write_file(tmp_path, "a.jpg", data)
+        assert decide_file(tmp_path, "a.jpg").action is Action.ROTATE

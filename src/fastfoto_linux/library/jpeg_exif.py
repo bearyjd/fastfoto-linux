@@ -39,6 +39,7 @@ FRAME_MARKERS = frozenset(set(range(0xC0, 0xD0)) - {0xC4, 0xC8, 0xCC})
 FRAME_PAYLOAD_SIZE = 5  # precision (1), height (2), width (2)
 # Markers that stand alone, without a length: TEM, RST0-RST7 and a stray SOI (EOI is handled apart).
 STANDALONE_MARKERS = frozenset({0x01, *range(0xD0, 0xD9)})
+MAX_SEGMENTS = 1024  # markers before the scan; a real photo has a few dozen at most
 MARKER_SIZE = 2
 LENGTH_SIZE = 2
 SEGMENT_HEADER_SIZE = MARKER_SIZE + LENGTH_SIZE

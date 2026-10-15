@@ -22,6 +22,7 @@ class WalkResult:
     symlinks: int
     unreadable_folders: int
     skipped_folders: int = 0
+    folders: frozenset[tuple[int, int]] = frozenset()
 
 
 def _is_skipped_folder(name: str) -> bool:

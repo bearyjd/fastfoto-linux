@@ -1,6 +1,7 @@
 """Path rules that keep the library untouched: nothing is ever written inside it."""
 
 import os
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 
@@ -11,6 +12,25 @@ class UnsafePathError(ValueError):
 def same_directory(first: os.stat_result, second: os.stat_result) -> bool:
     """Whether two stat results are the same folder (bind mounts and case-folding included)."""
     return os.path.samestat(first, second)
+
+
+FolderId = tuple[int, int]
+
+
+def folder_id(info: os.stat_result) -> FolderId:
+    """What names a folder on disk, whatever path or mount it was reached through."""
+    return (info.st_dev, info.st_ino)
+
+
+@dataclass(frozen=True)
+class Library:
+    """The library folder and the identity of every folder below it (see ``folder_id``)."""
+
+    root: os.stat_result
+    folders: frozenset[FolderId] = frozenset()
+
+    def contains(self, info: os.stat_result) -> bool:
+        raise NotImplementedError
 
 
 def _plain_relative(relative: str) -> PurePosixPath:

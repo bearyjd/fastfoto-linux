@@ -2,12 +2,14 @@
 
 import contextlib
 import logging
+import re
 import shutil
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 
 from fastfoto_linux.output.files import sync_folders
+from fastfoto_linux.scanner.job import DEFAULT_FILE_PREFIX
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +17,7 @@ KEPT_DIR_NAME = ".raw"
 TEMP_PREFIX = ".ffscan-raw-"
 # No ':' in the stamp: FAT and exFAT drives refuse it in a folder name.
 STAMP_FORMAT = "%Y%m%dT%H%M%SZ"
+_PAGE = re.compile(rf"{re.escape(DEFAULT_FILE_PREFIX)}-([0-9]{{4,}})\.png")
 
 
 def utc_stamp() -> str:
@@ -27,8 +30,18 @@ def _kept_dir(root: Path) -> Path:
 
 
 def list_pages(folder: Path) -> tuple[Path, ...]:
-    """The scanner's page files in ``folder``, in page order."""
-    raise NotImplementedError
+    """The scanner's page files in ``folder``, in page order (by number, not by file name).
+
+    A folder that cannot be listed has no pages as far as the caller can tell: that is logged,
+    not raised, as this runs while the session result is being put together.
+    """
+    try:
+        entries = [p for p in folder.iterdir() if p.is_file()]
+    except OSError as error:
+        logger.error("raw folder %s cannot be listed: %s", folder, error)
+        return ()
+    numbered = [(int(m.group(1)), p) for p in entries if (m := _PAGE.fullmatch(p.name))]
+    return tuple(path for _, path in sorted(numbered))
 
 
 def create_raw_dir(root: Path, *, keep: bool) -> Path:
@@ -46,7 +59,7 @@ def create_raw_dir(root: Path, *, keep: bool) -> Path:
     return Path(tempfile.mkdtemp(prefix=TEMP_PREFIX, dir=root))
 
 
-def settle_raw_dir(raw: Path, root: Path, *, keep: bool) -> Path | None:
+def settle_raw_dir(raw: Path, root: Path, *, keep: bool, album: Path | None = None) -> Path | None:
     """Delete ``raw`` unless ``keep``; return where its pages are now, or None if removed.
 
     An empty folder is never worth keeping (nor is the empty ``.raw`` it leaves behind). A
@@ -58,6 +71,10 @@ def settle_raw_dir(raw: Path, root: Path, *, keep: bool) -> Path | None:
     that cannot be listed, moved or deleted: that is logged and ``raw`` is returned, as the
     place where the pages still are (a folder that cannot even be listed is left alone, not
     deleted blind).
+
+    ``root`` is the folder ``raw`` lives in. Before pages are deleted, ``album`` (the folder the
+    photos made from them were written to, when that is not ``root``) is flushed as well as
+    ``root``.
     """
     try:
         empty = not any(raw.iterdir())
@@ -68,7 +85,7 @@ def settle_raw_dir(raw: Path, root: Path, *, keep: bool) -> Path | None:
         _remove_empty(raw, root)
         return None
     if not keep:
-        return _delete(raw, root)
+        return _delete(raw, root, album)
     if raw.name.startswith(TEMP_PREFIX):
         return _move_to_kept(raw, root)
     return raw
@@ -85,14 +102,15 @@ def _remove_empty(raw: Path, root: Path) -> None:
             raw.parent.rmdir()
 
 
-def _delete(raw: Path, root: Path) -> Path | None:
+def _delete(raw: Path, root: Path, album: Path | None) -> Path | None:
     """Delete ``raw`` once the photos made from it are safely on disk.
 
-    The album folder's entry in ``root`` is flushed first: the pages must not be gone before a
-    power cut could still lose the folder that holds their photos.
+    The folders that changed are flushed first: the pages must not be gone before a power cut
+    could still lose the photos made from them, or the folder that holds the pages.
     """
+    folders = [root] if album is None or album == root else [album, root]
     try:
-        sync_folders([root])
+        sync_folders(folders)
         shutil.rmtree(raw)
     except OSError as error:
         logger.error("raw pages not deleted, they are in %s: %s", raw, error)

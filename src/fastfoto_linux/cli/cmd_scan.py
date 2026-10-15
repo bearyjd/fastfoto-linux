@@ -78,9 +78,11 @@ def _scan_into(
         raw_parent=root,
     )
     session = run_session(request, on_page=_log_page, scan=run_scan, process=process_pages)
-    if session.process is not None:
-        print_summary(session.process)
-    _report_kept(session)
+    try:
+        if session.process is not None:
+            print_summary(session.process)
+    finally:  # the pages are kept whatever happens: say where, even if the summary fails
+        _report_kept(session)
     if session.error is not None:
         raise session.error
     if session.cancelled:

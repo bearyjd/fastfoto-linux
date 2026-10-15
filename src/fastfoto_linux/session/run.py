@@ -9,7 +9,7 @@ import logging
 import os
 import threading
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -24,7 +24,7 @@ from fastfoto_linux.scanner import (
     Source,
     run_scan,
 )
-from fastfoto_linux.session.raw import create_raw_dir, settle_raw_dir
+from fastfoto_linux.session.raw import create_raw_dir, list_pages, settle_raw_dir
 from fastfoto_linux.session.request import RawPolicy, ScanRequest
 from fastfoto_linux.session.result import RawReason, SessionResult, Stage
 
@@ -65,7 +65,7 @@ class _Scanned:
 class _Outcome:
     """How the scan and the processing ended, before the raw pages are settled."""
 
-    pages_scanned: int = 0
+    pages: tuple[Path, ...] = ()
     process: ProcessResult | None = None
     error: Exception | None = None
     cancelled: bool = False
@@ -91,19 +91,27 @@ def run_session(  # noqa: PLR0913 - the callbacks are the interface; scan/proces
     Callbacks should be quick: the scanner is not watched, and the next sheet is not processed,
     while they run.
 
-    Setting ``cancel`` (from any thread) stops scanimage; pages it had finished are kept and are
-    not processed. If processing is under way it stops between sheets; the photos already
-    written stay. Either way the raw pages are kept and the result says ``cancelled``. A
+    Setting ``cancel`` (from any thread) stops scanimage. A cancel during the scan processes
+    nothing, as Ctrl-C always did in ``ffscan scan``: the pages it had finished stay in the raw
+    folder, ``process`` is None, and ``SessionResult.kept_pages`` lists them, so that a front end
+    can offer to process the pages scanned so far later. A cancel during processing stops it
+    between sheets: the photos already written stay (``process`` lists them). A cancel that
+    arrives while the last sheet is being handled finds nothing left to stop: the result is
+    complete, ``cancelled`` is False and the raw pages are settled as the policy says. Whenever
+    something was stopped the raw pages are kept and the result says ``cancelled``. A
     ``KeyboardInterrupt`` is treated as the same cancel that cannot be undone, so a front end
     that turns signals into one gets its raw pages settled too.
 
     An ``OSError`` is raised if the raw folder cannot be created, before anything is scanned.
-    After that nothing is raised: an exception from the scanner, from processing
-    or from a callback ends the session and comes back as ``SessionResult.error``, after the raw
-    pages are settled (the one exception is the DONE callback, which runs after that and
-    propagates). A scanner error that left finished pages is processed first, as ``ffscan scan``
-    always did. ``scan`` and ``process`` replace ``run_scan`` and ``process_pages`` (for tests,
-    or a front end that must wrap them).
+    After that no ``Exception`` is raised: one from the scanner, from processing or from a
+    callback ends the session and comes back as ``SessionResult.error``, after the raw pages
+    are settled. The DONE callback runs after that, so its exception is folded into the result
+    instead (an earlier error stays the error). A scanner error that left finished pages is
+    processed first, as ``ffscan scan`` always did. An exception that is not an ``Exception``
+    (``SystemExit``, ``asyncio.CancelledError``, a private abort) cannot come back as a result,
+    so it propagates, but only after the raw pages are moved to ``.raw/<stamp>/`` and logged.
+    ``scan`` and ``process`` replace ``run_scan`` and ``process_pages`` (for tests, or a front
+    end that must wrap them).
     """
     hooks = _Hooks(
         scan=run_scan if scan is None else scan,
@@ -114,20 +122,52 @@ def run_session(  # noqa: PLR0913 - the callbacks are the interface; scan/proces
         cancel=cancel,
     )
     raw = create_raw_dir(request.raw_root, keep=request.raw_policy is RawPolicy.KEEP)
-    outcome = _work(request, raw, hooks)
+    try:
+        outcome = _work(request, raw, hooks)
+    except BaseException as abort:  # not an Exception: it cannot come back as a result
+        _keep_after_abort(raw, request.raw_root, abort)
+        raise
+    return _announce_done(_settle(request, raw, outcome), hooks)
+
+
+def _keep_after_abort(raw: Path, root: Path, abort: BaseException) -> None:
+    """Keep the raw pages while ``abort`` is on its way; failing to must not replace it."""
+    try:
+        kept = settle_raw_dir(raw, root, keep=True)
+    except Exception:
+        logger.exception("the raw pages in %s could not be settled while aborting", raw)
+        return
+    if kept is not None:
+        logger.error("aborted by %s; the raw pages are kept in %s", type(abort).__name__, kept)
+
+
+def _settle(request: ScanRequest, raw: Path, outcome: _Outcome) -> SessionResult:
+    """Keep or delete the raw pages as the outcome and the policy say, and report it."""
     reason = _keep_reason(request.raw_policy, outcome)
-    kept = settle_raw_dir(raw, request.raw_root, keep=reason is not None)
+    kept = settle_raw_dir(
+        raw, request.raw_root, keep=reason is not None, album=request.settings.output_root
+    )
     if kept is not None and reason is None:
         reason = RawReason.NOT_DELETED
-    hooks.stage(Stage.DONE)
     return SessionResult(
         process=outcome.process,
-        pages_scanned=outcome.pages_scanned,
+        pages_scanned=len(outcome.pages),
         raw_dir=kept,
         raw_reason=reason if kept is not None else None,
         error=outcome.error,
         cancelled=outcome.cancelled,
+        kept_pages=() if kept is None else list_pages(kept),
     )
+
+
+def _announce_done(result: SessionResult, hooks: _Hooks) -> SessionResult:
+    """Tell the DONE stage; a callback that raises costs the result nothing."""
+    try:
+        hooks.stage(Stage.DONE)
+    except Exception as error:
+        logger.exception("the DONE callback raised; the result is returned anyway")
+        return replace(result, error=error if result.error is None else result.error)
+    return result
 
 
 def _work(request: ScanRequest, raw: Path, hooks: _Hooks) -> _Outcome:
@@ -137,14 +177,16 @@ def _work(request: ScanRequest, raw: Path, hooks: _Hooks) -> _Outcome:
         hooks.stage(Stage.SCANNING)
         scanned = _scan(request, raw, hooks)
         if scanned.cancelled:
-            return _Outcome(len(scanned.pages), cancelled=True)
+            return _Outcome(scanned.pages, cancelled=True)
         hooks.stage(Stage.PROCESSING)
         processed = _process(scanned.pages, request.settings, hooks)
     except KeyboardInterrupt:  # the front end's signal handler: stop, the pages stay
-        return _Outcome(len(scanned.pages), cancelled=True)
+        logger.debug("the session was interrupted", exc_info=True)
+        return _Outcome(scanned.pages, cancelled=True)
     except Exception as error:
-        return _Outcome(len(scanned.pages), error=error)
-    return _Outcome(len(scanned.pages), processed, scanned.error, processed.cancelled)
+        logger.debug("the session ended by an exception", exc_info=True)
+        return _Outcome(scanned.pages, error=error)
+    return _Outcome(scanned.pages, processed, scanned.error, processed.cancelled)
 
 
 def _scan(request: ScanRequest, raw: Path, hooks: _Hooks) -> _Scanned:
@@ -191,9 +233,11 @@ def _failure_reason(outcome: _Outcome) -> RawReason | None:
         return RawReason.CANCELLED
     if outcome.error is not None:
         return RawReason.SCAN_ERROR if isinstance(outcome.error, ScannerError) else RawReason.ERROR
-    if processed is not None and processed.failed:
+    if processed is None:  # no result and no known cause: the run ended early, the pages stay
+        return RawReason.ERROR
+    if processed.failed:
         return RawReason.SHEETS_FAILED
-    if processed is not None and processed.degraded:
+    if processed.degraded:
         return RawReason.SHEETS_DEGRADED
     return None
 

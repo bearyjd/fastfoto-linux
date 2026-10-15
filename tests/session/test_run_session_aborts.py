@@ -94,6 +94,13 @@ def test_an_abort_says_where_the_raw_pages_are_since_no_result_is_returned(
     assert str(out / ".raw" / STAMP) in caplog.text
 
 
+def test_an_abort_before_any_page_leaves_no_raw_folder_behind(out, transport) -> None:
+    transport.failure = lambda pages: SystemExit(3)
+    with pytest.raises(SystemExit):
+        run(make_request(out, policy=RawPolicy.DISCARD), transport)
+    assert raw_leftovers(out) == []
+
+
 def test_a_failure_to_settle_never_replaces_the_abort(out, transport, monkeypatch, caplog) -> None:
     def refuse(*args: Any, **kwargs: Any) -> None:
         raise OSError("the disk is gone")

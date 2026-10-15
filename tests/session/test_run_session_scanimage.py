@@ -94,7 +94,7 @@ def test_the_pages_the_runner_announces_are_the_pages_processed(out, fake_scanim
     fake_scanimage(pages=3)
     seen: list[tuple[str, ...]] = []
 
-    def process(pages, settings) -> ProcessResult:
+    def process(pages, settings, **options) -> ProcessResult:
         seen.append(tuple(p.name for p in pages))
         return ProcessResult()
 

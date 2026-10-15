@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 
 from fastfoto_linux.pipeline.process import ProcessResult
+from fastfoto_linux.pipeline.sides import BackPolicy
 from fastfoto_linux.scanner import (
     NoDocumentsError,
     ScanCancelledError,
@@ -176,6 +177,12 @@ class RawCase:
     settings: dict[str, Any] = field(default_factory=dict)
 
 
+# A blank back and a written one: under BackPolicy.AUTO the blank one is dropped.
+DROPS_A_BACK: dict[str, Any] = {
+    "sheets": (plain_sheet(0), written_sheet(1)),
+    "settings": {"back_policy": BackPolicy.AUTO},
+}
+
 RAW_CASES = {
     "clean, discard": RawCase(RawPolicy.DISCARD, None),
     "clean, auto": RawCase(RawPolicy.AUTO, None),
@@ -186,15 +193,9 @@ RAW_CASES = {
     "degraded sheet": RawCase(
         RawPolicy.DISCARD, RawReason.SHEETS_DEGRADED, settings={"enhancers": (failing_enhancer,)}
     ),
-    "dropped back, auto": RawCase(
-        RawPolicy.AUTO, RawReason.BACK_DROPPED, sheets=(plain_sheet(0), written_sheet(1))
-    ),
-    "dropped back, discard": RawCase(
-        RawPolicy.DISCARD, None, sheets=(plain_sheet(0), written_sheet(1))
-    ),
-    "dropped back, keep": RawCase(
-        RawPolicy.KEEP, RawReason.REQUESTED, sheets=(plain_sheet(0), written_sheet(1))
-    ),
+    "dropped back, auto": RawCase(RawPolicy.AUTO, RawReason.BACK_DROPPED, **DROPS_A_BACK),
+    "dropped back, discard": RawCase(RawPolicy.DISCARD, None, **DROPS_A_BACK),
+    "dropped back, keep": RawCase(RawPolicy.KEEP, RawReason.REQUESTED, **DROPS_A_BACK),
     "scan error after 3 pages": RawCase(
         RawPolicy.DISCARD,
         RawReason.SCAN_ERROR,

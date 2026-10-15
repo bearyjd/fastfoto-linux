@@ -7,6 +7,7 @@ from typing import Any
 import pytest
 
 from fastfoto_linux.pipeline.process import ProcessSettings
+from fastfoto_linux.pipeline.sides import BackPolicy
 from fastfoto_linux.scanner import ScanTarget
 from fastfoto_linux.session import RawPolicy, ScanRequest, Stage, run_session
 from fastfoto_linux.session import raw as session_raw
@@ -48,8 +49,14 @@ def make_request(
     raw_parent: Path | None = None,
     **settings: Any,
 ) -> ScanRequest:
-    """A request for a face-down duplex batch into ``out`` unless overridden."""
-    process_settings: ProcessSettings = settings_for(out, duplex=duplex, **settings)
+    """A request for a face-down duplex batch into ``out`` unless overridden.
+
+    Backs are never kept or dropped by default, so that a plain sheet is a clean run; pass
+    ``back_policy=BackPolicy.AUTO`` to have blank backs dropped.
+    """
+    process_settings: ProcessSettings = settings_for(
+        out, duplex=duplex, **{"back_policy": BackPolicy.NEVER, **settings}
+    )
     return ScanRequest(
         target=ScanTarget(device=DEVICE),
         dpi=DPI,
@@ -82,8 +89,12 @@ def run(request: ScanRequest, transport: FakeTransport, **options: Any):
 
 
 def raw_leftovers(root: Path) -> list[str]:
-    """Hidden entries (raw folders) in ``root``."""
-    return sorted(p.name for p in root.iterdir() if p.name.startswith("."))
+    """The raw folders in ``root``: the temporary ones and ``.raw``."""
+    return sorted(
+        p.name
+        for p in root.iterdir()
+        if p.name == session_raw.KEPT_DIR_NAME or p.name.startswith(session_raw.TEMP_PREFIX)
+    )
 
 
 def kept_names(path: Path | None) -> list[str]:

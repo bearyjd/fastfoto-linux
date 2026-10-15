@@ -69,12 +69,39 @@ def test_an_orientation_in_extended_xmp_is_found(tmp_path: Path, packet: bytes) 
     assert skipped_for_xmp(tmp_path, data)
 
 
-def test_an_orientation_split_across_extended_xmp_chunks_is_found(tmp_path: Path) -> None:
-    cut = OTHER_PREFIX_ATTRIBUTE.index(b" t:Orientation")
+CUTS = {
+    "at a space": OTHER_PREFIX_ATTRIBUTE.index(b" t:Orientation"),
+    "inside the name": OTHER_PREFIX_ATTRIBUTE.index(b"Orientation") + len(b"Orien"),
+    "inside the namespace": OTHER_PREFIX_ATTRIBUTE.index(TIFF_NS)
+    + len(b'xmlns:t="http://ns.adobe.com/ti'),
+}
+
+
+@pytest.mark.parametrize("in_order", [True, False], ids=["in order", "out of order"])
+@pytest.mark.parametrize("cut", CUTS.values(), ids=CUTS.keys())
+def test_an_orientation_split_across_extended_xmp_chunks_is_found(
+    tmp_path: Path, cut: int, in_order: bool
+) -> None:
+    """The chunks hold the packet's bytes in turn (ordered by their offsets, which they carry);
+    their own headers are not part of it, so a name cut in two is whole again once joined."""
     first, second = OTHER_PREFIX_ATTRIBUTE[:cut], OTHER_PREFIX_ATTRIBUTE[cut:]
     total = len(OTHER_PREFIX_ATTRIBUTE)
-    chunks = extended(first, 0, total) + extended(second, len(first), total)
+    parts = [extended(first, 0, total), extended(second, len(first), total)]
+    chunks = b"".join(parts if in_order else parts[::-1])
     assert skipped_for_xmp(tmp_path, insert_after_jfif(sideways(90), chunks))
+
+
+def test_chunks_of_different_packets_are_not_joined(tmp_path: Path) -> None:
+    other_guid = b"F" * len(GUID)
+    cut = CUTS["at a space"]  # the namespace is in one packet, the Orientation in the other
+    first, second = OTHER_PREFIX_ATTRIBUTE[:cut], OTHER_PREFIX_ATTRIBUTE[cut:]
+    foreign = segment(
+        APP1,
+        EXTENSION_HEADER + other_guid + struct.pack(">II", len(second), 0) + second,
+    )
+    chunks = extended(first, 0, len(OTHER_PREFIX_ATTRIBUTE)) + foreign
+    write_file(tmp_path, "a.jpg", insert_after_jfif(sideways(90), chunks))
+    assert decide_file(tmp_path, "a.jpg").action is Action.ROTATE
 
 
 def test_the_edit_itself_refuses_these_files() -> None:

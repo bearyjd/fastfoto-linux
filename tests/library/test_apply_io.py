@@ -61,10 +61,10 @@ def test_a_folder_swapped_for_a_link_into_the_library_after_validation_is_refuse
     (dest / "2001").mkdir()
     real_edit = apply_module.set_orientation
 
-    def swap_then_edit(data: bytes, tag: int) -> bytes:
+    def swap_then_edit(data: bytes, tag: int, *rest: object) -> bytes:
         (dest / "2001").rmdir()
         (dest / "2001").symlink_to(lib / "elsewhere", target_is_directory=True)
-        return real_edit(data, tag)
+        return real_edit(data, tag, *rest)
 
     monkeypatch.setattr(apply_module, "set_orientation", swap_then_edit)
     before = tree_snapshot(lib)

@@ -7,11 +7,13 @@ from pathlib import Path
 import pytest
 
 from fastfoto_linux.library import jpeg_exif
+from fastfoto_linux.library.apply import apply_plan
 from fastfoto_linux.library.decide import decide_file
 from fastfoto_linux.library.exif_errors import JpegExifError
 from fastfoto_linux.library.jpeg_exif import MAX_SEGMENTS, read_orientation
 from fastfoto_linux.library.plan import Action
-from tests.library.jpeg_helpers import sideways_jpeg, write_file
+from tests.library.apply_helpers import FIRST
+from tests.library.jpeg_helpers import rotate_row, sideways_jpeg, write_file
 
 REASON = "too-many-segments"
 COMMENT = b"\xff\xfe\x00\x02"  # an empty COM segment
@@ -85,3 +87,14 @@ def test_the_layout_of_a_file_is_parsed_once_per_version_of_it(
     monkeypatch.setattr(jpeg_exif, "_layout", lambda data: calls.append(len(data)) or real(data))
     assert decide_file(tmp_path, "a.jpg").action is action
     assert len(calls) <= layouts
+
+
+def test_fix_parses_the_layout_once_for_the_file_and_once_for_the_copy(
+    monkeypatch: pytest.MonkeyPatch, lib: Path, dest: Path
+) -> None:
+    calls = []
+    real = jpeg_exif._layout
+    monkeypatch.setattr(jpeg_exif, "_layout", lambda data: calls.append(len(data)) or real(data))
+    result = apply_plan([rotate_row(lib, FIRST, 90, 1, 6)], lib, dest)
+    assert [outcome.status for outcome in result.outcomes] == ["written"]
+    assert len(calls) <= 2

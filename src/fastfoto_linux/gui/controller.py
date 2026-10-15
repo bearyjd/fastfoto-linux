@@ -161,7 +161,7 @@ class Controller:
     @property
     def busy(self) -> bool:
         """True while a job runs, or while the folder is looked at before a scan starts."""
-        return is_busy(self._state) or self._scan_when_checked
+        return is_busy(self._state) or self.starting_scan
 
     @property
     def running(self) -> bool:
@@ -197,6 +197,11 @@ class Controller:
     @property
     def can_cancel(self) -> bool:
         return can_cancel(self._state)
+
+    @property
+    def starting_scan(self) -> bool:
+        """True while the folder is looked at before the scan starts (``cancel`` gives it up)."""
+        return self._scan_when_checked
 
     @property
     def can_check(self) -> bool:
@@ -310,6 +315,10 @@ class Controller:
         self._changed()
 
     def cancel(self) -> None:
+        if self.starting_scan:  # no job yet: give up waiting for the folder (it may hang)
+            self._forget_disk_check()
+            self._changed()
+            return
         if not self.can_cancel:
             raise ActionBlockedError(f"nothing to cancel while {self._state.value}")
         self._state = transition(self._state, State.CANCELLING)
@@ -354,6 +363,7 @@ class Controller:
         if self._state in _RUNNING:
             self.cancel()
         elif self._state is not State.CANCELLING:
+            self._forget_disk_check()  # a scan must not start after the window may close
             return True
         self._close_requested = True
         return False

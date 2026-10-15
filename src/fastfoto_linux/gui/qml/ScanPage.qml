@@ -154,7 +154,7 @@ Kirigami.Page {
                 objectName: "cancelButton"
                 text: qsTr("Cancel")
                 icon.name: "dialog-cancel"
-                enabled: bridge.canCancel
+                enabled: bridge.canCancel || bridge.startingScan
                 Accessible.name: qsTr("Cancel")
                 onClicked: bridge.cancel()
             }

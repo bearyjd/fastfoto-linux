@@ -221,6 +221,11 @@ class Bridge(QObject):
         return self.controller.can_cancel
 
     @Property(bool, notify=changed)
+    def startingScan(self) -> bool:
+        """True while the folder is looked at before a scan starts (Cancel gives that up)."""
+        return self.controller.starting_scan
+
+    @Property(bool, notify=changed)
     def canCheck(self) -> bool:
         return self.controller.can_check
 

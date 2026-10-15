@@ -17,8 +17,10 @@ from PySide6.QtCore import QCoreApplication
 from fastfoto_linux.gui.controller import CHECKING_DISK_TEXT
 from fastfoto_linux.gui.form import ScanForm
 from fastfoto_linux.gui.qt import bridge as bridge_module
-from tests.gui.qt.qt_helpers import wait_until
+from tests.gui.qt import test_qml
+from tests.gui.qt.qt_helpers import child, click, wait_until
 
+open_window = test_qml.open_window  # the fixture that opens the window
 GATE_WAIT = 20.0  # a test that forgets to open the gate fails instead of hanging
 
 
@@ -129,3 +131,40 @@ def test_a_folder_check_that_raises_is_a_field_error_and_not_a_page_that_waits_f
     wait_until(lambda: "output_folder" in bridge.errors, "the folder check to answer")
     assert "access denied" in bridge.errors["output_folder"]
     assert bridge.whyNotScan != CHECKING_DISK_TEXT
+
+
+def test_a_hung_folder_check_before_a_scan_can_be_given_up_with_cancel(
+    make_bridge: Any, slow_disk: Any
+) -> None:
+    bridge = make_bridge()
+    slow_disk.gate.set()
+    found(bridge)
+    slow_disk.gate.clear()
+    bridge.startScan()
+    assert bridge.startingScan
+    bridge.cancel()
+    assert not bridge.startingScan
+    assert not bridge.busy
+    assert bridge.state == "ready"
+    slow_disk.gate.set()  # the folder answers after all: no scan starts by itself
+    time.sleep(0.2)
+    QCoreApplication.processEvents()
+    assert bridge.state == "ready"
+
+
+@pytest.mark.usefixtures("kirigami")
+def test_the_cancel_button_is_enabled_while_a_scan_waits_for_the_folder(
+    make_bridge: Any, slow_disk: Any, open_window: Any
+) -> None:
+    bridge = make_bridge()
+    window, _ = open_window(bridge)
+    slow_disk.gate.set()
+    found(bridge)
+    cancel = child(window, "cancelButton")
+    assert cancel.property("enabled") is False
+    slow_disk.gate.clear()
+    bridge.startScan()
+    wait_until(lambda: cancel.property("enabled") is True, "Cancel to be enabled")
+    click(cancel)
+    wait_until(lambda: cancel.property("enabled") is False, "Cancel to be disabled again")
+    assert bridge.state == "ready"

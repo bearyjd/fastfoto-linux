@@ -182,3 +182,31 @@ def test_a_runner_that_cannot_start_leaves_nothing_waiting(out: Path) -> None:
             action()
         assert not controller.busy
         assert controller.scan_blocker != CHECKING_DISK_TEXT
+
+
+def test_a_scan_does_not_start_once_the_window_was_allowed_to_close(page: AsyncPage) -> None:
+    controller = page.ready()
+    controller.start_scan()
+    assert controller.request_close() is True
+    page.disk.answer(controller)  # the answer comes while the window is going away
+    assert "scan" not in page.worker.names
+    assert controller.state is State.READY
+
+
+def test_a_folder_check_that_never_answers_can_be_given_up_with_cancel(page: AsyncPage) -> None:
+    controller = page.ready()
+    controller.start_scan()
+    assert controller.starting_scan
+    assert not controller.can_cancel  # that is for a running job
+    controller.cancel()
+    assert not controller.starting_scan
+    assert not controller.busy
+    assert controller.can_check
+    assert not controller.can_cancel
+    assert "cancel" not in page.worker.names  # no job was running: there is nothing to stop
+    page.disk.answer(controller)  # an answer that comes after all changes nothing
+    assert "scan" not in page.worker.names
+    assert controller.state is State.READY
+    controller.start_scan()  # and Scan can be pressed again
+    page.disk.answer(controller)
+    assert controller.state is State.SCANNING

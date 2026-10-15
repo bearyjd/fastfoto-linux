@@ -192,7 +192,7 @@ def apply_plan(
     library = os.stat(src_root)
     if make_dest:  # made through descriptors too, then opened (and checked) like any other
         mode = stat.S_IMODE(library.st_mode) | OWNER_RWX
-        os.close(confine.open_folder(dest_root, create=True, last_mode=mode))
+        os.close(confine.open_folder(dest_root, create=True, last_mode=mode, library=library))
     with ExitStack() as stack:
         dest_fd = fdio.open_root(dest_root, library)
         stack.callback(os.close, dest_fd)

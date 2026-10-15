@@ -34,8 +34,8 @@ MARKER_APP0 = 0xE0
 MARKER_APP1 = 0xE1
 MARKER_APP14 = 0xEE
 APP_MARKERS = range(0xE0, 0xF0)
-# Start-of-frame markers (baseline, extended, progressive); the others in C0-CF are not frames.
-FRAME_MARKERS = frozenset({0xC0, 0xC1, 0xC2})
+# Start-of-frame markers: C0-CF except DHT (C4), JPG (C8) and DAC (CC), which are not frames.
+FRAME_MARKERS = frozenset(set(range(0xC0, 0xD0)) - {0xC4, 0xC8, 0xCC})
 FRAME_PAYLOAD_SIZE = 5  # precision (1), height (2), width (2)
 # Markers that stand alone, without a length: TEM, RST0-RST7 and a stray SOI (EOI is handled apart).
 STANDALONE_MARKERS = frozenset({0x01, *range(0xD0, 0xD9)})

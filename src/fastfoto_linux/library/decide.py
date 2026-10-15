@@ -15,7 +15,7 @@ from concurrent.futures import FIRST_COMPLETED, Future, ProcessPoolExecutor, wai
 from concurrent.futures.process import BrokenProcessPool
 from dataclasses import dataclass
 from pathlib import Path
-from types import MappingProxyType
+from types import FrameType, MappingProxyType
 
 import numpy as np
 from PIL import Image
@@ -227,6 +227,27 @@ def _stop_workers(pool: ProcessPoolExecutor) -> None:
 
 
 @contextlib.contextmanager
+def _first_interrupt_only() -> Iterator[None]:
+    """Ctrl-C raises KeyboardInterrupt once; a further one is ignored from the handler's first
+    instruction on, so it cannot cut the cleanup short (``uv run`` sends a second one soon after
+    the first). The previous handler comes back afterwards."""
+    previous = signal.getsignal(signal.SIGINT)
+    if threading.current_thread() is not threading.main_thread() or not callable(previous):
+        yield  # not the main thread, or Ctrl-C is already ignored: leave the signal alone
+        return
+
+    def interrupt(signum: int, frame: FrameType | None) -> None:
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGINT, interrupt)
+    try:
+        yield
+    finally:
+        signal.signal(signal.SIGINT, previous)
+
+
+@contextlib.contextmanager
 def _pool(workers: int) -> Iterator[ProcessPoolExecutor]:
     """A worker pool whose workers are stopped at once, queue cancelled, if anything interrupts."""
     pool = ProcessPoolExecutor(
@@ -234,12 +255,13 @@ def _pool(workers: int) -> Iterator[ProcessPoolExecutor]:
         mp_context=multiprocessing.get_context("forkserver"),
         initializer=_ignore_interrupt,
     )
-    try:
-        yield pool
-    except BaseException:
-        _stop_workers(pool)
-        raise
-    pool.shutdown(wait=True)
+    with _first_interrupt_only():
+        try:
+            yield pool
+            pool.shutdown(wait=True)
+        except BaseException:
+            _stop_workers(pool)
+            raise
 
 
 @dataclass(frozen=True)

@@ -9,6 +9,7 @@ are compared, by device and inode, with the library.
 import errno
 import os
 import stat
+from dataclasses import dataclass
 from pathlib import Path
 
 from fastfoto_linux.library.safety import UnsafePathError, same_directory
@@ -51,29 +52,53 @@ def _make_below(parent_fd: int, name: str, mode: int | None) -> int:
     return fd
 
 
-def _step(parent_fd: int, name: str, *, last: bool, create: bool, mode: int | None) -> int:
+@dataclass
+class _Guard:
+    """Whether the folder about to be made has been checked against ``library`` yet."""
+
+    library: os.stat_result | None
+    checked: bool = False
+
+
+def _step(  # noqa: PLR0913
+    parent_fd: int, name: str, *, last: bool, create: bool, mode: int | None, guard: _Guard
+) -> int:
     flags = FOLDER_FLAGS if last else STEP_FLAGS
     try:
         return _open_below(parent_fd, name, flags)
     except FileNotFoundError:
         if not create:
             raise
+    if guard.library is not None and not guard.checked:
+        # The first folder to be made is the only one that can be inside the library: whatever is
+        # made below a folder that is not inside it cannot be either.
+        refuse_inside(parent_fd, guard.library)
+        guard.checked = True
     return _make_below(parent_fd, name, mode if last else None)
 
 
-def open_folder(path: Path, *, create: bool = False, last_mode: int | None = None) -> int:
+def open_folder(
+    path: Path,
+    *,
+    create: bool = False,
+    last_mode: int | None = None,
+    library: os.stat_result | None = None,
+) -> int:
     """A descriptor for the folder at ``path``, opened from ``/`` without following any link.
 
     ``path`` should already be resolved: a link anywhere on it is refused (UnsafePathError), not
     followed. Missing folders are made when ``create`` is true; the last one, if it is new, gets
-    ``last_mode``. FileNotFoundError when a folder is missing and ``create`` is false.
+    ``last_mode``. With ``library``, the deepest existing folder is checked against it (see
+    ``refuse_inside``) before the first folder is made. FileNotFoundError when a folder is missing
+    and ``create`` is false.
     """
     parts = Path(os.path.abspath(path)).parts
+    guard = _Guard(library)
     fd = os.open(parts[0], FOLDER_FLAGS)
     try:
         for index, name in enumerate(parts[1:], start=1):
             last = index == len(parts) - 1
-            child = _step(fd, name, last=last, create=create, mode=last_mode)
+            child = _step(fd, name, last=last, create=create, mode=last_mode, guard=guard)
             os.close(fd)
             fd = child
     except BaseException:

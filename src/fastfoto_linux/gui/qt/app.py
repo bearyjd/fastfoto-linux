@@ -115,6 +115,7 @@ def handle_signals(
     bridge: Any, quit_: Callable[[], None], *, settle_timeout: float = SIGNAL_SETTLE_SECONDS
 ) -> Callable[[], None]:
     """Stop cleanly on SIGTERM, SIGINT and SIGHUP: cancel a running scan, wait, then ``quit_``.
+    A second signal ends the wait at once (the scan is still told to stop).
 
     Without this a logout or ``kill`` ends the app in the middle of a scan, leaving scanimage
     running and the raw pages unsettled. Python only runs a signal handler when Python code is
@@ -127,7 +128,15 @@ def handle_signals(
     reader, writer = socket.socketpair()
     reader.setblocking(False)
     writer.setblocking(False)
-    previous = {number: signal.signal(number, lambda *_: None) for number in STOP_SIGNALS}
+    received = {"count": 0}
+
+    def count_signal(*_: object) -> None:
+        """Runs even while the GUI thread is blocked (the final wait): a second signal aborts."""
+        received["count"] += 1
+        if received["count"] > 1:
+            bridge.abort()
+
+    previous = {number: signal.signal(number, count_signal) for number in STOP_SIGNALS}
     old_fd = signal.set_wakeup_fd(writer.fileno(), warn_on_full_buffer=False)
     notifier = QSocketNotifier(reader.fileno(), QSocketNotifier.Type.Read)
     state = {"stopping": False, "quit": False}
@@ -142,7 +151,9 @@ def handle_signals(
             reader.recv(SIGNAL_READ_BYTES)
         except BlockingIOError:
             return
-        if state["stopping"]:
+        if state["stopping"]:  # a second signal: do not wait any longer, but stop the scan first
+            bridge.abort()
+            quit_once()
             return
         state["stopping"] = True
         if bridge.requestClose():  # nothing is running

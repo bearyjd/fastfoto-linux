@@ -50,8 +50,8 @@ Kirigami.Page {
                 visible: bridge.canProcessKept
                 enabled: bridge.canProcessKept
                 icon.name: "system-run"
-                text: qsTr("Process them now")
-                Accessible.name: qsTr("Process them now")
+                text: bridge.processKeptText
+                Accessible.name: bridge.processKeptText
                 onClicked: bridge.processKept()
             }
 
@@ -117,8 +117,7 @@ Kirigami.Page {
                 text: bridge.scannerText
                 textFormat: Text.PlainText
                 wrapMode: Text.WordWrap
-                elide: Text.ElideRight
-                maximumLineCount: 2
+                maximumLineCount: 8 // the end of a message says what to do: never cut it
                 color: Kirigami.Theme.disabledTextColor
             }
 

@@ -100,6 +100,12 @@ class Worker:
         """Ask the running job to stop; harmless when nothing runs."""
         self._cancel.set()
 
+    @property
+    def alive(self) -> bool:
+        """True while the job's thread is still running (it may have been cancelled already)."""
+        thread = self._thread
+        return thread is not None and thread.is_alive()
+
     def join(self, timeout: float | None = None) -> None:
         thread = self._thread
         if thread is not None:

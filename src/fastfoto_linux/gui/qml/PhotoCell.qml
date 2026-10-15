@@ -60,6 +60,7 @@ Item {
                     spacing: 0
 
                     Image {
+                        objectName: "backImage"
                         Layout.fillWidth: true
                         Layout.preferredHeight: Kirigami.Units.gridUnit * 4
                         source: cell.backUrl

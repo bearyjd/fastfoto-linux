@@ -5,7 +5,7 @@ from pathlib import Path
 
 from fastfoto_linux.gui.state import State
 from fastfoto_linux.pipeline.process import ProcessResult
-from fastfoto_linux.scanner import ScannerError
+from fastfoto_linux.scanner import NoDocumentsError, ScannerError
 from fastfoto_linux.session import RawReason, SessionResult
 
 _RAW_REASONS = {
@@ -34,6 +34,8 @@ def raw_reason_text(reason: RawReason) -> str:
 
 def error_text(error: BaseException) -> str:
     """One readable sentence for an exception; scanner problems say what to do."""
+    if isinstance(error, NoDocumentsError):
+        return "The feeder is empty. Load photos in the feeder and press Scan"
     if isinstance(error, ScannerError):
         return str(error)
     if isinstance(error, OSError) and error.strerror:

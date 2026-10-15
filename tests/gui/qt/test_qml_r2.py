@@ -9,6 +9,8 @@ from tests.gui.qt import require_qt
 
 require_qt()
 
+from PySide6.QtQml import QQmlEngine, QQmlExpression
+
 from tests.gui.helpers import ScriptedSession
 from tests.gui.qt import test_qml
 from tests.gui.qt.qt_helpers import child, invoke, settle, wait_until
@@ -17,6 +19,14 @@ from tests.gui.qt.test_qml import cells_of, named_items, ready
 pytestmark = pytest.mark.usefixtures("kirigami")
 open_window = test_qml.open_window  # the fixture that opens the window
 PRESERVE_ASPECT_FIT = 1  # QtQuick Image.PreserveAspectFit
+
+
+def fill_mode(image: Any) -> int:
+    """An Image's fillMode (PySide cannot convert the enum through ``property()``)."""
+    context = QQmlEngine.contextForObject(image)
+    value, failed = QQmlExpression(context, image, "fillMode").evaluate()
+    assert not failed
+    return int(value)
 
 
 def test_every_picture_of_a_photo_cell_is_fitted_not_stretched_as_loaded(
@@ -35,7 +45,7 @@ def test_every_picture_of_a_photo_cell_is_fitted_not_stretched_as_loaded(
     backs = [i for cell in cells for i in named_items(cell, "backImage")]
     assert len(fronts) == 3
     assert len(backs) == 3  # present in every cell (hidden when there is no back)
-    assert {i.property("fillMode") for i in fronts + backs} == {PRESERVE_ASPECT_FIT}
+    assert {fill_mode(i) for i in fronts + backs} == {PRESERVE_ASPECT_FIT}
 
 
 def test_the_close_question_names_what_is_running(

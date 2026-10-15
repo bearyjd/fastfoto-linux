@@ -3,6 +3,8 @@
 import functools
 import html
 import logging
+import threading
+import time
 from collections.abc import Callable
 from dataclasses import asdict
 from pathlib import Path
@@ -14,28 +16,39 @@ from fastfoto_linux.gui.controller import Controller
 from fastfoto_linux.gui.form import BACK_CHOICES, FEED_CHOICES, ScanForm, absolute_folder
 from fastfoto_linux.gui.prefs import load_form, save_form
 from fastfoto_linux.gui.qt.photos_model import PhotosModel, file_url
+from fastfoto_linux.gui.state import ActionBlockedError
 from fastfoto_linux.gui.worker import DiscoverFn, ProcessFn, SessionFn, Worker
 from fastfoto_linux.scanner import SUPPORTED_DPI
 
 logger = logging.getLogger(__name__)
 
 SHUTDOWN_WAIT = 10.0  # seconds to wait for a cancelled job to wind down on shutdown
+SHUTDOWN_SLICE = 0.1  # the wait is made of short joins, so an abort is noticed
+ABORT_GRACE = 1.0  # after an abort: just long enough for the job to stop scanimage
+PRESERVE_SPACES = "white-space:pre-wrap"
 
 
 def rich_text(text: str) -> str:
     """``text`` for a Kirigami message, which shows what looks like markup as markup.
 
     InlineMessage has no ``textFormat``; its label guesses (AutoText). Escaping the text and
-    wrapping it in a tag makes the guess "rich text", in which the escapes show the text as it is.
+    wrapping it in a tag makes the guess "rich text", in which the escapes show the text as it is
+    (and ``pre-wrap`` keeps the text's own spacing and line breaks).
     """
-    return f"<span>{html.escape(text, quote=False)}</span>" if text else ""
+    return (
+        f'<span style="{PRESERVE_SPACES}">{html.escape(text, quote=False)}</span>' if text else ""
+    )
 
 
-def _guarded[**P, R](default: R) -> Callable[[Callable[P, R]], Callable[P, R]]:
+def _guarded[**P, R](
+    default: R, *, job: bool = False
+) -> Callable[[Callable[P, R]], Callable[P, R]]:
     """A slot that never raises: QML would print the traceback and leave the page looking dead.
 
-    Anything unexpected becomes the FAILED state with a banner (and the job is told to stop),
-    so a page cannot stay stuck in SCANNING or CANCELLING.
+    A refused action (``ActionBlockedError``) changes nothing: the page is only told, so a button
+    that looked enabled is redrawn. Anything unexpected becomes a banner, and the FAILED state
+    unless a healthy job is running; ``job`` marks the slot that handles the job's own reports,
+    whose failure stops the job, so a page cannot stay stuck in SCANNING or CANCELLING.
     """
 
     def decorate(method: Callable[P, R]) -> Callable[P, R]:
@@ -44,8 +57,12 @@ def _guarded[**P, R](default: R) -> Callable[[Callable[P, R]], Callable[P, R]]:
             bridge: Any = args[0]
             try:
                 return method(*args, **kwargs)
+            except ActionBlockedError as blocked:
+                logger.info("refused: %s", blocked)
+                bridge.changed.emit()
+                return default
             except Exception as error:
-                bridge._fail(error)
+                bridge._fail(error, job=job)
                 return default
 
         return guarded
@@ -85,6 +102,8 @@ class Bridge(QObject):
         )
         self._close_signalled = False
         self._closed = False
+        self._shut_down = False
+        self._aborted = threading.Event()
         self._event.connect(self._dispatch, Qt.ConnectionType.QueuedConnection)
 
     # -- the worker's sink (called on the worker's thread) ----------------------------------
@@ -117,13 +136,13 @@ class Bridge(QObject):
             self._closed = True
 
     @Slot(str, object)
-    @_guarded(None)
+    @_guarded(None, job=True)
     def _dispatch(self, name: str, payload: Any) -> None:
         getattr(self.controller, name)(payload)
 
-    def _fail(self, error: Exception) -> None:
+    def _fail(self, error: Exception, *, job: bool = False) -> None:
         try:
-            self.controller.fail(error)
+            self.controller.fail(error, job=job)
         except Exception:
             logger.exception("could not show the error %r", error)
 
@@ -311,13 +330,28 @@ class Bridge(QObject):
             logger.warning("could not remember the settings: %s", error)
 
     def abort(self) -> None:
-        raise NotImplementedError
+        """Stop waiting for the job (a second signal): cancel it and let ``shutdown`` end soon.
+
+        Safe to call from any thread.
+        """
+        self._worker.cancel()
+        self._aborted.set()
 
     def shutdown(self) -> None:
         """Stop the running job, if any, and wait for it (a while) before the app goes away.
 
-        From here on the bridge ignores what the job reports: the window is going.
+        From here on the bridge ignores what the job reports: the window is going. The wait is
+        bounded by ``SHUTDOWN_WAIT`` and ends after a short grace when ``abort`` is called. A
+        second call returns at once.
         """
+        if self._shut_down:
+            return
+        self._shut_down = True
         self._closed = True
         self._worker.cancel()
-        self._worker.join(SHUTDOWN_WAIT)
+        deadline = time.monotonic() + SHUTDOWN_WAIT
+        while self._worker.alive and time.monotonic() < deadline:
+            if self._aborted.is_set():
+                self._worker.join(ABORT_GRACE)  # time for the job to stop scanimage
+                return
+            self._worker.join(SHUTDOWN_SLICE)

@@ -40,8 +40,8 @@ Kirigami.ApplicationWindow {
         id: cancelDialog
 
         objectName: "cancelDialog"
-        title: qsTr("Cancel the scan?")
-        subtitle: qsTr("A scan is running. The pages scanned so far are kept so you can process them later.")
+        title: bridge.closeTitle
+        subtitle: bridge.closeText
         standardButtons: QQC2.Dialog.Yes | QQC2.Dialog.No
         // The scan may have finished while the question was open: then there is nothing to
         // wait for and the window closes now (otherwise closeReady closes it).

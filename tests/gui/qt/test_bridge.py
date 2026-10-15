@@ -160,14 +160,11 @@ def test_closing_while_scanning_cancels_first_and_then_says_so(make_bridge: Any,
 
 
 @pytest.mark.parametrize("name", ["startScan", "cancel", "processKept"])
-def test_a_slot_never_raises_a_blocked_action_shows_a_banner_instead(
-    make_bridge: Any, name: str
-) -> None:
+def test_a_slot_never_raises_a_blocked_action_changes_nothing(make_bridge: Any, name: str) -> None:
     bridge = make_bridge()
     getattr(bridge, name)()  # QML would swallow a traceback to stderr and the page would look dead
-    assert bridge.state == "failed"
-    assert bridge.bannerKind == "error"
-    assert bridge.bannerText
+    assert bridge.state == "idle"  # (round 2: a refused action is not a failure)
+    assert bridge.bannerKind == ""
     assert bridge.canCheck
 
 

@@ -317,10 +317,10 @@ def test_a_failed_session_shows_the_error_and_where_the_raw_pages_are(page: Page
     assert "/srv/demo/.raw/stamp" in controller.banner.text
 
 
-def test_a_scanner_error_needs_a_new_check_before_the_next_scan(page: Page) -> None:
+def test_a_lost_scanner_needs_a_new_check_before_the_next_scan(page: Page) -> None:
     controller = page.scanning()
     controller.on_finished(
-        SessionResult(error=ScanError("usb reset"), raw_dir=None, raw_reason=None)
+        SessionResult(error=ScannerNotFoundError("usb reset"), raw_dir=None, raw_reason=None)
     )
     assert controller.state is State.FAILED
     assert not controller.can_scan
@@ -509,7 +509,7 @@ def test_fail_leaves_a_page_the_user_can_leave(page: Page, starter: str) -> None
         "processing": page.processing,
         "cancelling": lambda: (page.scanning(), page.controller.cancel(), page.controller)[-1],
     }[starter]()
-    controller.fail(RuntimeError("model blew up"))
+    controller.fail(RuntimeError("model blew up"), job=True)  # it came from the job's own report
     assert controller.state is State.FAILED
     assert not controller.busy
     assert not controller.running
@@ -523,7 +523,7 @@ def test_fail_leaves_a_page_the_user_can_leave(page: Page, starter: str) -> None
 
 def test_events_a_failed_page_gets_late_are_dropped_not_raised(page: Page, out: Path) -> None:
     controller = page.scanning()
-    controller.fail(RuntimeError("model blew up"))
+    controller.fail(RuntimeError("model blew up"), job=True)
     banner = controller.banner
     controller.on_finished(cancelled_scan(Path("/srv/demo/.raw/stamp")))
     controller.on_error(RuntimeError("late"))

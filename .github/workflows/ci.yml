@@ -87,7 +87,14 @@ jobs:
       - name: Environment that sees the system PySide6
         run: |
           uv venv --system-site-packages --python /usr/bin/python3 "$RUNNER_TEMP/venv"
-          VIRTUAL_ENV="$RUNNER_TEMP/venv" uv pip install -e . --group dev
+          # Everything comes from hashed files: the locked dependencies, the build backend, and then
+          # this checkout (built with that backend; installed as a wheel, like the app's installer).
+          uv export --locked --no-emit-project --group dev --hashes --no-header --no-annotate \
+            --quiet -o "$RUNNER_TEMP/dev.txt"
+          export VIRTUAL_ENV="$RUNNER_TEMP/venv"
+          uv pip install --require-hashes -r "$RUNNER_TEMP/dev.txt"
+          uv pip install --require-hashes -r packaging/requirements-build.txt
+          uv pip install --no-build-isolation --no-deps .
       - name: Qt and QML tests, with 80% coverage of the Qt layer
         run: |
           . "$RUNNER_TEMP/venv/bin/activate"

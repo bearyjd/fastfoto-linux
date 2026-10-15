@@ -10,6 +10,12 @@ A POSIX access list can grant write to one more user or group without the mode b
 (``setfacl -m u:nobody:rwx`` raises the group bits to the mask, which a private group passes), so
 the list is read too: a named user other than this one or root, or a named group other than the
 private one, must not be able to write, after the mask has cut down what its entry grants.
+
+Inside a Flatpak sandbox the files of a system-wide install belong to root on the host, which the
+sandbox shows as the overflow uid (the kernel's, usually 65534: nobody). So that the shim the
+Flatpak ships can be used there, that one owner is accepted for what is under ``/app``, but only
+when ``/app`` is a read-only mount (nothing in the sandbox can have changed it). Every other check
+still applies.
 """
 
 import errno
@@ -28,6 +34,12 @@ logger = logging.getLogger(__name__)
 DEFAULT_TRUST_ROOT = Path("/")
 SHIM_TRUST_ROOT = DEFAULT_TRUST_ROOT  # the walk up the folders ends here (tests move it)
 ROOT_UID = 0
+FLATPAK_INFO = Path("/.flatpak-info")  # exists only inside a Flatpak sandbox
+FLATPAK_APP_ROOT = Path("/app")  # where a Flatpak mounts the application, read-only
+# How a file owned by another host user (root) looks inside the sandbox: the kernel's overflow uid.
+OVERFLOW_UID_FILE = Path("/proc/sys/kernel/overflowuid")
+FALLBACK_OVERFLOW_UID = 65534  # the kernel's default, for when the file cannot be read
+MAX_UID = 2**32 - 2  # (uid_t)-1 is "no uid"
 
 ACL_XATTR = "system.posix_acl_access"
 ACL_VERSION = 2
@@ -37,6 +49,24 @@ ACL_USER, ACL_GROUP, ACL_MASK = 0x02, 0x08, 0x10  # the tags of named users and 
 ACL_WRITE = 0o2
 ACL_ALL = 0o7
 NO_ACL_ERRORS = frozenset({errno.ENODATA, errno.ENOTSUP})  # no list, or a file system with none
+
+
+def overflow_uid() -> int:
+    """The uid the kernel shows for a file whose owner this sandbox has no uid for.
+
+    Read each time (it is a sysctl, and the file is small). 65534 when the file cannot be read or
+    does not hold a uid.
+    """
+    try:
+        value = int(OVERFLOW_UID_FILE.read_text(encoding="ascii").strip())
+    except (OSError, ValueError):
+        return FALLBACK_OVERFLOW_UID
+    return value if 0 <= value <= MAX_UID else FALLBACK_OVERFLOW_UID
+
+
+def inside_flatpak() -> bool:
+    """True inside a Flatpak sandbox, which has ``/.flatpak-info``."""
+    return FLATPAK_INFO.exists()
 
 
 @dataclass(frozen=True)
@@ -100,7 +130,7 @@ def _chain(path: Path) -> list[Path]:
 def _entry_problem(path: Path, *, is_shim: bool) -> str | None:
     info = os.lstat(path)
     what = "the shim" if is_shim else "folder"
-    if info.st_uid not in (os.geteuid(), ROOT_UID):
+    if info.st_uid not in (os.geteuid(), ROOT_UID) and not _flatpak_app_owner(path, info.st_uid):
         return f"{what} {path} is owned by uid {info.st_uid}; it must belong to you or to root"
     if stat.S_ISLNK(info.st_mode):
         return None  # a link's own mode bits mean nothing (/home is one); its target is checked
@@ -111,6 +141,22 @@ def _entry_problem(path: Path, *, is_shim: bool) -> str | None:
             f"{what} {path} is writable by group '{_group_name(info.st_gid)}'; run chmod g-w {path}"
         )
     return _acl_problem(path, what)
+
+
+def _flatpak_app_owner(path: Path, uid: int) -> bool:
+    """True when ``uid`` is the host's root as a Flatpak sandbox shows it for a file of ``/app``.
+
+    All must hold: this is a Flatpak sandbox, the path is ``/app`` or under it, ``uid`` is the
+    kernel's overflow uid, and the mount is read-only (a ``statvfs`` that fails refuses the file,
+    see ``select_shim``). A folder next to ``/app``, a link out of it, or a writable ``/app`` gets
+    no exception, and neither does any other owner.
+    """
+    return (
+        path.is_relative_to(FLATPAK_APP_ROOT)
+        and inside_flatpak()
+        and uid == overflow_uid()
+        and bool(os.statvfs(path).f_flag & os.ST_RDONLY)
+    )
 
 
 def _acl_problem(path: Path, what: str) -> str | None:

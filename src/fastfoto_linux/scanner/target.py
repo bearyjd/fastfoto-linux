@@ -13,7 +13,7 @@ from fastfoto_linux.scanner.network import (
     validate_host,
     write_sane_net_config,
 )
-from fastfoto_linux.scanner.shim_trust import select_shim
+from fastfoto_linux.scanner.shim_trust import inside_flatpak, select_shim
 from fastfoto_linux.scanner.usb import DEFAULT_SYSFS_ROOT, find_usb_scanners
 
 logger = logging.getLogger(__name__)
@@ -45,6 +45,9 @@ def default_shim_candidates(
     ``$FF680W_SHIM`` (a leading ``~`` or ``~/`` is expanded from ``$HOME``; ``~user`` is not),
     then ``~/.local/lib/fastfoto-linux/``, then the in-repo build (only listed when it exists,
     so an installed package does not point at some unrelated directory).
+
+    Inside a Flatpak sandbox only ``$FF680W_SHIM`` counts (the manifest sets it to the shim that
+    was built into the Flatpak): a shim in the home folder or in a checkout is not one it shipped.
     """
     home = env.get("HOME")
     candidates: list[Path] = []
@@ -53,6 +56,8 @@ def default_shim_candidates(
         if home and (raw == "~" or raw.startswith("~/")):
             raw = home + raw[1:]
         candidates.append(Path(raw))
+    if inside_flatpak():
+        return tuple(candidates)
     if home:
         candidates.append(Path(home) / ".local" / "lib" / "fastfoto-linux" / SHIM_FILENAME)
     in_repo = repo_root / "tools" / "usb-gap-shim" / SHIM_FILENAME
@@ -99,13 +104,22 @@ def resolve_target(
     )
 
 
+def shim_remedy() -> str:
+    """What fixes a missing or refused shim: build it, or (it is built in) reinstall the Flatpak."""
+    if inside_flatpak():
+        return "reinstall or update the Flatpak"
+    return f"build it with `{SHIM_BUILD_COMMAND}` or set ${SHIM_ENV_VAR}"
+
+
 def shim_missing_message(candidates: Sequence[Path], refused: Sequence[str] = ()) -> str:
     """Why there is no shim: when one was refused, the reason and the fix come first."""
     searched = ", ".join(str(path) for path in candidates) or "no candidate paths"
-    how = f"Build it with `{SHIM_BUILD_COMMAND}` or set ${SHIM_ENV_VAR}; USB I/O fails without it."
+    remedy = shim_remedy()
+    how = f"{remedy[:1].upper()}{remedy[1:]}; USB I/O fails without it."
     if refused:
         return (
             f"FF-680W found on USB but the gap shim was refused as unsafe: {'; '.join(refused)}. "
             f"(searched: {searched}) {how}"
         )
-    return f"FF-680W found on USB but {SHIM_FILENAME} is missing (searched: {searched}). {how}"
+    name = "the app's bundled gap shim" if inside_flatpak() else SHIM_FILENAME
+    return f"FF-680W found on USB but {name} is missing (searched: {searched}). {how}"

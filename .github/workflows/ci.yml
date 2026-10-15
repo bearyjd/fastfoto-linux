@@ -101,3 +101,26 @@ jobs:
           pytest tests/gui/qt tests/gui/test_packaging.py tests/gui/test_install_script.py \
             tests/gui/test_app_guard.py --cov --cov-config=tools/ci/coveragerc-gui-qt \
             --cov-report=term-missing --cov-fail-under=80
+
+  # The Flatpak bundle of the desktop app (packaging/flatpak). Not a required check: making it one
+  # is a branch-protection change. The builder image for KDE 6.11 is
+  # ghcr.io/flathub-infra/flatpak-github-actions:kde-6.11, pinned by digest so that a changed image
+  # cannot change this job; to update, look up the new digest of the tag
+  # (skopeo inspect --raw docker://ghcr.io/flathub-infra/flatpak-github-actions:kde-6.11 | sha256sum)
+  # and edit here. The action uploads the bundle as an artifact.
+  flatpak:
+    name: flatpak
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:kde-6.11@sha256:b0a8a2acb9e420dd0e3e083ff552bea5a817e17e41532f1d2287ff49ef9aae0e
+      options: --privileged
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@79327416609af08178ad73b352877e51450790b3 # v6.8
+        with:
+          bundle: io.github.bearyjd.FastFotoLinux.flatpak
+          manifest-path: packaging/flatpak/io.github.bearyjd.FastFotoLinux.yml
+          upload-artifact: true

@@ -13,6 +13,12 @@ build/
 dist/
 *.egg-info/
 
+# What the README's Flatpak commands leave in the checkout
+/build-dir/
+/repo/
+/.flatpak-builder/
+*.flatpak
+
 # Python
 __pycache__/
 *.py[cod]

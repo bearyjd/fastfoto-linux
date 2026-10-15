@@ -1,0 +1,146 @@
+# FastFoto Linux as a Flatpak: the desktop app (`fastfoto`) and the developer CLI (`ffscan`, run
+# with `--command=ffscan`), scanning over USB with the epsonds backend plus the USB gap shim.
+# Build and install instructions are in README.md ("Flatpak").
+app-id: io.github.bearyjd.FastFotoLinux
+runtime: org.kde.Platform
+runtime-version: "6.11"
+sdk: org.kde.Sdk
+base: io.qt.PySide.BaseApp
+base-version: "6.11"
+command: fastfoto
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  # USB scanning: libusb (and so sane) opens /dev/bus/usb/BBB/DDD itself and does not use the USB
+  # portal, so every device node is exposed. This includes the GPU nodes (--device=dri).
+  - --device=all
+  # The Wi-Fi fallback (`ffscan scan --net HOST`) talks to the scanner over TCP.
+  - --share=network
+  # With this grant the user can type or pick any folder under Pictures and the app writes there
+  # directly, with file locks. A folder elsewhere is chosen in the portal's folder picker and works
+  # too, but the portal's file system has no file locks, so two writers in one such folder are
+  # not serialised.
+  - --filesystem=xdg-pictures
+  # Always the shim built into this Flatpak, never one built on the host under ~/.local.
+  - --env=FF680W_SHIM=/app/lib/fastfoto-linux/ff680w_usb_gap.so
+
+build-options:
+  env:
+    # The base app ships Qt WebEngine; this app does not use it.
+    BASEAPP_REMOVE_WEBENGINE: "1"
+
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
+  # LLVM, clang and the binding generator come with the base app; PySide6 does not need them to
+  # run. (`cleanup:` below only sees files that this manifest installed, not the base app's.)
+  - find /app/lib -maxdepth 1 -name 'libLLVM*' -delete
+  - find /app/lib -maxdepth 1 -name 'libclang*' -delete
+  - >-
+    find /app/lib/python3.13/site-packages -maxdepth 1 -name 'shiboken6_generator*'
+    -exec rm -r {} +
+  # Their scripts start the generator that was just removed.
+  - rm -f /app/bin/shiboken6 /app/bin/shiboken6-genpyi
+  # These PySide6 modules link libQt6Pdf and libQt6PdfWidgets, which the runtime does not have;
+  # the app imports neither.
+  - find /app/lib/python3.13/site-packages/PySide6 -maxdepth 1 -name 'QtPdf*' -delete
+
+cleanup:
+  - /build-backend
+  - /etc/sane.d/saned.conf
+  - /include
+  - /lib/pkgconfig
+  - /sbin
+  - /bin/gamma4scanimage
+  - /share/man
+  - /share/doc
+  - /share/aclocal
+  - "*.la"
+  - "*.a"
+
+modules:
+  # The same sane-backends version the host runs (Fedora's 1.4.0). Fedora's patches are
+  # packaging (udev rules, library names, multilib, gphoto2) or concern sanei_thread, which
+  # epsonds does not use, so the pristine tarball is what works on the host too.
+  - name: sane-backends
+    buildsystem: autotools
+    config-opts:
+      - BACKENDS=epsonds
+      # /var/lock is not writable in the sandbox (the Fedora package builds this way too).
+      - --disable-locking
+      - --disable-rpath
+      - --with-usb
+      - --enable-pthread
+      - --without-avahi
+      - --without-snmp
+      - --without-systemd
+    sources:
+      - type: archive
+        url: https://gitlab.com/-/project/429008/uploads/843c156420e211859e974f78f64c3ea3/sane-backends-1.4.0.tar.gz
+        sha256: f99205c903dfe2fb8990f0c531232c9a00ec9c2c66ac7cb0ce50b4af9f407a72
+      # A USB scan removes SANE_CONFIG_DIR, so these are the files in the compiled-in folder
+      # (/app/etc/sane.d) that SANE reads.
+      - type: inline
+        dest-filename: dll.conf
+        contents: |
+          epsonds
+      - type: inline
+        dest-filename: epsonds.conf
+        contents: |
+          usb
+    post-install:
+      - install -Dm644 dll.conf /app/etc/sane.d/dll.conf
+      - install -Dm644 epsonds.conf /app/etc/sane.d/epsonds.conf
+      # configure only warns and drops epsonds when the JPEG library is missing.
+      - test -e /app/lib/sane/libsane-epsonds.so.1
+
+  # Works around the FF-680W firmware ignoring a command sent right after its reply; the app
+  # preloads it into scanimage. Built here from source: a prebuilt .so is never taken.
+  - name: usb-gap-shim
+    buildsystem: simple
+    build-commands:
+      - make CC=gcc
+      - install -Dm755 ff680w_usb_gap.so /app/lib/fastfoto-linux/ff680w_usb_gap.so
+    sources:
+      - type: file
+        path: ../../tools/usb-gap-shim/ff680w_usb_gap.c
+      - type: file
+        path: ../../tools/usb-gap-shim/Makefile
+
+  # numpy, opencv-python-headless and pillow from the hashed wheels of uv.lock, and the build
+  # backend (installed apart, not shipped); both files are written by
+  # tools/flatpak/gen_wheel_sources.py.
+  - python-deps.json
+  - python-build-deps.json
+
+  - name: fastfoto-linux
+    buildsystem: simple
+    build-commands:
+      - >-
+        PYTHONPATH=${FLATPAK_DEST}/build-backend pip3 install --verbose --no-index
+        --no-build-isolation --no-deps --prefix=${FLATPAK_DEST} .
+      - install -Dm644 packaging/io.github.bearyjd.FastFotoLinux.desktop ${FLATPAK_DEST}/share/applications/io.github.bearyjd.FastFotoLinux.desktop
+      - install -Dm644 packaging/io.github.bearyjd.FastFotoLinux.metainfo.xml ${FLATPAK_DEST}/share/metainfo/io.github.bearyjd.FastFotoLinux.metainfo.xml
+      - install -Dm644 packaging/io.github.bearyjd.FastFotoLinux.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/io.github.bearyjd.FastFotoLinux.svg
+    sources:
+      - type: file
+        path: ../../pyproject.toml
+      - type: file
+        path: ../../README.md
+      - type: file
+        path: ../../LICENSE
+      - type: dir
+        path: ../../src
+        dest: src
+        skip:
+          - __pycache__
+      - type: file
+        path: ../io.github.bearyjd.FastFotoLinux.desktop
+        dest: packaging
+      - type: file
+        path: ../io.github.bearyjd.FastFotoLinux.metainfo.xml
+        dest: packaging
+      - type: file
+        path: ../io.github.bearyjd.FastFotoLinux.svg
+        dest: packaging

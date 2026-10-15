@@ -25,7 +25,7 @@ MISSING_QT_MESSAGE = (
     "fastfoto: the desktop app needs the distribution's PySide6 and Kirigami (the PyPI PySide6 "
     "wheel bundles its own Qt and cannot load Kirigami).\n"
     "On Fedora: sudo dnf install python3-pyside6 kf6-kirigami\n"
-    "Or use the Flatpak, which has them built in (coming soon). `ffscan` needs neither."
+    "Or build the Flatpak (see the README), which has them built in. `ffscan` needs neither."
 )
 
 
@@ -73,6 +73,50 @@ def create_engine(bridge: Any) -> tuple[Any, list[str]]:
     engine.rootContext().setContextProperty("bridge", bridge)
     engine.load(QUrl.fromLocalFile(str(qml_main())))
     return engine, warnings
+
+
+def destroy_now(item: Any) -> None:
+    """Destroy a Qt object at once, if it still exists.
+
+    ``deleteLater()`` is not enough when the event loop is done: it never runs, and PySide hands the
+    object to C++ once it has been called, so the object outlives what it is bound to. Destroying
+    the QML engine late left its window reading properties of a bridge that was already gone (about
+    50 "Cannot read property ... of null" lines on quit).
+    """
+    import shiboken6  # noqa: PLC0415
+
+    if shiboken6.isValid(item):
+        shiboken6.delete(item)
+
+
+# Bridges kept alive on purpose, see ``release_bridge``. The app calls that once, so this holds one
+# at most, until the process exits; a later call (the tests make many) lets go of those whose job
+# has ended since.
+_LEFT_ALONE: list[Any] = []
+
+
+def _let_go_of_finished() -> None:
+    """Delete the bridges that were left alone and whose job has ended since."""
+    finished = [bridge for bridge in _LEFT_ALONE if not bridge.job_alive]
+    _LEFT_ALONE[:] = [bridge for bridge in _LEFT_ALONE if bridge.job_alive]
+    for bridge in finished:
+        destroy_now(bridge)
+
+
+def release_bridge(bridge: Any) -> None:
+    """Delete the bridge, unless the job's thread is still running (it is left alone then).
+
+    ``shutdown`` waits a bounded time for the job, so a stubborn one can outlive it. Its thread
+    holds the bridge as its sink: deleting the Qt object under it is not worth the risk when the
+    process is about to exit anyway, so the bridge is kept (and never reported to again, as
+    ``shutdown`` closed it).
+    """
+    _let_go_of_finished()
+    if bridge.job_alive:
+        logger.debug("the job is still running; the bridge is left to the end of the process")
+        _LEFT_ALONE.append(bridge)
+        return
+    destroy_now(bridge)
 
 
 def show_error_dialog(text: str) -> None:
@@ -131,10 +175,14 @@ def handle_signals(
     received = {"count": 0}
 
     def count_signal(*_: object) -> None:
-        """Runs even while the GUI thread is blocked (the final wait): a second signal aborts."""
+        """Runs even while the GUI thread is blocked (the final wait): a second signal aborts.
+
+        It also stays installed until the teardown is over, so it may run at any point of it: it
+        only counts and assigns plain flags, no lock (see ``Bridge.give_up_waiting``), no logging.
+        """
         received["count"] += 1
         if received["count"] > 1:
-            bridge.abort()
+            bridge.give_up_waiting()
 
     previous = {number: signal.signal(number, count_signal) for number in STOP_SIGNALS}
     old_fd = signal.set_wakeup_fd(writer.fileno(), warn_on_full_buffer=False)
@@ -166,7 +214,7 @@ def handle_signals(
 
     def undo() -> None:
         notifier.setEnabled(False)
-        notifier.deleteLater()
+        destroy_now(notifier)  # and with it the handler that holds the bridge
         signal.set_wakeup_fd(old_fd)
         for number, handler in previous.items():
             signal.signal(number, handler)
@@ -183,6 +231,9 @@ def _run(run_loop: Callable[[], int]) -> int:
     engine, warnings = create_engine(bridge)
     if not engine.rootObjects():
         print(f"fastfoto: the window could not be loaded: {'; '.join(warnings)}", file=sys.stderr)
+        bridge.shutdown()  # closed before it is deleted: its threads may still be reporting
+        destroy_now(engine)
+        release_bridge(bridge)
         return 1
     from PySide6.QtWidgets import QApplication  # noqa: PLC0415
 
@@ -193,7 +244,12 @@ def _run(run_loop: Callable[[], int]) -> int:
     try:
         return run_loop()
     finally:
-        undo_signals()
-        bridge.remember()
-        bridge.shutdown()
-        engine.deleteLater()
+        try:
+            bridge.remember()
+            bridge.shutdown()
+            destroy_now(engine)  # the window first: it is bound to the bridge
+            release_bridge(bridge)
+        finally:
+            # Last: until now a late signal (a second SIGTERM, say) is caught by our handler. With
+            # the default one back it would kill the app in the middle of its teardown.
+            undo_signals()

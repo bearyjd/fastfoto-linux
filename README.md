@@ -130,13 +130,50 @@ icon, and links `fastfoto` and `ffscan` into `~/.local/bin`. What it installed i
 dependency on purpose: the PyPI wheel bundles its own Qt and cannot load the system Kirigami
 plugin. Without PySide6 and Kirigami, `fastfoto` says what to install and exits with status 3.
 
-A Flatpak, which brings its own Qt and Kirigami, is coming. Not done yet: editing photos after
-the scan (rotate, fix the date, re-run the enhancement), the scanner's Start button, and
-processing while still scanning. A scan through the app on real hardware is still to be tried.
+Not done yet: editing photos after the scan (rotate, fix the date, re-run the enhancement), the
+scanner's Start button, and processing while still scanning. A scan through the app on real
+hardware is still to be tried.
+
+### Flatpak
+
+The Flatpak brings its own Qt and Kirigami, so it needs no distribution packages, and carries
+the SANE `epsonds` backend and the USB gap shim, built from this checkout (x86_64 only). The
+manifest is `packaging/flatpak/io.github.bearyjd.FastFotoLinux.yml`. You need `flatpak` and
+`flatpak-builder` and the Flathub remote, which has the KDE 6.11 runtime and the PySide6 base app.
+
+```sh
+flatpak-builder --user --install-deps-from=flathub --force-clean --repo=repo build-dir \
+  packaging/flatpak/io.github.bearyjd.FastFotoLinux.yml
+flatpak build-bundle --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo repo \
+  fastfoto-linux.flatpak io.github.bearyjd.FastFotoLinux
+flatpak --user install fastfoto-linux.flatpak                  # install
+flatpak run io.github.bearyjd.FastFotoLinux                    # the desktop app
+flatpak run --command=ffscan io.github.bearyjd.FastFotoLinux devices   # the developer CLI
+flatpak uninstall --user io.github.bearyjd.FastFotoLinux      # remove it again
+```
+
+The CI job `flatpak` builds the same bundle and uploads it as an artifact. What the sandbox may
+do:
+
+- **USB**: `--device=all`, which exposes all device nodes of the host to the app, not only the
+  scanner's. It is needed because libusb and SANE open `/dev/bus/usb/...` themselves and do not
+  use the USB portal.
+- **Network**: for the Wi-Fi fallback.
+- **Files**: your Pictures folder. You can pick any folder under Pictures as the output folder
+  and the app writes there directly, with file locks. Any other folder is chosen in the app's folder
+  dialog, which grants that folder through the desktop portal (photos are written there as usual;
+  the portal's file system has no file locks, so two scans into one such folder at once are not
+  serialised).
+- **Display**: Wayland, X11 as a fallback, and IPC.
+- **From the PySide6 base app (`io.qt.PySide.BaseApp`)**: talk access to a few session-bus names
+  (`org.kde.KGlobalSettings`, `org.kde.kconfig.notify`, `com.canonical.AppMenu.Registrar`) and
+  read-only access to the KDE settings file (`--filesystem=xdg-config/kdeglobals:ro`).
+
+The settings are kept in `~/.var/app/io.github.bearyjd.FastFotoLinux/`.
 
 ## Planned interfaces
 
-1. KDE desktop app (native preview above; Flatpak to come)
+1. KDE desktop app (native and Flatpak previews above)
 2. Local web page (127.0.0.1)
 3. CLI + watched folder
 

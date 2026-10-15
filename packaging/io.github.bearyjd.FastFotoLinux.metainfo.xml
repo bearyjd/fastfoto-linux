@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.bearyjd.FastFotoLinux</id>
+  <name>FastFoto Linux</name>
+  <summary>Scan photos with the Epson FastFoto FF-680W</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <developer id="io.github.bearyjd">
+    <name>bearyjd</name>
+  </developer>
+  <description>
+    <p>
+      Scan stacks of photos with the Epson FastFoto FF-680W over USB or Wi-Fi. Each photo is
+      cropped, turned upright and saved with its album and date; the back of a photo is kept
+      beside its front when it has handwriting, and an enhanced copy restores faded colours.
+    </p>
+    <p>
+      This is an independent project and is not affiliated with Seiko Epson.
+    </p>
+  </description>
+  <launchable type="desktop-id">io.github.bearyjd.FastFotoLinux.desktop</launchable>
+  <url type="homepage">https://github.com/bearyjd/fastfoto-linux</url>
+  <url type="bugtracker">https://github.com/bearyjd/fastfoto-linux/issues</url>
+  <categories>
+    <category>Graphics</category>
+    <category>Scanning</category>
+  </categories>
+  <provides>
+    <binary>fastfoto</binary>
+    <binary>ffscan</binary>
+  </provides>
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.0.1" date="2026-10-15"/>
+  </releases>
+</component>

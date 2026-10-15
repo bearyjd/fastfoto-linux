@@ -110,8 +110,13 @@ class Bridge(QObject):
         )
         self._close_signalled = False
         self._closed = False
+        # Guards ``_closed`` and every emit from a thread. Not re-entrant, on purpose: that is safe
+        # because ``_event`` and ``_disk`` are private signals with queued connections only, so an
+        # emit just posts an event and runs no slot while the lock is held. Never connect a slot
+        # to either of them directly (a direct slot that emitted again would deadlock here).
+        self._emit_lock = threading.Lock()
         self._shut_down = False
-        self._aborted = threading.Event()
+        self._aborted = False  # a plain flag, see ``give_up_waiting``
         self._event.connect(self._dispatch, Qt.ConnectionType.QueuedConnection)
         self._disk.connect(self._disk_answered, Qt.ConnectionType.QueuedConnection)
         self.checkDisk()  # the folder of the remembered form, looked at off the GUI thread
@@ -140,12 +145,23 @@ class Bridge(QObject):
         self._emit(self._event, name, payload)
 
     def _emit(self, signal: Any, *args: object) -> None:
-        """Hand an event to the GUI thread, unless the window is gone (the job may outlive it)."""
-        if self._closed:
-            return
-        try:
-            signal.emit(*args)
-        except RuntimeError:  # the Qt object was deleted under a worker still reporting
+        """Hand an event to the GUI thread, unless the window is gone (the job may outlive it).
+
+        The check and the emit are one step under ``_emit_lock``, which ``_close_events`` takes too:
+        once that has returned, no thread is inside an emit, so the bridge may be deleted. (The
+        signals are queued, so the emit only posts an event and the lock is held for a moment.)
+        """
+        with self._emit_lock:
+            if self._closed:
+                return
+            try:
+                signal.emit(*args)
+            except RuntimeError:  # the Qt object was deleted under a worker still reporting
+                self._closed = True
+
+    def _close_events(self) -> None:
+        """Stop handing events to the GUI thread; returns once no thread is in the middle of one."""
+        with self._emit_lock:
             self._closed = True
 
     def _start_disk_check(self, form: ScanForm) -> None:
@@ -372,13 +388,24 @@ class Bridge(QObject):
         except OSError as error:
             logger.warning("could not remember the settings: %s", error)
 
+    @property
+    def job_alive(self) -> bool:
+        """True while the job's thread is still running (it may have been cancelled already)."""
+        return self._worker.alive
+
     def abort(self) -> None:
         """Stop waiting for the job (a second signal): cancel it and let ``shutdown`` end soon.
 
-        Safe to call from any thread.
+        Safe to call from any thread, but not from a signal handler: use ``give_up_waiting``.
         """
         self._worker.cancel()
-        self._aborted.set()
+        self.give_up_waiting()
+
+    def give_up_waiting(self) -> None:
+        """Make ``shutdown`` stop waiting for the job. It only assigns a plain flag, which a signal
+        handler may do: the handler runs between two instructions of the thread it interrupts, so
+        it must not take a lock (``Event.set`` does) that this thread could be holding."""
+        self._aborted = True
 
     def shutdown(self) -> None:
         """Stop the running job, if any, and wait for it (a while) before the app goes away.
@@ -390,11 +417,11 @@ class Bridge(QObject):
         if self._shut_down:
             return
         self._shut_down = True
-        self._closed = True
+        self._close_events()
         self._worker.cancel()
         deadline = time.monotonic() + SHUTDOWN_WAIT
         while self._worker.alive and time.monotonic() < deadline:
-            if self._aborted.is_set():
+            if self._aborted:
                 self._worker.join(ABORT_GRACE)  # time for the job to stop scanimage
                 return
             self._worker.join(SHUTDOWN_SLICE)

@@ -26,6 +26,11 @@ def _kept_dir(root: Path) -> Path:
     return root / KEPT_DIR_NAME / utc_stamp()
 
 
+def list_pages(folder: Path) -> tuple[Path, ...]:
+    """The scanner's page files in ``folder``, in page order."""
+    raise NotImplementedError
+
+
 def create_raw_dir(root: Path, *, keep: bool) -> Path:
     """A new folder for the scanner to write pages into, on ``root``'s filesystem.
 

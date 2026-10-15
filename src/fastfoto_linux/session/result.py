@@ -48,6 +48,7 @@ class SessionResult:
     raw_reason: RawReason | None = None
     error: Exception | None = None
     cancelled: bool = False
+    kept_pages: tuple[Path, ...] = ()
 
     @property
     def ok(self) -> bool:

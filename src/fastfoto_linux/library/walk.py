@@ -29,6 +29,7 @@ class WalkResult:
     unreadable_folders: int
     skipped_folders: int = 0
     folders: frozenset[FolderId] = frozenset()
+    unlisted_folders: int = 0
 
 
 def _is_skipped_folder(name: str) -> bool:

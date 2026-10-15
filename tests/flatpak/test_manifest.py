@@ -375,6 +375,15 @@ def test_every_cleanup_find_that_removes_files_has_a_depth_and_a_name() -> None:
         "find /app/lib -maxdepth 1 -name '*' -delete",
         "find /app -maxdepth 1 -exec rm -r {} +",
         "find /app/lib -exec rm -r {} + -maxdepth 1",
+        "find /app/lib -exec rm -f {} \\;",
+        "find /app/lib -execdir rm -r {} +",
+        "find /app/lib -maxdepth 1 -execdir rm -r {} +",
+        "find /app/lib -maxdepth 2 -name 'libclang*' -execdir rm {} +",
+        "find /app/lib -ok rm {} \\;",
+        "find /app/lib -maxdepth 1 -name '*' -ok rm {} \\;",
+        "find /app/lib -okdir rm {} \\;",
+        "find /app/lib -maxdepth 1 -okdir rm {} \\;",
+        "find /app/lib -name 'libLLVM*' -okdir rm {} \\;",
     ],
 )
 def test_the_check_catches_a_find_without_a_depth_or_a_specific_name(command: str) -> None:
@@ -385,6 +394,10 @@ def test_the_check_accepts_the_shapes_the_manifest_uses() -> None:
     good = [
         "find /app/lib -maxdepth 1 -name 'libLLVM*' -delete",
         "find /app/lib/site-packages -maxdepth 1 -name 'shiboken6_generator*' -exec rm -r {} +",
+        "find /app/lib -maxdepth 1 -name 'libLLVM*' -execdir rm -r {} +",
+        "find /app/lib -maxdepth 1 -name 'libLLVM*' -ok rm {} \\;",
+        "find /app/lib -maxdepth 1 -name 'libLLVM*' -okdir rm {} \\;",
+        "find /app/lib -name 'libLLVM*'",
         "rm -f /app/bin/shiboken6",
         "/app/cleanup-BaseApp.sh",
     ]

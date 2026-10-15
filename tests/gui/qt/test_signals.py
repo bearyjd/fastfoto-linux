@@ -15,6 +15,7 @@ from tests.gui.qt import require_qt
 
 require_qt()
 
+import shiboken6
 from PySide6.QtCore import QCoreApplication
 
 from fastfoto_linux.gui.form import ScanForm
@@ -28,6 +29,7 @@ ROOT = Path(__file__).resolve().parents[3]
 SIGNALS = [signal.SIGTERM, signal.SIGINT, signal.SIGHUP]
 APP_WAIT = 30.0  # the app takes a few seconds to load the window
 EXIT_WAIT = 8.0  # ...but once told to stop it must be gone in a few
+TEARDOWN_SECONDS = 1.5  # how long the app takes to save its settings in the test below
 
 
 @pytest.fixture
@@ -154,6 +156,38 @@ def test_a_second_signal_during_the_final_wait_ends_it(
     stop.set()
 
 
+def test_the_signal_handler_itself_takes_no_locks(handlers: Any) -> None:
+    """A handler runs between two instructions of the thread it interrupts: it may hold a lock."""
+
+    class Bridge:
+        gave_up = False
+
+        def abort(self) -> None:
+            raise AssertionError("abort() sets a threading.Event, which locks: not for a handler")
+
+        def give_up_waiting(self) -> None:
+            self.gave_up = True
+
+    bridge = Bridge()
+    handlers(bridge, lambda: None)
+    for _ in range(2):  # no event loop runs here: only the handler itself can react
+        os.kill(os.getpid(), signal.SIGTERM)
+    deadline = time.monotonic() + 2
+    while not bridge.gave_up and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert bridge.gave_up
+
+
+def test_a_late_signal_once_the_bridge_is_gone_is_harmless(make_bridge: Any, handlers: Any) -> None:
+    bridge = make_bridge()
+    handlers(bridge, lambda: None)
+    bridge.shutdown()
+    shiboken6.delete(bridge)
+    for _ in range(3):
+        os.kill(os.getpid(), signal.SIGTERM)
+        time.sleep(0.05)  # the Python handler runs here
+
+
 def test_the_previous_handlers_come_back(make_bridge: Any) -> None:
     before = [signal.getsignal(number) for number in SIGNALS]
     undo = handle_signals(make_bridge(), lambda: None)
@@ -178,11 +212,8 @@ def wait_for(path: Path, process: subprocess.Popen[str]) -> None:
     pytest.fail(f"{path.name} never appeared (exit {process.returncode}): {err[-500:]}")
 
 
-@pytest.mark.parametrize("number", SIGNALS)
-@pytest.mark.usefixtures("kirigami")
-def test_the_app_exits_cleanly_when_it_is_signalled_during_a_scan(
-    tmp_path: Path, number: signal.Signals
-) -> None:
+def start_app(tmp_path: Path, **extra_env: str) -> tuple[subprocess.Popen[str], Path]:
+    """The app with a fake scanner in its own process, and the folder its markers appear in."""
     markers = tmp_path / "markers"
     markers.mkdir()
     env = {
@@ -192,6 +223,7 @@ def test_the_app_exits_cleanly_when_it_is_signalled_during_a_scan(
         "FASTFOTO_TEST_MARKERS": str(markers),
         "QT_QPA_PLATFORM": "offscreen",
         "QT_QUICK_BACKEND": "software",
+        **extra_env,
     }
     process = subprocess.Popen(
         [sys.executable, "-m", "tests.gui.qt.signal_app"],
@@ -201,10 +233,12 @@ def test_the_app_exits_cleanly_when_it_is_signalled_during_a_scan(
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
+    return process, markers
+
+
+def finish(process: subprocess.Popen[str], number: signal.Signals) -> int:
     try:
-        wait_for(markers / "scanning", process)
-        process.send_signal(number)
-        code = process.wait(timeout=EXIT_WAIT)
+        return process.wait(timeout=EXIT_WAIT)
     except subprocess.TimeoutExpired:
         process.kill()
         pytest.fail(f"the app did not exit within {EXIT_WAIT} s of {number.name}")
@@ -212,5 +246,31 @@ def test_the_app_exits_cleanly_when_it_is_signalled_during_a_scan(
         if process.poll() is None:
             process.kill()
         process.communicate()
-    assert code == 0
+
+
+@pytest.mark.parametrize("number", SIGNALS)
+@pytest.mark.usefixtures("kirigami")
+def test_the_app_exits_cleanly_when_it_is_signalled_during_a_scan(
+    tmp_path: Path, number: signal.Signals
+) -> None:
+    process, markers = start_app(tmp_path)
+    wait_for(markers / "scanning", process)
+    process.send_signal(number)
+    assert finish(process, number) == 0
+    assert (markers / "cancelled").read_text() == "True"
+
+
+@pytest.mark.parametrize("gap", [0.1, 0.5])
+@pytest.mark.usefixtures("kirigami")
+def test_a_second_signal_while_the_app_saves_and_tears_down_does_not_kill_it(
+    tmp_path: Path, gap: float
+) -> None:
+    """Review round 3: the handlers used to be put back (SIGTERM: die) before the teardown."""
+    process, markers = start_app(tmp_path, FASTFOTO_TEST_SLOW_TEARDOWN=str(TEARDOWN_SECONDS))
+    wait_for(markers / "scanning", process)
+    process.send_signal(signal.SIGTERM)
+    wait_for(markers / "teardown", process)  # the window is gone; the settings are being saved
+    time.sleep(gap)
+    process.send_signal(signal.SIGTERM)
+    assert finish(process, signal.SIGTERM) == 0  # not -15
     assert (markers / "cancelled").read_text() == "True"

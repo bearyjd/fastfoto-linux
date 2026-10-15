@@ -67,6 +67,26 @@ def test_the_bridge_goes_with_the_window_when_the_app_is_done(
     assert destroyed == ["engine", "bridge"]
 
 
+def test_the_signal_handlers_come_back_last_after_the_window_and_the_bridge_are_gone(
+    quiet_app: None, destroyed: list[str], monkeypatch: pytest.MonkeyPatch, qapp: Any
+) -> None:
+    """A signal that lands during the teardown must still reach our handler, not the default."""
+    real_handle = app.handle_signals
+
+    def handle(*arguments: Any, **options: Any) -> Any:
+        undo = real_handle(*arguments, **options)
+
+        def undo_and_note() -> None:
+            destroyed.append("handlers back")
+            undo()
+
+        return undo_and_note
+
+    monkeypatch.setattr(app, "handle_signals", handle)
+    assert app.main(run_loop=lambda: 0) == 0
+    assert destroyed == ["engine", "bridge", "handlers back"]
+
+
 def test_a_window_that_could_not_be_loaded_is_destroyed_too(
     quiet_app: None,
     destroyed: list[str],

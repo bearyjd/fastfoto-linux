@@ -34,10 +34,12 @@ from tests.cli.fakes import DEVICE
 from tests.gui.qt.qt_helpers import wait_until
 
 ROOT = Path(__file__).resolve().parents[3]
-STRESS_ROUNDS = 300
-STRESS_TIMEOUT = 30  # a hang or a crash fails one test (and is reported before pytest-timeout)
+STRESS_ROUNDS = 100  # about 1 s unloaded; every round checks that no thread is still in an emit
+STRESS_TIMEOUT = 60  # 100 rounds took 16 s on a machine at 3x load: leaves 3.75x headroom
+STRESS_TEST_TIMEOUT = STRESS_TIMEOUT + 30  # pytest-timeout: only after the message below is out
 IN_FLIGHT_WAIT = 0.3  # how long shutdown is given to (wrongly) return while an emit is under way
 HANDS_OFF_WAIT = 5.0
+LEFT_ALONE_MESSAGE = "the job is still running; the bridge is left to the end of the process"
 
 
 class BlockingSignal:
@@ -93,6 +95,7 @@ def test_a_report_after_the_bridge_is_closed_and_deleted_is_ignored(make_bridge:
     bridge.on_page(1)  # a straggler of the job after the window is gone: no error, no crash
 
 
+@pytest.mark.timeout(STRESS_TEST_TIMEOUT)
 def test_threads_reporting_while_the_bridge_is_closed_and_deleted_do_not_crash() -> None:
     env = {**os.environ, "QT_QPA_PLATFORM": "offscreen", "QT_QUICK_BACKEND": "software"}
     try:
@@ -148,9 +151,12 @@ def test_the_bridge_is_left_alone_while_the_job_is_still_running_after_the_wait(
         with caplog.at_level(logging.DEBUG, logger=app.logger.name):
             assert app.main(run_loop=lambda: 0) == 0
         assert shiboken6.isValid(bridge), "the bridge was deleted under a job that is still running"
-        ours = [r for r in caplog.records if r.name == app.logger.name]
-        debug = [r for r in ours if r.levelno == logging.DEBUG]
-        assert debug, caplog.records
+        debug = [
+            r.getMessage()
+            for r in caplog.records
+            if r.name == app.logger.name and r.levelno == logging.DEBUG
+        ]
+        assert debug == [LEFT_ALONE_MESSAGE], caplog.records
     finally:
         stop.set()
         deadline = time.monotonic() + HANDS_OFF_WAIT
@@ -179,3 +185,22 @@ def test_a_window_that_could_not_be_loaded_closes_the_bridge_before_deleting_it(
     monkeypatch.setattr(bridge_module, "Bridge", Watched)
     assert app.main(run_loop=lambda: 0) == 1
     assert order == ["closed", "deleted"]
+
+
+def test_a_bridge_left_alone_is_let_go_once_its_job_has_ended(
+    monkeypatch: pytest.MonkeyPatch, make_bridge: Any, qapp: Any
+) -> None:
+    monkeypatch.setattr(app, "_LEFT_ALONE", [])
+    monkeypatch.setattr(bridge_module, "SHUTDOWN_WAIT", 0.3)
+    stop = threading.Event()
+    stuck = running_bridge(stop)
+    stuck.shutdown()
+    app.release_bridge(stuck)
+    assert stuck in app._LEFT_ALONE  # its job is still running
+    stop.set()
+    wait_until(lambda: not stuck.job_alive, "the job to end")
+    later = make_bridge()
+    later.shutdown()
+    app.release_bridge(later)  # the next release lets go of what is no longer needed
+    assert not app._LEFT_ALONE
+    assert not shiboken6.isValid(stuck)

@@ -25,7 +25,7 @@ MISSING_QT_MESSAGE = (
     "fastfoto: the desktop app needs the distribution's PySide6 and Kirigami (the PyPI PySide6 "
     "wheel bundles its own Qt and cannot load Kirigami).\n"
     "On Fedora: sudo dnf install python3-pyside6 kf6-kirigami\n"
-    "Or use the Flatpak, which has them built in (coming soon). `ffscan` needs neither."
+    "Or build the Flatpak (see the README), which has them built in. `ffscan` needs neither."
 )
 
 

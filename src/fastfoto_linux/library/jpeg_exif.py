@@ -49,6 +49,9 @@ EXIF_HEADER = b"Exif\x00\x00"
 JFIF_HEADER = b"JFIF\x00"
 XMP_HEADER = b"http://ns.adobe.com/xap/1.0/\x00"
 XMP_EXTENSION_HEADER = b"http://ns.adobe.com/xmp/extension/\x00"  # Extended XMP chunks
+XMP_GUID_SIZE = 32  # names the packet a chunk belongs to
+XMP_LENGTH_FIELD_SIZE = 4  # the packet's total length
+XMP_OFFSET_FIELD_SIZE = 4  # where this chunk's bytes belong in the packet
 XMP_ORIENTATION = b"tiff:Orientation"
 XMP_TIFF_NAMESPACE = b"ns.adobe.com/tiff/1.0/"  # the namespace may be bound to any prefix
 XMP_ORIENTATION_NAME = b"Orientation"
@@ -153,19 +156,42 @@ def _names_orientation(data: bytes, start: int, end: int) -> bool:
     )
 
 
-def _xmp_has_orientation(data: bytes, segments: list[_Segment]) -> bool:
-    """Whether an XMP packet, or the Extended XMP chunks together, name an Orientation."""
-    chunks = []
+def _extended_packets(data: bytes, segments: list[_Segment]) -> list[bytes]:
+    """The Extended XMP packets, each put together from its chunks by their offsets.
+
+    A chunk is the extension signature, the packet's GUID, its total length, the chunk's offset
+    and then the packet's own bytes; only those bytes are joined, so a name cut in two by a chunk
+    boundary is whole again.
+    """
+    packets: dict[bytes, list[tuple[int, bytes]]] = {}
     for segment in segments:
         if segment.marker != MARKER_APP1:
             continue
-        if data.startswith(XMP_HEADER, segment.payload_start):
-            if _names_orientation(data, segment.payload_start, segment.end):
-                return True
-        elif data.startswith(XMP_EXTENSION_HEADER, segment.payload_start):
-            chunks.append(data[segment.payload_start : segment.end])
-    joined = b"".join(chunks)  # the chunks of one packet: a name can be split between them
-    return bool(chunks) and _names_orientation(joined, 0, len(joined))
+        if not data.startswith(XMP_EXTENSION_HEADER, segment.payload_start):
+            continue
+        guid_at = segment.payload_start + len(XMP_EXTENSION_HEADER)
+        offset_at = guid_at + XMP_GUID_SIZE + XMP_LENGTH_FIELD_SIZE
+        body_at = offset_at + XMP_OFFSET_FIELD_SIZE
+        if body_at > segment.end:
+            continue  # too short to hold the fields: it holds none of the packet
+        (offset,) = struct.unpack_from(">I", data, offset_at)
+        packets.setdefault(data[guid_at : guid_at + XMP_GUID_SIZE], []).append(
+            (offset, data[body_at : segment.end])
+        )
+    return [b"".join(chunk for _, chunk in sorted(parts)) for parts in packets.values()]
+
+
+def _xmp_has_orientation(data: bytes, segments: list[_Segment]) -> bool:
+    """Whether an XMP packet, or an Extended XMP packet, names an Orientation."""
+    if any(
+        segment.marker == MARKER_APP1
+        and data.startswith(XMP_HEADER, segment.payload_start)
+        and _names_orientation(data, segment.payload_start, segment.end)
+        for segment in segments
+    ):
+        return True
+    packets = _extended_packets(data, segments)
+    return any(_names_orientation(packet, 0, len(packet)) for packet in packets)
 
 
 def _segment_bytes(payload: bytes) -> bytes:

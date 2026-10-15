@@ -2,7 +2,7 @@
   "name": "python-deps",
   "buildsystem": "simple",
   "build-commands": [
-    "pip3 install --verbose --no-index --find-links=\"file://${PWD}\" --require-hashes --no-deps --prefix=${FLATPAK_DEST} -r requirements-desktop.txt"
+    "pip3 install --verbose --no-index --find-links=\"file://${PWD}\" --require-hashes --only-binary=:all: --no-deps --prefix=${FLATPAK_DEST} -r requirements-desktop.txt"
   ],
   "sources": [
     {

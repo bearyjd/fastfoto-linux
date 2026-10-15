@@ -75,6 +75,20 @@ def create_engine(bridge: Any) -> tuple[Any, list[str]]:
     return engine, warnings
 
 
+def destroy_now(item: Any) -> None:
+    """Destroy a Qt object at once, if it still exists.
+
+    ``deleteLater()`` is not enough when the event loop is done: it never runs, and PySide hands the
+    object to C++ once it has been called, so the object outlives what it is bound to. Destroying
+    the QML engine late left its window reading properties of a bridge that was already gone (about
+    50 "Cannot read property ... of null" lines on quit).
+    """
+    import shiboken6  # noqa: PLC0415
+
+    if shiboken6.isValid(item):
+        shiboken6.delete(item)
+
+
 def show_error_dialog(text: str) -> None:
     """Tell the user in a dialog too: a launcher has no terminal to print to."""
     from PySide6.QtWidgets import QMessageBox  # noqa: PLC0415
@@ -166,7 +180,7 @@ def handle_signals(
 
     def undo() -> None:
         notifier.setEnabled(False)
-        notifier.deleteLater()
+        destroy_now(notifier)  # and with it the handler that holds the bridge
         signal.set_wakeup_fd(old_fd)
         for number, handler in previous.items():
             signal.signal(number, handler)
@@ -183,6 +197,8 @@ def _run(run_loop: Callable[[], int]) -> int:
     engine, warnings = create_engine(bridge)
     if not engine.rootObjects():
         print(f"fastfoto: the window could not be loaded: {'; '.join(warnings)}", file=sys.stderr)
+        destroy_now(engine)
+        destroy_now(bridge)
         return 1
     from PySide6.QtWidgets import QApplication  # noqa: PLC0415
 
@@ -196,4 +212,5 @@ def _run(run_loop: Callable[[], int]) -> int:
         undo_signals()
         bridge.remember()
         bridge.shutdown()
-        engine.deleteLater()
+        destroy_now(engine)  # the window first: it is bound to the bridge
+        destroy_now(bridge)

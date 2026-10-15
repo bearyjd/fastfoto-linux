@@ -98,12 +98,23 @@ flatpak run --command=ffscan io.github.bearyjd.FastFotoLinux devices   # the dev
 flatpak uninstall --user io.github.bearyjd.FastFotoLinux      # remove it again
 ```
 
-The CI job `flatpak` builds the same bundle and uploads it as an artifact. The sandbox may use
-USB devices (to reach the scanner), the network (the Wi-Fi fallback) and your Pictures folder;
-pick any other output folder in the app's folder dialog, which grants that folder through the
-desktop portal (photos are written there as usual; the portal's file system has no file locks, so
-two scans into one such folder at once are not serialised). The settings are kept in
-`~/.var/app/io.github.bearyjd.FastFotoLinux/`.
+The CI job `flatpak` builds the same bundle and uploads it as an artifact. What the sandbox may
+do:
+
+- **USB**: `--device=all`, which exposes all device nodes of the host to the app, not only the
+  scanner's. It is needed because libusb and SANE open `/dev/bus/usb/...` themselves and do not
+  use the USB portal.
+- **Network**: for the Wi-Fi fallback.
+- **Files**: your Pictures folder, where photos normally go. Pick any other output folder in the
+  app's folder dialog, which grants that folder through the desktop portal (photos are written
+  there as usual; the portal's file system has no file locks, so two scans into one such folder at
+  once are not serialised).
+- **Display**: Wayland, X11 as a fallback, and IPC.
+- **From the PySide6 base app (`io.qt.PySide.BaseApp`)**: talk access to a few session-bus names
+  (`org.kde.KGlobalSettings`, `org.kde.kconfig.notify`, `com.canonical.AppMenu.Registrar`) and
+  read-only access to the KDE settings file (`--filesystem=xdg-config/kdeglobals:ro`).
+
+The settings are kept in `~/.var/app/io.github.bearyjd.FastFotoLinux/`.
 
 ## Planned interfaces
 

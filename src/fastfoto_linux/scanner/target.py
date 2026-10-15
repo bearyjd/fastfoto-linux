@@ -13,7 +13,7 @@ from fastfoto_linux.scanner.network import (
     validate_host,
     write_sane_net_config,
 )
-from fastfoto_linux.scanner.shim_trust import select_shim
+from fastfoto_linux.scanner.shim_trust import inside_flatpak, select_shim
 from fastfoto_linux.scanner.usb import DEFAULT_SYSFS_ROOT, find_usb_scanners
 
 logger = logging.getLogger(__name__)
@@ -45,6 +45,9 @@ def default_shim_candidates(
     ``$FF680W_SHIM`` (a leading ``~`` or ``~/`` is expanded from ``$HOME``; ``~user`` is not),
     then ``~/.local/lib/fastfoto-linux/``, then the in-repo build (only listed when it exists,
     so an installed package does not point at some unrelated directory).
+
+    Inside a Flatpak sandbox only ``$FF680W_SHIM`` counts (the manifest sets it to the shim that
+    was built into the Flatpak): a shim in the home folder or in a checkout is not one it shipped.
     """
     home = env.get("HOME")
     candidates: list[Path] = []
@@ -53,6 +56,8 @@ def default_shim_candidates(
         if home and (raw == "~" or raw.startswith("~/")):
             raw = home + raw[1:]
         candidates.append(Path(raw))
+    if inside_flatpak():
+        return tuple(candidates)
     if home:
         candidates.append(Path(home) / ".local" / "lib" / "fastfoto-linux" / SHIM_FILENAME)
     in_repo = repo_root / "tools" / "usb-gap-shim" / SHIM_FILENAME

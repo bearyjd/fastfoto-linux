@@ -329,5 +329,6 @@ def test_the_cleanup_removes_nothing_the_app_imports() -> None:
             assert not [p for p in pyside if fnmatch(file, p)], (file, pyside)
         assert not [p for p in packages if fnmatch(module_name, p)], (module_name, packages)
     for command in cleanup_commands():
-        for word in shlex.split(command):
-            assert word not in ("/app/lib/python3.13/site-packages/shiboken6", PYSIDE_FOLDER)
+        words = shlex.split(command)
+        if words[:1] == ["rm"]:  # exact paths: none may be a package the app imports
+            assert not {f"{SITE_PACKAGES}/shiboken6", PYSIDE_FOLDER} & set(words), command

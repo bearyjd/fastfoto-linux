@@ -31,6 +31,9 @@ BUILD_REQUIREMENTS = "requirements-build.txt"
 BUILD_TARGET = "${FLATPAK_DEST}/build-backend"
 PYPI_RELEASE = "https://pypi.org/pypi/{name}/{version}/json"
 PYPI_TIMEOUT_SECONDS = 30
+# The glibc of the runtime the app runs on; a wheel that needs a newer one would install and then
+# fail to load. Check it with: flatpak run --command=ldd org.kde.Platform//6.11 --version
+# (change it together with `runtime-version` in the manifest).
 RUNTIME_GLIBC = (2, 42)
 PROJECT_SOURCES = ({"editable": "."}, {"virtual": "."})
 
@@ -66,7 +69,11 @@ class Wheel:
 
 
 def _glibc(platform: str) -> tuple[int, int] | None:
-    """The newest glibc a platform tag asks for, or None when it is not manylinux x86_64."""
+    """The newest glibc the runtime can offer a wheel's platform tags, or None when none fits.
+
+    A wheel can carry several tags (``manylinux_2_27_x86_64.manylinux_2_28_x86_64``) and runs where
+    any one of them does, so a tag above ``RUNTIME_GLIBC`` is dropped, not the whole wheel.
+    """
     found: list[tuple[int, int]] = []
     for tag in platform.split("."):
         modern = _MANYLINUX.fullmatch(tag)
@@ -74,7 +81,8 @@ def _glibc(platform: str) -> tuple[int, int] | None:
             found.append((int(modern["major"]), int(modern["minor"])))
         elif tag in _LEGACY_MANYLINUX:
             found.append(_LEGACY_MANYLINUX[tag])
-    return max(found) if found else None
+    fitting = [glibc for glibc in found if glibc <= RUNTIME_GLIBC]
+    return max(fitting) if fitting else None
 
 
 def _rank(filename: str) -> tuple[int, int] | None:
@@ -95,8 +103,9 @@ def _best(name: str, candidates: Sequence[Wheel]) -> Wheel:
     ranked = [(rank, wheel) for wheel in candidates if (rank := _rank(wheel.filename)) is not None]
     if not ranked:
         raise WheelSelectionError(
-            f"{name}: no wheel for CPython 3.13 on manylinux x86_64 "
-            f"(found {len(candidates)} file(s)); the Flatpak installs wheels only"
+            f"{name}: no wheel for CPython 3.13 on manylinux x86_64 that runs on glibc "
+            f"{RUNTIME_GLIBC[0]}.{RUNTIME_GLIBC[1]}, the runtime's (found {len(candidates)} "
+            f"file(s)); the Flatpak installs wheels only"
         )
     return max(ranked, key=lambda pair: (pair[0], pair[1].filename))[1]
 
@@ -119,10 +128,15 @@ def _runtime_closure(lock: Mapping[str, Any]) -> list[Mapping[str, Any]]:
     wanted: dict[str, Mapping[str, Any]] = {}
     pending = [roots[0]]
     while pending:
-        for dependency in pending.pop().get("dependencies", []):
+        parent = pending.pop()
+        for dependency in parent.get("dependencies", []):
             name = dependency["name"]
             if "marker" in dependency:
-                raise WheelSelectionError(f"{name} has an environment marker; not supported here")
+                raise WheelSelectionError(
+                    f"{parent['name']} needs {name} only when {dependency['marker']!r}: "
+                    "environment markers are not supported, because the Flatpak installs one "
+                    "fixed set of wheels. Pick the wheels by hand or extend gen_wheel_sources.py."
+                )
             if name not in packages:
                 raise WheelSelectionError(f"{name} is a dependency but is not in the lock")
             if name not in wanted:
@@ -145,7 +159,7 @@ def _module(
 ) -> dict[str, Any]:
     command = (
         'pip3 install --verbose --no-index --find-links="file://${PWD}" --require-hashes '
-        f"--no-deps {install_to} -r {requirements}"
+        f"--only-binary=:all: --no-deps {install_to} -r {requirements}"
     )
     return {
         "name": name,
@@ -212,7 +226,7 @@ def pypi_files(name: str, version: str) -> list[dict[str, str]]:
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser = argparse.ArgumentParser(description=(__doc__ or "").split("\n\n")[0])
     commands = parser.add_subparsers(dest="command", required=True)
     runtime = commands.add_parser("runtime", help="the wheels in uv.lock")
     runtime.add_argument("--lock", type=Path, default=ROOT / "uv.lock")

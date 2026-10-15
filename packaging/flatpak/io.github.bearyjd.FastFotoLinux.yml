@@ -13,13 +13,14 @@ finish-args:
   - --socket=wayland
   - --socket=fallback-x11
   - --share=ipc
-  - --device=dri
-  # USB scanning: libusb opens /dev/bus/usb/BBB/DDD, which only --device=all exposes.
+  # USB scanning: libusb (and so sane) opens /dev/bus/usb/BBB/DDD itself and does not use the USB
+  # portal, so every device node is exposed. This includes the GPU nodes (--device=dri).
   - --device=all
   # The Wi-Fi fallback (`ffscan scan --net HOST`) talks to the scanner over TCP.
   - --share=network
-  # The only place the app may write without asking; any other folder is chosen in the portal's
-  # folder picker, which grants that folder for the session.
+  # Photos normally go to ~/Pictures, so the app may write there without asking. Any other folder
+  # is chosen in the portal's folder picker and works too, but the portal's file system has no
+  # file locks, so two writers in one such folder are not serialised.
   - --filesystem=xdg-pictures
   # Always the shim built into this Flatpak, never one built on the host under ~/.local.
   - --env=FF680W_SHIM=/app/lib/fastfoto-linux/ff680w_usb_gap.so
@@ -38,6 +39,11 @@ cleanup-commands:
   - >-
     find /app/lib/python3.13/site-packages -maxdepth 1 -name 'shiboken6_generator*'
     -exec rm -r {} +
+  # Their scripts start the generator that was just removed.
+  - rm -f /app/bin/shiboken6 /app/bin/shiboken6-genpyi
+  # These PySide6 modules link libQt6Pdf and libQt6PdfWidgets, which the runtime does not have;
+  # the app imports neither.
+  - find /app/lib/python3.13/site-packages/PySide6 -maxdepth 1 -name 'QtPdf*' -delete
 
 cleanup:
   - /build-backend

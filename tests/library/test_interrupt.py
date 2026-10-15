@@ -23,8 +23,9 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 START_DEADLINE_S = 25
 EXIT_DEADLINE_S = 12
 ORPHAN_DEADLINE_S = 6
-SECOND_SIGINT_DELAY_S = 0.2
 EXIT_INTERRUPTED = 130
+# A Ctrl-C that lands after the cleanup kills the process by SIGINT, which a shell reports as 130.
+INTERRUPTED_EXITS = (EXIT_INTERRUPTED, -signal.SIGINT)
 WORKERS = 2
 
 
@@ -54,7 +55,10 @@ def group_is_gone(pgid: int) -> bool:
 
 
 @pytest.mark.timeout(60)
-def test_two_quick_ctrl_c_stop_check_promptly_with_no_plan_and_no_workers(tmp_path: Path) -> None:
+@pytest.mark.parametrize("second_after_s", [0.0, 0.03, 0.2])
+def test_two_quick_ctrl_c_stop_check_promptly_with_no_plan_and_no_workers(
+    tmp_path: Path, second_after_s: float
+) -> None:
     library, plan, busy = tmp_path / "lib", tmp_path / "plan.csv", tmp_path / "busy"
     busy.mkdir()
     for index in range(4 * WORKERS):
@@ -79,13 +83,13 @@ def test_two_quick_ctrl_c_stop_check_promptly_with_no_plan_and_no_workers(tmp_pa
             "the workers never started"
         )
         os.killpg(process.pid, signal.SIGINT)
-        time.sleep(SECOND_SIGINT_DELAY_S)
+        time.sleep(second_after_s)
         os.killpg(process.pid, signal.SIGINT)
         try:
             code = process.wait(timeout=EXIT_DEADLINE_S)
         except subprocess.TimeoutExpired:
             pytest.fail(f"check was still running {EXIT_DEADLINE_S} s after Ctrl-C")
-        assert code == EXIT_INTERRUPTED
+        assert code in INTERRUPTED_EXITS
         assert not plan.exists()
         assert wait_until(lambda: group_is_gone(process.pid), ORPHAN_DEADLINE_S), (
             "worker processes are still running after check exited"
@@ -119,3 +123,49 @@ def test_stopping_workers_off_the_main_thread_leaves_the_signal_alone() -> None:
     thread.start()
     thread.join()
     assert seen == [before]
+
+
+class FakeProcess:
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def terminate(self) -> None:
+        self.calls.append("terminate")
+
+    def kill(self) -> None:
+        self.calls.append("kill")
+
+    def join(self, timeout: float | None = None) -> None:
+        self.calls.append("join")
+
+    def is_alive(self) -> bool:
+        return False
+
+
+class PoolWithAnotherCtrlC:
+    """A pool whose list of workers is read just as the cleanup starts: the moment a second
+    Ctrl-C (``uv run`` sends one) is most likely to land."""
+
+    process = FakeProcess()
+
+    def __init__(self, *_args: object, **_kwargs: object) -> None:
+        PoolWithAnotherCtrlC.process = FakeProcess()
+
+    @property
+    def _processes(self) -> dict[int, FakeProcess]:
+        os.kill(os.getpid(), signal.SIGINT)
+        return {1: PoolWithAnotherCtrlC.process}
+
+    def shutdown(self, wait: bool = True, *, cancel_futures: bool = False) -> None:
+        pass
+
+
+@pytest.mark.timeout(30)
+def test_a_second_ctrl_c_cannot_cut_the_cleanup_short(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(decide_module, "ProcessPoolExecutor", PoolWithAnotherCtrlC)
+    before = signal.getsignal(signal.SIGINT)
+    with pytest.raises(KeyboardInterrupt), decide_module._pool(2):
+        os.kill(os.getpid(), signal.SIGINT)  # the first Ctrl-C, inside the pool's block
+        time.sleep(5)
+    assert PoolWithAnotherCtrlC.process.calls[:2] == ["terminate", "join"]
+    assert signal.getsignal(signal.SIGINT) is before

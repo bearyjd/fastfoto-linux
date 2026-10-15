@@ -12,7 +12,7 @@ from PIL import Image
 
 from fastfoto_linux.library.decide import decide_file
 from fastfoto_linux.library.exif_errors import JpegExifError
-from fastfoto_linux.library.jpeg_exif import set_orientation
+from fastfoto_linux.library.jpeg_exif import pixel_count, set_orientation
 from fastfoto_linux.library.plan import Action
 from tests.face_images import load_astronaut
 from tests.library.jpeg_helpers import (
@@ -145,3 +145,14 @@ def test_a_header_claiming_too_many_pixels_is_skipped_before_anything_is_decoded
 def test_an_ordinary_photo_is_under_the_tools_limit(tmp_path: Path) -> None:
     write_file(tmp_path, "a.jpg", sideways(90))
     assert decide_file(tmp_path, "a.jpg").action is Action.ROTATE
+
+
+ALL_FRAME_MARKERS = [marker for marker in range(0xC0, 0xD0) if marker not in (0xC4, 0xC8, 0xCC)]
+
+
+@pytest.mark.parametrize("marker", ALL_FRAME_MARKERS, ids=lambda marker: f"SOF{marker - 0xC0}")
+def test_the_pixel_count_is_read_from_any_kind_of_frame_header(marker: int) -> None:
+    data = sideways(90)
+    frame = data.index(b"\xff\xc0")
+    patched = data[:frame] + bytes([0xFF, marker]) + data[frame + 2 :]
+    assert pixel_count(patched) == pixel_count(data) > 0

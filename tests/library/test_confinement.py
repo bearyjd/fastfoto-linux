@@ -308,3 +308,29 @@ def test_a_plan_path_that_keeps_changing_is_given_up_on(
     )
     assert not plan.exists()
     assert sorted(path.name for path in tmp_path.iterdir()) == ["lib"]
+
+
+def test_nothing_is_made_inside_the_library_even_for_a_moment(tmp_path: Path) -> None:
+    """The check against the library comes before the first folder is made, not after."""
+    (tmp_path / "x" / "y").mkdir(parents=True)
+    library = os.stat(tmp_path / "x")
+    with pytest.raises(UnsafePathError):
+        confine.open_folder(
+            tmp_path.resolve() / "x" / "y" / "new" / "deeper",
+            create=True,
+            last_mode=0o750,
+            library=library,
+        )
+    assert not (tmp_path / "x" / "y" / "new").exists()
+
+
+def test_a_new_folder_outside_the_library_is_made_when_the_library_is_given(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "lib").mkdir()
+    (tmp_path / "out").mkdir()
+    fd = confine.open_folder(
+        tmp_path.resolve() / "out" / "new", create=True, library=os.stat(tmp_path / "lib")
+    )
+    os.close(fd)
+    assert (tmp_path / "out" / "new").is_dir()

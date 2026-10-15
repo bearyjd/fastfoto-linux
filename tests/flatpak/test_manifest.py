@@ -345,6 +345,9 @@ def test_the_cleanup_removes_nothing_the_app_imports() -> None:
 
 # A cleanup ``find`` runs on the base app's files, which this manifest does not control: without
 # ``-maxdepth 1`` and a ``-name`` (that is not just ``*``) it could remove far more than it names.
+# Every action that can run a command or delete counts, ``-execdir``, ``-ok`` and ``-okdir`` too.
+
+REMOVING_ACTIONS = {"-delete", "-exec", "-execdir", "-ok", "-okdir"}
 
 
 def unbounded_finds(commands: list[str]) -> list[str]:
@@ -352,7 +355,7 @@ def unbounded_finds(commands: list[str]) -> list[str]:
     bad: list[str] = []
     for command in commands:
         words = shlex.split(command)
-        if words[:1] != ["find"] or not {"-delete", "-exec"} & set(words):
+        if words[:1] != ["find"] or not REMOVING_ACTIONS & set(words):
             continue
         depth = [words[i + 1] for i, word in enumerate(words[:-1]) if word == "-maxdepth"]
         names = [words[i + 1] for i, word in enumerate(words[:-1]) if word == "-name"]

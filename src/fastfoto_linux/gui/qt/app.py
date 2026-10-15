@@ -89,7 +89,18 @@ def destroy_now(item: Any) -> None:
         shiboken6.delete(item)
 
 
-_LEFT_ALONE: list[Any] = []  # bridges kept alive on purpose, see ``release_bridge``
+# Bridges kept alive on purpose, see ``release_bridge``. The app calls that once, so this holds one
+# at most, until the process exits; a later call (the tests make many) lets go of those whose job
+# has ended since.
+_LEFT_ALONE: list[Any] = []
+
+
+def _let_go_of_finished() -> None:
+    """Delete the bridges that were left alone and whose job has ended since."""
+    finished = [bridge for bridge in _LEFT_ALONE if not bridge.job_alive]
+    _LEFT_ALONE[:] = [bridge for bridge in _LEFT_ALONE if bridge.job_alive]
+    for bridge in finished:
+        destroy_now(bridge)
 
 
 def release_bridge(bridge: Any) -> None:
@@ -100,6 +111,7 @@ def release_bridge(bridge: Any) -> None:
     process is about to exit anyway, so the bridge is kept (and never reported to again, as
     ``shutdown`` closed it).
     """
+    _let_go_of_finished()
     if bridge.job_alive:
         logger.debug("the job is still running; the bridge is left to the end of the process")
         _LEFT_ALONE.append(bridge)
@@ -163,10 +175,14 @@ def handle_signals(
     received = {"count": 0}
 
     def count_signal(*_: object) -> None:
-        """Runs even while the GUI thread is blocked (the final wait): a second signal aborts."""
+        """Runs even while the GUI thread is blocked (the final wait): a second signal aborts.
+
+        It also stays installed until the teardown is over, so it may run at any point of it: it
+        only counts and assigns plain flags, no lock (see ``Bridge.give_up_waiting``), no logging.
+        """
         received["count"] += 1
         if received["count"] > 1:
-            bridge.abort()
+            bridge.give_up_waiting()
 
     previous = {number: signal.signal(number, count_signal) for number in STOP_SIGNALS}
     old_fd = signal.set_wakeup_fd(writer.fileno(), warn_on_full_buffer=False)
@@ -228,8 +244,12 @@ def _run(run_loop: Callable[[], int]) -> int:
     try:
         return run_loop()
     finally:
-        undo_signals()
-        bridge.remember()
-        bridge.shutdown()
-        destroy_now(engine)  # the window first: it is bound to the bridge
-        release_bridge(bridge)
+        try:
+            bridge.remember()
+            bridge.shutdown()
+            destroy_now(engine)  # the window first: it is bound to the bridge
+            release_bridge(bridge)
+        finally:
+            # Last: until now a late signal (a second SIGTERM, say) is caught by our handler. With
+            # the default one back it would kill the app in the middle of its teardown.
+            undo_signals()

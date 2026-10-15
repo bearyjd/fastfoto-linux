@@ -110,9 +110,13 @@ class Bridge(QObject):
         )
         self._close_signalled = False
         self._closed = False
-        self._emit_lock = threading.Lock()  # guards ``_closed`` and every emit from a thread
+        # Guards ``_closed`` and every emit from a thread. Not re-entrant, on purpose: that is safe
+        # because ``_event`` and ``_disk`` are private signals with queued connections only, so an
+        # emit just posts an event and runs no slot while the lock is held. Never connect a slot
+        # to either of them directly (a direct slot that emitted again would deadlock here).
+        self._emit_lock = threading.Lock()
         self._shut_down = False
-        self._aborted = threading.Event()
+        self._aborted = False  # a plain flag, see ``give_up_waiting``
         self._event.connect(self._dispatch, Qt.ConnectionType.QueuedConnection)
         self._disk.connect(self._disk_answered, Qt.ConnectionType.QueuedConnection)
         self.checkDisk()  # the folder of the remembered form, looked at off the GUI thread
@@ -392,10 +396,16 @@ class Bridge(QObject):
     def abort(self) -> None:
         """Stop waiting for the job (a second signal): cancel it and let ``shutdown`` end soon.
 
-        Safe to call from any thread.
+        Safe to call from any thread, but not from a signal handler: use ``give_up_waiting``.
         """
         self._worker.cancel()
-        self._aborted.set()
+        self.give_up_waiting()
+
+    def give_up_waiting(self) -> None:
+        """Make ``shutdown`` stop waiting for the job. It only assigns a plain flag, which a signal
+        handler may do: the handler runs between two instructions of the thread it interrupts, so
+        it must not take a lock (``Event.set`` does) that this thread could be holding."""
+        self._aborted = True
 
     def shutdown(self) -> None:
         """Stop the running job, if any, and wait for it (a while) before the app goes away.
@@ -411,7 +421,7 @@ class Bridge(QObject):
         self._worker.cancel()
         deadline = time.monotonic() + SHUTDOWN_WAIT
         while self._worker.alive and time.monotonic() < deadline:
-            if self._aborted.is_set():
+            if self._aborted:
                 self._worker.join(ABORT_GRACE)  # time for the job to stop scanimage
                 return
             self._worker.join(SHUTDOWN_SLICE)

@@ -172,6 +172,43 @@ def test_the_rest_of_the_banner_is_unchanged_when_the_lines_collapse() -> None:
     assert str(RAW) in banner.text
 
 
+# --- a lost sheet is named too, as the command line names it -------------------------------------
+
+UNREADABLE = "a page of the sheet could not be read"
+
+
+def lost_sheet(sheet: int, *, reason: str = UNREADABLE) -> SheetIssue:
+    pages = (f"page-{2 * sheet - 1:04d}.png", f"page-{2 * sheet:04d}.png")
+    return SheetIssue(sheet, pages, reason, None, save_failed=True)
+
+
+def test_a_lost_sheet_is_named_by_its_feed_number_with_a_plain_reason() -> None:
+    banner = banner_for(
+        ProcessResult(written=(written(OUT, 1),), failed=(lost_sheet(2),), sheets=3)
+    )
+    assert "1 sheet could not be processed" in banner.text
+    assert f"Photo 2 of 3 fed (page-0003.png, page-0004.png): {UNREADABLE}" in banner.text
+    assert "saving the whole page failed too" in banner.text
+    assert str(OUT) not in banner.text
+
+
+def test_lost_and_saved_sheets_are_listed_together_in_feed_order() -> None:
+    failed = (lost_sheet(1), issue(2, whole_page(2)), lost_sheet(3))
+    banner = banner_for(ProcessResult(failed=failed, sheets=3))
+    lines = [line for line in banner.text.splitlines() if line.startswith("Photo ")]
+    assert [line.split(" fed")[0] for line in lines] == [
+        "Photo 1 of 3",
+        "Photo 2 of 3",
+        "Photo 3 of 3",
+    ]
+
+
+def test_more_than_three_lost_sheets_are_one_line_with_their_feed_numbers() -> None:
+    banner = banner_for(several([], lost=(2, 5, 7, 9)))
+    assert "4 sheets could not be processed: photos 2, 5, 7, 9 fed." in banner.text
+    assert "Photo 2 of" not in banner.text
+
+
 # --- the results grid's heading says it the banner's way -----------------------------------------
 
 

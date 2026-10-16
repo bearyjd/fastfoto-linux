@@ -29,7 +29,11 @@ from fastfoto_linux.output.writer import MAX_QUALITY, MIN_QUALITY
 from fastfoto_linux.pipeline.io import scan_time
 from fastfoto_linux.pipeline.issues import SheetIssue, sheet_issue, sheet_pages
 from fastfoto_linux.pipeline.sides import BackPolicy, BatchError, Photo, iter_photos
-from fastfoto_linux.pipeline.unprocessed import plain_reason, save_unprocessed
+from fastfoto_linux.pipeline.unprocessed import (
+    plain_failure_reason,
+    plain_reason,
+    save_unprocessed,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -307,8 +311,9 @@ def _handle(photo: Photo, settings: ProcessSettings) -> _Handled:
         prepared = _prepare(photo, settings)
         files = _write(photo, prepared, settings)
     except Exception as error:  # any writer failure costs this sheet only
-        reason = _reason(error)
+        reason = plain_failure_reason(error)
         logger.error("sheet %d: %s", sheet, reason)
+        logger.debug("sheet %d: %s", sheet, _reason(error), exc_info=True)
         return _Handled(failure=reason)
     if prepared.degraded is not None:
         logger.error("sheet %d: %s; wrote the original only", sheet, prepared.degraded)

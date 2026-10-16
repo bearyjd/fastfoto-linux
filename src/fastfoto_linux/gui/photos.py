@@ -54,6 +54,12 @@ class PhotoItem:
         """
         return self.original or self.enhanced or (self.back if self.unprocessed else None)
 
+    @property
+    def back_only(self) -> bool:
+        """Whether the back is all there is of this item: it is then shown once, as the picture."""
+        no_front = self.original is None and self.enhanced is None
+        return self.unprocessed and no_front and self.back is not None
+
 
 def item_from_files(files: WrittenFiles) -> PhotoItem:
     return PhotoItem(

@@ -165,9 +165,9 @@ def _needs_checking(count: int) -> str:
 def _failed_text(process: ProcessResult) -> str:
     """The failed sheets: those lost, those saved whole (which need checking), the photos saved.
 
-    Up to ``MAX_SHEET_LINES`` failed sheets: each sheet saved whole gets a line of its own saying
-    which photo of the batch it was, in feed order, why, and the file. More than that: one
-    sentence per kind, naming the sheets by their place in the feed.
+    Up to ``MAX_SHEET_LINES`` failed sheets: each gets a line of its own, in the order they failed,
+    saying which photo of the batch it was (in feed order), why, and the file if it was saved
+    whole. More than that: one sentence per kind, naming the sheets by their place in the feed.
     """
     whole = _saved_whole(process)
     lost = [issue for issue in process.failed if issue.saved is None]
@@ -179,7 +179,7 @@ def _failed_text(process: ProcessResult) -> str:
         parts.append(_listed(_needs_checking(len(whole)), whole, many))
     if process.photos:
         parts.append(f"{_count(process.photos, 'photo')} saved.")
-    lines = [] if many else [_line(issue, process.sheets) for issue in whole]
+    lines = [] if many else [_line(issue, process.sheets) for issue in process.failed]
     return "\n".join([" ".join(parts), *lines])
 
 

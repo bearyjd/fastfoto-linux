@@ -10,6 +10,8 @@ from tests.gui.qt import require_qt
 
 require_qt()
 
+from PySide6.QtCore import QUrl
+
 from fastfoto_linux.output import WrittenFiles
 from fastfoto_linux.pipeline.process import ProcessResult, SheetIssue
 from fastfoto_linux.session import RawReason, SessionResult, Stage
@@ -111,3 +113,66 @@ def test_the_heading_counts_photos_and_the_one_needing_a_check_separately(
     assert bridge.photosHeading == "Photos (2), 1 photo needs checking"
     heading = child(window, "photosHeading")
     assert heading.property("text") == "Photos (2), 1 photo needs checking"
+
+
+def lone_back_scan(out: Path):
+    """A session whose sheet 1 has only its back readable and sheet 2 a front and a back."""
+    folder = out / ALBUM
+
+    def pages(index: int, *, front: bool) -> WrittenFiles:
+        stem = folder / f"{ALBUM}_{index:04d}_unprocessed"
+        return WrittenFiles(
+            directory=folder,
+            index=index,
+            original=stem.with_suffix(".jpg") if front else None,
+            enhanced=None,
+            back=folder / f"{stem.name}_b.jpg",
+            unprocessed_reason=REASON,
+        )
+
+    def session(request: Any, **hooks: Any) -> SessionResult:
+        hooks["on_stage"](Stage.PROCESSING)
+        lone, both = (with_images(pages(1, front=False)), with_images(pages(2, front=True)))
+        for files in (lone, both):
+            hooks["on_photo"](files)
+        hooks["on_stage"](Stage.DONE)
+        failed = tuple(
+            SheetIssue(n, (f"page-{n:04d}.png",), REASON, f) for n, f in ((1, lone), (2, both))
+        )
+        return SessionResult(
+            process=ProcessResult(failed=failed, sheets=2),
+            pages_scanned=4,
+            raw_dir=out / ".raw" / "stamp",
+            raw_reason=RawReason.SHEETS_FAILED,
+        )
+
+    return session
+
+
+def test_a_lone_back_is_shown_once_and_labelled_as_the_back(
+    make_bridge: Any, open_window: Any, messages: list[str], out: Path
+) -> None:
+    bridge = make_bridge(session=lone_back_scan(out))
+    window, warnings = open_window(bridge)
+    ready(bridge)
+    bridge.startScan()
+    wait_until(lambda: bridge.state == "done", "the scan to finish")
+    settle()
+    grid = child(window, "photosGrid")
+    wait_until(lambda: len(cells_of(grid)) == 2, "the cells")
+    lone, both = cells_of(grid)
+    back = QUrl.fromLocalFile(str(out / ALBUM / f"{ALBUM}_0001_unprocessed_b.jpg")).toString()
+    (picture,) = named_items(lone, "frontImage")
+    assert picture.property("source").toString() == back
+    (thumbnail,) = named_items(lone, "backImage")
+    assert thumbnail.property("visible") is False  # the same picture is not shown a second time
+    (label,) = named_items(lone, "backOnlyLabel")
+    assert label.property("visible") is True
+    assert label.property("text") == "Back page"
+    (thumbnail,) = named_items(both, "backImage")
+    assert thumbnail.property("visible") is True  # a front with its back keeps its thumbnail
+    (label,) = named_items(both, "backOnlyLabel")
+    assert label.property("visible") is False
+    settle()
+    assert warnings == []
+    assert messages == []

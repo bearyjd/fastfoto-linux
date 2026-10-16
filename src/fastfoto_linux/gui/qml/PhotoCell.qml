@@ -5,6 +5,7 @@ import org.kde.kirigami as Kirigami
 
 // One photo of the results grid: its picture, the back beside it when there is one, its name.
 // A sheet saved whole (not processed) says so over the bottom of its picture, with the reason.
+// A whole page of which only the back could be read shows that back once, labelled as the back.
 Item {
     id: cell
 
@@ -16,6 +17,7 @@ Item {
     required property bool hasBack
     required property bool unprocessed
     required property string reason
+    required property bool backOnly
 
     property bool showEnhanced: false
     readonly property string pictureUrl: showEnhanced && hasEnhanced ? enhancedUrl : frontUrl
@@ -48,6 +50,27 @@ Item {
                     sourceSize.height: 256
                     fillMode: Image.PreserveAspectFit
                     asynchronous: true
+                }
+
+                Rectangle {
+                    objectName: "backOnlyBadge"
+                    anchors.left: parent.left
+                    anchors.top: parent.top
+                    width: backOnlyLabel.implicitWidth + 2 * Kirigami.Units.smallSpacing
+                    height: backOnlyLabel.implicitHeight + 2 * Kirigami.Units.smallSpacing
+                    visible: cell.backOnly
+                    color: Kirigami.Theme.backgroundColor
+                    opacity: 0.85
+
+                    QQC2.Label {
+                        id: backOnlyLabel
+
+                        objectName: "backOnlyLabel"
+                        anchors.centerIn: parent
+                        text: qsTr("Back page")
+                        textFormat: Text.PlainText
+                        font: Kirigami.Theme.smallFont
+                    }
                 }
 
                 Rectangle {

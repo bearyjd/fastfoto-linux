@@ -52,6 +52,17 @@ def plain_reason(error: BatchError) -> str:
     return GENERIC_REASON
 
 
+def plain_failure_reason(error: Exception) -> str:
+    """Why a photo could not be written, in words for the user; the error's own text is dropped.
+
+    A disk or permission problem says what the system said (without the file it names); anything
+    else gets the generic sentence. The caller logs the error itself at debug level.
+    """
+    if isinstance(error, OSError) and error.strerror:
+        return f"the photo could not be saved ({error.strerror})"
+    return GENERIC_REASON
+
+
 def save_unprocessed(
     pages: tuple[Path, ...], settings: "ProcessSettings", reason: str
 ) -> WrittenFiles | None:
@@ -68,8 +79,10 @@ def save_unprocessed(
         return _save(pages, settings, reason)
     except Exception as error:  # the fallback is the plain failure the caller already has
         names = ", ".join(page.name for page in pages)
-        logger.error("cannot save %s whole: %s", names, str(error) or type(error).__name__)
-        logger.debug("details of the failure to save %s whole", names, exc_info=True)
+        # the decoder's or the disk's own words carry absolute paths: debug, not the user's log
+        logger.debug(
+            "cannot save %s whole: %s", names, str(error) or type(error).__name__, exc_info=True
+        )
         return None
 
 
@@ -151,7 +164,7 @@ def _load_pages(pages: tuple[Path, ...]) -> list[Page | None]:
         try:
             loaded.append(load_frame(page))
         except Exception as error:  # a damaged page must not cost the readable one
-            logger.error("cannot read %s: %s", page.name, str(error) or type(error).__name__)
+            logger.debug("cannot read %s: %s", page.name, str(error) or type(error).__name__)
             loaded.append(None)
     return loaded
 

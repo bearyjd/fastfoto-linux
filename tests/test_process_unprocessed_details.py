@@ -1,5 +1,6 @@
 """Whole-page saving of a failed sheet: what is kept from a photo, and what the user is told."""
 
+import errno
 import gc
 import logging
 import os
@@ -217,6 +218,41 @@ def test_a_sheet_whose_pages_are_both_unreadable_cannot_be_saved(tmp_path, caplo
     assert str(tmp_path) not in line  # no absolute path in what the user reads
     details = [r for r in caplog.records if r.name == LOGGER and r.levelno == logging.DEBUG]
     assert any(page_name(3) in r.getMessage() for r in details)  # the decoder's words go here
+
+
+def unprocessed_records(caplog) -> list[logging.LogRecord]:
+    return [r for r in caplog.records if r.name == "fastfoto_linux.pipeline.unprocessed"]
+
+
+def test_a_page_that_cannot_be_read_is_logged_at_debug_with_its_decoder_text(
+    tmp_path, caplog
+) -> None:
+    raw, out = workspace(tmp_path)
+    pages = write_sheets(raw, [plain_sheet(0), wide_sheet(1)])
+    for page in pages[2:]:
+        page.write_bytes(b"this is not a png")
+    with caplog.at_level(logging.DEBUG):
+        process_pages(pages, settings_for(out, back_policy=BackPolicy.ALWAYS))
+    records = unprocessed_records(caplog)
+    assert {r.levelno for r in records} == {logging.DEBUG}  # nothing above debug: no path leaks
+    assert any(page_name(3) in r.getMessage() and str(tmp_path) in r.getMessage() for r in records)
+
+
+def test_a_failure_to_write_the_whole_page_is_logged_at_debug_with_its_details(
+    tmp_path, monkeypatch, caplog
+) -> None:
+    secret = str(tmp_path / "private-album" / "FastFoto_0002_unprocessed.jpg")
+
+    def explode(*args, **kwargs):
+        raise OSError(errno.ENOSPC, "No space left on device", secret)
+
+    monkeypatch.setattr(unprocessed, "write_unprocessed", explode)
+    pages, out = three_sheets(tmp_path)
+    with caplog.at_level(logging.DEBUG):
+        process_pages(pages, settings_for(out, back_policy=BackPolicy.NEVER))
+    records = unprocessed_records(caplog)
+    assert {r.levelno for r in records} == {logging.DEBUG}
+    assert any(secret in r.getMessage() for r in records)
 
 
 @pytest.mark.parametrize("error", [ValueError("finder broke"), RuntimeError("finder broke")])

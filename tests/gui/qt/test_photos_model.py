@@ -52,6 +52,7 @@ def test_the_roles_are_named_for_qml(model: PhotosModel) -> None:
         "hasBack",
         "unprocessed",
         "reason",
+        "backOnly",
     }
 
 
@@ -131,3 +132,23 @@ def test_a_row_outside_the_model_has_no_data(model: PhotosModel) -> None:
 def test_a_photo_is_titled_by_its_file_name_not_its_folder(model: PhotosModel) -> None:
     model.set_items((item(3),))
     assert model.data(model.index(0, 0), role(model, "title")) == "Family Trips_0003"
+
+
+def test_a_lone_back_is_served_once_as_the_picture_and_flagged_as_the_back(
+    model: PhotosModel,
+) -> None:
+    model.set_items((item(4, original=None, enhanced=None, unprocessed_reason="no photo"),))
+    row = model.index(0, 0)
+    assert model.data(row, role(model, "frontUrl")) == url(DIRECTORY / "Family Trips_0004_b.jpg")
+    assert model.data(row, role(model, "backUrl")) == ""
+    assert model.data(row, role(model, "hasBack")) is False
+    assert model.data(row, role(model, "backOnly")) is True
+
+
+def test_a_front_with_a_back_keeps_both_and_is_not_flagged(model: PhotosModel) -> None:
+    model.set_items((item(4, unprocessed_reason="no photo"), item(5)))
+    for number in range(2):
+        row = model.index(number, 0)
+        assert model.data(row, role(model, "backUrl")).endswith("_b.jpg")
+        assert model.data(row, role(model, "hasBack")) is True
+        assert model.data(row, role(model, "backOnly")) is False

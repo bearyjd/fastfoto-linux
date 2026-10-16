@@ -1,6 +1,7 @@
 """``process_pages``: one bad sheet never loses the others; inputs are validated up front."""
 
 import errno
+import logging
 
 import numpy as np
 import pytest
@@ -12,6 +13,7 @@ from fastfoto_linux.pipeline.sides import BackPolicy, BatchError
 from tests.process_helpers import (
     BLANK,
     DPI,
+    LOGGER,
     jpeg_names,
     page_name,
     plain_sheet,
@@ -58,6 +60,48 @@ def test_a_failing_writer_loses_only_its_own_sheet(tmp_path, monkeypatch) -> Non
     assert (issue.sheet, issue.pages) == (2, (page_name(3), page_name(4)))
     assert "No space left" in issue.reason
     assert jpeg_names(out) == ["FastFoto_0001.jpg", "FastFoto_0002.jpg"]
+
+
+def secret_path(tmp_path) -> str:
+    return str(tmp_path / "private-album" / "FastFoto_0002.jpg")
+
+
+@pytest.mark.parametrize(
+    ("make_error", "plain"),
+    [
+        (
+            lambda path: OSError(errno.ENOSPC, "No space left on device", path),
+            "the photo could not be saved (No space left on device)",
+        ),
+        (lambda path: OSError(f"boom at {path}"), "the photo could not be processed"),
+        (lambda path: ValueError(f"bad value in {path}"), "the photo could not be processed"),
+    ],
+    ids=["os-error", "os-error-without-text", "other"],
+)
+def test_a_writer_failure_gives_a_plain_reason_and_the_details_go_to_debug(
+    tmp_path, monkeypatch, caplog, make_error, plain
+) -> None:
+    raw, out = workspace(tmp_path)
+    pages = write_sheets(raw, [plain_sheet(0), plain_sheet(1)])
+    secret = secret_path(tmp_path)
+    real_write = process.write_photo
+    calls = []
+
+    def flaky_write(*args, **kwargs):
+        calls.append(1)
+        if len(calls) == 2:
+            raise make_error(secret)
+        return real_write(*args, **kwargs)
+
+    monkeypatch.setattr(process, "write_photo", flaky_write)
+    with caplog.at_level(logging.DEBUG, logger=LOGGER):
+        result = process_pages(pages, settings_for(out))
+    (issue,) = result.failed
+    assert issue.reason == plain
+    records = [r for r in caplog.records if r.name == LOGGER]
+    assert [r.getMessage() for r in records if r.levelno >= logging.ERROR] == [f"sheet 2: {plain}"]
+    assert not [r for r in records if r.levelno > logging.DEBUG and str(tmp_path) in r.getMessage()]
+    assert any(r.levelno == logging.DEBUG and secret in r.getMessage() for r in records)
 
 
 def test_ctrl_c_is_not_swallowed(tmp_path) -> None:

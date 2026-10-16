@@ -82,3 +82,29 @@ def test_a_back_alone_is_what_a_page_that_was_not_processed_shows() -> None:
     )
     assert item.front == back
     assert item.title == "Family Trips_0003_unprocessed"
+
+
+def whole_page_item(**overrides: Path | None) -> PhotoItem:
+    base: dict[str, Path | None] = {
+        "original": DIRECTORY / "Family Trips_0003_unprocessed.jpg",
+        "enhanced": None,
+        "back": DIRECTORY / "Family Trips_0003_unprocessed_b.jpg",
+    }
+    return PhotoItem(
+        directory=DIRECTORY, index=3, unprocessed_reason="no photo found", **{**base, **overrides}
+    )
+
+
+def test_a_whole_page_of_which_only_the_back_was_readable_is_back_only() -> None:
+    item = whole_page_item(original=None)
+    assert item.back_only is True
+    assert item.front == item.back  # the one picture there is
+
+
+def test_a_front_with_its_back_is_not_back_only() -> None:
+    assert whole_page_item().back_only is False
+    assert item_from_files(files()).back_only is False
+
+
+def test_an_item_without_any_picture_is_not_back_only() -> None:
+    assert whole_page_item(original=None, back=None).back_only is False

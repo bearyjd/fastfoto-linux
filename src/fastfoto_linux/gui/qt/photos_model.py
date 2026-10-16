@@ -29,6 +29,7 @@ _ROLES = (
     "hasBack",
     "unprocessed",
     "reason",
+    "backOnly",
 )
 
 
@@ -46,11 +47,12 @@ def _values(item: PhotoItem) -> dict[str, object]:
         "number": item.index,
         "frontUrl": file_url(item.front),
         "enhancedUrl": file_url(item.enhanced),
-        "backUrl": file_url(item.back),
+        "backUrl": "" if item.back_only else file_url(item.back),  # shown once, as the picture
         "hasEnhanced": item.enhanced is not None,
-        "hasBack": item.back is not None,
+        "hasBack": item.back is not None and not item.back_only,
         "unprocessed": item.unprocessed,
         "reason": item.unprocessed_reason or "",
+        "backOnly": item.back_only,
     }
 
 

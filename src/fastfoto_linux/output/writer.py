@@ -47,13 +47,18 @@ def _now() -> datetime:
 
 @dataclass(frozen=True)
 class WrittenFiles:
-    """The files one ``write_photo`` call created; a path is None when not written."""
+    """The files one ``write_photo`` call created; a path is None when not written.
+
+    ``unprocessed_reason`` is set (in words) when the files are the whole pages of a sheet that
+    could not be turned into a photo: ``original`` and ``back`` are then those pages.
+    """
 
     directory: Path
     index: int
     original: Path | None
     enhanced: Path | None
     back: Path | None
+    unprocessed_reason: str | None = None
 
     @property
     def paths(self) -> tuple[Path, ...]:
@@ -212,3 +217,21 @@ def write_photo(  # noqa: PLR0913
     directory.mkdir(exist_ok=True)
     with locked_folder(directory):
         return _publish_photo(directory, file_prefix, blobs)
+
+
+def write_unprocessed(  # noqa: PLR0913
+    front: np.ndarray,
+    *,
+    dpi: int,
+    output_root: Path,
+    reason: str,
+    back: np.ndarray | None = None,
+    album: str | None = None,
+    prefix: str | None = None,
+    date: PhotoDate | DateRange | None = None,
+    notes: str | None = None,
+    scanned_at: datetime | None = None,
+    quality: int = DEFAULT_QUALITY,
+) -> WrittenFiles:
+    """Write the whole pages of a sheet that could not be processed (stub: red commit)."""
+    raise NotImplementedError

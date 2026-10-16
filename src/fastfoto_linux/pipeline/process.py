@@ -85,6 +85,7 @@ class SheetIssue:
     sheet: int | None
     pages: tuple[str, ...]
     reason: str
+    saved: WrittenFiles | None = None
 
 
 @dataclass(frozen=True)
@@ -111,6 +112,7 @@ class ProcessResult:
     dropped_backs: tuple[str, ...] = ()
     unchanged: int = 0
     cancelled: bool = False
+    sheets: int = 0
 
     @property
     def photos(self) -> int:

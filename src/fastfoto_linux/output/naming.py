@@ -150,3 +150,8 @@ def photo_paths(directory: Path, prefix: str, index: int) -> PhotoPaths:
         enhanced=directory / f"{stem}_a.jpg",
         back=directory / f"{stem}_b.jpg",
     )
+
+
+def unprocessed_paths(directory: Path, prefix: str, index: int) -> tuple[Path, Path]:
+    """Paths of the whole-page front and back files for ``index`` (stub: red commit)."""
+    raise NotImplementedError

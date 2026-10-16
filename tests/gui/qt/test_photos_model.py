@@ -50,6 +50,8 @@ def test_the_roles_are_named_for_qml(model: PhotosModel) -> None:
         "backUrl",
         "hasEnhanced",
         "hasBack",
+        "unprocessed",
+        "reason",
     }
 
 
@@ -73,6 +75,20 @@ def test_missing_files_are_empty_urls_and_false_flags(model: PhotosModel) -> Non
     assert model.data(row, role(model, "backUrl")) == ""
     assert model.data(row, role(model, "hasEnhanced")) is False
     assert model.data(row, role(model, "hasBack")) is False
+
+
+def test_a_normal_photo_is_not_flagged_as_unprocessed(model: PhotosModel) -> None:
+    model.set_items((item(1),))
+    row = model.index(0, 0)
+    assert model.data(row, role(model, "unprocessed")) is False
+    assert model.data(row, role(model, "reason")) == ""
+
+
+def test_a_whole_page_is_flagged_with_its_reason(model: PhotosModel) -> None:
+    model.set_items((item(2, unprocessed_reason="the photo's edges were not found"),))
+    row = model.index(0, 0)
+    assert model.data(row, role(model, "unprocessed")) is True
+    assert model.data(row, role(model, "reason")) == "the photo's edges were not found"
 
 
 def test_a_longer_list_adds_rows_without_resetting(model: PhotosModel) -> None:

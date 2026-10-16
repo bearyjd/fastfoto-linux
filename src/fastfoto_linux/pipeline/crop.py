@@ -334,3 +334,8 @@ def crop(frame: np.ndarray, box: Box) -> np.ndarray:
     if box.x < 0 or box.y < 0 or box.x + box.w > width or box.y + box.h > height:
         raise ValueError(f"box {box} lies outside the {width}x{height} frame")
     return frame[box.y : box.y + box.h, box.x : box.x + box.w].copy()
+
+
+def trim_tail(frame: np.ndarray, dpi: float) -> np.ndarray:
+    """A copy of ``frame`` without the scanner's white tail (stub: red commit)."""
+    raise NotImplementedError

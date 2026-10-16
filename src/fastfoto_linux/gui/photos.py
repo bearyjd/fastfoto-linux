@@ -17,6 +17,7 @@ class PhotoItem:
     original: Path | None
     enhanced: Path | None
     back: Path | None
+    unprocessed_reason: str | None = None
 
     @property
     def album(self) -> str:
@@ -31,6 +32,11 @@ class PhotoItem:
         if self.enhanced is not None:
             return self.enhanced.stem.removesuffix(ENHANCED_SUFFIX)
         return f"Photo {self.index}"
+
+    @property
+    def unprocessed(self) -> bool:
+        """Whether this is the whole page of a sheet that could not be processed (stub)."""
+        return False
 
     @property
     def front(self) -> Path | None:

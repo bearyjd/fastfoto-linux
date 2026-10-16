@@ -78,6 +78,26 @@ def test_cancelling_between_pages_stops_before_the_next_page(
     assert all(page.exists() for page in pages)
 
 
+def test_cancelling_during_the_checks_stops_before_the_next_page_is_decoded(
+    raw: Path, out: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cancel = threading.Event()
+    checked: list[Path] = []
+    real = build.inspect_page
+
+    def check_then_cancel(path: Path, **kwargs: Any) -> Any:
+        checked.append(path)
+        cancel.set()
+        return real(path, **kwargs)
+
+    monkeypatch.setattr(build, "inspect_page", check_then_cancel)
+    pages = write_pages(raw, [text_scene(n) for n in range(4)])
+    with pytest.raises(DocumentCancelledError):
+        build_document(pages, settings(out), cancel=cancel)
+    assert len(checked) == 1
+    assert list(out.iterdir()) == []
+
+
 def test_a_cancel_that_is_already_set_processes_no_page(
     raw: Path, out: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

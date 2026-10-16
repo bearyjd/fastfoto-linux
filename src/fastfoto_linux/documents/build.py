@@ -7,7 +7,7 @@ Order of work, and why:
    decode, so a truncated PNG is found now and not after ten pages of work). Nothing is written
    when a page is unusable, because a PDF with a page silently missing is worse than no PDF.
 2. Pages are then processed one at a time and only their encoded bytes are kept; a cancel is
-   honoured before each page.
+   honoured before each page, in the checks as well as in the processing.
 3. The OCR runs on the finished plain PDF *before* the output folder is locked (it can take
    minutes; the lock is for numbering and writing only), and a failed or timed-out OCR falls
    back to publishing the plain PDF.
@@ -90,6 +90,11 @@ def _ocr_executable(mode: OcrMode) -> str | None:
     return found
 
 
+def _stop_if_cancelled(cancel: threading.Event | None, before: str) -> None:
+    if cancel is not None and cancel.is_set():
+        raise DocumentCancelledError(f"stopped before {before}")
+
+
 def _encode_pages(
     pages: Sequence[Path], settings: DocumentSettings, cancel: threading.Event | None
 ) -> tuple[list[EncodedPage], tuple[int, ...]]:
@@ -97,8 +102,7 @@ def _encode_pages(
     kept: list[EncodedPage] = []
     dropped: list[int] = []
     for number, path in enumerate(pages, start=1):
-        if cancel is not None and cancel.is_set():
-            raise DocumentCancelledError(f"stopped before page {number} of {len(pages)}")
+        _stop_if_cancelled(cancel, f"page {number} of {len(pages)} was processed")
         trimmed = trim_page(load_page(path, fallback_dpi=settings.fallback_dpi))
         page = trimmed.page
         if not settings.keep_blank and is_blank(page, trimmed_bottom=trimmed.bottom):
@@ -132,8 +136,8 @@ def _searchable(
         cancel=cancel,
     )
     if outcome.status is not OcrStatus.DONE:
-        # The caller says so once (the CLI prints a warning); this is for the log of a long run.
-        logger.info("searchable text was not added: %s", outcome.detail)
+        # The caller says so once (the CLI prints a warning); a log line would repeat it.
+        logger.debug("searchable text was not added: %s", outcome.detail)
     return outcome
 
 
@@ -157,7 +161,8 @@ def build_document(
     name = sanitise_prefix(settings.name)
     validate_langs(settings.langs)
     executable = _ocr_executable(settings.ocr)
-    for path in pages:
+    for number, path in enumerate(pages, start=1):
+        _stop_if_cancelled(cancel, f"page {number} of {len(pages)} was checked")
         inspect_page(path, fallback_dpi=settings.fallback_dpi, decode=True)
     encoded, dropped = _encode_pages(pages, settings, cancel)
     if not encoded:

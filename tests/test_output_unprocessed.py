@@ -4,10 +4,12 @@ import xml.etree.ElementTree as ET
 from datetime import datetime
 from pathlib import Path
 
+import numpy as np
 import pytest
 from PIL import ExifTags, Image
 
 from fastfoto_linux.output import writer
+from fastfoto_linux.output.errors import InvalidImageError
 from fastfoto_linux.output.metadata import PhotoDate
 from fastfoto_linux.output.naming import next_index, unprocessed_paths
 from fastfoto_linux.output.writer import write_photo, write_unprocessed
@@ -93,6 +95,13 @@ def test_a_back_alone_is_written_under_its_b_name_with_no_front(tmp_path: Path) 
     assert (result.original, result.enhanced) == (None, None)
     assert result.back == tmp_path / "FastFoto_0001_unprocessed_b.jpg"
     assert result.unprocessed_reason == REASON
+
+
+def test_a_front_that_is_not_an_rgb_image_is_refused(tmp_path: Path) -> None:
+    flat = np.zeros((4, 4), np.uint8)
+    with pytest.raises(InvalidImageError, match="front"):
+        write_unprocessed(flat, dpi=DPI, output_root=tmp_path, back=rgb(), reason=REASON)
+    assert names(tmp_path) == []
 
 
 def test_a_whole_page_write_needs_a_front_or_a_back(tmp_path: Path) -> None:

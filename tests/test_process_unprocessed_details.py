@@ -97,6 +97,17 @@ def test_the_scan_time_is_the_time_of_the_front_page(tmp_path) -> None:
     assert digitized_date(out / "FastFoto_0001_unprocessed.jpg") == "2026:10:12 09:05:07"
 
 
+def test_the_scan_time_of_a_lone_back_is_the_time_of_its_own_file(tmp_path) -> None:
+    raw, out = workspace(tmp_path)
+    front_page, back_page = write_sheets(raw, [wide_sheet(0)], front_first=True)
+    front_page.write_bytes(b"this is not a png")
+    back_time = datetime(2026, 10, 12, 9, 5, 7)
+    os.utime(front_page, (datetime(2026, 10, 12, 9, 4, 0).timestamp(),) * 2)
+    os.utime(back_page, (back_time.timestamp(),) * 2)
+    process_pages([front_page, back_page], settings_for(out, expect_front_first=True))
+    assert digitized_date(out / "FastFoto_0001_unprocessed_b.jpg") == "2026:10:12 09:05:07"
+
+
 @pytest.mark.parametrize(("front_first", "front_at"), [(True, 0), (False, 1)])
 def test_the_declared_feed_order_decides_when_the_content_cannot(front_first, front_at) -> None:
     (front, _), (back, _) = half_bright_front_sheet()

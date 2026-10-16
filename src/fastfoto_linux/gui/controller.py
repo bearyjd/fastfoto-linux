@@ -10,6 +10,9 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Protocol
 
+from fastfoto_linux.gui.docform import DocumentForm
+from fastfoto_linux.gui.doctools import DocumentSetup
+from fastfoto_linux.gui.documents import DocumentItem
 from fastfoto_linux.gui.form import (
     FormInvalidError,
     ScanForm,
@@ -30,6 +33,7 @@ from fastfoto_linux.gui.report import (
 )
 from fastfoto_linux.gui.state import (
     ActionBlockedError,
+    Mode,
     State,
     can_cancel,
     final_state,
@@ -92,7 +96,7 @@ class WorkerPort(Protocol):
 class Controller:
     """The scan page's state, form and results; ``on_change`` hears every change."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - the collaborators are the interface
         self,
         worker: WorkerPort,
         form: ScanForm | None = None,
@@ -100,6 +104,7 @@ class Controller:
         save_form: Callable[[ScanForm], None] | None = None,
         on_change: Callable[[], None] | None = None,
         disk_check: DiskCheck | None = None,
+        documents: DocumentSetup | None = None,
     ) -> None:
         self._worker = worker
         self._disk_check = disk_check
@@ -260,7 +265,37 @@ class Controller:
         """True once a requested close may go ahead: nothing is running any more."""
         return self._close_requested and not self.busy
 
+    @property
+    def mode(self) -> Mode:
+        raise NotImplementedError
+
+    @property
+    def document_form(self) -> DocumentForm:
+        raise NotImplementedError
+
+    @property
+    def documents(self) -> tuple[DocumentItem, ...]:
+        raise NotImplementedError
+
+    @property
+    def ocr_available(self) -> bool:
+        raise NotImplementedError
+
+    @property
+    def ocr_hint(self) -> str:
+        raise NotImplementedError
+
+    @property
+    def searchable_checked(self) -> bool:
+        raise NotImplementedError
+
     # -- what the user does --------------------------------------------------------------
+
+    def set_mode(self, mode: Mode | str) -> None:
+        raise NotImplementedError
+
+    def set_document_field(self, name: str, value: object) -> None:
+        raise NotImplementedError
 
     def set_field(self, name: str, value: object) -> None:
         """Change one field. Only its text is checked: the disk is read by ``check_disk``."""
@@ -419,6 +454,12 @@ class Controller:
         elif stage is Stage.SCANNING and self._checking_scanner:
             self._checking_scanner = False
             self._changed()
+
+    def on_build_page(self, progress: tuple[int, int]) -> None:
+        raise NotImplementedError
+
+    def on_ocr(self) -> None:
+        raise NotImplementedError
 
     def on_page(self, number: int) -> None:
         if self._state not in _REPORTING:

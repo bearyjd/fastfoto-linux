@@ -10,6 +10,7 @@ from dataclasses import fields
 from pathlib import Path
 from typing import Any
 
+from fastfoto_linux.gui.docform import DocumentForm
 from fastfoto_linux.gui.form import (
     BACK_CHOICES,
     FEED_CHOICES,
@@ -17,6 +18,7 @@ from fastfoto_linux.gui.form import (
     ScanForm,
     absolute_folder,
 )
+from fastfoto_linux.gui.state import Mode
 from fastfoto_linux.scanner import SUPPORTED_DPI
 
 logger = logging.getLogger(__name__)
@@ -91,3 +93,19 @@ def save_form(form: ScanForm, path: Path | None = None) -> None:
         with contextlib.suppress(OSError):
             os.unlink(temporary)
         raise
+
+
+def load_document_form(path: Path | None = None) -> DocumentForm:
+    raise NotImplementedError
+
+
+def save_document_form(form: DocumentForm, path: Path | None = None) -> None:
+    raise NotImplementedError
+
+
+def load_mode(path: Path | None = None) -> Mode:
+    raise NotImplementedError
+
+
+def save_mode(mode: Mode, path: Path | None = None) -> None:
+    raise NotImplementedError

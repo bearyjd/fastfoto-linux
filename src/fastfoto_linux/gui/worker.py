@@ -7,6 +7,9 @@ import threading
 from collections.abc import Callable
 from typing import Protocol
 
+from fastfoto_linux.documents import build_document
+from fastfoto_linux.gui.docform import DocumentForm
+from fastfoto_linux.gui.doctools import DocumentTools
 from fastfoto_linux.gui.form import (
     FormInvalidError,
     ScanForm,
@@ -17,7 +20,15 @@ from fastfoto_linux.gui.form import (
 from fastfoto_linux.output import WrittenFiles
 from fastfoto_linux.pipeline.process import ProcessResult, process_pages
 from fastfoto_linux.scanner import ScanTarget, default_shim_candidates, resolve_target
-from fastfoto_linux.session import ScanRequest, SessionResult, Stage, run_session
+from fastfoto_linux.session import (
+    DocumentScanRequest,
+    DocumentSessionResult,
+    ScanRequest,
+    SessionResult,
+    Stage,
+    run_document_session,
+    run_session,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,8 +49,10 @@ class WorkerSink(Protocol):
     def on_scanner(self, error: Exception | None) -> None: ...
     def on_stage(self, stage: Stage) -> None: ...
     def on_page(self, number: int) -> None: ...
+    def on_build_page(self, progress: tuple[int, int]) -> None: ...
+    def on_ocr(self) -> None: ...
     def on_photo(self, files: WrittenFiles) -> None: ...
-    def on_finished(self, result: SessionResult) -> None: ...
+    def on_finished(self, result: SessionResult | DocumentSessionResult) -> None: ...
     def on_error(self, error: Exception) -> None: ...
 
 
@@ -58,6 +71,7 @@ class Worker:
         discover: DiscoverFn | None = None,
         session: SessionFn | None = None,
         process: ProcessFn | None = None,
+        documents: DocumentTools | None = None,
     ) -> None:
         """The three collaborators default to the real ones, looked up when the worker is made."""
         self._sink = sink
@@ -69,6 +83,10 @@ class Worker:
         self._cancel = threading.Event()
         self._thread: threading.Thread | None = None
         self._request: ScanRequest | None = None
+        self._document_request: DocumentScanRequest | None = None
+        self._documents = documents or DocumentTools()
+        self._document_session = run_document_session
+        self._build = build_document
 
     @property
     def busy(self) -> bool:
@@ -99,7 +117,12 @@ class Worker:
             raise FormInvalidError(errors)
         self._start(lambda cancel: self._scan(form, cancel))
 
-    def process_kept(self, kept: SessionResult) -> None:
+    def scan_documents(
+        self, form: DocumentForm, folder: str, *, ocr_available: bool, checked: bool = False
+    ) -> None:
+        raise NotImplementedError
+
+    def process_kept(self, kept: SessionResult | DocumentSessionResult) -> None:
         """Process the raw pages a cancelled scan kept, with the settings of the last scan."""
         request = self._request
         if request is None:

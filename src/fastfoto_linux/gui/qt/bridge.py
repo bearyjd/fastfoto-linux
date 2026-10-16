@@ -13,6 +13,7 @@ from typing import Any
 from PySide6.QtCore import Property, QObject, Qt, QUrl, Signal, Slot
 
 from fastfoto_linux.gui.controller import Controller, disk_key
+from fastfoto_linux.gui.doctools import DocumentTools
 from fastfoto_linux.gui.form import (
     BACK_CHOICES,
     FEED_CHOICES,
@@ -23,7 +24,7 @@ from fastfoto_linux.gui.form import (
 from fastfoto_linux.gui.prefs import load_form, save_form
 from fastfoto_linux.gui.qt.photos_model import PhotosModel, file_url
 from fastfoto_linux.gui.report import photos_heading
-from fastfoto_linux.gui.state import ActionBlockedError
+from fastfoto_linux.gui.state import ActionBlockedError, Mode
 from fastfoto_linux.gui.worker import DiscoverFn, ProcessFn, SessionFn, Worker
 from fastfoto_linux.scanner import SUPPORTED_DPI
 from fastfoto_linux.scanner.run import TERMINATE_GRACE_S
@@ -96,7 +97,7 @@ class Bridge(QObject):
     _event = Signal(str, object)
     _disk = Signal(object, object)
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - the seams the tests replace are the interface
         self,
         *,
         form: ScanForm | None = None,
@@ -104,6 +105,8 @@ class Bridge(QObject):
         discover: DiscoverFn | None = None,
         session: SessionFn | None = None,
         process: ProcessFn | None = None,
+        mode: Mode | None = None,
+        documents: DocumentTools | None = None,
     ) -> None:
         super().__init__()
         self._photos = PhotosModel(self)

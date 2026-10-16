@@ -173,12 +173,14 @@ def _searchable(
     return outcome
 
 
-def build_document(
+def build_document(  # noqa: PLR0913 - the hooks are the interface
     pages: Sequence[Path],
     settings: DocumentSettings,
     *,
     cancel: threading.Event | None = None,
     clock: Callable[[], datetime] | None = None,
+    on_page: Callable[[int, int], None] | None = None,
+    on_ocr: Callable[[], None] | None = None,
 ) -> DocumentResult:
     """Make one PDF in ``settings.output_root`` from page files, in the order given.
 

@@ -67,16 +67,16 @@ def test_a_sheet_without_a_findable_photo_is_saved_whole_in_its_place(tmp_path) 
     assert issue.saved.unprocessed_reason == NO_PHOTO_REASON
 
 
-@pytest.mark.parametrize("position", [0, 1, 3])
+@pytest.mark.parametrize("position", [0, 1, 2])
 def test_the_numbers_follow_the_feed_order_wherever_the_bad_sheet_is(tmp_path, position) -> None:
     raw, out = workspace(tmp_path)
-    sheets = [plain_sheet(n) for n in range(4)]
+    sheets = [plain_sheet(n) for n in range(3)]
     sheets[position] = wide_sheet(9)
     result = process_pages(
         write_sheets(raw, sheets), settings_for(out, back_policy=BackPolicy.NEVER)
     )
     expected = [
-        f"FastFoto_{n:04d}{'_unprocessed' if n == position + 1 else ''}.jpg" for n in range(1, 5)
+        f"FastFoto_{n:04d}{'_unprocessed' if n == position + 1 else ''}.jpg" for n in range(1, 4)
     ]
     assert jpeg_names(out) == expected
     assert [issue.sheet for issue in result.failed] == [position + 1]

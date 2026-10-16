@@ -1,9 +1,13 @@
-"""Load raw scanimage PNG frames together with their resolution."""
+"""Load raw scanimage PNG frames together with their resolution, and tell when they were scanned."""
 
+import logging
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
 from PIL import Image
+
+logger = logging.getLogger(__name__)
 
 
 def _file_dpi(info: dict) -> int | None:
@@ -38,3 +42,15 @@ def load_frame(path: str | Path, dpi: int | None = None) -> tuple[np.ndarray, in
         if resolved <= 0:
             raise ValueError(f"{path}: dpi must be positive, got {resolved}")
         return np.array(image), resolved
+
+
+def scan_time(page: Path) -> datetime | None:
+    """When the page file was written: the scan time, as the file system knows it.
+
+    None when the file cannot be inspected.
+    """
+    try:
+        return datetime.fromtimestamp(page.stat().st_mtime)
+    except OSError as error:
+        logger.debug("cannot read the time of %s: %s", page.name, error)
+        return None

@@ -2,7 +2,7 @@
 
 import io
 import operator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 
@@ -29,6 +29,7 @@ from fastfoto_linux.output.naming import (
     photo_paths,
     sanitise_album,
     sanitise_prefix,
+    unprocessed_paths,
 )
 
 DEFAULT_QUALITY = 95
@@ -129,9 +130,16 @@ def _encode_jpeg(
 
 
 def _publish_photo(
-    directory: Path, file_prefix: str, blobs: tuple[bytes | None, bytes | None, bytes | None]
+    directory: Path,
+    file_prefix: str,
+    blobs: tuple[bytes | None, bytes | None, bytes | None],
+    *,
+    unprocessed: bool = False,
 ) -> WrittenFiles:
     """Number the photo and publish its files; the caller holds the folder lock.
+
+    ``blobs`` are the original, enhanced and back files; with ``unprocessed`` the original and
+    the back are named as whole pages (``_unprocessed``, ``_unprocessed_b``).
 
     If another writer that does not take the lock got there first, a file collides, nothing is
     written, and the next number is tried, up to MAX_INDEX_ATTEMPTS times. That only protects
@@ -143,7 +151,11 @@ def _publish_photo(
     for _ in range(MAX_INDEX_ATTEMPTS):
         index = max(next_index(directory, file_prefix), index + 1)
         paths = photo_paths(directory, file_prefix, index)
-        pairs = list(zip((paths.original, paths.enhanced, paths.back), blobs, strict=True))
+        targets = (paths.original, paths.enhanced, paths.back)
+        if unprocessed:
+            whole_front, whole_back = unprocessed_paths(directory, file_prefix, index)
+            targets = (whole_front, paths.enhanced, whole_back)
+        pairs = list(zip(targets, blobs, strict=True))
         try:
             write_new_files([(path, blob) for path, blob in pairs if blob is not None])
         except OutputCollisionError as exc:
@@ -189,6 +201,39 @@ def write_photo(  # noqa: PLR0913
     but may not be durable. Names are not adapted to the reserved characters of FAT/exFAT
     (``<>:"|?*``), which such a drive would refuse.
     """
+    return _write(
+        front,
+        dpi=dpi,
+        output_root=output_root,
+        back=back,
+        enhanced=enhanced,
+        album=album,
+        prefix=prefix,
+        date=date,
+        notes=notes,
+        scanned_at=scanned_at,
+        quality=quality,
+        keep_original=keep_original,
+    )
+
+
+def _write(  # noqa: PLR0913
+    front: np.ndarray,
+    *,
+    dpi: int,
+    output_root: Path,
+    back: np.ndarray | None,
+    enhanced: np.ndarray | None,
+    album: str | None,
+    prefix: str | None,
+    date: PhotoDate | DateRange | None,
+    notes: str | None,
+    scanned_at: datetime | None,
+    quality: int,
+    keep_original: bool,
+    unprocessed: bool = False,
+) -> WrittenFiles:
+    """What ``write_photo`` and ``write_unprocessed`` share: check, encode, number and publish."""
     _check_image("front", front)
     for name, array in (("back", back), ("enhanced", enhanced)):
         if array is not None:
@@ -216,7 +261,7 @@ def write_photo(  # noqa: PLR0913
     blobs = (encode(front if keep_front else None), encode(enhanced), encode(back))
     directory.mkdir(exist_ok=True)
     with locked_folder(directory):
-        return _publish_photo(directory, file_prefix, blobs)
+        return _publish_photo(directory, file_prefix, blobs, unprocessed=unprocessed)
 
 
 def write_unprocessed(  # noqa: PLR0913
@@ -233,5 +278,30 @@ def write_unprocessed(  # noqa: PLR0913
     scanned_at: datetime | None = None,
     quality: int = DEFAULT_QUALITY,
 ) -> WrittenFiles:
-    """Write the whole pages of a sheet that could not be processed (stub: red commit)."""
-    raise NotImplementedError
+    """Write the whole pages of a sheet that could not be turned into a photo.
+
+    Like :func:`write_photo` (same folder, numbering, locking, JPEG settings and metadata), but
+    ``front`` is written as ``<prefix>_NNNN_unprocessed.jpg`` and ``back``, when given, as
+    ``<prefix>_NNNN_unprocessed_b.jpg`` (it ends in ``_b``, so tools that look for backs find
+    it). ``reason`` says in words why the sheet is not a photo; it comes back as
+    ``WrittenFiles.unprocessed_reason``. The sheet takes the next number, so it keeps its place
+    in the sequence.
+    """
+    if not reason:
+        raise ValueError("reason must say why the sheet was not processed")
+    files = _write(
+        front,
+        dpi=dpi,
+        output_root=output_root,
+        back=back,
+        enhanced=None,
+        album=album,
+        prefix=prefix,
+        date=date,
+        notes=notes,
+        scanned_at=scanned_at,
+        quality=quality,
+        keep_original=True,
+        unprocessed=True,
+    )
+    return replace(files, unprocessed_reason=reason)

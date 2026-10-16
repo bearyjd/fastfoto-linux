@@ -40,6 +40,15 @@ uv run ffscan process page-*.png --out ~/Scans --album "Family Trips" --feed fac
   original, loses only the `_a` copy and the exit code is 1. `--no-orient`, `--no-restore` and
   `--enhanced-only` switch parts off; `--redeye` adds red-eye removal to the enhanced copy and is off by default
   because roughly one fix in six is visibly wrong.
+- A sheet whose photo cannot be found (two items fed together, say) is not lost or skipped: its
+  whole pages are saved in its place in the sequence as `Album_0004_unprocessed.jpg` (the front)
+  and `Album_0004_unprocessed_b.jpg` (the back, unless `--backs never`; with `auto` the back is
+  kept, because nothing was cropped to judge its writing). Only the scanner's white tail is
+  trimmed. The next sheet gets the next number, so the files stay in the order the photos were
+  fed, and the summary says which one it was: `photo 4 of 6 fed: the photo's edges were not found
+  (two items fed together?) — whole page saved as Album_0004_unprocessed.jpg`. The desktop app
+  shows the image in the results with a "Not processed" label and the reason. Such a sheet still
+  counts as failed (exit code 1) and its raw pages are kept as below.
 - `--out` must exist unless `--mkdir` is given. A sheet that cannot be processed never stops the
   others: it is listed at the end and the exit code is 1. `scan` keeps the raw pages in
   `DIR/.raw/<UTC time>/` (so nothing needs rescanning) when anything went wrong (a failed or
@@ -107,7 +116,8 @@ uv run ffscan library fix ~/Documents/library-plan.csv \
 
 `fastfoto` is a KDE desktop app over the same scan session as `ffscan`: pick an output folder, album
 and date, press **Scan**, and the photos appear in the window as they are saved (originals or
-enhanced copies, with each back beside its front). **Cancel** stops the scan; the pages scanned
+enhanced copies, with each back beside its front; a sheet whose photo could not be found is shown
+as a "Not processed" page with the reason). **Cancel** stops the scan; the pages scanned
 so far are kept and **Process them now** turns them into photos later. Closing the window during
 a scan asks to cancel first, and the settings you used are remembered for next time.
 

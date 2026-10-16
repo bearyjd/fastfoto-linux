@@ -10,7 +10,11 @@ ENHANCED_SUFFIX = "_a"  # the enhanced copy is "<name>_a.jpg" beside "<name>.jpg
 
 @dataclass(frozen=True)
 class PhotoItem:
-    """One written photo: its folder, number and the files that exist."""
+    """One written photo: its folder, number and the files that exist.
+
+    ``unprocessed_reason`` is set when the files are the whole pages of a sheet that could not be
+    turned into a photo: ``original`` and ``back`` are then those pages.
+    """
 
     directory: Path
     index: int
@@ -35,8 +39,8 @@ class PhotoItem:
 
     @property
     def unprocessed(self) -> bool:
-        """Whether this is the whole page of a sheet that could not be processed (stub)."""
-        return False
+        """Whether this is the whole page of a sheet that could not be processed."""
+        return self.unprocessed_reason is not None
 
     @property
     def front(self) -> Path | None:
@@ -51,4 +55,5 @@ def item_from_files(files: WrittenFiles) -> PhotoItem:
         original=files.original,
         enhanced=files.enhanced,
         back=files.back,
+        unprocessed_reason=files.unprocessed_reason,
     )

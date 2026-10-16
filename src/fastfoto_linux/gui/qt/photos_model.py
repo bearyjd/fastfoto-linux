@@ -1,4 +1,7 @@
-"""The results grid's model: one row per written photo, with the file URLs QML shows."""
+"""The results grid's model: one row per written photo, with the file URLs QML shows.
+
+A sheet saved whole (not processed) is a row too, flagged ``unprocessed`` with its ``reason``.
+"""
 
 from pathlib import Path
 
@@ -24,6 +27,8 @@ _ROLES = (
     "backUrl",
     "hasEnhanced",
     "hasBack",
+    "unprocessed",
+    "reason",
 )
 
 
@@ -44,6 +49,8 @@ def _values(item: PhotoItem) -> dict[str, object]:
         "backUrl": file_url(item.back),
         "hasEnhanced": item.enhanced is not None,
         "hasBack": item.back is not None,
+        "unprocessed": item.unprocessed,
+        "reason": item.unprocessed_reason or "",
     }
 
 

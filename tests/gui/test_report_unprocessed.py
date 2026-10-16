@@ -51,7 +51,7 @@ def test_one_photo_saved_whole_is_counted_as_needing_a_check() -> None:
     assert banner.kind == "warning"
     assert "1 photo needs checking" in banner.text
     assert "2 photos saved" in banner.text
-    assert "could not be processed" not in banner.text
+    assert "sheet could not be processed" not in banner.text
     assert str(RAW) in banner.text
 
 

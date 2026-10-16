@@ -26,8 +26,13 @@ _PATH_SEPARATORS = "/\\"
 _STRIPPED_EDGES = ". "
 # Control, format (e.g. bidi overrides), surrogate and line/paragraph separator characters.
 _UNSAFE_CATEGORIES = frozenset({"Cc", "Cf", "Cs", "Zl", "Zp"})
-# <prefix>_NNNN[_x].ext, with the prefix folded for case- and normalisation-blind matching.
-_INDEXED_NAME = rf"_([0-9]{{{INDEX_WIDTH},{MAX_INDEX_DIGITS}}})(?:_[a-z])?\.[a-z0-9]+"
+UNPROCESSED_SUFFIX = "_unprocessed"  # the whole pages of a sheet that could not be processed
+# <prefix>_NNNN[_x|_unprocessed[_b]].ext, with the prefix folded for case- and normalisation-blind
+# matching.
+_INDEXED_NAME = (
+    rf"_([0-9]{{{INDEX_WIDTH},{MAX_INDEX_DIGITS}}})"
+    rf"(?:_[a-z]|{UNPROCESSED_SUFFIX}(?:_[a-z])?)?\.[a-z0-9]+"
+)
 
 
 @dataclass(frozen=True)
@@ -115,12 +120,13 @@ def _fold(text: str) -> str:
 def next_index(directory: Path, prefix: str) -> int:
     """One more than the highest ``<prefix>_NNNN[_a].ext`` number in ``directory`` (1 when none).
 
-    Matching ignores case and Unicode normalisation, covers any extension and the ``_a``/``_b``
-    style suffix, and skips folders, so a folder holding only ``_a``/``_b`` files still
-    continues correctly. Names that merely contain a number (``Trip_2020_0003.jpg`` for prefix
-    ``Trip``, ``IMG_20200101_123456.jpg``) do not count. Counting too much is harmless: it only
-    skips a number. A stray number too large to have a successor (``MAX_INDEX``) is ignored
-    with a warning, so one odd file cannot make the whole prefix unusable.
+    Matching ignores case and Unicode normalisation, covers any extension, the ``_a``/``_b``
+    style suffix and the ``_unprocessed``/``_unprocessed_b`` whole-page names, and skips folders,
+    so a folder holding only ``_a``/``_b`` files still continues correctly. Names that merely
+    contain a number (``Trip_2020_0003.jpg`` for prefix ``Trip``, ``IMG_20200101_123456.jpg``) do
+    not count. Counting too much is harmless: it only skips a number. A stray number too large
+    to have a successor (``MAX_INDEX``) is ignored with a warning, so one odd file cannot make
+    the whole prefix unusable.
     """
     pattern = re.compile(re.escape(_fold(prefix)) + _INDEXED_NAME)
     try:
@@ -140,11 +146,15 @@ def next_index(directory: Path, prefix: str) -> int:
     return highest + 1
 
 
-def photo_paths(directory: Path, prefix: str, index: int) -> PhotoPaths:
-    """Paths of the original, enhanced (``_a``) and back (``_b``) files for ``index``."""
+def _stem(prefix: str, index: int) -> str:
     if not 1 <= index <= MAX_INDEX:
         raise ValueError(f"index must be 1-{MAX_INDEX}, got {index}")
-    stem = f"{prefix}_{index:0{INDEX_WIDTH}d}"
+    return f"{prefix}_{index:0{INDEX_WIDTH}d}"
+
+
+def photo_paths(directory: Path, prefix: str, index: int) -> PhotoPaths:
+    """Paths of the original, enhanced (``_a``) and back (``_b``) files for ``index``."""
+    stem = _stem(prefix, index)
     return PhotoPaths(
         original=directory / f"{stem}.jpg",
         enhanced=directory / f"{stem}_a.jpg",
@@ -153,5 +163,6 @@ def photo_paths(directory: Path, prefix: str, index: int) -> PhotoPaths:
 
 
 def unprocessed_paths(directory: Path, prefix: str, index: int) -> tuple[Path, Path]:
-    """Paths of the whole-page front and back files for ``index`` (stub: red commit)."""
-    raise NotImplementedError
+    """Paths of the whole-page front and back files for ``index``; the back ends in ``_b``."""
+    stem = _stem(prefix, index) + UNPROCESSED_SUFFIX
+    return directory / f"{stem}.jpg", directory / f"{stem}_b.jpg"

@@ -107,3 +107,9 @@ def test_ffscan_scan_does_the_same_and_still_says_where_the_raw_pages_are(
     kept = out / ".raw" / STAMP
     assert f"raw pages kept in {kept}" in captured.err
     assert len(list(kept.iterdir())) == 6
+
+
+def test_a_problem_with_the_whole_batch_is_listed_without_a_photo_number(capsys) -> None:
+    result = ProcessResult(failed=(SheetIssue(None, (), "no pages make sense"),), sheets=6)
+    _, err = summary_of(result, capsys)
+    assert "batch: no pages make sense" in err

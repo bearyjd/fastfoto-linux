@@ -30,6 +30,7 @@ __all__ = [
     "BackPolicy",
     "BatchError",
     "HandwritingEvidence",
+    "NoPhotoOnSheetError",
     "Photo",
     "assemble_photos",
     "front_needs_correction",
@@ -58,6 +59,10 @@ class BatchError(ValueError):
     def __init__(self, message: str, *, sheet: int | None = None) -> None:
         super().__init__(message)
         self.sheet = sheet
+
+
+class NoPhotoOnSheetError(BatchError):
+    """No photo could be found on the page(s) of a sheet (two items fed together, say)."""
 
 
 class BackPolicy(StrEnum):
@@ -172,7 +177,7 @@ def _own_boxes(number: int, first: _Page, second: _Page) -> tuple[Box, Box]:
     """Each page's detected box; a page with none borrows the other page's, mirrored."""
     one, two = first.detection, second.detection
     if one is None and two is None:
-        raise BatchError(f"sheet {number}: no photo found on either page", sheet=number)
+        raise NoPhotoOnSheetError(f"sheet {number}: no photo found on either page", sheet=number)
     box_one = one.box if one else mirrored_front_box(two.box, first.frame.shape, first.dpi)
     box_two = two.box if two else mirrored_front_box(one.box, second.frame.shape, second.dpi)
     return box_one, box_two
@@ -252,7 +257,9 @@ def _front_only_photo(index: int, path: Path, loader: FrameLoader, *, dangling: 
     """
     page = _load_page(index + 1, path, loader)
     if page.detection is None:
-        raise BatchError(f"sheet {index + 1}: {path.name}: no photo found", sheet=index + 1)
+        raise NoPhotoOnSheetError(
+            f"sheet {index + 1}: {path.name}: no photo found", sheet=index + 1
+        )
     suspicious = dangling and paper_score(_view(page, page.detection.box)) >= BACK_LIKE_PAPER_SCORE
     if suspicious:
         logger.warning(

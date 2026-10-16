@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from fastfoto_linux.gui.state import State
+from fastfoto_linux.pipeline.issues import failed_sheet_line
 from fastfoto_linux.pipeline.process import ProcessResult
 from fastfoto_linux.scanner import NoDocumentsError, ScannerError
 from fastfoto_linux.session import RawReason, SessionResult
@@ -124,10 +125,7 @@ def _cancelled(result: SessionResult) -> Banner:
 def _done(result: SessionResult, process: ProcessResult) -> Banner:
     note = _raw_note(result.raw_dir, result.raw_reason)
     if process.failed:
-        text = f"{_count(len(process.failed), 'sheet')} could not be processed."
-        if process.photos:
-            text += f" {_count(process.photos, 'photo')} saved."
-        return Banner("warning", text + note)
+        return Banner("warning", _failed_text(process) + note)
     if process.degraded:
         text = f"{_count(process.photos, 'photo')} saved, {len(process.degraded)} without an"
         return Banner("warning", f"{text} enhanced copy.{note}")
@@ -136,3 +134,27 @@ def _done(result: SessionResult, process: ProcessResult) -> Banner:
         return Banner("warning", text + note)
     folder = process.written[-1].directory
     return Banner("positive", f"{_count(process.photos, 'photo')} saved to {folder}.{note}")
+
+
+def _failed_text(process: ProcessResult) -> str:
+    """The failed sheets: those lost, those saved whole (which need checking), the photos saved.
+
+    Each sheet saved whole gets a line of its own saying which photo of the batch it was, in
+    feed order, why, and the file.
+    """
+    whole = [issue for issue in process.failed if issue.saved is not None]
+    lost = len(process.failed) - len(whole)
+    parts = []
+    if lost:
+        parts.append(f"{_count(lost, 'sheet')} could not be processed.")
+    if whole:
+        verb = "needs" if len(whole) == 1 else "need"
+        parts.append(f"{_count(len(whole), 'photo')} {verb} checking.")
+    if process.photos:
+        parts.append(f"{_count(process.photos, 'photo')} saved.")
+    lines = [_sentence(_capitalised(failed_sheet_line(i, process.sheets))) for i in whole]
+    return "\n".join([" ".join(parts), *lines])
+
+
+def _capitalised(text: str) -> str:
+    return text[:1].upper() + text[1:]

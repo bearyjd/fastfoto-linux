@@ -147,3 +147,9 @@ def test_an_existing_number_is_never_reused(tmp_path: Path) -> None:
     touch(tmp_path, "FastFoto_0009_unprocessed_b.jpg")
     result = write_unprocessed(rgb(), dpi=DPI, output_root=tmp_path, reason=REASON)
     assert result.index == 10
+
+
+def test_a_reason_is_required(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="reason"):
+        write_unprocessed(rgb(), dpi=DPI, output_root=tmp_path, reason="")
+    assert names(tmp_path) == []

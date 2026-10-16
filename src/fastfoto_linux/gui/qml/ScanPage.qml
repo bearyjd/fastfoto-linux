@@ -6,7 +6,8 @@ import org.kde.kirigami as Kirigami
 Kirigami.Page {
     id: page
 
-    title: qsTr("Scan photos")
+    objectName: "scanPage"
+    title: bridge.mode === "documents" ? qsTr("Scan documents") : qsTr("Scan photos")
     padding: Kirigami.Units.largeSpacing
 
     function messageType(kind) {
@@ -86,9 +87,26 @@ Kirigami.Page {
             Layout.fillHeight: true
             spacing: Kirigami.Units.largeSpacing
 
-            FormPanel {
+            ColumnLayout {
                 Layout.preferredWidth: Kirigami.Units.gridUnit * 28
                 Layout.fillHeight: true
+                spacing: Kirigami.Units.smallSpacing
+
+                ModeSwitch {
+                    Layout.fillWidth: true
+                }
+
+                FormPanel {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    visible: bridge.mode === "photos"
+                }
+
+                DocumentFormPanel {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    visible: bridge.mode === "documents"
+                }
             }
 
             Kirigami.Separator {
@@ -98,6 +116,13 @@ Kirigami.Page {
             ResultsView {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
+                visible: bridge.mode === "photos"
+            }
+
+            DocumentsView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                visible: bridge.mode === "documents"
             }
         }
 

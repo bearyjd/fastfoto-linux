@@ -2,11 +2,20 @@
 
 from pathlib import Path
 
-from fastfoto_linux.output.errors import OutputCollisionError, OutputRootMissingError
+from fastfoto_linux.documents.errors import OutputFolderMissingError
+from fastfoto_linux.output.errors import OutputCollisionError
 from fastfoto_linux.output.files import locked_folder, write_new_files
 from fastfoto_linux.output.naming import next_index, pdf_path, sanitise_prefix
 
 MAX_INDEX_ATTEMPTS = 5
+
+
+def require_output_folder(directory: Path) -> None:
+    """Raise ``OutputFolderMissingError`` unless ``directory`` is an existing folder."""
+    if not directory.is_dir():
+        raise OutputFolderMissingError(
+            f"the output folder {directory} is not an existing folder; create or mount it first"
+        )
 
 
 def publish_pdf(data: bytes, directory: Path, name: str) -> Path:
@@ -18,10 +27,7 @@ def publish_pdf(data: bytes, directory: Path, name: str) -> Path:
     the next free one is used.
     """
     prefix = sanitise_prefix(name)
-    if not directory.is_dir():
-        raise OutputRootMissingError(
-            f"output folder {directory} does not exist; create or mount it first"
-        )
+    require_output_folder(directory)
     with locked_folder(directory):
         index = 0
         collision: OutputCollisionError | None = None

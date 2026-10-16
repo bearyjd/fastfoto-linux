@@ -11,8 +11,9 @@ from tests.gui.qt import require_qt
 require_qt()
 
 
-from PySide6.QtCore import QObject, Slot
+from PySide6.QtCore import Q_ARG, Q_RETURN_ARG, QMetaObject, QObject, Slot
 from PySide6.QtGui import QDesktopServices
+from PySide6.QtQuick import QQuickItem
 
 from fastfoto_linux.documents import OcrStatus
 from fastfoto_linux.gui.doctools import NATIVE_OCR_HINT, DocumentTools
@@ -72,6 +73,25 @@ def ready(bridge: Any) -> None:
 
 def shown(window: Any, name: str) -> bool:
     return bool(child(window, name).property("visible"))
+
+
+def named_items(root: Any, name: str) -> list[Any]:
+    """Every item below ``root`` called ``name``, found through the visual tree."""
+    found = [root] if root.objectName() == name else []
+    for item in root.childItems():
+        found += named_items(item, name)
+    return found
+
+
+def in_row(window: Any, name: str, row: int = 0) -> Any:
+    """The item called ``name`` in a row of the list (delegates are not QObject children)."""
+    documents = child(window, "documentsList")
+    item = QMetaObject.invokeMethod(
+        documents, "itemAtIndex", Q_RETURN_ARG(QQuickItem), Q_ARG(int, row)
+    )
+    assert item is not None, f"the list has no row {row}"
+    (found, *_) = named_items(item, name)
+    return found
 
 
 # -- the window loads and stays quiet --------------------------------------------------------
@@ -307,11 +327,11 @@ def test_a_finished_scan_lists_the_pdf_with_its_details(
     assert child(window, "documentsList").property("count") == 1
     assert not shown(window, "documentsPlaceholder")
     assert child(window, "documentsHeading").property("text") == "Documents (1)"
-    assert child(window, "documentFileName").property("text") == "Document_0001.pdf"
-    assert child(window, "documentPages").property("text") == "3 pages"
-    assert child(window, "documentDropped").property("text") == "Blank pages left out: 2, 4"
-    assert child(window, "documentSearchable").property("text") == "Searchable text: yes"
-    assert child(window, "openDocumentButton").property("enabled") is True
+    assert in_row(window, "documentFileName").property("text") == "Document_0001.pdf"
+    assert in_row(window, "documentPages").property("text") == "3 pages"
+    assert in_row(window, "documentDropped").property("text") == "Blank pages left out: 2, 4"
+    assert in_row(window, "documentSearchable").property("text") == "Searchable text: yes"
+    assert in_row(window, "openDocumentButton").property("enabled") is True
 
 
 def test_a_warning_of_the_ocr_is_shown_with_the_pdf(
@@ -324,9 +344,9 @@ def test_a_warning_of_the_ocr_is_shown_with_the_pdf(
     bridge.startScan()
     wait_until(lambda: bridge.state == "done", "the scan to end")
     settle()
-    text = child(window, "documentSearchable").property("text")
+    text = in_row(window, "documentSearchable").property("text")
     assert text.startswith("Searchable text could not be added (exit 6)")
-    assert not shown(window, "documentDropped")
+    assert in_row(window, "documentDropped").property("visible") is False
 
 
 def test_open_gives_the_file_to_the_desktop(
@@ -350,7 +370,7 @@ def test_open_gives_the_file_to_the_desktop(
         bridge.startScan()
         wait_until(lambda: bridge.state == "done", "the scan to end")
         settle()
-        click(child(window, "openDocumentButton"))
+        click(in_row(window, "openDocumentButton"))
         settle()
     finally:
         QDesktopServices.unsetUrlHandler("file")

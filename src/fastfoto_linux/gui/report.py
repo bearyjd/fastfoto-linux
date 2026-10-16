@@ -63,7 +63,7 @@ def progress_text(state: State, pages: int, photos: int, *, checking: bool = Fal
     }.get(state, "")
 
 
-def _count(number: int, noun: str) -> str:
+def count_noun(number: int, noun: str) -> str:
     return f"{number} {noun}" if number == 1 else f"{number} {noun}s"
 
 
@@ -74,7 +74,7 @@ def _raw_note(raw_dir: Path | None, reason: RawReason | None) -> str:
     return f" Raw pages kept in {raw_dir}{because}."
 
 
-def _sentence(text: str) -> str:
+def sentence(text: str) -> str:
     """``text`` as a sentence: with a full stop unless it already ends in punctuation."""
     return text if text.endswith((".", "!", "?")) else f"{text}."
 
@@ -97,7 +97,7 @@ def error_banner(
         if process_hint
         else ""
     )
-    return Banner("error", f"The scan failed. {_sentence(error_text(error))}{reason_note}{hint}")
+    return Banner("error", f"The scan failed. {sentence(error_text(error))}{reason_note}{hint}")
 
 
 def result_banner(state: State, result: SessionResult) -> Banner | None:
@@ -117,14 +117,16 @@ def kept_text(result: SessionResult) -> str:
     """ "N pages were scanned before you cancelled — kept in <folder>"; what the offer says."""
     kept = len(result.kept_pages)
     verb = "was" if kept == 1 else "were"
-    return f"{_count(kept, 'page')} {verb} scanned before you cancelled — kept in {result.raw_dir}"
+    return (
+        f"{count_noun(kept, 'page')} {verb} scanned before you cancelled — kept in {result.raw_dir}"
+    )
 
 
 def _cancelled(result: SessionResult) -> Banner:
     if result.process is not None:
         saved = result.process.photos
         verb = "was" if saved == 1 else "were"
-        text = f"Cancelled. {_count(saved, 'photo')} {verb} saved."
+        text = f"Cancelled. {count_noun(saved, 'photo')} {verb} saved."
         if whole := _saved_whole(result.process):
             text += f" {_needs_checking(len(whole))}."
         return Banner("info", text + _raw_note(result.raw_dir, None))
@@ -138,13 +140,13 @@ def _done(result: SessionResult, process: ProcessResult) -> Banner:
     if process.failed:
         return Banner("warning", _failed_text(process) + note)
     if process.degraded:
-        text = f"{_count(process.photos, 'photo')} saved, {len(process.degraded)} without an"
+        text = f"{count_noun(process.photos, 'photo')} saved, {len(process.degraded)} without an"
         return Banner("warning", f"{text} enhanced copy.{note}")
     if not process.photos:
         text = "No photos were found in the pages. Check that photos were loaded in the feeder."
         return Banner("warning", text + note)
     folder = process.written[-1].directory
-    return Banner("positive", f"{_count(process.photos, 'photo')} saved to {folder}.{note}")
+    return Banner("positive", f"{count_noun(process.photos, 'photo')} saved to {folder}.{note}")
 
 
 def photos_heading(total: int, unprocessed: int) -> str:
@@ -166,7 +168,7 @@ def _saved_whole(process: ProcessResult) -> list[SheetIssue]:
 
 def _needs_checking(count: int) -> str:
     verb = "needs" if count == 1 else "need"
-    return f"{_count(count, 'photo')} {verb} checking"
+    return f"{count_noun(count, 'photo')} {verb} checking"
 
 
 def _failed_text(process: ProcessResult) -> str:
@@ -181,11 +183,13 @@ def _failed_text(process: ProcessResult) -> str:
     many = len(process.failed) > MAX_SHEET_LINES
     parts = []
     if lost:
-        parts.append(_listed(f"{_count(len(lost), 'sheet')} could not be processed", lost, many))
+        parts.append(
+            _listed(f"{count_noun(len(lost), 'sheet')} could not be processed", lost, many)
+        )
     if whole:
         parts.append(_listed(_needs_checking(len(whole)), whole, many))
     if process.photos:
-        parts.append(f"{_count(process.photos, 'photo')} saved.")
+        parts.append(f"{count_noun(process.photos, 'photo')} saved.")
     lines = [] if many else [_line(issue, process.sheets) for issue in process.failed]
     return "\n".join([" ".join(parts), *lines])
 
@@ -194,13 +198,13 @@ def _listed(text: str, issues: list[SheetIssue], listed: bool) -> str:
     """``text`` as a sentence; with ``listed`` the sheets' feed numbers follow it."""
     numbers = [str(issue.sheet) for issue in issues if issue.sheet is not None]
     if not listed or not numbers:
-        return _sentence(text)
+        return sentence(text)
     noun = "photo" if len(numbers) == 1 else "photos"
     return f"{text}: {noun} {', '.join(numbers)} fed."
 
 
 def _line(issue: SheetIssue, sheets: int) -> str:
-    return _sentence(_capitalised(failed_sheet_line(issue, sheets)))
+    return sentence(_capitalised(failed_sheet_line(issue, sheets)))
 
 
 def _capitalised(text: str) -> str:

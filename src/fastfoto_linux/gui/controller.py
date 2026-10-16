@@ -6,13 +6,26 @@ end that runs the worker on another thread hands every sink call over to that th
 
 import logging
 from collections.abc import Callable
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Protocol
 
-from fastfoto_linux.gui.docform import DocumentForm
+from fastfoto_linux.gui.docform import (
+    FOLDER_FIELD,
+    DocumentForm,
+    document_destination,
+    update_document_field,
+    validate_document_form,
+)
+from fastfoto_linux.gui.docreport import (
+    document_error_banner,
+    document_kept_text,
+    document_progress_text,
+    document_result_banner,
+    offers_kept,
+)
 from fastfoto_linux.gui.doctools import DocumentSetup
-from fastfoto_linux.gui.documents import DocumentItem
+from fastfoto_linux.gui.documents import DocumentItem, item_from_document
 from fastfoto_linux.gui.form import (
     FormInvalidError,
     ScanForm,
@@ -43,7 +56,7 @@ from fastfoto_linux.gui.state import (
 from fastfoto_linux.gui.worker import WorkerBusyError
 from fastfoto_linux.output import WrittenFiles
 from fastfoto_linux.scanner import ScannerNotFoundError, ShimMissingError
-from fastfoto_linux.session import SessionResult, Stage
+from fastfoto_linux.session import DocumentSessionResult, SessionResult, Stage
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +80,11 @@ CLOSE_PROCESSING_TEXT = (
     "Processing is running. The photos already saved stay saved, "
     "and the scanned pages are kept so you can process them later."
 )
+CLOSE_PDF_TITLE = "Cancel making the PDF?"
+CLOSE_PDF_TEXT = (
+    "The PDF is being made. If you cancel, no PDF is saved, "
+    "and the scanned pages are kept so you can make it later."
+)
 
 
 DiskKey = tuple[str, str]
@@ -84,12 +102,27 @@ def _lost(error: BaseException | None) -> bool:
     return isinstance(error, ScannerNotFoundError | ShimMissingError)
 
 
+@dataclass(frozen=True)
+class _View:
+    """What the results area shows for one mode, kept while the other mode is on the page."""
+
+    pages: int = 0
+    photos: tuple[PhotoItem, ...] = ()
+    documents: tuple[DocumentItem, ...] = ()
+    banner: Banner | None = None
+    result: SessionResult | DocumentSessionResult | None = None
+    scan_folder: str | None = None
+
+
 class WorkerPort(Protocol):
     """What the controller asks of the worker."""
 
     def check(self) -> None: ...
     def scan(self, form: ScanForm, *, checked: bool = False) -> None: ...
-    def process_kept(self, kept: SessionResult) -> None: ...
+    def scan_documents(
+        self, form: DocumentForm, folder: str, *, ocr_available: bool, checked: bool = False
+    ) -> None: ...
+    def process_kept(self, kept: SessionResult | DocumentSessionResult) -> None: ...
     def cancel(self) -> None: ...
 
 
@@ -116,13 +149,24 @@ class Controller:
         self._pages = 0
         self._photos: tuple[PhotoItem, ...] = ()
         self._banner: Banner | None = None
-        self._result: SessionResult | None = None
+        self._result: SessionResult | DocumentSessionResult | None = None
         self._close_requested = False
         self._scan_folder: str | None = None
         self._disk_errors: dict[str, str] = {}
         self._disk_pending: DiskKey | None = None  # the folder check we are waiting for
         self._scan_when_checked = False  # ... and it is the one that starts a scan
         self._checking_scanner = False  # the scan is in its check of the scanner
+        setup = documents or DocumentSetup()
+        self._mode = setup.mode
+        self._doc_form = setup.form
+        self._tools = setup.tools
+        self._save_doc_form = setup.save_form
+        self._save_mode = setup.save_mode
+        self._ocr_available, self._ocr_hint = False, ""
+        self._documents: tuple[DocumentItem, ...] = ()
+        self._pdf_page, self._pdf_total, self._ocr_running = 0, 0, False
+        self._other_views: dict[Mode, _View] = {}
+        self._look_for_ocr()
         self._set_form(form or ScanForm(), disk=disk_check is None)
 
     # -- what the page shows -------------------------------------------------------------
@@ -137,11 +181,21 @@ class Controller:
 
     @property
     def errors(self) -> dict[str, str]:
-        """A message per bad field: the text checked at every edit, the disk when it was read."""
-        return merge_errors(self._syntax_errors, self._disk_errors)
+        """A message per bad field: the text checked at every edit, the disk when it was read.
+
+        In Documents mode the folder (shared) and the Documents fields; a photo album is no
+        business of a document.
+        """
+        shared = merge_errors(self._syntax_errors, self._disk_errors)
+        if self._mode is Mode.PHOTOS:
+            return shared
+        folder = {name: message for name, message in shared.items() if name == FOLDER_FIELD}
+        return {**folder, **validate_document_form(self._doc_form)}
 
     @property
     def destination(self) -> str | None:
+        if self._mode is Mode.DOCUMENTS:
+            return document_destination(self._doc_form, self._form.output_folder)
         return self._destination
 
     @property
@@ -150,6 +204,15 @@ class Controller:
 
     @property
     def progress_text(self) -> str:
+        if self._mode is Mode.DOCUMENTS:
+            return document_progress_text(
+                self._state,
+                self._pages,
+                pdf_page=self._pdf_page,
+                pdf_total=self._pdf_total,
+                ocr=self._ocr_running,
+                checking=self._checking_scanner,
+            )
         return progress_text(
             self._state, self._pages, len(self._photos), checking=self._checking_scanner
         )
@@ -160,7 +223,9 @@ class Controller:
 
     @property
     def results_folder(self) -> Path | None:
-        """The folder the latest photo was written to, None before there is one."""
+        """The folder the latest photo or PDF was written to, None before there is one."""
+        if self._mode is Mode.DOCUMENTS:
+            return self._documents[-1].folder if self._documents else None
         return self._photos[-1].directory if self._photos else None
 
     @property
@@ -225,6 +290,8 @@ class Controller:
     def can_process_kept(self) -> bool:
         """True while the last result is a cancelled scan whose raw pages are waiting."""
         result = self._result
+        if isinstance(result, DocumentSessionResult):
+            return not self.busy and offers_kept(result)
         return (
             not self.busy
             and result is not None
@@ -238,7 +305,13 @@ class Controller:
     def kept_text(self) -> str:
         """What the offer to process the kept pages says, empty when there is no offer."""
         result = self._result
-        return kept_text(result) if self.can_process_kept and result is not None else ""
+        if not self.can_process_kept or result is None:
+            return ""
+        return (
+            document_kept_text(result)
+            if isinstance(result, DocumentSessionResult)
+            else kept_text(result)
+        )
 
     @property
     def process_kept_text(self) -> str:
@@ -254,11 +327,15 @@ class Controller:
 
     @property
     def close_title(self) -> str:
-        return CLOSE_PROCESSING_TITLE if self._state is State.PROCESSING else CLOSE_SCAN_TITLE
+        if self._state is State.PROCESSING:
+            return CLOSE_PDF_TITLE if self._mode is Mode.DOCUMENTS else CLOSE_PROCESSING_TITLE
+        return CLOSE_SCAN_TITLE
 
     @property
     def close_text(self) -> str:
-        return CLOSE_PROCESSING_TEXT if self._state is State.PROCESSING else CLOSE_SCAN_TEXT
+        if self._state is State.PROCESSING:
+            return CLOSE_PDF_TEXT if self._mode is Mode.DOCUMENTS else CLOSE_PROCESSING_TEXT
+        return CLOSE_SCAN_TEXT
 
     @property
     def close_ready(self) -> bool:
@@ -267,35 +344,57 @@ class Controller:
 
     @property
     def mode(self) -> Mode:
-        raise NotImplementedError
+        return self._mode
 
     @property
     def document_form(self) -> DocumentForm:
-        raise NotImplementedError
+        return self._doc_form
 
     @property
     def documents(self) -> tuple[DocumentItem, ...]:
-        raise NotImplementedError
+        return self._documents
 
     @property
     def ocr_available(self) -> bool:
-        raise NotImplementedError
+        """True when ``ocrmypdf`` was found the last time the page looked."""
+        return self._ocr_available
 
     @property
     def ocr_hint(self) -> str:
-        raise NotImplementedError
+        """What to do about missing searchable text, empty when it is available."""
+        return self._ocr_hint
 
     @property
     def searchable_checked(self) -> bool:
-        raise NotImplementedError
+        """Whether the Searchable text box shows a tick: wanted, and possible."""
+        return self._doc_form.searchable and self._ocr_available
 
     # -- what the user does --------------------------------------------------------------
 
     def set_mode(self, mode: Mode | str) -> None:
-        raise NotImplementedError
+        """Switch between Photos and Documents; each keeps its own form and its own results."""
+        try:
+            wanted = Mode(mode)
+        except ValueError:
+            choices = ", ".join(choice.value for choice in Mode)
+            raise ValueError(f"unknown mode {mode!r}; use one of {choices}") from None
+        if wanted is self._mode:
+            return
+        if self.busy:
+            raise ActionBlockedError(f"cannot change the mode while {self._state.value}")
+        self._other_views[self._mode] = self._view()
+        self._mode = wanted
+        self._show(self._other_views.pop(wanted, _View()))
+        if self._state in (State.DONE, State.FAILED, State.CANCELLED):
+            self._state = State.READY if self._scanner_ready else State.NO_SCANNER
+        self._look_for_ocr()
+        self._remember(self._save_mode, wanted)
+        self._changed()
 
     def set_document_field(self, name: str, value: object) -> None:
-        raise NotImplementedError
+        """Change one field of the Documents form (the folder is the Photos form's)."""
+        self._doc_form = update_document_field(self._doc_form, name, value)
+        self._changed()
 
     def set_field(self, name: str, value: object) -> None:
         """Change one field. Only its text is checked: the disk is read by ``check_disk``."""
@@ -325,6 +424,7 @@ class Controller:
         except WorkerBusyError as error:
             self._refuse(str(error), what="Could not look for the scanner")
             return
+        self._look_for_ocr()  # it may have been installed since the app started
         self._state = transition(self._state, State.CHECKING)
         self._changed()
 
@@ -348,7 +448,7 @@ class Controller:
             return
         self._remember_form()
         try:
-            self._worker.scan(self._form, checked=True)
+            self._begin_scan()
         except FormInvalidError as error:  # it looked again and the form had gone bad
             self._disk_errors = {**self._disk_errors, **error.errors}
             self._refuse("; ".join(error.errors.values()))
@@ -357,12 +457,13 @@ class Controller:
             self._refuse(str(error))
             return
         self._state = transition(self._state, State.SCANNING)
-        self._scan_folder = (
-            None if self._destination is None else str(Path(self._destination).parent)
-        )
+        destination = self.destination
+        self._scan_folder = None if destination is None else str(Path(destination).parent)
         self._pages = 0
+        self._no_pdf_progress()
         self._checking_scanner = False
         self._photos = ()
+        self._documents = ()
         self._banner = None
         self._result = None
         self._changed()
@@ -388,6 +489,7 @@ class Controller:
             self._refuse(str(error), what="Could not process the pages")
             return
         self._state = transition(self._state, State.PROCESSING)
+        self._no_pdf_progress()
         self._banner = None
         # Offered once: if this fails part-way some photos are written, and a second go
         # would write them again. The folder is still known for the error message.
@@ -446,6 +548,7 @@ class Controller:
     def on_stage(self, stage: Stage) -> None:
         if stage is Stage.PROCESSING and self._state is State.SCANNING:
             self._checking_scanner = False
+            self._no_pdf_progress()
             self._state = transition(self._state, State.PROCESSING)
             self._changed()
         elif stage is Stage.CHECKING and self._state is State.SCANNING:
@@ -456,10 +559,18 @@ class Controller:
             self._changed()
 
     def on_build_page(self, progress: tuple[int, int]) -> None:
-        raise NotImplementedError
+        """The PDF is on page ``number`` of ``total``."""
+        if self._state not in _REPORTING:
+            return self._drop("PDF page")
+        self._pdf_page, self._pdf_total = progress
+        self._changed()
 
-    def on_ocr(self) -> None:
-        raise NotImplementedError
+    def on_ocr(self, running: bool = True) -> None:
+        """The searchable text is being added (the bridge hands every event one value)."""
+        if self._state not in _REPORTING:
+            return self._drop("OCR start")
+        self._ocr_running = running
+        self._changed()
 
     def on_page(self, number: int) -> None:
         if self._state not in _REPORTING:
@@ -474,14 +585,18 @@ class Controller:
         self._photos = (*self._photos, item_from_files(files))
         self._changed()
 
-    def on_finished(self, result: SessionResult) -> None:
+    def on_finished(self, result: SessionResult | DocumentSessionResult) -> None:
         if self._state not in _REPORTING:
             return self._drop("result")
         final = final_state(result)
         self._checking_scanner = False
         self._state = transition(self._state, final)
         self._result = result
-        self._banner = result_banner(final, result)
+        if isinstance(result, DocumentSessionResult):
+            self._documents = self._documents_after(result)
+            self._banner = document_result_banner(final, result)
+        else:
+            self._banner = result_banner(final, result)
         if _lost(result.error):
             self._set_scanner(result.error, repeated=True)
         self._changed()
@@ -499,7 +614,10 @@ class Controller:
                 self._set_scanner(error, repeated=True)
             kept = self._result
             raw = (kept.raw_dir, kept.raw_reason) if kept is not None else (None, None)
-            self._banner = error_banner(error, *raw)
+            if self._mode is Mode.DOCUMENTS:
+                self._banner = document_error_banner(error, *raw)
+            else:
+                self._banner = error_banner(error, *raw)
             self._state = transition(self._state, State.FAILED)
         self._changed()
 
@@ -545,13 +663,59 @@ class Controller:
             return "no scanner has been found"
         return f"the page is {self._state.value}"
 
+    def _begin_scan(self) -> None:
+        """Hand the scan to the worker: the Photos form, or the Documents form and the folder."""
+        if self._mode is Mode.PHOTOS:
+            self._worker.scan(self._form, checked=True)
+            return
+        self._worker.scan_documents(
+            self._doc_form,
+            self._form.output_folder,
+            ocr_available=self._ocr_available,
+            checked=True,
+        )
+
     def _remember_form(self) -> None:
-        if self._save_form is None:
+        """Save the forms for the next run: the folder is the Photos form's, in both modes."""
+        self._remember(self._save_form, self._form)
+        if self._mode is Mode.DOCUMENTS:
+            self._remember(self._save_doc_form, self._doc_form)
+
+    def _remember[T](self, save: Callable[[T], None] | None, value: T) -> None:
+        if save is None:
             return
         try:
-            self._save_form(self._form)
+            save(value)
         except OSError as error:
             logger.warning("could not remember the settings: %s", error)
+
+    def _view(self) -> _View:
+        return _View(
+            self._pages,
+            self._photos,
+            self._documents,
+            self._banner,
+            self._result,
+            self._scan_folder,
+        )
+
+    def _show(self, view: _View) -> None:
+        self._pages, self._photos, self._documents = view.pages, view.photos, view.documents
+        self._banner, self._result, self._scan_folder = view.banner, view.result, view.scan_folder
+        self._no_pdf_progress()
+
+    def _no_pdf_progress(self) -> None:
+        self._pdf_page, self._pdf_total, self._ocr_running = 0, 0, False
+
+    def _look_for_ocr(self) -> None:
+        """Ask the machine for ``ocrmypdf`` again: the answer is kept until the next look."""
+        self._ocr_available = self._tools.ocr_available
+        self._ocr_hint = "" if self._ocr_available else self._tools.ocr_hint
+
+    def _documents_after(self, result: DocumentSessionResult) -> tuple[DocumentItem, ...]:
+        if result.document is None:
+            return self._documents
+        return (*self._documents, item_from_document(result.document))
 
     def _changed(self) -> None:
         if self._on_change is not None:

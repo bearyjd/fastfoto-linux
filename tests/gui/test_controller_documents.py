@@ -149,7 +149,7 @@ def test_each_mode_keeps_its_own_values_and_the_folder_is_shared(
 
 
 def test_a_state_left_by_the_other_mode_is_a_ready_page(page: Page) -> None:
-    controller = page.scanning()
+    controller = page.processing()
     controller.on_finished(clean_document(page.out))
     assert controller.state is State.DONE
     controller.set_mode(Mode.PHOTOS)
@@ -274,11 +274,11 @@ def test_a_scan_goes_to_the_worker_with_the_documents_form_and_the_shared_folder
     assert controller.state is State.SCANNING
 
 
-def test_a_scan_remembers_the_documents_form_not_the_photo_form(page: Page) -> None:
+def test_a_scan_remembers_the_documents_form_and_the_shared_folder(page: Page) -> None:
     page.ready().set_document_field("name", "Lease")
     page.controller.start_scan()
     assert [form.name for form in page.document_saves] == ["Lease"]
-    assert page.photo_saves == []
+    assert [form.output_folder for form in page.photo_saves] == [str(page.out)]
 
 
 def test_the_stages_read_in_the_words_of_the_brief(page: Page) -> None:
@@ -503,3 +503,31 @@ def test_pages_kept_in_one_mode_are_still_offered_when_the_user_comes_back(page:
     assert controller.can_process_kept
     controller.process_kept()  # from READY: the state was settled when the mode changed
     assert controller.state is State.PROCESSING
+
+
+# -- closing the window ----------------------------------------------------------------------
+
+
+def test_closing_while_the_pdf_is_made_asks_about_the_pdf_not_about_photos(page: Page) -> None:
+    controller = page.scanning()
+    assert controller.close_title == "Cancel the scan?"
+    controller.on_stage(Stage.PROCESSING)
+    assert controller.close_title == "Cancel making the PDF?"
+    assert "no PDF is saved" in controller.close_text
+    assert "photos" not in controller.close_text
+
+
+def test_closing_while_a_document_scan_runs_cancels_it_first(page: Page) -> None:
+    controller = page.scanning()
+    assert controller.request_close() is False
+    assert controller.state is State.CANCELLING
+    controller.on_finished(cancelled_document(page.out / ".raw" / "s"))
+    assert controller.close_ready
+
+
+def test_a_failure_of_the_page_itself_in_documents_mode_leaves_a_usable_page(page: Page) -> None:
+    controller = page.ready()
+    controller.fail(RuntimeError("boom"))
+    assert controller.state is State.FAILED
+    assert controller.banner is not None
+    assert controller.banner.kind == "error"

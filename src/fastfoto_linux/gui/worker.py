@@ -5,10 +5,16 @@ import logging
 import os
 import threading
 from collections.abc import Callable
+from dataclasses import replace
 from typing import Protocol
 
-from fastfoto_linux.documents import build_document
-from fastfoto_linux.gui.docform import DocumentForm
+from fastfoto_linux.documents import (
+    DocumentCancelledError,
+    DocumentError,
+    DocumentResult,
+    build_document,
+)
+from fastfoto_linux.gui.docform import DocumentForm, document_errors, to_document_request
 from fastfoto_linux.gui.doctools import DocumentTools
 from fastfoto_linux.gui.form import (
     FormInvalidError,
@@ -84,9 +90,9 @@ class Worker:
         self._thread: threading.Thread | None = None
         self._request: ScanRequest | None = None
         self._document_request: DocumentScanRequest | None = None
-        self._documents = documents or DocumentTools()
-        self._document_session = run_document_session
-        self._build = build_document
+        tools = documents or DocumentTools()
+        self._document_session = run_document_session if tools.session is None else tools.session
+        self._build = build_document if tools.build is None else tools.build
 
     @property
     def busy(self) -> bool:
@@ -120,10 +126,25 @@ class Worker:
     def scan_documents(
         self, form: DocumentForm, folder: str, *, ocr_available: bool, checked: bool = False
     ) -> None:
-        raise NotImplementedError
+        """Scan a document with the form's settings. Raises FormInvalidError before it starts.
+
+        ``checked`` is as for ``scan``. The folder's existence is not looked at again in the job:
+        the session refuses a missing one before it scans anything, and its message is the
+        authority.
+        """
+        errors = document_errors(form, folder, disk=not checked)
+        if errors:
+            raise FormInvalidError(errors)
+        self._start(lambda cancel: self._scan_documents(form, folder, ocr_available, cancel))
 
     def process_kept(self, kept: SessionResult | DocumentSessionResult) -> None:
         """Process the raw pages a cancelled scan kept, with the settings of the last scan."""
+        if isinstance(kept, DocumentSessionResult):
+            document_request = self._document_request
+            if document_request is None:
+                raise RuntimeError("no scan has run, so there are no settings to make the PDF")
+            self._start(lambda cancel: self._make_kept(kept, document_request, cancel))
+            return
         request = self._request
         if request is None:
             raise RuntimeError("no scan has run, so there are no settings to process the pages")
@@ -195,4 +216,49 @@ class Worker:
             raw_reason=kept.raw_reason,
             cancelled=processed.cancelled,
         )
+        return functools.partial(self._sink.on_finished, result)
+
+    def _scan_documents(
+        self, form: DocumentForm, folder: str, ocr_available: bool, cancel: threading.Event
+    ) -> Callable[[], None]:
+        request = to_document_request(
+            form, folder, self._discover(), ocr_available=ocr_available, check_disk=False
+        )
+        self._document_request = request
+        result = self._document_session(
+            request,
+            on_page=self._sink.on_page,
+            on_stage=self._sink.on_stage,
+            cancel=cancel,
+            build=self._reporting_build(),
+        )
+        return functools.partial(self._sink.on_finished, result)
+
+    def _reporting_build(self) -> Callable[..., DocumentResult]:
+        """The PDF builder, telling the sink which page it is on and when the OCR starts."""
+        return functools.partial(
+            self._build,
+            on_page=lambda number, total: self._sink.on_build_page((number, total)),
+            on_ocr=self._sink.on_ocr,
+        )
+
+    def _make_kept(
+        self, kept: DocumentSessionResult, request: DocumentScanRequest, cancel: threading.Event
+    ) -> Callable[[], None]:
+        """Make the PDF of the pages a part-way scan kept, with the settings of that scan.
+
+        A PDF that cannot be made comes back as a result (the pages are still on disk), not as an
+        exception, so the page can say so and keep the pages where they are.
+        """
+        self._sink.on_stage(Stage.PROCESSING)
+        settings = replace(request.settings, fallback_dpi=request.dpi)
+        again = replace(kept, document=None, error=None, cancelled=False)
+        try:
+            document = self._reporting_build()(kept.kept_pages, settings, cancel=cancel)
+        except DocumentCancelledError:
+            result = replace(again, cancelled=True)
+        except DocumentError as error:
+            result = replace(again, error=error)
+        else:
+            result = replace(again, document=document, kept_pages=())
         return functools.partial(self._sink.on_finished, result)

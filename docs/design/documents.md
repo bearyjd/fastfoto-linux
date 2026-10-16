@@ -67,7 +67,7 @@ PDF library: `img2pdf` (embeds JPEG/1-bit without re-encoding) if its dependenci
 Flatpak wheel generator and the hashed requirements; otherwise a small in-house writer for exactly these
 two image kinds. Tests parse every PDF with a dev-only library (pypdf).
 
-## Desktop app (later PR)
+## Desktop app (D3)
 A **Photos | Documents** switch at the top of the form. Documents shows: name, colour (Colour / Grey /
 Black and white), resolution, "Both sides (drop blank pages)", "Searchable text" (disabled with
 "Install OCRmyPDF: `sudo dnf install ocrmypdf`" when missing). Results list each PDF with its page count,
@@ -312,3 +312,44 @@ What the second pull request settled where the specification left room.
 The Gray PNG that `scanimage` writes (`doc scan` does not ask for it), trimming on real
 pages, blank detection on real backs, speed at 300 dpi, and whether the PNG header carries the
 resolution (the fallback covers it if not).
+
+
+## Decisions in the desktop app (D3)
+What the third pull request settled where the specification left room.
+
+- **One page, two modes.** The scan page keeps one state machine. The controller knows the
+  mode (`Photos` or `Documents`), a form per mode and the results of each mode, which it sets
+  aside while the other mode is on the page; switching never loses either, and is refused
+  while a job runs. The output folder is the Photos form's, so there is one folder for both.
+- **The session is reused, not copied.** A document run is `run_document_session`, with its
+  pre-scan check, its cancel and its raw-page rules. The form checks the same rules again
+  (`check_settings`' name and languages, the folder) only to show a mistake as the user types;
+  what the session raises (`DocumentSettingsError`, `OcrMissingError`, an `OSError` for the raw
+  folder) is shown as it is, as "The scan did not start: ...", and the page is ready to try again.
+- **Stage texts.** `build_document` takes two optional hooks, `on_page(number, total)` and
+  `on_ocr()`, which the worker passes through the session's `build=` seam. "Checking the
+  scanner…" and "Scanning page N" come from the session's own callbacks.
+- **Searchable text.** The box asks for `OcrMode.ON` only when it is ticked and `ocrmypdf` was
+  found (looked for at start, at "Check again" and at a mode switch), so a tool that vanished
+  since is refused before the stack is scanned. Missing, the box is off with the install hint
+  (native) or "Searchable text needs the native install" (Flatpak), and the PDF is made without.
+- **Kept pages.** After a cancel, or a scanner that stopped part-way, "Process them now" builds
+  the PDF from `kept_pages` with the run's settings and the scan resolution as the fallback
+  resolution. A cancel while it is made, or a PDF that cannot be made, keeps the pages and, for a
+  cancel, offers them again; the same error is not offered again (every page blank, an unusable
+  page).
+- **One error for a missing output folder.** `build_document`, `publish_pdf` and
+  `run_document_session` raise `OutputFolderMissingError`, a `DocumentSettingsError` that is
+  also the `OutputRootMissingError` older callers catch, with one message; `check_settings` finds
+  it before a page is read or a stack scanned.
+- **A raw folder that is a link.** The private `.raw/<stamp>` folder is opened with
+  `O_NOFOLLOW`, so a link planted there is refused (an `OSError`, before anything is scanned)
+  and its target's mode is never changed.
+- **Settings.** `gui.json` keeps the Photos settings flat as before, the Documents settings
+  under `"documents"` and the last mode under `"mode"`. Each save reads the file, changes its
+  part and writes it again atomically, so neither mode wipes the other and what a newer
+  version wrote is kept; an old file without the new keys loads as it did.
+
+### Needs real hardware
+A document scan through the app on the FF-680W, the Open button on a PDF in a Flatpak (it goes
+through the desktop portal), and OCRmyPDF on real letters.

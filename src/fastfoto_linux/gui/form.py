@@ -222,11 +222,11 @@ def update_field(form: ScanForm, name: str, value: object) -> ScanForm:
     if name in _BOOL_FIELDS:
         return replace(form, **{name: bool(value)})
     if name == "dpi":
-        return replace(form, dpi=_whole_number(name, value))
+        return replace(form, dpi=whole_number(name, value))
     return replace(form, **{name: str(value)})
 
 
-def _whole_number(name: str, value: object) -> int:
+def whole_number(name: str, value: object) -> int:
     if isinstance(value, float) and not value.is_integer():
         raise ValueError(f"{name} must be a whole number, got {value!r}")
     try:

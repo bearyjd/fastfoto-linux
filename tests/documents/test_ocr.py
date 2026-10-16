@@ -23,8 +23,8 @@ from fastfoto_linux.documents.ocr import (
 from tests import _fake_ocrmypdf as fake
 
 TIMEOUT_S = 20.0
-SHORT_TIMEOUT_S = 0.6
-SHORT_GRACE_S = 0.4
+SHORT_TIMEOUT_S = 1.5
+SHORT_GRACE_S = 0.5
 
 
 def jpeg(seed: int) -> bytes:
@@ -70,7 +70,7 @@ def run(
 
 
 def alive(record: dict, *names: str) -> list[int]:
-    return [record[n] for n in names if record.get(n) and fake.process_alive(record[n])]
+    return [record[n] for n in names if record.get(n) and not fake.wait_until_gone(record[n])]
 
 
 # ---- languages and discovery --------------------------------------------------------------
@@ -142,6 +142,13 @@ def test_recognised_text_is_never_logged_or_printed(
     run(staging, fake_on_path, monkeypatch, chatter="RECOGNISED-WORDS-1234")
     captured = capfd.readouterr()
     assert "RECOGNISED-WORDS-1234" not in caplog.text + captured.out + captured.err
+
+
+def test_a_tool_that_prints_more_than_a_pipe_holds_cannot_block_the_run(
+    fake_on_path: Path, staging: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    outcome = run(staging, fake_on_path, monkeypatch, flood=500_000)
+    assert outcome.status is OcrStatus.DONE
 
 
 def test_a_bad_language_stops_before_anything_is_launched(
@@ -259,7 +266,7 @@ def test_cancelling_stops_ocr_and_raises(
     record = tmp_path / "record.json"
     fake.configure(monkeypatch, mode="hang", record_to=str(record), child=True)
     cancel = threading.Event()
-    threading.Timer(0.3, cancel.set).start()
+    fake.when_started(record, cancel.set)
     with pytest.raises(OcrCancelledError):
         run_ocr(
             PLAIN,
@@ -280,20 +287,16 @@ def test_ctrl_c_stops_ocr_cleans_up_and_is_not_swallowed(
 ) -> None:
     record = tmp_path / "record.json"
     fake.configure(monkeypatch, mode="hang", record_to=str(record), child=True)
-    timer = threading.Timer(0.4, lambda: os.kill(os.getpid(), signal.SIGINT))
-    timer.start()
-    try:
-        with pytest.raises(KeyboardInterrupt):
-            run_ocr(
-                PLAIN,
-                executable=str(fake_on_path),
-                langs="eng",
-                page_count=2,
-                staging_parent=staging,
-                timeout_s=TIMEOUT_S,
-                grace_s=SHORT_GRACE_S,
-            )
-    finally:
-        timer.cancel()
+    fake.when_started(record, lambda: os.kill(os.getpid(), signal.SIGINT))
+    with pytest.raises(KeyboardInterrupt):
+        run_ocr(
+            PLAIN,
+            executable=str(fake_on_path),
+            langs="eng",
+            page_count=2,
+            staging_parent=staging,
+            timeout_s=TIMEOUT_S,
+            grace_s=SHORT_GRACE_S,
+        )
     assert alive(fake.read_record(record), "pid", "child") == []
     assert list(staging.iterdir()) == []

@@ -1,13 +1,39 @@
-"""Add a text layer with ``ocrmypdf``, without ever losing the plain PDF."""
+"""Add a text layer with ``ocrmypdf``, without ever losing the plain PDF.
 
+The PDF is staged in a hidden folder next to the output (``.ffscan-ocr-*``; a SIGKILL of
+``ffscan`` can leave one behind, and it can simply be deleted), ``ocrmypdf`` runs there in its own
+session so that it and its children can be stopped together, and the result is checked before it
+is trusted. The tool's output is thrown away: recognised text is never read, logged or printed.
+"""
+
+import contextlib
+import logging
+import os
+import re
+import shutil
+import signal
+import subprocess
+import tempfile
 import threading
+import time
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+import pikepdf
+
+from fastfoto_linux.documents.errors import OcrCancelledError
+
+logger = logging.getLogger(__name__)
+
+TOOL = "ocrmypdf"
 LANGS_PATTERN = r"[a-z_]+(\+[a-z_]+)*"
 DEFAULT_LANGS = "eng"
-GRACE_S = 5.0
+GRACE_S = 5.0  # SIGTERM to SIGKILL
+POLL_S = 0.05
+STAGING_PREFIX = ".ffscan-ocr-"
+PDF_MAGIC = b"%PDF-"
+_LANGS = re.compile(LANGS_PATTERN)
 
 
 class OcrMode(StrEnum):
@@ -35,12 +61,115 @@ class OcrOutcome:
 
 def validate_langs(text: str) -> str:
     """``text`` if it is Tesseract language codes joined by ``+``, else ValueError."""
-    raise NotImplementedError
+    if not _LANGS.fullmatch(text):
+        raise ValueError(
+            f"{text!r} is not a list of OCR languages: use Tesseract codes such as eng or eng+deu"
+        )
+    return text
 
 
 def find_ocrmypdf() -> str | None:
     """The ``ocrmypdf`` executable on PATH, or None."""
-    raise NotImplementedError
+    return shutil.which(TOOL)
+
+
+def _command(executable: str, langs: str, source: Path, target: Path) -> list[str]:
+    return [
+        executable,
+        "--output-type",
+        "pdf",
+        "--rotate-pages",
+        "-l",
+        langs,
+        str(source),
+        str(target),
+    ]
+
+
+def _stop(process: subprocess.Popen[bytes], grace_s: float) -> None:
+    """Stop ``process`` and everything it started: SIGTERM, then SIGKILL after ``grace_s``."""
+    group = process.pid  # start_new_session made it the leader of its own group
+    with contextlib.suppress(ProcessLookupError):
+        os.killpg(group, signal.SIGTERM)
+    with contextlib.suppress(subprocess.TimeoutExpired):
+        process.wait(timeout=grace_s)
+    with contextlib.suppress(ProcessLookupError):  # a child may have outlived the leader
+        os.killpg(group, signal.SIGKILL)
+    process.wait()
+
+
+def _wait(
+    process: subprocess.Popen[bytes],
+    timeout_s: float,
+    grace_s: float,
+    cancel: threading.Event | None,
+) -> int | None:
+    """The exit status, or None when the time ran out. Anything else stops the process first."""
+    deadline = time.monotonic() + timeout_s
+    try:
+        while True:
+            try:
+                return process.wait(timeout=POLL_S)
+            except subprocess.TimeoutExpired:
+                pass
+            if cancel is not None and cancel.is_set():
+                raise OcrCancelledError("stopped while adding searchable text")
+            if time.monotonic() >= deadline:
+                _stop(process, grace_s)
+                return None
+    except BaseException:
+        _stop(process, grace_s)
+        raise
+
+
+def _checked(target: Path, page_count: int) -> bytes | str:
+    """The finished PDF's bytes, or the reason it cannot be used."""
+    try:
+        data = target.read_bytes()
+    except FileNotFoundError:
+        return "ocrmypdf wrote no output file"
+    if not data.startswith(PDF_MAGIC):
+        return "ocrmypdf did not produce a PDF"
+    try:
+        with pikepdf.open(target) as pdf:
+            pages = len(pdf.pages)
+    except (pikepdf.PdfError, OSError):
+        return "ocrmypdf produced a PDF that cannot be opened"
+    if pages != page_count:
+        return f"ocrmypdf produced {pages} page(s) from {page_count}"
+    return data
+
+
+def _run(  # noqa: PLR0913
+    plain_pdf: bytes,
+    *,
+    executable: str,
+    langs: str,
+    page_count: int,
+    folder: Path,
+    timeout_s: float,
+    grace_s: float,
+    cancel: threading.Event | None,
+) -> OcrOutcome:
+    source, target = folder / "plain.pdf", folder / "searchable.pdf"
+    source.write_bytes(plain_pdf)
+    devnull = subprocess.DEVNULL
+    process = subprocess.Popen(  # an argument list, never a shell
+        _command(executable, langs, source, target),
+        stdin=devnull,
+        stdout=devnull,
+        stderr=devnull,
+        start_new_session=True,
+    )
+    status = _wait(process, timeout_s, grace_s, cancel)
+    if status is None:
+        return OcrOutcome(OcrStatus.TIMED_OUT, f"ocrmypdf did not finish within {timeout_s:g} s")
+    if status != 0:
+        return OcrOutcome(OcrStatus.FAILED, f"ocrmypdf exited with status {status}")
+    result = _checked(target, page_count)
+    if isinstance(result, str):
+        return OcrOutcome(OcrStatus.FAILED, result)
+    return OcrOutcome(OcrStatus.DONE, pdf=result)
 
 
 def run_ocr(  # noqa: PLR0913
@@ -62,4 +191,19 @@ def run_ocr(  # noqa: PLR0913
     (SIGTERM, then SIGKILL after ``grace_s``) and the staging folder removed. Recognised text is
     never read or logged.
     """
-    raise NotImplementedError
+    validate_langs(langs)
+    try:
+        with tempfile.TemporaryDirectory(prefix=STAGING_PREFIX, dir=staging_parent) as folder:
+            return _run(
+                plain_pdf,
+                executable=executable,
+                langs=langs,
+                page_count=page_count,
+                folder=Path(folder),
+                timeout_s=timeout_s,
+                grace_s=grace_s,
+                cancel=cancel,
+            )
+    except OSError as error:
+        logger.warning("could not run %s: %s", TOOL, error)
+        return OcrOutcome(OcrStatus.FAILED, f"could not run ocrmypdf: {error.strerror or error}")

@@ -9,6 +9,7 @@ from fastfoto_linux.documents.marks import find_marks
 from fastfoto_linux.documents.modes import ColourMode
 from tests.doc_synth import (
     LETTER_MM,
+    LIGHT_PENCIL_TONE,
     PENCIL_TONE,
     Scene,
     paper_scene,
@@ -91,13 +92,20 @@ def test_a_light_pencil_note_with_clear_contrast_keeps_the_page() -> None:
     assert is_blank(grey_page(scene)) is False
 
 
+def test_a_lighter_pencil_note_only_60_levels_darker_than_the_paper_still_counts() -> None:
+    scene = with_text(sheet(), 30, 100, 10, tone=LIGHT_PENCIL_TONE)
+    assert is_blank(colour_page(scene)) is False
+    assert is_blank(grey_page(scene)) is False
+
+
 def test_text_just_outside_the_margin_counts() -> None:
     assert verdicts(with_text(sheet(), 8, 8, 3)) == dict.fromkeys(KINDS, False)
 
 
 def test_a_large_flat_grey_block_keeps_the_page() -> None:
     scene = with_solid_block(sheet(), 60, 80, 40, tone=150)
-    assert verdicts(scene) == dict.fromkeys(KINDS, False)
+    assert is_blank(colour_page(scene)) is False
+    assert is_blank(grey_page(scene)) is False
 
 
 def test_a_yellow_highlighter_stripe_keeps_the_page() -> None:

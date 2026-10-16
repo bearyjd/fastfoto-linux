@@ -20,6 +20,7 @@ PAPER_TONE = 240
 TAIL_TONE = 255
 INK_TONE = 30
 PENCIL_TONE = 150
+LIGHT_PENCIL_TONE = 180  # 60 grey levels darker than the paper
 SPECK_TONE = 70
 BACKING_RGB = (140, 160, 185)  # the blue-grey strip beside a narrow item
 GLYPH_HEIGHT_MM = 2.5
@@ -30,7 +31,7 @@ Box = tuple[int, int, int, int]  # x0, y0, x1, y1 in pixels, end exclusive
 
 
 def px(mm: float, dpi: int) -> int:
-    return max(1, round(mm * dpi / MM_PER_INCH))
+    return round(mm * dpi / MM_PER_INCH)
 
 
 @dataclass(frozen=True)
@@ -237,7 +238,7 @@ def write_png(
 ) -> Path:
     """Save ``pixels`` as a PNG: RGB for ``HxWx3``, 8-bit grey for ``HxW`` uint8 (``mode="1"``
     writes a 1-bit PNG from a 0/255 array), with ``dpi`` unless it is None."""
-    picture = Image.fromarray(pixels >= 128, mode="1") if mode == "1" else Image.fromarray(pixels)
+    picture = Image.fromarray(pixels >= 128) if mode == "1" else Image.fromarray(pixels)
     extra = {} if dpi is None else {"dpi": (dpi, dpi)}
     picture.save(path, "PNG", **extra)
     return path

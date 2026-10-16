@@ -73,7 +73,7 @@ def test_the_white_tail_below_the_paper_is_cut_off() -> None:
     scene = letter_text(paper_scene(dpi=DPI, paper_mm=LETTER_MM, scan_mm=LEGAL_MM))
     result = trim_page(colour_page(scene))
     kept = result.page.pixels.shape[0]
-    assert scene.paper_end <= kept <= scene.paper_end + mm(5)
+    assert scene.paper_end + mm(2) <= kept <= scene.paper_end + mm(5)  # a little tail stays
     assert result.bottom == scene.height - kept
     assert (result.left, result.right) == (0, 0)
     assert_contains_content(scene, result, margin_px=mm(5))
@@ -110,7 +110,9 @@ def test_a_mark_in_the_tail_is_never_cut() -> None:
     [
         paper_scene(dpi=DPI, paper_tone=255, tail_tone=None, noise=0),  # all white
         paper_scene(dpi=DPI, paper_mm=LETTER_MM, scan_mm=LEGAL_MM, tail_tone=None),  # same tone
-        paper_scene(dpi=DPI, paper_mm=LETTER_MM, scan_mm=LEGAL_MM, paper_tone=253),  # 2 levels
+        paper_scene(  # 3 grey levels between paper and tail: too close to be certain
+            dpi=DPI, paper_mm=LETTER_MM, scan_mm=LEGAL_MM, paper_tone=252, noise=0
+        ),
     ],
     ids=["all-white", "tail-like-paper", "barely-different"],
 )
@@ -185,6 +187,27 @@ def test_a_strip_narrower_than_a_few_millimetres_is_left_alone() -> None:
         dpi=DPI, paper_mm=(LETTER_MM[0] - 2.0, LETTER_MM[1]), scan_mm=LETTER_MM, offset_mm=2.0
     )
     result = trim_page(colour_page(letter_text(narrow)))
+    assert (result.left, result.right) == (0, 0)
+
+
+@pytest.mark.parametrize(
+    "backing",
+    [(120, 120, 120), (200, 190, 180), (0, 0, 0), (250, 250, 255)],
+    ids=["neutral-grey", "warm", "black", "near-white"],
+)
+def test_backing_that_is_not_blue_grey_is_not_recognised(backing: tuple[int, int, int]) -> None:
+    scene = paper_scene(
+        dpi=DPI, paper_mm=RECEIPT_MM, scan_mm=LETTER_MM, offset_mm=60.0, backing=backing
+    )
+    result = trim_page(colour_page(with_text(scene, 6, 10, 10)))
+    assert (result.left, result.right) == (0, 0)
+
+
+def test_a_strip_beside_paper_that_is_no_brighter_is_not_backing() -> None:
+    scene = paper_scene(
+        dpi=DPI, paper_mm=RECEIPT_MM, scan_mm=LETTER_MM, offset_mm=60.0, paper_tone=165
+    )
+    result = trim_page(colour_page(with_text(scene, 6, 10, 10)))
     assert (result.left, result.right) == (0, 0)
 
 

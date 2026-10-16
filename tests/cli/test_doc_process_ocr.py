@@ -1,5 +1,7 @@
 """``ffscan doc process`` and searchable text: the exit codes and what is said."""
 
+import os
+import signal
 from pathlib import Path
 
 import pytest
@@ -17,8 +19,8 @@ def pages(tmp_path: Path) -> list[Path]:
 
 
 @pytest.fixture(autouse=True)
-def no_real_ocr(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    fake.no_ocr_on_path(tmp_path / "no-ocr", monkeypatch)
+def no_real_ocr(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
+    fake.no_ocr_on_path(tmp_path_factory.mktemp("no-ocr"), monkeypatch)
 
 
 def doc(out: Path, pages, *extra: str) -> int:
@@ -99,3 +101,20 @@ def test_recognised_text_never_reaches_the_terminal(
     assert main(["doc", "process", *map(str, pages), "--out", str(out), "--debug"]) == 0
     captured = capsys.readouterr()
     assert "RECOGNISED-WORDS-1234" not in captured.out + captured.err
+
+
+def test_ctrl_c_during_ocr_is_exit_130_with_nothing_published_and_nothing_left_running(
+    pages, out, tmp_path, monkeypatch, capsys
+) -> None:
+    record = tmp_path / "record.json"
+    fake.put_on_path(tmp_path / "bin", monkeypatch)
+    fake.configure(monkeypatch, mode="hang", record_to=str(record), child=True)
+
+    fake.when_started(record, lambda: os.kill(os.getpid(), signal.SIGINT))
+    assert doc(out, pages, "--ocr", "on") == 130
+    assert "interrupted" in capsys.readouterr().err
+    seen = fake.read_record(record)
+    assert fake.wait_until_gone(seen["pid"])
+    assert fake.wait_until_gone(seen["child"])
+    assert [p.name for p in out.iterdir() if p.name != ".fastfoto-linux.lock"] == []
+    assert all(p.exists() for p in pages)

@@ -49,6 +49,43 @@ uv run ffscan process page-*.png --out ~/Scans --album "Family Trips" --feed fac
 - Exit codes: 0 ok, 1 processing error, 2 usage, 3 scanner not found or shim missing, 4 no
   documents in the feeder. `-v` logs progress, `--debug` adds tracebacks.
 
+## Documents to PDF (preview)
+
+Letters, forms and receipts to one multi-page PDF, with blank pages dropped and, when OCRmyPDF is
+installed, searchable text. This first step works on pages you already have as PNGs; `ffscan doc
+scan` (feeder to PDF in one go) and a Documents mode in the desktop app come next. The design is
+in [`docs/design/documents.md`](docs/design/documents.md).
+
+```sh
+uv run ffscan doc process page-*.png --out ~/Documents/Scans --name "Tax Return" --colour grey
+uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr on --lang eng+deu
+```
+
+- Writes `DIR/<NAME>_NNNN.pdf` (`NAME` defaults to `Document`), numbered like photos: a number is
+  never reused and nothing is overwritten. The page files are never changed or deleted. Pages are
+  taken in natural filename order and must be RGB, 8-bit grey or 1-bit PNGs that carry their
+  resolution (`--dpi` supplies one for a PNG that does not; a file that says otherwise wins).
+- `--colour colour|grey|bw` (default `colour`) is a limit, not a conversion to force: a grey page
+  stays grey when `colour` is asked for, and a page already 1-bit stays as it is. Colour and grey
+  pages are stored as JPEG and black and white as lossless CCITT G4, all embedded in the PDF
+  as they are, and each page gets its physical size from its resolution.
+- Only what is certainly not paper is trimmed: the scanner's white tail below the paper and, on
+  colour pages, a blue-grey backing strip beside a narrow item such as a receipt. When in doubt
+  nothing is cut.
+- A page is blank only when it has no mark at all inside its 5 mm margin: dust, paper texture
+  and faint show-through from the other side do not count, while a single short line, a
+  signature, a lone page number or a light pencil note keep the page. `--keep-blank` keeps every
+  page. The summary lists the dropped pages by number. If every page looks blank nothing is
+  written and the exit code is 1.
+- Searchable text needs `ocrmypdf` and, for its page rotation, Tesseract's orientation data:
+  `sudo dnf install ocrmypdf tesseract-osd`. `--ocr auto` (default) uses it
+  when present and otherwise writes the plain PDF and says so; `--ocr on` refuses to start
+  without it (exit 3); `--ocr off` never runs it. `--lang` takes Tesseract codes (`eng`,
+  `eng+deu`). If OCR fails or times out the plain PDF is still written, with a warning and exit
+  code 1. The Flatpak build has no OCR yet.
+- Exit codes are those of `ffscan`: 0 ok, 1 a processing problem (an unusable page stops the run
+  before anything is written), 2 usage, 3 a required tool is missing.
+
 ## Fix sideways photos in an existing library
 
 Scans made by other software (or by earlier runs) are often stored sideways or upside-down. Two

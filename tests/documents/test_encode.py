@@ -87,6 +87,13 @@ def test_a_page_that_was_already_one_bit_keeps_every_pixel() -> None:
     assert np.array_equal(np.asarray(decode(encoded.data)), pixels == 255)
 
 
+def test_a_one_bit_page_with_big_solid_areas_is_not_thresholded_again() -> None:
+    pixels = np.full((200, 160), 255, np.uint8)
+    pixels[20:150, 20:120] = 0  # a black area far bigger than any threshold window
+    encoded = encode_page(LoadedPage(pixels, B, DPI), B)
+    assert np.array_equal(np.asarray(decode(encoded.data)), pixels == 255)
+
+
 def test_a_bilevel_text_page_survives_the_round_trip() -> None:
     page = bw_page(scene())
     decoded = np.asarray(decode(encode_page(page, B).data))

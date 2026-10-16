@@ -11,9 +11,12 @@ class ColourMode(StrEnum):
     BW = "bw"
 
 
+_RICHNESS = {ColourMode.COLOUR: 2, ColourMode.GREY: 1, ColourMode.BW: 0}
+
+
 def output_mode(kind: ColourMode, requested: ColourMode) -> ColourMode:
     """The mode a page of ``kind`` is written in when ``requested`` is asked for.
 
     A page can lose colour but never gain it: colour -> grey -> black and white.
     """
-    raise NotImplementedError
+    return min(kind, requested, key=_RICHNESS.__getitem__)

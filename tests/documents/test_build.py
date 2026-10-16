@@ -158,6 +158,13 @@ def test_input_files_are_never_touched(raw: Path, out: Path) -> None:
     assert sorted(p.name for p in raw.iterdir()) == [p.name for p in pages]
 
 
+def test_a_bad_language_list_is_refused_before_any_page_is_read(raw: Path, out: Path) -> None:
+    pages = write_pages(raw, [text_scene(1)])
+    with pytest.raises(ValueError, match="language"):
+        build_document(pages, settings(out, langs="eng;rm"))  # even with OCR off
+    assert list(out.iterdir()) == []
+
+
 def test_no_pages_is_an_error(out: Path) -> None:
     with pytest.raises(DocumentError, match="no pages"):
         build_document([], settings(out))
@@ -241,7 +248,9 @@ def test_ocr_that_works_publishes_the_searchable_pdf(
     assert result.ocr.status is OcrStatus.DONE
     assert result.ok
     assert result.pdf.read_bytes().endswith(fake.MARKER)
-    assert fake.read_record(record)["argv"][3:5] == ["-l", "eng+deu"]
+    argv = fake.read_record(record)["argv"]
+    assert argv[3:5] == ["-l", "eng+deu"]
+    assert Path(argv[-2]).parent.parent == out  # staged beside the output, not in /tmp
     assert visible(out) == ["Document_0001.pdf"]
     assert hidden(out) == []
 
@@ -256,7 +265,7 @@ def test_ocr_that_fails_still_publishes_the_plain_pdf(
 ) -> None:
     fake.configure(monkeypatch, mode=mode)
     pages = write_pages(raw, [text_scene(1), text_scene(2)])
-    result = build_document(pages, settings(out, ocr=OcrMode.ON, ocr_timeout_s=0.6))
+    result = build_document(pages, settings(out, ocr=OcrMode.ON, ocr_timeout_s=1.5))
     assert result.ocr.status is status
     assert not result.ok
     assert result.ocr.detail
@@ -300,13 +309,13 @@ def test_cancelling_during_ocr_publishes_nothing_and_leaves_nothing_running(
     record = tmp_path / "record.json"
     fake.configure(monkeypatch, mode="hang", record_to=str(record), child=True)
     cancel = threading.Event()
-    threading.Timer(0.5, cancel.set).start()
+    fake.when_started(record, cancel.set)
     pages = write_pages(raw, [text_scene(1)])
     with pytest.raises(OcrCancelledError):
         build_document(pages, settings(out, ocr=OcrMode.ON), cancel=cancel)
     seen = fake.read_record(record)
-    assert not fake.process_alive(seen["pid"])
-    assert not fake.process_alive(seen["child"])
+    assert fake.wait_until_gone(seen["pid"])
+    assert fake.wait_until_gone(seen["child"])
     assert visible(out) == []
     assert hidden(out) == []
     assert all(p.exists() for p in pages)

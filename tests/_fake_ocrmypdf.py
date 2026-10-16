@@ -9,7 +9,8 @@ with a marker line appended), ``fail`` (exit status 2), ``empty`` (exit 0 with a
 ``garbage`` (exit 0 with bytes that are not a PDF), ``no_output`` (exit 0, nothing written),
 ``short`` (exit 0 with a one-page PDF) or ``hang`` (sleep up to 60 s). ``ignore_sigterm`` makes it
 survive SIGTERM, ``child`` starts a grandchild that sleeps, ``chatter`` is text written to stdout
-and stderr (stands for recognised text), ``record_to`` is a file that receives argv, its own pid and
+and stderr (stands for recognised text), ``flood`` is a number of bytes written to both (more than a
+pipe holds), ``record_to`` is a file that receives argv, its own pid and
 the grandchild's.
 """
 
@@ -17,6 +18,9 @@ import json
 import stat
 import sys
 import textwrap
+import threading
+import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -52,6 +56,11 @@ _SCRIPT = textwrap.dedent(
         sys.stderr.write(spec["chatter"] + "\\n")
         sys.stdout.flush()
         sys.stderr.flush()
+
+    if spec.get("flood"):
+        for stream in (sys.stdout, sys.stderr):
+            stream.write("x" * spec["flood"])
+            stream.flush()
 
     data = open(source, "rb").read()
     if mode == "hang":
@@ -122,3 +131,30 @@ def process_alive(pid: int) -> bool:
     except (FileNotFoundError, ProcessLookupError):
         return False
     return state != "Z"
+
+
+def wait_until_gone(pid: int, timeout_s: float = 3.0) -> bool:
+    """True once ``pid`` is gone; a killed process takes a moment to disappear."""
+    deadline = time.monotonic() + timeout_s
+    while process_alive(pid):
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.02)
+    return True
+
+
+def when_started(record: Path, action: Callable[[], None], *, timeout_s: float = 30.0) -> None:
+    """Run ``action`` in a thread as soon as the fake has started and written its record."""
+
+    def wait_then_act() -> None:
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            try:
+                json.loads(record.read_text(encoding="utf-8"))
+            except (FileNotFoundError, ValueError):  # not there yet, or half written
+                time.sleep(0.02)
+                continue
+            action()
+            return
+
+    threading.Thread(target=wait_then_act, daemon=True).start()

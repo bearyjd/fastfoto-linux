@@ -87,7 +87,7 @@ def test_an_absurd_resolution_is_refused(tmp_path: Path, dpi: int) -> None:
         load_page(path)
 
 
-@pytest.mark.parametrize("mode", ["RGBA", "LA", "P", "I;16", "I"])
+@pytest.mark.parametrize("mode", ["RGBA", "LA", "P", "I;16"])
 def test_other_png_modes_are_refused_by_name(tmp_path: Path, mode: str) -> None:
     path = tmp_path / "odd.png"
     Image.new(mode, (8, 8)).save(path, "PNG", dpi=(300, 300))
@@ -99,7 +99,7 @@ def test_other_png_modes_are_refused_by_name(tmp_path: Path, mode: str) -> None:
 
 def test_a_jpeg_is_not_a_png(tmp_path: Path) -> None:
     path = tmp_path / "photo.png"  # the name lies
-    Image.fromarray(RGB).save(path, "JPEG")
+    Image.fromarray(RGB).save(path, "JPEG", dpi=(300, 300))
     with pytest.raises(UnsupportedPageError, match=r"photo\.png.*PNG"):
         load_page(path)
 

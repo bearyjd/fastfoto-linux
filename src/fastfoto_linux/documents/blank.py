@@ -1,6 +1,9 @@
 """Decide whether a page is blank (a duplex back with nothing on it)."""
 
 from fastfoto_linux.documents.loader import LoadedPage
+from fastfoto_linux.documents.marks import find_marks
+
+BLANK_MARGIN_MM = 5.0  # scanner shadows and edge marks live here; the margin is ignored
 
 
 def is_blank(page: LoadedPage) -> bool:
@@ -9,4 +12,4 @@ def is_blank(page: LoadedPage) -> bool:
     One confident mark keeps the page, so a signature, a short line, or a page number alone is
     not blank. When in doubt the answer is False.
     """
-    raise NotImplementedError
+    return not find_marks(page, margin_mm=BLANK_MARGIN_MM)

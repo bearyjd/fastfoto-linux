@@ -31,9 +31,12 @@ cancelled, and its strip kept, when the strip holds a cluster of ink size that i
 white nor backing. Blank white is less than 12 levels darker than the tail's white. Backing is an
 area of backing colour that is joined to a side of the strip (on a grey page, a grey within the
 same distance of the backing's grey, since there is no hue); pixels where backing and white blend,
-at the edge of a blurred scan, are no content either. So only what is certainly empty, blank
-white or the scanner's backing, is ever cut. A page that would be under 10 mm tall or wide after
-trimming (the least ``find_marks`` accepts) is kept whole.
+at the edge of a blurred scan, are no content either. What is cut is therefore what is certainly
+empty, blank white or the scanner's backing, with the limits of that test: a note of the backing's
+colour that touches the side of its strip cannot be told from backing, and a stroke under 3
+pixels wide within 2 pixels of both white and backing is taken for the blur of an edge. A page
+that would be under 10 mm tall or wide after trimming (the least ``find_marks`` accepts) is kept
+whole.
 
 The top is never trimmed.
 """

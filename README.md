@@ -90,8 +90,11 @@ uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr o
   Every strip a trim would remove, the tail and each side strip, is then checked over all of its
   columns: if it holds a cluster of 0.3 mm or more that is neither blank white nor backing (less
   than 12 levels darker than the tail's white; a pale slip or sticky note hanging below the paper,
-  with pencil on it, is neither), that cut is cancelled and the strip stays. A page that would be
-  under 10 mm tall or wide after trimming is kept whole instead of stopping the run.
+  with pencil on it, is neither), that cut is cancelled and the strip stays. The limits of that
+  check: a note of the backing's colour that touches the side of its strip cannot be told from
+  backing, and a stroke under 3 pixels wide within 2 pixels of both white and backing is taken for
+  the blur of an edge. A page that would be under 10 mm tall or wide after trimming is kept whole
+  instead of stopping the run.
 - A page is blank only when it has no mark at all inside its 5 mm margin: dust, paper texture
   and faint show-through from the other side do not count, while a single short line, a
   signature, a lone page number or pencil at least about 45 grey levels darker than the paper

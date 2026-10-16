@@ -9,6 +9,13 @@ from pathlib import Path
 
 import numpy as np
 
+from fastfoto_linux.pipeline.batch_errors import (
+    BatchError,
+    NoPhotoOnSheetError,
+    PageResolutionError,
+    UnreadablePageError,
+    release_frames,
+)
 from fastfoto_linux.pipeline.crop import Box, Detection, NoPhotoFoundError, crop, detect_photo
 from fastfoto_linux.pipeline.geometry import mm_to_px
 from fastfoto_linux.pipeline.ink import (
@@ -31,7 +38,9 @@ __all__ = [
     "BatchError",
     "HandwritingEvidence",
     "NoPhotoOnSheetError",
+    "PageResolutionError",
     "Photo",
+    "UnreadablePageError",
     "assemble_photos",
     "front_needs_correction",
     "handwriting_candidates",
@@ -48,21 +57,6 @@ FRONT_FROM_BACK_X_OFFSET_MM = 1.2  # measured shift of the front box against the
 FRONT_BACK_SIZE_TOLERANCE_MM = 3.0  # a front box this much off the back's size is distrusted
 
 FrameLoader = Callable[[Path], tuple[np.ndarray, int]]
-
-
-class BatchError(ValueError):
-    """The pages of a batch cannot be turned into photos (odd page count, no photo, ...).
-
-    ``sheet`` is the 1-based number of the sheet at fault, or None when the batch as a whole is.
-    """
-
-    def __init__(self, message: str, *, sheet: int | None = None) -> None:
-        super().__init__(message)
-        self.sheet = sheet
-
-
-class NoPhotoOnSheetError(BatchError):
-    """No photo could be found on the page(s) of a sheet (two items fed together, say)."""
 
 
 class BackPolicy(StrEnum):
@@ -163,7 +157,7 @@ def _load_page(number: int, path: Path, loader: FrameLoader) -> _Page:
         frame, dpi = loader(path)
         return _Page(path, frame, dpi, _detect(path, frame, dpi))
     except Exception as error:
-        raise BatchError(
+        raise UnreadablePageError(
             f"sheet {number}: cannot read {path.name}: {error}", sheet=number
         ) from error
 
@@ -212,7 +206,7 @@ def _sheet_photo(
     number = index + 1
     first, second = pages
     if first.dpi != second.dpi:
-        raise BatchError(
+        raise PageResolutionError(
             f"sheet {number}: pages differ in dpi ({first.dpi} and {second.dpi})", sheet=number
         )
     boxes = _own_boxes(number, first, second)
@@ -311,6 +305,7 @@ def _generate(
             if on_sheet_error is None:
                 raise
             logger.error("%s; skipping the sheet", error)
+            release_frames(error)  # the callback may load the sheet's pages again
             on_sheet_error(error)
             continue
         if duplex and 2 * index + 1 < len(pages) and not photo.side_uncertain:

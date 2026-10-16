@@ -195,7 +195,7 @@ def test_the_images_of_a_failed_sheet_are_freed_before_the_error_is_handed_on() 
         return frame, 75
 
     alive_in_callback: list[int] = []
-    gc.disable()  # reference counting alone must free them: no collector run to hide a leak
+    gc.disable()  # only the explicit release may free them, not a sweep that happens to run
     try:
         batch = iter_photos(
             [Path("a.png"), Path("b.png")],

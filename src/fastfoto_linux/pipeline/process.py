@@ -27,7 +27,7 @@ from fastfoto_linux.output.metadata import MAX_NOTES_CHARS
 from fastfoto_linux.output.naming import sanitise_album, sanitise_prefix
 from fastfoto_linux.output.writer import MAX_QUALITY, MIN_QUALITY
 from fastfoto_linux.pipeline.io import scan_time
-from fastfoto_linux.pipeline.issues import SheetIssue
+from fastfoto_linux.pipeline.issues import SheetIssue, sheet_issue, sheet_pages
 from fastfoto_linux.pipeline.sides import BackPolicy, BatchError, Photo, iter_photos
 from fastfoto_linux.pipeline.unprocessed import plain_reason, save_unprocessed
 
@@ -165,9 +165,19 @@ class _Tally:
     degraded: list[SheetIssue] = field(default_factory=list)
     dropped: list[str] = field(default_factory=list)
     unchanged: int = 0
+    settled: int = 0  # the highest sheet that failed: it is settled, though no photo came of it
 
-    def fail(self, sheet: int | None, reason: str, saved: WrittenFiles | None = None) -> None:
-        self.failed.append(_sheet_issue(sheet, self.paths, self.duplex, reason, saved))
+    def fail(
+        self,
+        sheet: int | None,
+        reason: str,
+        saved: WrittenFiles | None = None,
+        *,
+        save_failed: bool = False,
+    ) -> None:
+        self.failed.append(
+            sheet_issue(sheet, self.paths, self.duplex, reason, saved, save_failed=save_failed)
+        )
 
     def add(self, sheet: int, handled: _Handled) -> WrittenFiles | None:
         """Record what became of one sheet; its files if it was written."""
@@ -181,7 +191,7 @@ class _Tally:
             (handled.uncertain, self.uncertain),
         ):
             if reason is not None:
-                issues.append(_sheet_issue(sheet, self.paths, self.duplex, reason))
+                issues.append(sheet_issue(sheet, self.paths, self.duplex, reason))
         if handled.dropped_back is not None:
             self.dropped.append(handled.dropped_back)
         return handled.files
@@ -253,7 +263,7 @@ def process_pages(
         photo = next(batch, None)
         if photo is None:
             break
-        done = photo.index + 1
+        done = max(photo.index + 1, tally.settled)
         handled = _handle(photo, settings)
         del photo  # the next sheet is loaded while this loop waits; do not hold the last one
         files = tally.add(done, handled)
@@ -275,12 +285,13 @@ def _sheet_failed(
     if error.sheet is None:
         tally.fail(None, str(error))
         return
+    tally.settled = max(tally.settled, error.sheet)
     reason = plain_reason(error)
-    saved = save_unprocessed(_sheet_pages(error.sheet, tally.paths, tally.duplex), settings, reason)
+    saved = save_unprocessed(sheet_pages(error.sheet, tally.paths, tally.duplex), settings, reason)
     if saved is None:
-        tally.fail(error.sheet, str(error))
+        tally.fail(error.sheet, str(error), save_failed=True)
         return
-    tally.fail(error.sheet, reason, saved)
+    tally.fail(error.sheet, saved.unprocessed_reason or reason, saved)
     if on_photo is not None:
         on_photo(saved)
 
@@ -369,23 +380,3 @@ def _write(photo: Photo, prepared: _Prepared, settings: ProcessSettings) -> Writ
 
 def _reason(error: Exception) -> str:
     return str(error) or type(error).__name__
-
-
-def _sheet_pages(sheet: int, paths: tuple[Path, ...], duplex: bool) -> tuple[Path, ...]:
-    """The page files of sheet number ``sheet`` (1-based), in scan order."""
-    first = 2 * (sheet - 1) if duplex else sheet - 1
-    return paths[first : first + (2 if duplex else 1)]
-
-
-def _sheet_issue(
-    sheet: int | None,
-    paths: tuple[Path, ...],
-    duplex: bool,
-    reason: str,
-    saved: WrittenFiles | None = None,
-) -> SheetIssue:
-    """An issue for sheet number ``sheet`` (1-based), naming its pages in scan order."""
-    if sheet is None:
-        return SheetIssue(None, (), reason)
-    names = tuple(p.name for p in _sheet_pages(sheet, paths, duplex))
-    return SheetIssue(sheet, names, reason, saved)

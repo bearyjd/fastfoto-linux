@@ -1,6 +1,7 @@
 """The sheets of a batch that need a look, and the line that says what became of one."""
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from fastfoto_linux.output import WrittenFiles
 
@@ -20,6 +21,28 @@ class SheetIssue:
     save_failed: bool = False
 
 
+def sheet_pages(sheet: int, paths: tuple[Path, ...], duplex: bool) -> tuple[Path, ...]:
+    """The page files of sheet number ``sheet`` (1-based), in scan order."""
+    first = 2 * (sheet - 1) if duplex else sheet - 1
+    return paths[first : first + (2 if duplex else 1)]
+
+
+def sheet_issue(  # noqa: PLR0913
+    sheet: int | None,
+    paths: tuple[Path, ...],
+    duplex: bool,
+    reason: str,
+    saved: WrittenFiles | None = None,
+    *,
+    save_failed: bool = False,
+) -> SheetIssue:
+    """An issue for sheet number ``sheet`` (1-based), naming its pages in scan order."""
+    if sheet is None:
+        return SheetIssue(None, (), reason)
+    names = tuple(p.name for p in sheet_pages(sheet, paths, duplex))
+    return SheetIssue(sheet, names, reason, saved, save_failed)
+
+
 def failed_sheet_line(issue: SheetIssue, sheets: int) -> str:
     """One line for a failed sheet: which photo it was in feed order, why, and what was saved.
 
@@ -33,7 +56,8 @@ def failed_sheet_line(issue: SheetIssue, sheets: int) -> str:
     position = f"photo {issue.sheet} of {sheets} fed" if sheets else f"photo {issue.sheet} fed"
     if issue.saved is None:
         pages = f" ({', '.join(issue.pages)})" if issue.pages else ""
-        return f"{position}{pages}: {issue.reason}"
+        tried = " — saving the whole page failed too" if issue.save_failed else ""
+        return f"{position}{pages}: {issue.reason}{tried}"
     return f"{position}: {issue.reason} — {_saved_text(issue.saved)}"
 
 

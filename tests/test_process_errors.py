@@ -27,7 +27,8 @@ NEAR_WHITE = (245, 245, 245)  # a front that scores exactly like a back
 def test_an_unreadable_sheet_is_reported_and_the_others_are_written(tmp_path) -> None:
     raw, out = workspace(tmp_path)
     pages = write_sheets(raw, [plain_sheet(0), plain_sheet(1), plain_sheet(2)])
-    pages[2].write_bytes(b"this is not a png")
+    for page in pages[2:4]:  # both pages: with one readable page the sheet is saved whole
+        page.write_bytes(b"this is not a png")
     result = process_pages(pages, settings_for(out))
     assert result.photos == 2
     assert jpeg_names(out) == ["FastFoto_0001.jpg", "FastFoto_0002.jpg"]

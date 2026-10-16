@@ -12,11 +12,17 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from fastfoto_linux.output import WrittenFiles, write_unprocessed
+from fastfoto_linux.pipeline.batch_errors import (
+    BatchError,
+    NoPhotoOnSheetError,
+    PageResolutionError,
+    UnreadablePageError,
+)
 from fastfoto_linux.pipeline.crop import detect_photo, trim_tail
 from fastfoto_linux.pipeline.ink import paper_score
 from fastfoto_linux.pipeline.io import load_frame, scan_time
 from fastfoto_linux.pipeline.side_order import DEFAULT_FRONT_FIRST, decide_sides
-from fastfoto_linux.pipeline.sides import BackPolicy, BatchError, NoPhotoOnSheetError
+from fastfoto_linux.pipeline.sides import BackPolicy
 
 if TYPE_CHECKING:  # process.py imports this module
     from fastfoto_linux.pipeline.process import ProcessSettings
@@ -24,16 +30,24 @@ if TYPE_CHECKING:  # process.py imports this module
 logger = logging.getLogger(__name__)
 
 NO_PHOTO_REASON = "the photo's edges were not found (two items fed together?)"
+RESOLUTION_REASON = "the two pages were scanned at different resolutions"
+UNREADABLE_REASON = "a page of the sheet could not be read"
+GENERIC_REASON = "the photo could not be processed"
 
 Page = tuple[np.ndarray, int]
 """A loaded page: ``(frame, dpi)``."""
 
 
 def plain_reason(error: BatchError) -> str:
-    """Why the sheet is not a photo, in words for the user (the error's own text is for logs)."""
+    """Why the sheet is not a photo, in words for the user; the error's own text goes to the log."""
     if isinstance(error, NoPhotoOnSheetError):
         return NO_PHOTO_REASON
-    return str(error).removeprefix(f"sheet {error.sheet}: ")
+    if isinstance(error, PageResolutionError):
+        return RESOLUTION_REASON
+    if isinstance(error, UnreadablePageError):
+        return UNREADABLE_REASON
+    logger.debug("%s", error)
+    return GENERIC_REASON
 
 
 def save_unprocessed(
@@ -42,9 +56,10 @@ def save_unprocessed(
     """Write the one or two ``pages`` of a sheet (in feed order) whole; None if that fails.
 
     The front is chosen like a normal sheet's when both pages show a photo box, else by the feed
-    order ``settings`` declares. The back follows the back policy. Never raises an ``Exception``:
-    a page that cannot be read or files that cannot be written leave the sheet as a plain
-    failure, which is the caller's business.
+    order ``settings`` declares. The back follows the back policy. If only one of two pages can
+    be read, that page is saved alone and the reason says which side is missing. Never raises an
+    ``Exception``: pages that cannot be read or files that cannot be written leave the sheet as a
+    plain failure, which is the caller's business.
     """
     try:
         return _save(pages, settings, reason)
@@ -56,23 +71,20 @@ def save_unprocessed(
 
 
 def _save(pages: tuple[Path, ...], settings: "ProcessSettings", reason: str) -> WrittenFiles:
-    loaded = [load_frame(page) for page in pages]
-    two_sided = len(loaded) == 2  # noqa: PLR2004 - a duplex sheet; a lone page is a front
-    front_at = _front_at(loaded, settings.expect_front_first) if two_sided else 0
+    loaded = _load_pages(pages)
+    readable = [at for at, page in enumerate(loaded) if page is not None]
+    if not readable:
+        raise ValueError("no page of the sheet can be read")
+    if len(readable) < len(pages):  # one page of two is damaged: the other is saved alone
+        reason = _missing_side_reason(pages, 1 - readable[0], settings.expect_front_first)
+    front_at, back = _sides(loaded, readable, settings)
     frame, dpi = loaded[front_at]
-    back = None
-    if two_sided and settings.back_policy is not BackPolicy.NEVER:
-        # AUTO keeps the back too: with no photo box there is nothing to judge handwriting on,
-        # and a back that is dropped here could not be asked for again. (A back scanned at
-        # another resolution is stored with the front's; the sheet is a failure anyway.)
-        back_frame, back_dpi = loaded[1 - front_at]
-        back = trim_tail(back_frame, back_dpi)
     files = write_unprocessed(
         trim_tail(frame, dpi),
         dpi=dpi,
         output_root=settings.output_root,
         reason=reason,
-        back=back,
+        back=None if back is None else trim_tail(*back),
         album=settings.album,
         prefix=settings.prefix,
         date=settings.date,
@@ -82,6 +94,39 @@ def _save(pages: tuple[Path, ...], settings: "ProcessSettings", reason: str) -> 
     )
     logger.info("saved %s whole: %s", ", ".join(page.name for page in pages), reason)
     return files
+
+
+def _sides(
+    loaded: list[Page | None], readable: list[int], settings: "ProcessSettings"
+) -> tuple[int, Page | None]:
+    """The place (0 or 1) of the front page, and the back page to keep if there is one."""
+    if len(readable) == 1:  # a lone page is a front
+        return readable[0], None
+    front_at = _front_at([page for page in loaded if page is not None], settings.expect_front_first)
+    # AUTO keeps the back too: with no photo box there is nothing to judge handwriting on, and a
+    # back that is dropped here could not be asked for again. (A back scanned at another
+    # resolution is stored with the front's; the sheet is a failure anyway.)
+    keep_back = settings.back_policy is not BackPolicy.NEVER
+    return front_at, loaded[1 - front_at] if keep_back else None
+
+
+def _load_pages(pages: tuple[Path, ...]) -> list[Page | None]:
+    """Each page loaded, or None for one that cannot be read (that costs only that page)."""
+    loaded: list[Page | None] = []
+    for page in pages:
+        try:
+            loaded.append(load_frame(page))
+        except Exception as error:  # a damaged page must not cost the readable one
+            logger.error("cannot read %s: %s", page.name, str(error) or type(error).__name__)
+            loaded.append(None)
+    return loaded
+
+
+def _missing_side_reason(pages: tuple[Path, ...], missing_at: int, front_first: bool | None) -> str:
+    """Which side could not be read, by the feed order the user declared (else the default)."""
+    first = DEFAULT_FRONT_FIRST if front_first is None else front_first
+    side = "front" if (missing_at == 0) == first else "back"
+    return f"the {side} page ({pages[missing_at].name}) could not be read; only the other is saved"
 
 
 def _front_at(loaded: list[Page], expect_front_first: bool | None) -> int:

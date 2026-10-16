@@ -9,6 +9,8 @@ from fastfoto_linux.pipeline.process import ProcessResult
 from fastfoto_linux.scanner import NoDocumentsError, ScannerError
 from fastfoto_linux.session import RawReason, SessionResult
 
+MAX_SHEET_LINES = 3  # more failed sheets than this are summed up, one sentence per kind
+
 _RAW_REASONS = {
     RawReason.CANCELLED: "the scan was cancelled",
     RawReason.SCAN_ERROR: "the scanner reported an error",
@@ -117,7 +119,7 @@ def _cancelled(result: SessionResult) -> Banner:
         verb = "was" if saved == 1 else "were"
         text = f"Cancelled. {_count(saved, 'photo')} {verb} saved."
         if whole := _saved_whole(result.process):
-            text += f" {_needs_checking(len(whole))}"
+            text += f" {_needs_checking(len(whole))}."
         return Banner("info", text + _raw_note(result.raw_dir, None))
     if result.kept_pages:
         return Banner("info", kept_text(result))
@@ -139,8 +141,15 @@ def _done(result: SessionResult, process: ProcessResult) -> Banner:
 
 
 def photos_heading(total: int, unprocessed: int) -> str:
-    """The results grid's heading: the photos, and those saved whole counted apart."""
-    raise NotImplementedError
+    """The results grid's heading: the photos, and those saved whole counted apart.
+
+    ``total`` is every item in the grid, ``unprocessed`` those among them saved whole; they are
+    worded as the banner words them ("2 photos need checking").
+    """
+    if total == 0:
+        return "Photos"
+    heading = f"Photos ({total - unprocessed})"
+    return f"{heading}, {_needs_checking(unprocessed)}" if unprocessed else heading
 
 
 def _saved_whole(process: ProcessResult) -> list[SheetIssue]:
@@ -150,26 +159,41 @@ def _saved_whole(process: ProcessResult) -> list[SheetIssue]:
 
 def _needs_checking(count: int) -> str:
     verb = "needs" if count == 1 else "need"
-    return f"{_count(count, 'photo')} {verb} checking."
+    return f"{_count(count, 'photo')} {verb} checking"
 
 
 def _failed_text(process: ProcessResult) -> str:
     """The failed sheets: those lost, those saved whole (which need checking), the photos saved.
 
-    Each sheet saved whole gets a line of its own saying which photo of the batch it was, in
-    feed order, why, and the file.
+    Up to ``MAX_SHEET_LINES`` failed sheets: each sheet saved whole gets a line of its own saying
+    which photo of the batch it was, in feed order, why, and the file. More than that: one
+    sentence per kind, naming the sheets by their place in the feed.
     """
     whole = _saved_whole(process)
-    lost = len(process.failed) - len(whole)
+    lost = [issue for issue in process.failed if issue.saved is None]
+    many = len(process.failed) > MAX_SHEET_LINES
     parts = []
     if lost:
-        parts.append(f"{_count(lost, 'sheet')} could not be processed.")
+        parts.append(_listed(f"{_count(len(lost), 'sheet')} could not be processed", lost, many))
     if whole:
-        parts.append(_needs_checking(len(whole)))
+        parts.append(_listed(_needs_checking(len(whole)), whole, many))
     if process.photos:
         parts.append(f"{_count(process.photos, 'photo')} saved.")
-    lines = [_sentence(_capitalised(failed_sheet_line(i, process.sheets))) for i in whole]
+    lines = [] if many else [_line(issue, process.sheets) for issue in whole]
     return "\n".join([" ".join(parts), *lines])
+
+
+def _listed(text: str, issues: list[SheetIssue], listed: bool) -> str:
+    """``text`` as a sentence; with ``listed`` the sheets' feed numbers follow it."""
+    numbers = [str(issue.sheet) for issue in issues if issue.sheet is not None]
+    if not listed or not numbers:
+        return _sentence(text)
+    noun = "photo" if len(numbers) == 1 else "photos"
+    return f"{text}: {noun} {', '.join(numbers)} fed."
+
+
+def _line(issue: SheetIssue, sheets: int) -> str:
+    return _sentence(_capitalised(failed_sheet_line(issue, sheets)))
 
 
 def _capitalised(text: str) -> str:

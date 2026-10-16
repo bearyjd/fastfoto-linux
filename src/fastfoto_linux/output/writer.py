@@ -142,18 +142,23 @@ def _publish_photo(
     the back are named as whole pages (``_unprocessed``, ``_unprocessed_b``).
 
     If another writer that does not take the lock got there first, a file collides, nothing is
-    written, and the next number is tried, up to MAX_INDEX_ATTEMPTS times. That only protects
-    against overwriting the same file: a writer that ignores the lock can still reuse a number
-    for different files (say, one writes only the original and the other only ``_a``).
+    written, and the next number is tried, up to MAX_INDEX_ATTEMPTS times. A number belongs to the
+    whole family of names (``_NNNN``, ``_a``, ``_b``, ``_unprocessed``, ``_unprocessed_b``): it is
+    refused when any of them exists, so even such a writer cannot reuse a number for different
+    files (say, one writes only the original and the other only ``_a``).
     """
     index = 0
     collision: OutputCollisionError | None = None
     for _ in range(MAX_INDEX_ATTEMPTS):
         index = max(next_index(directory, file_prefix), index + 1)
         paths = photo_paths(directory, file_prefix, index)
+        whole_front, whole_back = unprocessed_paths(directory, file_prefix, index)
+        family = (paths.original, paths.enhanced, paths.back, whole_front, whole_back)
+        if taken := next((path for path in family if path.exists()), None):
+            collision = OutputCollisionError(f"{taken} already exists; number {index} is taken")
+            continue
         targets = (paths.original, paths.enhanced, paths.back)
         if unprocessed:
-            whole_front, whole_back = unprocessed_paths(directory, file_prefix, index)
             targets = (whole_front, paths.enhanced, whole_back)
         pairs = list(zip(targets, blobs, strict=True))
         try:

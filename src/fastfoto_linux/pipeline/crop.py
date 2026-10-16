@@ -28,6 +28,13 @@ TAIL_ROW_FRACTION = 0.98  # share of a row that must be white for it to count as
 # (dirt streaks) do not break it; the real grey band under the paper is 9 mm or more, so it does.
 TAIL_MIN_MM = 20.0
 TAIL_GAP_MM = 8.5
+# ``trim_tail`` cuts pixels away, so it is stricter than the box search: dirt gaps stay under
+# TRIM_GAP_MM (less than the band, or a card, a band and a tail would fuse into one run), a row
+# counts as white from TRIM_ROW_FRACTION, and the tail must lie under a band of at least
+# TRIM_BAND_MM of rows with next to no white. When in doubt nothing is cut.
+TRIM_GAP_MM = 3.0
+TRIM_ROW_FRACTION = 0.99
+TRIM_BAND_MM = 6.0
 BACKGROUND_PRIOR_RGB = (202.0, 210.0, 219.0)  # measured scanner background (blue-grey, B > R)
 # Background samples come from between BG_SAMPLE_NEAR_MM and BG_SAMPLE_FAR_MM in from each side
 # edge (the first millimetres glow brighter on real frames) and must lie this close (RGB
@@ -116,13 +123,13 @@ def _tail_start(small: np.ndarray, work_dpi: float) -> int:
     return _tail_from(white_rows, work_dpi)
 
 
-def _tail_from(white_rows: np.ndarray, work_dpi: float) -> int:
+def _tail_from(white_rows: np.ndarray, work_dpi: float, gap_mm: float = TAIL_GAP_MM) -> int:
     """First row of the last long run of white rows; ``white_rows.size`` if there is none.
 
-    Runs are white rows separated by non-white gaps of at most ``TAIL_GAP_MM``. The run need not
+    Runs are white rows separated by non-white gaps of at most ``gap_mm``. The run need not
     reach the frame end, so a dirty trailing row does not matter.
     """
-    max_gap = mm_to_px(TAIL_GAP_MM, work_dpi)
+    max_gap = mm_to_px(gap_mm, work_dpi)
     min_rows = mm_to_px(TAIL_MIN_MM, work_dpi)
     white = np.flatnonzero(white_rows)
     if white.size == 0:
@@ -341,20 +348,41 @@ def crop(frame: np.ndarray, box: Box) -> np.ndarray:
     return frame[box.y : box.y + box.h, box.x : box.x + box.w].copy()
 
 
+def _rows_to_keep(small: np.ndarray, work_dpi: float) -> int:
+    """Work-grid rows above the scanner's tail; all of them unless the tail is unmistakable.
+
+    The tail is the last long run of white rows; it must reach the frame end (within the dirt
+    gap) and lie directly under a band of rows with almost no white, the backing under the paper.
+    A white card has no such band under it, however much writing it carries.
+    """
+    grey = cv2.cvtColor(small, cv2.COLOR_RGB2GRAY)
+    white_share = (grey >= TAIL_WHITE_LEVEL).mean(axis=1)
+    white = white_share >= TRIM_ROW_FRACTION
+    height = white.size
+    start = _tail_from(white, work_dpi, TRIM_GAP_MM)
+    band = mm_to_px(TRIM_BAND_MM, work_dpi)
+    if start >= height or np.flatnonzero(white)[-1] < height - 1 - mm_to_px(TRIM_GAP_MM, work_dpi):
+        return height
+    backing = white_share[start - band : start] <= 1.0 - TRIM_ROW_FRACTION
+    return start if start >= band and backing.all() else height
+
+
 def trim_tail(frame: np.ndarray, dpi: float) -> np.ndarray:
-    """A copy of ``frame`` without the scanner's white tail; the whole frame if it has none.
+    """``frame`` without the scanner's white tail, as a read-only view (nothing is copied).
 
     Only the tail goes: no background is cut and no photo is looked for, so this works on a
-    frame that holds no findable photo. A page that is as wide and white as the tail itself (a
-    full-width card) has no grey band to tell it from one; when the "tail" would leave less than
-    ``MIN_PHOTO_MM`` of page, the page is kept whole rather than cut away.
+    frame that holds no findable photo. The tail is cut only when it is unmistakable (see
+    ``_rows_to_keep``); a white page, such as a full-width card with writing on it, is kept
+    whole. So is any frame when less than ``MIN_PHOTO_MM`` of page would be left.
     """
     _validate_frame(frame)
     if dpi <= 0:
         raise ValueError(f"dpi must be positive, got {dpi}")
     small, factor = _downsample(frame, dpi)
-    start = _tail_start(small, dpi / factor)
-    rows = frame.shape[0] if start >= small.shape[0] else start * factor
+    keep = _rows_to_keep(small, dpi / factor)
+    rows = frame.shape[0] if keep >= small.shape[0] else keep * factor
     if rows < mm_to_px(MIN_PHOTO_MM, dpi):
         rows = frame.shape[0]
-    return frame[:rows].copy()
+    view = frame[:rows]
+    view.flags.writeable = False
+    return view

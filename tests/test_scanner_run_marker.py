@@ -9,6 +9,8 @@ let the next check pad a scanner that is only busy with another device.
 
 import os
 import signal
+import subprocess
+import threading
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -162,6 +164,75 @@ def test_a_status_reply_followed_by_a_sigkill_after_the_grace_leaves_the_note(
     scan_fails(job, bin_dir, early_stderr_lines=lines, hang=True, ignore_sigterm=True)
 
     assert noted()
+
+
+# --- an interrupt or a failing callback: scanimage is stopped, and a kill is noted -------------
+
+
+def fail_the_callback(page: int) -> None:
+    raise RuntimeError("callback failed")
+
+
+def test_a_failing_callback_that_scanimage_ignores_sigterm_for_leaves_the_note(
+    job: ScanJob, bin_dir: Path
+) -> None:
+    env = fake_env(bin_dir, pages=1, hang=True, ignore_sigterm=True)
+
+    with pytest.raises(RuntimeError, match="callback failed"):
+        run_scan(job, env=env, timeout_s=TIMEOUT_S, on_progress=fail_the_callback)
+
+    assert noted()  # scanimage had to be killed: a command may have been cut short
+
+
+def test_a_ctrl_c_that_scanimage_ignores_sigterm_for_leaves_the_note(
+    job: ScanJob, bin_dir: Path
+) -> None:
+    env = fake_env(bin_dir, pages=1, hang=True, ignore_sigterm=True)
+    interrupt = threading.Timer(0.3, os.kill, (os.getpid(), signal.SIGINT))
+
+    def interrupt_soon(page: int) -> None:
+        interrupt.start()  # scanimage is now idle in its hang; Ctrl-C reaches us shortly
+
+    try:
+        with pytest.raises(KeyboardInterrupt):
+            run_scan(job, env=env, timeout_s=TIMEOUT_S, on_progress=interrupt_soon)
+    finally:
+        interrupt.cancel()
+
+    assert noted()
+
+
+def test_an_interrupt_before_the_supervision_starts_leaves_the_note_for_a_kill(
+    job: ScanJob, bin_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def started(argv: tuple[str, ...], **options: object) -> "subprocess.Popen[bytes]":
+        proc = subprocess.Popen(argv, **options)  # type: ignore[call-overload]
+        assert proc.stderr is not None
+        for _ in range(2):  # "Scanning page 1", "Scanned page 1": the fake now only hangs,
+            proc.stderr.readline()  # ignoring SIGTERM as asked, and writes nothing more
+        return proc
+
+    def interrupted(*args: object) -> object:
+        raise KeyboardInterrupt  # Ctrl-C lands after scanimage started, before it is watched
+
+    monkeypatch.setattr(run_module, "StderrMonitor", interrupted)
+    env = fake_env(bin_dir, pages=1, hang=True, ignore_sigterm=True)
+
+    with pytest.raises(KeyboardInterrupt):
+        run_scan(job, env=env, timeout_s=TIMEOUT_S, popen=started)
+
+    assert noted()
+
+
+def test_a_failing_callback_that_scanimage_obeys_leaves_no_note(
+    job: ScanJob, bin_dir: Path
+) -> None:
+    env = fake_env(bin_dir, pages=1, hang=True)
+
+    with pytest.raises(RuntimeError, match="callback failed"):
+        run_scan(job, env=env, timeout_s=TIMEOUT_S, on_progress=fail_the_callback)
+
+    assert not unclean.marker_path().exists()  # a clean SIGTERM stop proves the channel in step
 
 
 # --- the monitor tells an I/O error from the other errors --------------------------------------

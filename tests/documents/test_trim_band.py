@@ -322,3 +322,13 @@ def test_white_next_to_the_paper_does_not_switch_the_last_check_off(dpi: int) ->
     marked = with_mark(tilted, scene.paper_end + px(5.0, dpi), px(60.0, dpi), size_px=px(3.0, dpi))
     result = trim_page(colour_page(marked))
     assert (result.bottom, result.band_bottom) == (0, False)
+
+
+@pytest.mark.parametrize("dpi", [200, 300])
+def test_a_band_with_white_in_every_row_is_not_trusted(dpi: int) -> None:
+    """A white line down the whole band: no row without white to tell the pad from the rest."""
+    scene = band_page(dpi)
+    image = scene.image.copy()
+    image[scene.paper_end :, px(60.0, dpi) : px(60.0, dpi) + 3] = 255
+    result = trim_page(colour_page(replace(scene, image=image)))
+    assert (result.bottom, result.band_bottom) == (0, False)

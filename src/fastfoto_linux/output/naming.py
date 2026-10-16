@@ -150,3 +150,8 @@ def photo_paths(directory: Path, prefix: str, index: int) -> PhotoPaths:
         enhanced=directory / f"{stem}_a.jpg",
         back=directory / f"{stem}_b.jpg",
     )
+
+
+def pdf_path(directory: Path, prefix: str, index: int) -> Path:
+    """Path of the PDF numbered ``index``; the number is shared with the photos of ``prefix``."""
+    raise NotImplementedError

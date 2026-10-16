@@ -4,6 +4,7 @@ import argparse
 import contextlib
 import shlex
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 from typing import NoReturn
 
@@ -23,13 +24,18 @@ from fastfoto_linux.cli.errors import (
     EXIT_OK,
     EXIT_PROCESSING_ERROR,
     EXIT_TOOL_MISSING,
+    EXIT_USAGE,
     CliError,
 )
 from fastfoto_linux.cli.options import common_parent, prepare_output_root
 from fastfoto_linux.cli.scan_support import announce_stage, log_page, raw_policy, scan_target
 from fastfoto_linux.documents import (
+    DEFAULT_LANGS,
+    DEFAULT_NAME,
     AllPagesBlankError,
+    ColourMode,
     DocumentSettings,
+    DocumentSettingsError,
     OcrMissingError,
     OcrMode,
     build_document,
@@ -89,11 +95,13 @@ def _require_ocr_if_asked(settings: DocumentSettings) -> None:
 
 
 def document_failure(error: Exception) -> Exception:
-    """The error to raise for a failed document run: the two a user can act on become one line."""
+    """The error to raise for a failed document run: the ones a user can act on become one line."""
     if isinstance(error, AllPagesBlankError):
         return CliError(f"{error}; --keep-blank keeps blank pages", EXIT_PROCESSING_ERROR)
     if isinstance(error, OcrMissingError):  # it vanished between the check and the run
         return CliError(str(error), EXIT_TOOL_MISSING)
+    if isinstance(error, DocumentSettingsError):  # the options were checked, the folder changed
+        return CliError(str(error), EXIT_USAGE)
     return error
 
 
@@ -140,13 +148,16 @@ def _scan_into(request: DocumentScanRequest, root: Path) -> int:
     nothing was lost; an error or an interrupt comes back in its result, after the raw pages
     are settled, to be raised here once the user has been told where they are.
     """
-    session = run_document_session(
-        request,
-        on_page=log_page,
-        on_stage=announce_stage,
-        scan=run_scan,
-        build=build_document,
-    )
+    try:
+        session = run_document_session(
+            request,
+            on_page=log_page,
+            on_stage=announce_stage,
+            scan=run_scan,
+            build=build_document,
+        )
+    except (DocumentSettingsError, OcrMissingError) as error:  # refused before any scan
+        _raise_failure(error)
     if session.document is not None:
         print_document_summary(
             session.document,
@@ -155,7 +166,7 @@ def _scan_into(request: DocumentScanRequest, root: Path) -> int:
             raw_line=raw_pages_line(session),
         )
     else:  # no summary to say where the pages are: the pages are kept whatever happens
-        _report_kept(session, root)
+        _report_kept(session, request, root)
     if session.error is not None:
         _raise_failure(session.error)
     if session.cancelled:
@@ -163,10 +174,40 @@ def _scan_into(request: DocumentScanRequest, root: Path) -> int:
     return EXIT_OK if session.ok else EXIT_PROCESSING_ERROR
 
 
-def _report_kept(session: DocumentSessionResult, root: Path) -> None:
+def _pages(count: int) -> str:
+    return f"{count} page" if count == 1 else f"{count} pages"
+
+
+def process_command(pages: Sequence[Path], request: DocumentScanRequest, root: Path) -> str:
+    """The ``ffscan doc process`` command that makes the PDF this scan would have made from
+    ``pages``: the same folder, resolution and every option that is not the default."""
+    settings = request.settings
+    options = (
+        (settings.colour is not ColourMode.COLOUR, ["--colour", settings.colour.value]),
+        (settings.name != DEFAULT_NAME, ["--name", settings.name]),
+        (settings.ocr is not OcrMode.AUTO, ["--ocr", settings.ocr.value]),
+        (settings.langs != DEFAULT_LANGS, ["--lang", settings.langs]),
+        (settings.keep_blank, ["--keep-blank"]),
+    )
+    return shlex.join(
+        [
+            "ffscan",
+            "doc",
+            "process",
+            *map(str, pages),
+            "--out",
+            str(root),
+            "--dpi",
+            str(request.dpi),
+            *(word for wanted, words in options if wanted for word in words),
+        ]
+    )
+
+
+def _report_kept(session: DocumentSessionResult, request: DocumentScanRequest, root: Path) -> None:
     """Say on stderr where the raw pages are when there is no PDF; after a scanner failure that
-    left pages, also how to make a PDF from them. A terminal that has hung up (EIO) must not
-    replace the interrupt or error that is on its way."""
+    left pages, also the exact command that makes a PDF from the finished ones. A terminal that
+    has hung up (EIO) must not replace the interrupt or error that is on its way."""
     kept = session.raw_dir
     if kept is None:
         return
@@ -175,7 +216,7 @@ def _report_kept(session: DocumentSessionResult, root: Path) -> None:
         if isinstance(session.error, ScannerError) and session.kept_pages:
             print(
                 f"ffscan: no PDF is made from part of a stack; to make one from the "
-                f"{len(session.kept_pages)} pages scanned: ffscan doc process "
-                f"{shlex.quote(str(kept))}/page-*.png --out {shlex.quote(str(root))}",
+                f"{_pages(len(session.kept_pages))} scanned, run:",
                 file=sys.stderr,
             )
+            print(process_command(session.kept_pages, request, root), file=sys.stderr)

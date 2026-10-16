@@ -154,6 +154,10 @@ def _work(request: ScanRequest, raw: Path, hooks: _Hooks) -> _Outcome:
         scanned = scan_pages(request, raw, hooks, check_scanner)
         if scanned.cancelled:
             return _Outcome(scanned.pages, cancelled=True)
+        if scanned.error is not None:
+            logger.error(
+                "the scan stopped early; processing the %d finished pages", len(scanned.pages)
+            )
         hooks.stage(Stage.PROCESSING)
         processed = _process(scanned.pages, request.settings, hooks)
     except KeyboardInterrupt:  # the front end's signal handler: stop, the pages stay

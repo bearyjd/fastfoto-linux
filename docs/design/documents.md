@@ -250,12 +250,13 @@ keeps the producer metadata (it may overwrite it; CI has no `ocrmypdf`).
 ## Decisions in `ffscan doc scan` (D2)
 What the second pull request settled where the specification left room.
 
-- **One scan job, two sessions.** A scan request carries `mode` and `max_length_mm` to the
-  scanimage job. A photo request defaults them to colour and the scanner's full length, which
-  is what `ScanJob` always used, so a photo scan's argv is unchanged (a test pins it as a
-  literal). A document request defaults to the same pair and has nothing to turn them into
-  grey: `ffscan doc scan` is always `--mode Color` (tested for every `--colour` and every
-  resolution), with deskew on and no paper size.
+- **One scan job, two sessions.** A photo request carries `mode` and `max_length_mm` to the
+  scanimage job, defaulting to colour and the scanner's full length, which is what `ScanJob`
+  always used, so a photo scan's argv is unchanged (a test pins it as a literal). A document
+  request has no such settings: `mode` and `max_length_mm` are read-only on
+  `DocumentScanRequest` (passing them is a `TypeError`), so a document is always scanned
+  `--mode Color` (tested for every `--colour` and every resolution), with deskew on and no
+  paper size.
 - **The document session.** `DocumentScanRequest`, `run_document_session` and
   `DocumentSessionResult` sit beside the photo ones in `fastfoto_linux.session`. What is
   shared lives in `session/scanning.py`: building the scan job, the scanner check with its
@@ -275,20 +276,29 @@ What the second pull request settled where the specification left room.
   `--keep-raw` says so, or a page was dropped as blank (unless `--discard-raw`). Otherwise
   they are deleted. `--discard-raw` therefore only overrides dropped blank pages: a failure,
   a stop or a failed OCR keeps them whatever the flag says. A missing `ocrmypdf` under
-  `--ocr auto` is not a failure and does not keep them.
+  `--ocr auto` is not a failure and does not keep them. The folder of a document's raw pages
+  is owner-only (mode 0700; a letter or a bill may be on them), unlike the photo one.
 - **A scanner that stops part-way** (a jam, the cover opened) leaves the pages it finished,
   and no PDF is made from part of a stack: the design note's own rule is that a PDF with a
   page missing is worse than none, and a document, unlike photos, is one ordered whole. The
-  pages are kept, the error is raised (exit 1) and the command line names `ffscan doc process`
-  for making a PDF from them. A cancel during the scan makes no PDF either, as it never did
-  for photos.
+  pages are kept, the error is raised (exit 1) and the command line prints the exact
+  `ffscan doc process` command for making a PDF from the finished pages (their names, `--out`,
+  `--dpi` and every option that is not the default, quoted for the shell). A page the scanner
+  was writing when it stopped is not among them. A cancel during the scan makes no PDF either,
+  as it never did for photos.
 - **Fallback resolution.** What `scanimage` writes into the PNG header could not be checked
   without the scanner, so the session gives the loader the resolution it asked the scanner for
   as the fallback resolution (`DocumentSettings.fallback_dpi`): a page that does not say its
   resolution is taken at it, a page that does keeps its own.
 - **Order of checks.** The options are checked first (a usage error costs nothing), then
   `--ocr on` is checked before anything is scanned (before the output folder is made, the
-  scanner looked for or checked), then the output folder, the scanner and the scan.
+  scanner looked for or checked), then the output folder, the scanner and the scan. The
+  session checks the same settings again itself (`check_settings`, shared with
+  `build_document`: the name, the OCR languages, `--ocr on` without `ocrmypdf`) and that the
+  output folder exists, before it makes the raw folder or reaches for the scanner, so a front
+  end that calls it directly cannot start a scan of a stack of paper for a PDF that cannot be
+  made. It raises a `DocumentError` (`DocumentSettingsError` or `OcrMissingError`) whose
+  message can be shown as it is; the command line keeps its exit codes (2 and 3).
 - **Stopping.** Ctrl-C, SIGTERM and SIGHUP are the same cancel as for photos: scanimage is
   stopped, nothing is published, the raw pages are kept and the exit code is 130. A cancel is
   honoured before each page is made and during OCR (the OCR process and its children are

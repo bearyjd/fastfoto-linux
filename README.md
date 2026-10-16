@@ -177,12 +177,14 @@ uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr o
   kept in `DIR/.raw/<UTC time>/` when a page was dropped as blank, searchable text failed, a
   step failed, the run was stopped, or `--keep-raw` says so (`--discard-raw` deletes them even
   then, but only when blank pages dropped are the one reason: a failure or a stop always keeps
-  them). The summary says where they are.
+  them). The summary says where they are. Kept document pages are in a folder only you can
+  read.
 - If the scanner stops part-way (a jam, the cover opened), no PDF is made from part of a stack:
   a PDF with its last pages missing is too easy to take for the whole. The pages already scanned
-  are kept, the error says where, and `ffscan doc process` makes a PDF from them when you want
-  one. If every page looks blank nothing is written and the exit code is 1, with the raw pages
-  kept. `--ocr on` without `ocrmypdf` is refused (exit 3) before anything is scanned.
+  are kept, the error says where and prints the exact `ffscan doc process` command that makes a
+  PDF from the finished pages when you want one. If every page looks blank nothing is written
+  and the exit code is 1, with the raw pages kept. `--ocr on` without `ocrmypdf` is refused
+  (exit 3) before anything is scanned.
 - Needs the scanner (not checked in CI): the Gray PNG that scanimage writes (`doc scan` does not
   ask for it, but pages given to `doc process` may be grey), trimming on real pages, blank
   detection on real backs, speed at 300 dpi, and OCR quality on real letters.

@@ -14,7 +14,9 @@ from pathlib import Path
 from fastfoto_linux.documents import (
     DocumentCancelledError,
     DocumentResult,
+    DocumentSettingsError,
     build_document,
+    check_settings,
 )
 from fastfoto_linux.scanner import ScannerError, run_scan
 from fastfoto_linux.scanner.precheck import check_scanner
@@ -71,7 +73,14 @@ def run_document_session(  # noqa: PLR0913 - the callbacks are the interface; sc
     publishes nothing), the same ``OSError`` before anything is scanned when the raw folder
     cannot be made, and no ``Exception`` after that: it comes back in the result's ``error``
     once the raw pages are settled. Something that is no ``Exception`` propagates, after the
-    raw pages are moved to ``.raw/<stamp>/``.
+    raw pages are moved to ``.raw/<stamp>/``. The raw folder is owner-only (mode 0700).
+
+    The settings are checked first, before the raw folder is made or the scanner is touched
+    (a scan of a stack of paper is not started for a PDF that cannot be made): a
+    ``DocumentSettingsError`` for a name with no usable characters, OCR languages that are no
+    Tesseract codes or an output folder that is not an existing folder, an ``OcrMissingError``
+    when searchable text is required (``OcrMode.ON``) and ``ocrmypdf`` is not installed. Both
+    are ``DocumentError`` with a message fit to show as it is.
 
     A scanner that fails part-way leaves the pages it finished and **no PDF is made from part
     of a stack** (a PDF with its last pages missing is too easy to take for the whole): the
@@ -88,13 +97,22 @@ def run_document_session(  # noqa: PLR0913 - the callbacks are the interface; sc
         cancel=cancel,
         build=build_document if build is None else build,
     )
-    raw = create_raw_dir(request.raw_root, keep=request.raw_policy is RawPolicy.KEEP)
+    _refuse_unusable(request)
+    raw = create_raw_dir(request.raw_root, keep=request.raw_policy is RawPolicy.KEEP, private=True)
     try:
         outcome = _work(request, raw, hooks)
     except BaseException as abort:  # not an Exception: it cannot come back as a result
         keep_after_abort(raw, request.raw_root, abort, settle_raw_dir)
         raise
     return announce_done(_settle(request, raw, outcome), hooks)
+
+
+def _refuse_unusable(request: DocumentScanRequest) -> None:
+    """Raise if the PDF could not be made, before the raw folder, the scanner or its check."""
+    check_settings(request.settings)
+    output_root = request.settings.output_root
+    if not output_root.is_dir():
+        raise DocumentSettingsError(f"the output folder {output_root} is not an existing folder")
 
 
 def _work(request: DocumentScanRequest, raw: Path, hooks: _Hooks) -> _Outcome:
@@ -106,6 +124,11 @@ def _work(request: DocumentScanRequest, raw: Path, hooks: _Hooks) -> _Outcome:
         if scanned.cancelled:
             return _Outcome(pages, cancelled=True)
         if scanned.error is not None:  # the scanner stopped part-way: no PDF of part of a stack
+            logger.error(
+                "the scan stopped early, after %d finished pages; "
+                "no PDF is made from part of a stack",
+                len(pages),
+            )
             return _Outcome(pages, error=scanned.error)
         hooks.stage(Stage.PROCESSING)
         settings = replace(request.settings, fallback_dpi=request.dpi)

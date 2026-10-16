@@ -2,10 +2,11 @@
 
 Order of work, and why:
 
-1. Everything that can be refused is refused before any page is processed: the name, the
-   languages, a required ``ocrmypdf`` that is missing, and every page file (header and a full
-   decode, so a truncated PNG is found now and not after ten pages of work). Nothing is written
-   when a page is unusable, because a PDF with a page silently missing is worse than no PDF.
+1. Everything that can be refused is refused before any page is processed: the settings
+   (``check_settings``: the name, the languages, a required ``ocrmypdf`` that is missing, which
+   a scan session checks too before it scans) and every page file (header and a full decode, so
+   a truncated PNG is found now and not after ten pages of work). Nothing is written when a
+   page is unusable, because a PDF with a page silently missing is worse than no PDF.
 2. Pages are then processed one at a time and only their encoded bytes are kept; a cancel is
    honoured before each page, in the checks as well as in the processing.
 3. The OCR runs on the finished plain PDF *before* the output folder is locked (it can take
@@ -26,6 +27,7 @@ from fastfoto_linux.documents.errors import (
     AllPagesBlankError,
     DocumentCancelledError,
     DocumentError,
+    DocumentSettingsError,
     OcrMissingError,
 )
 from fastfoto_linux.documents.loader import inspect_page, load_page
@@ -42,6 +44,7 @@ from fastfoto_linux.documents.ocr import (
 from fastfoto_linux.documents.pdf import assemble_pdf
 from fastfoto_linux.documents.publish import publish_pdf
 from fastfoto_linux.documents.trim import trim_page
+from fastfoto_linux.output.errors import InvalidPrefixError
 from fastfoto_linux.output.naming import sanitise_prefix
 
 logger = logging.getLogger(__name__)
@@ -76,9 +79,33 @@ class DocumentResult:
         return self.ocr.status not in (OcrStatus.FAILED, OcrStatus.TIMED_OUT)
 
 
-def check_settings(settings: DocumentSettings) -> None:
-    """Refuse settings that cannot make a PDF, before any page is scanned or read."""
-    raise NotImplementedError
+@dataclass(frozen=True)
+class CheckedSettings:
+    """What ``check_settings`` found out: the file name stem and the OCR tool to run, if any."""
+
+    name: str
+    ocr_executable: str | None
+
+
+def check_settings(settings: DocumentSettings) -> CheckedSettings:
+    """Refuse settings that cannot make a PDF, before any page is scanned or read.
+
+    Raises DocumentSettingsError for a name with no usable characters or OCR languages that are
+    no Tesseract codes (even with OCR off), and OcrMissingError when searchable text is required
+    (``OcrMode.ON``) and ``ocrmypdf`` is not installed. The output folder is not checked here:
+    it is the caller's to make, and publishing refuses a missing one.
+    """
+    try:
+        name = sanitise_prefix(settings.name)
+    except InvalidPrefixError as error:
+        raise DocumentSettingsError(
+            f"the name {settings.name!r} has no usable characters for a file name"
+        ) from error
+    try:
+        validate_langs(settings.langs)
+    except ValueError as error:
+        raise DocumentSettingsError(str(error)) from error
+    return CheckedSettings(name, _ocr_executable(settings.ocr))
 
 
 def _now() -> datetime:
@@ -159,13 +186,12 @@ def build_document(
     are processed one at a time so only encoded bytes are kept. Input files are never touched.
     A failed or timed-out OCR still publishes the plain PDF (``result.ok`` is then False).
     When ``cancel`` is set DocumentCancelledError (OcrCancelledError during OCR) is raised and
-    nothing is published.
+    nothing is published. Settings that cannot make a PDF are refused first (``check_settings``).
     """
     if not pages:
         raise DocumentError("no pages to process")
-    name = sanitise_prefix(settings.name)
-    validate_langs(settings.langs)
-    executable = _ocr_executable(settings.ocr)
+    checked = check_settings(settings)
+    name, executable = checked.name, checked.ocr_executable
     for number, path in enumerate(pages, start=1):
         _stop_if_cancelled(cancel, f"page {number} of {len(pages)} was checked")
         inspect_page(path, fallback_dpi=settings.fallback_dpi, decode=True)

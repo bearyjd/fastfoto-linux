@@ -101,7 +101,8 @@ def build_job(spec: ScanSpec, raw: Path) -> ScanJob:
 
 def scan_pages(spec: ScanSpec, raw: Path, hooks: SessionHooks, check: PrecheckFn) -> Scanned:
     """Check the scanner, then scan into ``raw``. A scanner failure part-way keeps the pages
-    finished before it (``Scanned.error``); a failure before any page is raised.
+    finished before it (``Scanned.error``, for the caller to log in its own words); a failure
+    before any page is raised.
 
     ``check`` is the scanner check to run unless the caller's ``hooks.precheck`` replaces it.
     """
@@ -116,7 +117,6 @@ def scan_pages(spec: ScanSpec, raw: Path, hooks: SessionHooks, check: PrecheckFn
     except ScanError as error:
         if not error.pages:
             raise
-        logger.error("the scan stopped early, after %d finished pages", len(error.pages))
         return Scanned(error.pages, error=error)
     return Scanned(result.pages)
 

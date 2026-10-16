@@ -25,6 +25,8 @@ _SCANNED_PAGE = re.compile(r"Scanned page ([0-9]+)\. \(scanner status = ([0-9]+)
 # the error statuses count, so a status that is not one (out of documents: the normal end of a
 # batch; cancelled; end of file) or text in another language never stops the wait early.
 _SANE_FAILURE = re.compile(r"scanimage: (sane_(?:start|read): (.+))")
+# SANE_STATUS_IO_ERROR: the only error that says a command may have been cut short.
+_IO_ERROR_TEXT = "Error during device I/O"
 _ERROR_STATUS_TEXTS = frozenset(
     {
         "Operation not supported",
@@ -32,7 +34,7 @@ _ERROR_STATUS_TEXTS = frozenset(
         "Invalid argument",
         "Document feeder jammed",
         "Scanner cover is open",
-        "Error during device I/O",
+        _IO_ERROR_TEXT,
         "Out of memory",
         "Access to resource has been denied",
     }
@@ -58,7 +60,7 @@ class StderrMonitor:
         self._tail: deque[str] = deque(maxlen=STDERR_TAIL_LINES)
         self.at_eof = False
         self.failure: str | None = None  # the first sane_start/sane_read error scanimage printed
-        self.io_error = False
+        self.io_error = False  # any sane_start/sane_read line said "Error during device I/O"
 
     def __enter__(self) -> "StderrMonitor":
         return self
@@ -128,5 +130,9 @@ class StderrMonitor:
 
     def _note_failure(self, line: str) -> None:
         failure = _SANE_FAILURE.fullmatch(line)
-        if self.failure is None and failure and failure.group(2) in _ERROR_STATUS_TEXTS:
+        if not failure or failure.group(2) not in _ERROR_STATUS_TEXTS:
+            return
+        if self.failure is None:
             self.failure = failure.group(1)
+        if failure.group(2) == _IO_ERROR_TEXT:
+            self.io_error = True

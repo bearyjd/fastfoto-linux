@@ -37,10 +37,9 @@ TERMINATE_GRACE_S = 10.0
 FAIL_FAST_GRACE_S = 2.0
 # How often stderr reading wakes up to check the cancel event, the timeout and finished pages.
 POLL_INTERVAL_S = 0.1
-# SANE_Status value (sane/sane.h); scanimage passes the status straight to exit().
+# SANE_Status values (sane/sane.h); scanimage passes the status straight to exit().
 SANE_STATUS_NO_DOCS = 7
-# The exit statuses of a scanimage that ended as it should: all pages scanned, or out of documents.
-_CLEAN_EXIT_STATUSES = (0, SANE_STATUS_NO_DOCS)
+SANE_STATUS_IO_ERROR = 9
 
 PopenFactory = Callable[..., "subprocess.Popen[bytes]"]
 ProgressCallback = Callable[[int], None]
@@ -88,10 +87,13 @@ def run_scan(  # noqa: PLR0913
     cover open...) is not waited out: the process is stopped with ``FAIL_FAST_GRACE_S`` and the
     error is raised at once. Running out of documents is the normal end of a batch, not an error.
 
-    When a scan on a USB scanner ends abnormally (a scanimage error, an error exit status, or a
-    scanimage that had to be killed) a note is left (see ``unclean``): it is the evidence that lets
-    the next pre-scan check free a scanner that our own failed send may have left stuck. A cancel
-    or a timeout that scanimage obeys leaves none.
+    When a scan on a USB scanner ends in a way that may have cut a command short (an I/O error,
+    reported on stderr or as exit status 9; a scanimage that had to be killed after the grace; a
+    scanimage that died of a signal) a note is left (see ``unclean``): it is the evidence that
+    lets the next pre-scan check free a scanner that our own failed send may have left stuck. Any
+    other status reply (busy, jammed, cover open, access denied, other exit statuses) proves the
+    command channel was in step and leaves none, as does a cancel or a timeout that scanimage
+    obeys.
 
     Raises OutputDirError / OutputNotEmptyError before anything is started, NoDocumentsError if
     the feeder was empty, ScanCancelledError after a cancel and ScanError for every other
@@ -110,9 +112,7 @@ def run_scan(  # noqa: PLR0913
     except BaseException:  # incl. an interrupt that lands before the supervision starts
         _stop(proc, on_kill=note)  # scanimage runs in its own session: nothing else would stop it
         raise
-    if outcome is _Outcome.FAILED or (
-        outcome is _Outcome.EXITED and proc.returncode not in _CLEAN_EXIT_STATUSES
-    ):
+    if _may_have_cut_a_command(outcome, proc.returncode, monitor.io_error):
         note()
     pages = _find_pages(job)
     if outcome is _Outcome.CANCELLED:
@@ -123,6 +123,18 @@ def run_scan(  # noqa: PLR0913
     if outcome is _Outcome.FAILED:
         raise ScanError(f"scanimage failed: {monitor.failure}", pages=pages)
     return _interpret(pages, proc.returncode, monitor.tail_text)
+
+
+def _may_have_cut_a_command(outcome: _Outcome, returncode: int, io_error: bool) -> bool:
+    """True if this ending is evidence that a command was cut short (see ``unclean``).
+
+    An I/O error, said on stderr or as exit status 9, is. So is a scanimage that died of a signal
+    it was not sent (only when it exited on its own: after cancel, timeout or fail-fast the
+    SIGTERM was ours; a SIGKILL after the grace is noted where it is sent). A status reply is not.
+    """
+    if io_error or returncode == SANE_STATUS_IO_ERROR:
+        return True
+    return outcome is _Outcome.EXITED and returncode < 0
 
 
 def _unclean_noter(job: ScanJob) -> Callable[[], None]:

@@ -39,7 +39,7 @@ DRAIN_WAIT_MS = 50
 MAX_DRAIN_READS = 32
 FILLER_REPLY_WAIT_MS = 300
 OUT_BUDGET_S = 15.0  # how long a scanner may refuse an OUT (it is waking up) before it is "stuck"
-RETRY_NAP_S = 0.001
+RETRY_NAP_S = 0.001  # an OUT refused at once is offered again after this long
 SLOW_NOTICE_S = 2.0  # a check that takes longer than this tells the caller it is waiting
 
 _sleep = time.sleep
@@ -108,10 +108,14 @@ class _Conversation:
         rest = data
         while rest:
             self.check_cancel()
-            rest = rest[self._write(rest) :]
+            began = self._clock()
+            taken = self._write(rest)
+            rest = rest[taken:]
             if rest and self._clock() >= deadline:
                 logger.debug("the scanner took no more bytes for %g s", OUT_BUDGET_S)
                 raise ScannerStuckError(NO_ANSWER_MESSAGE)
+            if rest and taken == 0 and self._clock() - began < RETRY_NAP_S:
+                _sleep(RETRY_NAP_S)  # refused at once: pause, so it cannot become a busy loop
 
     def _write(self, data: bytes) -> int:
         try:

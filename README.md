@@ -36,10 +36,12 @@ uv run ffscan process page-*.png --out ~/Scans --album "Family Trips" --feed fac
   a scanner that is waking up is given about 15 seconds). A scanner that a failed send left
   half-way through a command, which then swallows every byte, is freed with a little padding and
   `-v` says "scanner was stuck; freed it". The padding is only sent when `ffscan` itself left a
-  note that its last scan on this USB address ended badly (a scanimage error, or a scanimage that
-  had to be killed; the note is a small file, `scanner-unclean`, in `$XDG_STATE_HOME/fastfoto-linux`
-  or `~/.local/state/fastfoto-linux`, and a scanner that answers clears it). A scanner that is
-  silent without such a note may be busy with another device over Wi-Fi, so nothing is sent to it:
+  note that its last scan on this USB address ended badly: an I/O error, a scanimage that had to
+  be killed, or one that died of a signal (a busy, jammed or cover-open reply does not count). The
+  note is a small file, `scanner-unclean`, in `$XDG_STATE_HOME/fastfoto-linux` or
+  `~/.local/state/fastfoto-linux`; it is ignored after a reboot or after 24 hours, and a scanner
+  that answers clears it. A scanner that is silent without such a note may be busy with another
+  device over Wi-Fi, so nothing is sent to it:
   "The scanner isn't answering. It may be busy with another device, or stuck — switch it off and
   on, then try again." (exit 3). `FF680W_FORCE_UNSTICK=1` sends the padding without a note; use it
   only as a last resort, when you know nothing else is using the scanner. One that still does not

@@ -2,7 +2,8 @@
 
 A scanner that stays silent is only sent filler when there is evidence that the silence is the
 stuck session of our own failed send: a note (see ``unclean``) that our last scan on this very USB
-address ended abnormally. Without it the silence may be another device's session, over Wi-Fi.
+address ended in an I/O error, a kill or a crash. Without it the silence may be another
+device's session, over Wi-Fi.
 """
 
 import logging

@@ -21,10 +21,12 @@ HOST = "203.0.113.7"  # TEST-NET-3: documentation addresses only
 # would use. They all refuse until a test installs a fake.
 _TRANSPORT_NAMES = {
     "fastfoto_linux.cli.cmd_scan": ("resolve_target", "run_scan"),
+    "fastfoto_linux.cli.cmd_doc": ("resolve_target", "run_scan"),
     "fastfoto_linux.cli.cmd_devices": ("find_usb_scanners",),
     "fastfoto_linux.scanner": ("resolve_target", "run_scan", "find_usb_scanners"),
     "fastfoto_linux.scanner.run": ("run_scan",),
     "fastfoto_linux.session.run": ("run_scan", "check_scanner"),
+    "fastfoto_linux.session.documents": ("run_scan", "check_scanner"),
     "fastfoto_linux.scanner.precheck": ("check_scanner", "open_scanner"),
     "fastfoto_linux.scanner.libusb": ("open_scanner",),
     "fastfoto_linux.scanner.target": ("resolve_target",),

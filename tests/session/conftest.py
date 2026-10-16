@@ -11,7 +11,9 @@ from fastfoto_linux.pipeline.sides import BackPolicy
 from fastfoto_linux.scanner import ScanTarget
 from fastfoto_linux.session import RawPolicy, ScanRequest, Stage, run_session
 from fastfoto_linux.session import raw as session_raw
+from tests import _fake_ocrmypdf as fake_ocr
 from tests.cli.fakes import DEVICE, FakeTransport, refuse
+from tests.documents.scan_fakes import DocTransport
 from tests.process_helpers import settings_for
 
 STAMP = "20261013T230000Z"
@@ -23,6 +25,8 @@ def no_hardware(monkeypatch: pytest.MonkeyPatch) -> None:
     """The real scan and check are what a session uses unless a test hands it another one."""
     monkeypatch.setattr("fastfoto_linux.session.run.run_scan", refuse)
     monkeypatch.setattr("fastfoto_linux.session.run.check_scanner", refuse)
+    monkeypatch.setattr("fastfoto_linux.session.documents.run_scan", refuse)
+    monkeypatch.setattr("fastfoto_linux.session.documents.check_scanner", refuse)
 
 
 @pytest.fixture(autouse=True)
@@ -33,6 +37,18 @@ def fixed_stamp(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.fixture
 def transport() -> FakeTransport:
     return FakeTransport()
+
+
+@pytest.fixture
+def doc_transport() -> DocTransport:
+    return DocTransport()
+
+
+@pytest.fixture
+def no_real_ocr(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A document session never runs a real ``ocrmypdf``, even on a machine that has one
+    (the document tests ask for this one with ``usefixtures``)."""
+    fake_ocr.no_ocr_on_path(tmp_path_factory.mktemp("no-ocr"), monkeypatch)
 
 
 @pytest.fixture

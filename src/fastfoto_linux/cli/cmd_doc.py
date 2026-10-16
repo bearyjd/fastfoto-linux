@@ -21,6 +21,7 @@ from fastfoto_linux.documents import (
     build_document,
     find_ocrmypdf,
 )
+from fastfoto_linux.scanner import resolve_target, run_scan  # noqa: F401 - used by doc scan
 
 OCR_INSTALL_HINT = (
     "sudo dnf install ocrmypdf tesseract-osd"  # OSD data is what --rotate-pages needs

@@ -23,6 +23,9 @@ _RAW_REASONS = {
 }
 
 
+CHECKING_SCANNER_TEXT = "Checking the scanner…"
+
+
 @dataclass(frozen=True)
 class Banner:
     """A message for the top of the page; ``kind`` is error, warning, info or positive."""
@@ -46,11 +49,15 @@ def error_text(error: BaseException) -> str:
     return f"{type(error).__name__}: {error}"
 
 
-def progress_text(state: State, pages: int, photos: int) -> str:
-    """ "Scanning page N" / "Processing photo N" while busy, empty otherwise."""
+def progress_text(state: State, pages: int, photos: int, *, checking: bool = False) -> str:
+    """ "Scanning page N" / "Processing photo N" while busy, empty otherwise.
+
+    ``checking``: the scanner is being checked before the scan starts (only while SCANNING).
+    """
+    scanning = CHECKING_SCANNER_TEXT if checking else f"Scanning page {pages + 1}"
     return {
         State.CHECKING: "Looking for the scanner…",
-        State.SCANNING: f"Scanning page {pages + 1}",
+        State.SCANNING: scanning,
         State.PROCESSING: f"Processing photo {photos + 1}",
         State.CANCELLING: "Cancelling…",
     }.get(state, "")

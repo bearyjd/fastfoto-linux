@@ -21,6 +21,24 @@ _SANE_STATUS_EOF = 5
 _PAGE_DONE_STATUSES = frozenset({_SANE_STATUS_GOOD, _SANE_STATUS_EOF})
 # Printed by scanimage.c in batch mode, e.g. "Scanned page 3. (scanner status = 0)".
 _SCANNED_PAGE = re.compile(r"Scanned page ([0-9]+)\. \(scanner status = ([0-9]+)\)")
+# Printed when a batch step fails: "scanimage: sane_start: <sane_strstatus text>". Only the texts of
+# the error statuses count, so a status that is not one (out of documents: the normal end of a
+# batch; cancelled; end of file) or text in another language never stops the wait early.
+_SANE_FAILURE = re.compile(r"scanimage: (sane_(?:start|read): (.+))")
+# SANE_STATUS_IO_ERROR: the only error that says a command may have been cut short.
+_IO_ERROR_TEXT = "Error during device I/O"
+_ERROR_STATUS_TEXTS = frozenset(
+    {
+        "Operation not supported",
+        "Device busy",
+        "Invalid argument",
+        "Document feeder jammed",
+        "Scanner cover is open",
+        _IO_ERROR_TEXT,
+        "Out of memory",
+        "Access to resource has been denied",
+    }
+)
 
 
 class StderrMonitor:
@@ -41,6 +59,8 @@ class StderrMonitor:
         self._pending_pages: deque[int] = deque()
         self._tail: deque[str] = deque(maxlen=STDERR_TAIL_LINES)
         self.at_eof = False
+        self.failure: str | None = None  # the first sane_start/sane_read error scanimage printed
+        self.io_error = False  # any sane_start/sane_read line said "Error during device I/O"
 
     def __enter__(self) -> "StderrMonitor":
         return self
@@ -103,6 +123,16 @@ class StderrMonitor:
         if not line:
             return
         self._tail.append(line)
+        self._note_failure(line)
         match = _SCANNED_PAGE.search(line)
         if match and int(match.group(2)) in _PAGE_DONE_STATUSES:
             self._pending_pages.append(int(match.group(1)))
+
+    def _note_failure(self, line: str) -> None:
+        failure = _SANE_FAILURE.fullmatch(line)
+        if not failure or failure.group(2) not in _ERROR_STATUS_TEXTS:
+            return
+        if self.failure is None:
+            self.failure = failure.group(1)
+        if failure.group(2) == _IO_ERROR_TEXT:
+            self.io_error = True

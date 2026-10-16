@@ -1,5 +1,6 @@
 """A photo saved whole shows in the results grid with a visible "Not processed" label."""
 
+import threading
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -113,6 +114,44 @@ def test_the_heading_counts_photos_and_the_one_needing_a_check_separately(
     assert bridge.photosHeading == "Photos (2), 1 photo needs checking"
     heading = child(window, "photosHeading")
     assert heading.property("text") == "Photos (2), 1 photo needs checking"
+
+
+def checked_then_scripted(out: Path, release: threading.Event):
+    """The scan above, preceded by a scanner check that runs long (CHECKING, then WAITING)."""
+    scan = scripted_scan(out)
+
+    def session(request: Any, **hooks: Any) -> SessionResult:
+        hooks["on_stage"](Stage.CHECKING)
+        hooks["on_stage"](Stage.WAITING)
+        release.wait(timeout=10)
+        return scan(request, **hooks)
+
+    return session
+
+
+def test_a_slow_scanner_check_and_a_sheet_saved_whole_show_in_the_same_run(
+    make_bridge: Any, open_window: Any, messages: list[str], out: Path
+) -> None:
+    release = threading.Event()
+    bridge = make_bridge(session=checked_then_scripted(out, release))
+    window, warnings = open_window(bridge)
+    ready(bridge)
+    bridge.startScan()
+    wait_until(lambda: bridge.progressText == "Checking the scanner…", "the check to be shown")
+    settle()  # the WAITING stage that follows changes neither the state nor the text
+    assert bridge.state == "scanning"
+    assert bridge.progressText == "Checking the scanner…"
+    assert bridge.bannerText == ""
+    release.set()
+    wait_until(lambda: bridge.state == "done", "the scan to finish")
+    settle()
+    assert bridge.progressText == ""
+    assert bridge.bannerKind == "warning"
+    assert "1 photo needs checking" in bridge.bannerText
+    assert "Photo 2 of 3 fed" in bridge.bannerText
+    assert child(window, "photosHeading").property("text") == "Photos (2), 1 photo needs checking"
+    assert warnings == []
+    assert messages == []
 
 
 def lone_back_scan(out: Path):

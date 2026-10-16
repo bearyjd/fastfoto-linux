@@ -24,11 +24,19 @@ from fastfoto_linux.scanner import (
     resolve_target,
     run_scan,
 )
-from fastfoto_linux.session import RawPolicy, RawReason, ScanRequest, SessionResult, run_session
+from fastfoto_linux.session import (
+    RawPolicy,
+    RawReason,
+    ScanRequest,
+    SessionResult,
+    Stage,
+    run_session,
+)
 
 logger = logging.getLogger(__name__)
 
 CONFIG_DIR_PREFIX = "ffscan-sane-"
+WAITING_TEXT = "Waiting for the scanner to answer\u2026"
 
 
 def add_parser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
@@ -77,7 +85,9 @@ def _scan_into(
         raw_policy=_raw_policy(args),
         raw_parent=root,
     )
-    session = run_session(request, on_page=_log_page, scan=run_scan, process=process_pages)
+    session = run_session(
+        request, on_page=_log_page, on_stage=_announce_stage, scan=run_scan, process=process_pages
+    )
     try:
         if session.process is not None:
             print_summary(session.process)
@@ -118,6 +128,13 @@ def _report_kept(session: SessionResult) -> None:
             print(f"raw pages kept in: {kept}")
         else:
             print(f"ffscan: raw pages kept in {kept}", file=sys.stderr)
+
+
+def _announce_stage(stage: Stage) -> None:
+    """One line when the check waits for a slow scanner, so the wait is not taken for a hang."""
+    if stage is Stage.WAITING:
+        with contextlib.suppress(OSError):  # a hung-up terminal must not stop the scan
+            print(WAITING_TEXT, file=sys.stderr)
 
 
 def _log_page(number: int) -> None:

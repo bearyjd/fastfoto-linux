@@ -117,6 +117,7 @@ class Controller:
         self._disk_errors: dict[str, str] = {}
         self._disk_pending: DiskKey | None = None  # the folder check we are waiting for
         self._scan_when_checked = False  # ... and it is the one that starts a scan
+        self._checking_scanner = False  # the scan is in its check of the scanner
         self._set_form(form or ScanForm(), disk=disk_check is None)
 
     # -- what the page shows -------------------------------------------------------------
@@ -144,7 +145,9 @@ class Controller:
 
     @property
     def progress_text(self) -> str:
-        return progress_text(self._state, self._pages, len(self._photos))
+        return progress_text(
+            self._state, self._pages, len(self._photos), checking=self._checking_scanner
+        )
 
     @property
     def photos(self) -> tuple[PhotoItem, ...]:
@@ -323,6 +326,7 @@ class Controller:
             None if self._destination is None else str(Path(self._destination).parent)
         )
         self._pages = 0
+        self._checking_scanner = False
         self._photos = ()
         self._banner = None
         self._result = None
@@ -406,13 +410,21 @@ class Controller:
 
     def on_stage(self, stage: Stage) -> None:
         if stage is Stage.PROCESSING and self._state is State.SCANNING:
+            self._checking_scanner = False
             self._state = transition(self._state, State.PROCESSING)
+            self._changed()
+        elif stage is Stage.CHECKING and self._state is State.SCANNING:
+            self._checking_scanner = True
+            self._changed()
+        elif stage is Stage.SCANNING and self._checking_scanner:
+            self._checking_scanner = False
             self._changed()
 
     def on_page(self, number: int) -> None:
         if self._state not in _REPORTING:
             return self._drop("page")
         self._pages = number
+        self._checking_scanner = False
         self._changed()
 
     def on_photo(self, files: WrittenFiles) -> None:
@@ -425,6 +437,7 @@ class Controller:
         if self._state not in _REPORTING:
             return self._drop("result")
         final = final_state(result)
+        self._checking_scanner = False
         self._state = transition(self._state, final)
         self._result = result
         self._banner = result_banner(final, result)
@@ -436,6 +449,7 @@ class Controller:
         if self._state not in (State.CHECKING, *_REPORTING):
             return self._drop("error")
         lost = _lost(error)
+        self._checking_scanner = False
         if self._state is State.CHECKING or (lost and self._state is State.SCANNING):
             self._set_scanner(error)
             self._state = transition(self._state, State.NO_SCANNER)

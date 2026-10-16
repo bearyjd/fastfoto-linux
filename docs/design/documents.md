@@ -172,19 +172,16 @@ What the first pull request settled where the specification left room.
   holds an ink-sized cluster that is neither blank white nor backing; blank white is less than
   12 levels darker than the tail's white. On a colour page backing is a backing-coloured area
   joined to a side of the strip; a backing-coloured note in the middle of a strip is not.
-  A grey page has no hue, so its backing is the grey of the backing colour within the same
-  distance, and that is also the tone of pastel paper and of a pale slip, wherever they lie: a
-  pastel margin is backing grey in every row from the top of the frame down, and a slip flush
-  with an edge of the frame is joined to the side just as backing is. Neither the join to a
-  side nor a column of backing grey tells backing from them, so a backing grey counts only in a
-  row that is backing across the whole width, which no slip or margin is. (Such a row seldom
-  occurs in a cut strip, since the tail begins below the backing band; the rule is kept as the
-  plain statement of what backing across the frame is.) Any other backing grey in a strip is
-  content. Beside a receipt the backing runs on below the paper, in columns that are not white,
-  so a grey receipt keeps its tail: a missed trim, accepted (a missed trim costs nothing, a cut
-  slip costs the scan) and the reason `ffscan doc scan` will scan in colour and make the grey
-  page after trimming.
-  Pixels within 2 px of both white and backing (the blur of an edge between
+  A grey page has no hue, so nothing tells its backing from pastel paper or a pale slip, which
+  have the same grey wherever they lie: a pastel margin is backing grey in every row from the top
+  of the frame down, and a slip flush with an edge of the frame is joined to the side just as
+  backing is. Neither the join to a side nor a column of backing grey tells backing from them, so
+  a grey page has no backing: only blank white is exempt, and any other ink-sized cluster, backing
+  grey included, is content. Beside a receipt the backing runs on below the paper, in columns
+  that are not white, so a grey receipt keeps its tail: a missed trim, accepted (a missed trim
+  costs nothing, a cut slip costs the scan) and the reason `ffscan doc scan` will scan in colour
+  and make the grey page after trimming.
+  On a colour page, pixels within 2 px of both white and backing (the blur of an edge between
   them) are neither a note nor content, but a stroke on a slip borders only one of them. A
   missed trim costs nothing, so the check errs towards keeping, and a dark dot just under the
   cluster size in the tail keeps the tail. The cluster size is 0.3 mm rounded up to whole pixels (3 at 200 dpi, 8 at

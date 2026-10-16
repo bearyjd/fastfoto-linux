@@ -3,7 +3,7 @@
 Only the white tail below the paper is ever cut from a grey page, never a side. Its last check
 must not take a pale slip, a sticky note or a pastel margin for backing, however it lies (flush
 with an edge of the frame, with the edge of a narrow receipt, or under a margin of pastel paper):
-a backing-grey pixel is no content only in a row that is backing across the whole width. The
+a grey page has no backing, so a cluster of backing grey is content. The
 price is a missed trim, accepted and documented: beside a narrow receipt the backing grey runs
 down the whole frame, so a grey receipt keeps its tail.
 """
@@ -13,7 +13,6 @@ from dataclasses import replace
 import numpy as np
 import pytest
 
-from fastfoto_linux.documents import trim
 from fastfoto_linux.documents.trim import trim_page
 from tests.doc_synth import BACKING_RGB, LETTER_MM, Scene, paper_scene, with_text
 from tests.documents.helpers import grey_page
@@ -151,20 +150,8 @@ def test_pencil_on_a_tall_slip_flush_with_an_edge_is_never_cut_from_a_grey_page(
     on: str, pencil: int
 ) -> None:
     """A slip that starts high up is backing grey over many rows above the strip, and still no
-    backing: only a row that is backing across the whole width counts."""
+    backing: a grey page has none."""
     drawn = flush_slip(on, "left", SLIPS["pale-blue"], pencil=pencil, top_mm=TALL_SLIP_TOP_MM)
     plain = flush_slip(on, "left", SLIPS["pale-blue"], pencil=None, top_mm=TALL_SLIP_TOP_MM)
     result = trim_page(grey_page(drawn))
     assert changed_pixels_cut_off(result, drawn.image, plain.image) == 0
-
-
-def test_a_row_that_is_backing_across_the_whole_width_is_no_content_in_a_grey_strip() -> None:
-    """The one place backing grey is exempt. Such a row seldom lies in a cut strip (the tail begins
-    below the backing band), so the last check is asked about the strip directly; a slip of the
-    same grey, which spans a few columns only, is content."""
-    band = np.full((mm(10), mm(60)), 255, np.uint8)
-    band[mm(3) : mm(7)] = trim._PRIOR_GREY
-    slip = np.full_like(band, 255)
-    slip[:, mm(10) : mm(30)] = trim._PRIOR_GREY
-    assert trim._holds_content(band, 255.0, DPI) is False
-    assert trim._holds_content(slip, 255.0, DPI) is True

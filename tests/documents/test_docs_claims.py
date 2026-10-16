@@ -42,7 +42,7 @@ def test_what_a_grey_page_trims_is_described(name: str) -> None:
     text = " ".join(DOCUMENTS[name].split())
     assert "trimmed at the bottom only, never at a side" in text
     assert "the white tail only, never a side" in text
-    assert "backing across the whole width" in text
+    assert "a grey page has no backing" in text
     assert "a grey receipt keeps its tail" in text
     for stale in STALE_GREY_CLAIMS:
         assert stale not in text

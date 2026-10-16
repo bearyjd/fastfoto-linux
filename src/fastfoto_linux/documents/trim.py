@@ -36,16 +36,15 @@ hangs below the paper would go with it. A cut is cancelled, and its strip kept, 
 a cluster of ink size that is neither blank white nor backing. Blank white is less than 12 levels
 darker than the tail's white. On a colour page backing is an area of backing colour that is joined
 to a side of the strip. On a grey page nothing but the tone tells backing, and a pale slip or
-pastel paper has it wherever it lies, so a grey within the same distance of the backing's grey
-counts as backing only in a row that is backing across the whole width. Where the backing beside a
-receipt runs on below the paper, the strip holds backing grey that is not in such a row, so the
-tail there is kept. Pixels where backing and
-white blend, at the edge of a blurred scan, are no content either. What is cut is therefore what
-is certainly empty, blank white or the scanner's backing, with the limits of that test: on a
-colour page a note of the backing's colour that touches the side of its strip cannot be told from
-backing, a stroke under 3 pixels wide within 2 pixels of both white and backing is taken for the
-blur of an edge, and a stroke 1 pixel wide is diluted to a third of its depth by the blur (on a
-slip only 5 levels below the tail's white it must be about 21 levels darker than the slip to
+pastel paper has it wherever it lies, so a grey page has no backing: only blank white is exempt,
+and a cluster of backing grey keeps the strip. Where the backing beside a receipt runs on below the
+paper, the strip holds backing grey, so the tail there is kept. On a colour page, pixels where
+backing and white blend, at the edge of a blurred scan, are no content either. What is cut is
+therefore what is certainly empty, blank white or the scanner's backing, with the limits of that
+test: on a colour page a note of the backing's colour that touches the side of its strip cannot be
+told from backing, a stroke under 3 pixels wide within 2 pixels of both white and backing is taken
+for the blur of an edge, and a stroke 1 pixel wide is diluted to a third of its depth by the blur
+(on a slip only 5 levels below the tail's white it must be about 21 levels darker than the slip to
 count). A page that would be under 10 mm tall or wide after trimming (the least ``find_marks``
 accepts) is kept whole.
 
@@ -95,10 +94,6 @@ FRINGE_PX = 2  # where backing and white blend, a pixel lies this close to both
 GUARD_BLUR_PX = 3  # the colour tests run on a copy blurred over this many pixels (noise, dots)
 
 _PRIOR = np.asarray(BACKGROUND_PRIOR_RGB, dtype=np.float32)
-# The backing as a grey page holds it (a grey page has no hue to tell backing by).
-_PRIOR_GREY = int(
-    cv2.cvtColor(np.round(_PRIOR).astype(np.uint8).reshape(1, 1, 3), cv2.COLOR_RGB2GRAY)[0, 0]
-)
 logger = logging.getLogger(__name__)
 
 
@@ -240,13 +235,6 @@ def _lowest_ink(page: LoadedPage, start: int) -> int | None:
     return start + int((boxes[:, cv2.CC_STAT_TOP] + boxes[:, cv2.CC_STAT_HEIGHT]).max())
 
 
-def _backing_tone(strip: np.ndarray) -> np.ndarray:
-    """Which pixels have the backing's colour (on a grey page, its grey, as far from it)."""
-    if strip.ndim == RGB_NDIM:
-        return _is_backing(strip)
-    return np.abs(strip.astype(np.float32) - _PRIOR_GREY) <= BACKGROUND_PRIOR_TOLERANCE
-
-
 def _joined_to_sides(tone: np.ndarray) -> np.ndarray:
     """The part of ``tone`` that is connected to the left or the right edge of the array: the
     backing runs in from the side of the frame, a note lying in the strip does not."""
@@ -262,14 +250,12 @@ def _backing_pixels(strip: np.ndarray) -> np.ndarray:
     """Which pixels of ``strip`` are the scanner's backing and so need no keeping.
 
     On a colour page: backing-coloured and joined to a side of the strip. A grey page has no hue,
-    and a pale slip or a pastel margin looks just like the backing wherever it lies; there a
-    backing-grey pixel counts only in a row that is backing across the whole width.
+    and a pale slip or a pastel margin looks just like the backing wherever it lies, so on a grey
+    page nothing is backing.
     """
-    tone = _backing_tone(strip)
-    if strip.ndim == RGB_NDIM:
-        return _joined_to_sides(tone)
-    across = tone.mean(axis=1) >= COLUMN_BACKING_SHARE
-    return tone & across[:, None]
+    if strip.ndim != RGB_NDIM:
+        return np.zeros(strip.shape, dtype=bool)
+    return _joined_to_sides(_is_backing(strip))
 
 
 def _blended(white: np.ndarray, backing: np.ndarray) -> np.ndarray:

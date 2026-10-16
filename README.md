@@ -131,11 +131,10 @@ uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr o
   dpi): if it holds a cluster of 0.3 mm or more that is neither blank
   white nor backing (less than 12 levels darker than the tail's white; a pale slip or sticky
   note hanging below the paper, with pencil on it, is neither), that cut is cancelled and the
-  strip stays. Backing there is backing-coloured and joined to a side of the strip; on a grey
-  page, where pastel paper and a pale slip look just like it, a backing grey counts only in a row
-  that is backing across the whole width. The limits of that check: on a colour page a note of
-  the backing's colour that touches the side of its strip cannot be told from backing, a stroke
-  under 3 pixels wide within 2 pixels of both white and backing is taken for the blur of an edge, and a
+  strip stays. Backing there is backing-coloured and joined to a side of the strip; a grey page
+  has no backing, since pastel paper and a pale slip look just like it: only blank white is
+  exempt. The limits of that check: on a colour page a note of the backing's colour that touches
+  the side of its strip cannot be told from backing, a stroke under 3 pixels wide within 2 pixels of both white and backing is taken for the blur of an edge, and a
   stroke 1 pixel wide is diluted to a third of its depth by the blur, so on a slip only 5 levels
   below the tail's white it must be about 21 levels darker than the slip to count. A page
   that would be under 10 mm tall or wide after trimming is kept whole instead of stopping the

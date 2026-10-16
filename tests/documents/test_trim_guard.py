@@ -13,9 +13,9 @@ import numpy as np
 import pytest
 
 from fastfoto_linux.documents.trim import Trimmed, trim_page
-from tests.doc_synth import LETTER_MM, Scene, paper_scene, with_tinted_block
+from tests.doc_synth import BACKING_RGB, LETTER_MM, Scene, paper_scene, with_text, with_tinted_block
 from tests.documents.helpers import colour_page, grey_page
-from tests.documents.trim_helpers import DPI, mm, receipt
+from tests.documents.trim_helpers import DPI, RECEIPT_MM, mm, receipt
 
 FRAME_MM = (LETTER_MM[0], 297.0)  # the scanner's frame is longer than Letter
 GREEN = (70, 100, 60)
@@ -113,3 +113,18 @@ def test_the_soft_edge_between_backing_and_the_tail_does_not_stop_the_tail_cut(m
     result = trim_page(page)
     assert result.bottom > 0
     assert result.page.pixels.shape[0] <= scene.paper_end + mm(6)
+
+
+@pytest.mark.parametrize("shift", [-12, -6, 6, 12])
+def test_a_grey_receipt_on_backing_a_little_off_the_measured_grey_still_loses_its_tail(
+    shift: int,
+) -> None:
+    """On a grey page the backing is the measured colour's grey within the same distance."""
+    backing = tuple(channel + shift for channel in BACKING_RGB)
+    scene = paper_scene(
+        dpi=DPI, paper_mm=RECEIPT_MM, scan_mm=LETTER_MM, offset_mm=60.0, backing=backing
+    )
+    for row in range(8):
+        scene = with_text(scene, 6, 10 + row * 20, 10)
+    result = trim_page(grey_page(scene))
+    assert scene.paper_end <= result.page.pixels.shape[0] <= scene.paper_end + mm(5)

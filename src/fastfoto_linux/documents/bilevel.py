@@ -12,6 +12,10 @@ A pixel turns black in one of two ways:
 Shading lighter than ``DARK_LEVEL`` is therefore background: a filled grey box comes out white,
 and text inside it stays black. A one-bit page cannot hold the grey, and an outline or a solid
 fill would hide or damage what is written on it.
+
+Limit: the first rule is absolute, so a fill darker than DARK_LEVEL is black all the way
+through and dark text printed on it is lost in the black area (light text on it stays white).
+Such a page is better scanned in grey or colour.
 """
 
 import cv2

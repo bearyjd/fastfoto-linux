@@ -44,7 +44,7 @@ ffscan doc process PAGE.png ... --out DIR [--mkdir] [same output options]
    **full scan length** (the scanner pads the page after the paper ends). Never a fixed paper size: Letter
    would cut Legal pages.
 2. **Load** each page: RGB, 8-bit grey or 1-bit PNG — a loader of its own (the photo loader is RGB-only).
-3. **Trim** only what is certainly not paper: the white tail after the paper end and, where clearly
+3. **Trim** only what is certainly empty (blank white or the scanner's backing): the white tail after the paper end and, where clearly
    present, the scanner's blue-grey backing strip along an edge. Letter is the scanner's full width, so
    side edges are usually absent. **When unsure, trim nothing** — never cut content.
 4. **Blank pages** (mainly duplex backs): ignore a ~5 mm margin and any backing strip; a page is blank when
@@ -126,7 +126,7 @@ What the first pull request settled where the specification left room.
   count such a row as tail. Where the 10 mm above are as white as the tail, or less than 4
   levels darker, nothing is trimmed; below solid content (a photo, a table) the empty paper is
   that close to the tail's white and is trimmed with it, which is why ink is looked for
-  separately. **Ink** is a cluster of 0.3 mm or more (at least 2 pixels) whose darkest channel
+  separately. **Ink** is a cluster of 0.3 mm or more (rounded up to whole pixels, at least 2) whose darkest channel
   is 12 levels or more below the tail's white (the median of the last 2 mm), in any tail column
   of the would-be tail, found by connected components on the whole region, not on sampled rows
   and not through the row tones, which cannot see one short word (a lone page number is under
@@ -149,10 +149,28 @@ What the first pull request settled where the specification left room.
   other colour (a blue-grey of (140,160,185), slate, navy) is not backing and is never cut; one
   printed edge to edge and full height within the tolerance of the backing colour (a pale
   blue-grey such as (190,200,210), 18 from it, and 40 levels darker than the paper) would be cut
-  up to its first column that is not, and that is the one known way to lose printed content. The
+  up to its first column that is not, and that is the known way to lose printed content (see the last check, below, for the other limits). The
   measured colour may glow brighter in the first millimetres of the frame (the photo cropper
   skips them); a strip whose edge columns are outside the tolerance is simply not recognised,
   which loses only a trim.
+
+  **Last check.** Every strip a trim would remove (the tail, each side strip) is examined once
+  more over all of its columns and rows, because the tail is judged in the columns that are
+  white in the last 2 mm while the cut spans every column: a pale slip or sticky note hanging
+  below the paper, with pencil 15 to 40 levels darker on it, is in none of those columns. The
+  cut is cancelled when the strip holds an ink-sized cluster that is neither blank white nor
+  backing; blank white is less than 12 levels darker than the tail's white. Backing is a
+  backing-coloured area joined to a side of the strip; a backing-coloured note in the middle of
+  a strip is not. A grey page has no hue, so its backing is the grey of the backing colour
+  within the same distance, and the join to a side is what tells it from a pale slip. Pixels
+  within 2 px of both white and backing (the blur of an edge between them) are neither a note
+  nor content, but a stroke on a slip borders only one of them. A missed trim costs nothing, so
+  the check errs towards keeping. The cluster size is 0.3 mm rounded up to whole pixels (3 at
+  200 dpi, 8 at 600 dpi, never under 2), because a cluster shorter than 0.3 mm is dust. Known
+  limits: a note of the backing's colour that touches the side of its strip cannot be told from
+  backing, and a stroke under 3 px wide that lies within 2 px of both white and backing is taken
+  for the blur of an edge. A page that would be under 10 mm tall or wide after trimming is kept
+  whole (logged at debug) so that one such page does not abort the run.
 - **Blank pages.** Marks are found on the darkest colour channel, shrunk to at most 150 dpi
   keeping the darkest pixel: a spot is a mark when it is 45 grey levels darker than the paper
   around it (measured against an 8 mm morphological closing, so strokes thinner than that are

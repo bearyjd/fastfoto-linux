@@ -74,11 +74,11 @@ uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr o
   that is treated as paper: a grey box comes out white, with its text still black. Dark shading
   is the limit: black text printed on a fill darker than 96 is lost in the black area (light
   text on it stays white), so scan such pages in grey or colour.
-- Only what is certainly not paper is trimmed; when in doubt nothing is cut. Below the paper that
-  is the scanner's white tail: flat rows at the bottom, 4 mm or longer and at least 4 levels
+- Only what is certainly empty is trimmed, blank white or the scanner's backing; when in doubt
+  nothing is cut. Below the paper that is the scanner's white tail: flat rows at the bottom, 4 mm or longer and at least 4 levels
   brighter than the 10 mm above them, of which 3 mm stay. Anything in the tail columns that is
-  12 or more levels darker than that white and 0.3 mm or larger (a lone page number, a faint
-  footer, a watermark) keeps its rows and 5 mm below it, as does every mark; only ink fainter
+  12 or more levels darker than that white and 0.3 mm or larger, in whole pixels rounded up (a lone
+  page number, a faint footer, a watermark) keeps its rows and 5 mm below it, as does every mark; only ink fainter
   than 12 levels, which cannot be told from paper texture, can be trimmed away with the empty
   margin under it. On colour pages it is also the scanner's own backing strip beside a narrow
   item such as a receipt: the blue-grey the photo cropper measured on real scans (RGB distance
@@ -87,6 +87,11 @@ uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr o
   levels brighter. A tilted receipt is therefore cut only up to its nearest corner. A sidebar
   printed in any other colour is never cut; one printed edge to edge, full height, within that
   distance of the backing colour (a pale blue-grey such as (190, 200, 210)) would be.
+  Every strip a trim would remove, the tail and each side strip, is then checked over all of its
+  columns: if it holds a cluster of 0.3 mm or more that is neither blank white nor backing (less
+  than 12 levels darker than the tail's white; a pale slip or sticky note hanging below the paper,
+  with pencil on it, is neither), that cut is cancelled and the strip stays. A page that would be
+  under 10 mm tall or wide after trimming is kept whole instead of stopping the run.
 - A page is blank only when it has no mark at all inside its 5 mm margin: dust, paper texture
   and faint show-through from the other side do not count, while a single short line, a
   signature, a lone page number or pencil at least about 45 grey levels darker than the paper

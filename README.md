@@ -32,12 +32,22 @@ uv run ffscan process page-*.png --out ~/Scans --album "Family Trips" --feed fac
   loaded face down by default (`--feed face-down`: the back is scanned first); use
   `--feed face-up` if yours are loaded the other way. `--simplex` scans fronts only.
 - Before each USB scan `scan` checks that the scanner answers (it says "Checking the scanner…" in
-  the app). A scanner that a failed send left half-way through a command, which then swallows
-  every byte, is freed with a little padding and `-v` says "scanner was stuck; freed it". One that
-  still does not answer, or that another program holds, stops the scan before scanimage starts
-  (exit 3: switch the scanner off and on). The check needs libusb and is skipped without it, for
-  `--net`, and with `FF680W_NO_PRECHECK=1`. scanimage stops waiting at its first real error
-  (I/O error, jam, cover open) and Cancel ends a hung scanimage after at most 5 seconds.
+  the app, and "Waiting for the scanner to answer…" on the terminal if that takes over 2 seconds;
+  a scanner that is waking up is given about 15 seconds). A scanner that a failed send left
+  half-way through a command, which then swallows every byte, is freed with a little padding and
+  `-v` says "scanner was stuck; freed it". The padding is only sent when `ffscan` itself left a
+  note that its last scan on this USB address ended badly (a scanimage error, or a scanimage that
+  had to be killed; the note is a small file, `scanner-unclean`, in `$XDG_STATE_HOME/fastfoto-linux`
+  or `~/.local/state/fastfoto-linux`, and a scanner that answers clears it). A scanner that is
+  silent without such a note may be busy with another device over Wi-Fi, so nothing is sent to it:
+  "The scanner isn't answering. It may be busy with another device, or stuck — switch it off and
+  on, then try again." (exit 3). `FF680W_FORCE_UNSTICK=1` sends the padding without a note; use it
+  only as a last resort, when you know nothing else is using the scanner. One that still does not
+  answer, or that another program holds, also stops the scan before scanimage starts (exit 3).
+  The check needs libusb and is skipped without it, for `--net`, and with `FF680W_NO_PRECHECK=1`.
+  scanimage runs in the C locale, so its error messages are the English ones the app recognises.
+  It stops waiting at its first real error (I/O error, jam, cover open); Cancel gives scanimage up
+  to 10 seconds to stop the scanner cleanly, then ends it.
 - `process` handles raw pages scanned earlier, in natural filename order.
 - Per photo it writes `Album_0001.jpg` (the original, turned upright by its faces), an enhanced
   copy `Album_0001_a.jpg` (colour restoration) and `Album_0001_b.jpg` when the back has

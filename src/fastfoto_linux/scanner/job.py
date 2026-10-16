@@ -17,6 +17,10 @@ DEFAULT_FILE_PREFIX = "page"
 _FILE_PREFIX = re.compile(r"[A-Za-z0-9_-]+")
 _LD_PRELOAD_SEPARATORS = re.compile(r"[\s:]")
 _SANE_CONFIG_DIR_ENV = "SANE_CONFIG_DIR"
+# scanimage's error texts are matched in English and its -y value needs a decimal point.
+_LOCALE_ENV = "LC_ALL"
+_LOCALE_VALUE = "C"
+_LANGUAGE_ENV = "LANGUAGE"  # glibc lets it override the locale's messages, so it must go
 
 
 class Source(StrEnum):
@@ -113,9 +117,12 @@ def build_env(
     ``shim`` is prepended to ``LD_PRELOAD``. ``sane_config_dir`` becomes ``SANE_CONFIG_DIR``
     (no trailing colon, so SANE does not also search the system config directory); when it is
     None any inherited ``SANE_CONFIG_DIR`` is removed, so a USB scan never silently uses a
-    stale network config.
+    stale network config. ``LC_ALL=C`` is set and ``LANGUAGE`` dropped, so that scanimage's error
+    texts come in English (they are matched as such) and a number is written with a decimal point.
     """
     env = dict(base_env)
+    env[_LOCALE_ENV] = _LOCALE_VALUE
+    env.pop(_LANGUAGE_ENV, None)
     if shim is not None:
         env["LD_PRELOAD"] = _with_preloaded(env.get("LD_PRELOAD", ""), validate_shim_path(shim))
     if sane_config_dir is None:

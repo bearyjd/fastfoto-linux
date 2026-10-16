@@ -23,6 +23,7 @@ from fastfoto_linux.cli.options import add_log_options
 from fastfoto_linux.library import stopping
 from fastfoto_linux.scanner import (
     NoDocumentsError,
+    ScannerDisconnectedError,
     ScannerInUseError,
     ScannerNotFoundError,
     ScannerStuckError,
@@ -74,7 +75,12 @@ def exit_code_for(error: Exception) -> int:
     if isinstance(error, CliError):
         return error.code
     if isinstance(
-        error, ScannerNotFoundError | ShimMissingError | ScannerStuckError | ScannerInUseError
+        error,
+        ScannerNotFoundError
+        | ShimMissingError
+        | ScannerStuckError
+        | ScannerInUseError
+        | ScannerDisconnectedError,
     ):
         return EXIT_SCANNER
     if isinstance(error, NoDocumentsError):

@@ -13,7 +13,7 @@ from collections.abc import Callable, Iterator
 from typing import Any
 
 from fastfoto_linux.scanner.errors import ScannerError, ScannerInUseError
-from fastfoto_linux.scanner.unstick import TransportError, UsbTransport
+from fastfoto_linux.scanner.unstick import DeviceGoneError, TransportError, UsbTransport
 from fastfoto_linux.scanner.usb import USB_PRODUCT_ID, USB_VENDOR_ID
 
 logger = logging.getLogger(__name__)
@@ -25,13 +25,13 @@ _LIBRARY_NAMES: tuple[str, ...] = ("libusb-1.0.so.0", "libusb-1.0.so")
 INTERFACE = 0
 ENDPOINT_OUT = 0x01
 ENDPOINT_IN = 0x82
-WRITE_TIMEOUT_MS = 1000
 # The FF-680W ignores an OUT that follows the end of an IN too closely (0.5 ms is enough).
 OUT_AFTER_IN_GAP_S = 0.003
 DESCRIPTOR_BYTES = 18
 _VENDOR_OFFSET = 8
 _PRODUCT_OFFSET = 10
 
+LIBUSB_ERROR_NO_DEVICE = -4
 LIBUSB_ERROR_BUSY = -6
 LIBUSB_ERROR_TIMEOUT = -7
 _ERROR_NAMES = {
@@ -110,6 +110,12 @@ def _declare(lib: Any) -> None:
 
 def _error_name(code: int) -> str:
     return _ERROR_NAMES.get(code, f"libusb error {code}")
+
+
+def _transfer_error(what: str, code: int) -> TransportError:
+    """The failure of a bulk transfer; a scanner that has left the bus is told apart."""
+    message = f"{what}: {_error_name(code)}"
+    return DeviceGoneError(message) if code == LIBUSB_ERROR_NO_DEVICE else TransportError(message)
 
 
 @contextlib.contextmanager
@@ -200,17 +206,20 @@ class _Transport:
         self._sleep = sleep
         self._last_in: float | None = None
 
-    def write(self, data: bytes, timeout_ms: int = WRITE_TIMEOUT_MS) -> int:
+    def write(self, data: bytes, timeout_ms: int) -> int:
+        """One bulk OUT of at most ``timeout_ms``; returns how many bytes went.
+
+        A timeout is not an error: the scanner may have taken part of ``data``, or none of it, and
+        the caller offers the rest again.
+        """
         self._wait_for_gap()
         buffer = ctypes.create_string_buffer(data, len(data))
         sent = ctypes.c_int(0)
         rc = self._lib.libusb_bulk_transfer(
-            self._handle, ENDPOINT_OUT, buffer, len(data), ctypes.pointer(sent), WRITE_TIMEOUT_MS
+            self._handle, ENDPOINT_OUT, buffer, len(data), ctypes.pointer(sent), timeout_ms
         )
-        if rc != 0 or sent.value != len(data):
-            raise TransportError(
-                f"bulk OUT: {_error_name(rc)} ({sent.value} of {len(data)} bytes sent)"
-            )
+        if rc not in (0, LIBUSB_ERROR_TIMEOUT):
+            raise _transfer_error("bulk OUT", rc)
         return sent.value
 
     def read(self, size: int, timeout_ms: int) -> bytes:
@@ -221,7 +230,7 @@ class _Transport:
         )
         self._last_in = self._clock()
         if rc not in (0, LIBUSB_ERROR_TIMEOUT):
-            raise TransportError(f"bulk IN: {_error_name(rc)}")
+            raise _transfer_error("bulk IN", rc)
         return bytes(buffer[: got.value])
 
     def _wait_for_gap(self) -> None:

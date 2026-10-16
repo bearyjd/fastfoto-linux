@@ -13,6 +13,7 @@ from enum import Enum, auto
 from pathlib import Path
 from typing import IO, cast
 
+from fastfoto_linux.scanner import unclean
 from fastfoto_linux.scanner.errors import (
     NoDocumentsError,
     OutputDirError,
@@ -21,21 +22,25 @@ from fastfoto_linux.scanner.errors import (
     ScanError,
 )
 from fastfoto_linux.scanner.job import ScanJob, build_argv
+from fastfoto_linux.scanner.precheck import usb_address
 from fastfoto_linux.scanner.stderr_monitor import StderrMonitor
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT_S = 30 * 60.0
-# After SIGTERM scanimage calls sane_cancel(); give it this long before SIGKILL. A scanimage that is
-# stuck in its exit path (it retries FIN for about a minute) ignores SIGTERM, so this is also how
-# long Cancel can take.
-TERMINATE_GRACE_S = 5.0
+# After SIGTERM scanimage calls sane_cancel(); give it this long before SIGKILL. A page that is
+# half-way through needs time to be cancelled, and nothing shows that less is enough. A scanimage
+# that is stuck in its exit path (it retries FIN for about a minute) ignores SIGTERM, so this is
+# also how long a user's Cancel can take.
+TERMINATE_GRACE_S = 10.0
 # After a scanimage error line the process is already going down: a shorter grace.
 FAIL_FAST_GRACE_S = 2.0
 # How often stderr reading wakes up to check the cancel event, the timeout and finished pages.
 POLL_INTERVAL_S = 0.1
 # SANE_Status value (sane/sane.h); scanimage passes the status straight to exit().
 SANE_STATUS_NO_DOCS = 7
+# The exit statuses of a scanimage that ended as it should: all pages scanned, or out of documents.
+_CLEAN_EXIT_STATUSES = (0, SANE_STATUS_NO_DOCS)
 
 PopenFactory = Callable[..., "subprocess.Popen[bytes]"]
 ProgressCallback = Callable[[int], None]
@@ -83,6 +88,11 @@ def run_scan(  # noqa: PLR0913
     cover open...) is not waited out: the process is stopped with ``FAIL_FAST_GRACE_S`` and the
     error is raised at once. Running out of documents is the normal end of a batch, not an error.
 
+    When a scan on a USB scanner ends abnormally (a scanimage error, an error exit status, or a
+    scanimage that had to be killed) a note is left (see ``unclean``): it is the evidence that lets
+    the next pre-scan check free a scanner that our own failed send may have left stuck. A cancel
+    or a timeout that scanimage obeys leaves none.
+
     Raises OutputDirError / OutputNotEmptyError before anything is started, NoDocumentsError if
     the feeder was empty, ScanCancelledError after a cancel and ScanError for every other
     failure; the cancel and scan errors carry the pages finished before the failure.
@@ -91,14 +101,19 @@ def run_scan(  # noqa: PLR0913
         raise ScanCancelledError("scan cancelled before it started")
     _prepare_output_dir(job)
     proc = _start(popen, build_argv(job, scanimage), env)
+    note = _unclean_noter(job)
     try:
         deadline = None if timeout_s is None else time.monotonic() + timeout_s
         stderr_fd = cast("IO[bytes]", proc.stderr).fileno()  # stderr=PIPE was requested
         with proc, StderrMonitor(job, on_progress, stderr_fd) as monitor:
-            outcome = _supervise(proc, monitor, deadline, cancel)
+            outcome = _supervise(proc, monitor, deadline, cancel, note)
     except BaseException:  # incl. an interrupt that lands before the supervision starts
-        _stop(proc)  # scanimage runs in its own session: nothing else would stop it
+        _stop(proc, on_kill=note)  # scanimage runs in its own session: nothing else would stop it
         raise
+    if outcome is _Outcome.FAILED or (
+        outcome is _Outcome.EXITED and proc.returncode not in _CLEAN_EXIT_STATUSES
+    ):
+        note()
     pages = _find_pages(job)
     if outcome is _Outcome.CANCELLED:
         raise ScanCancelledError(_with_output("scan cancelled", monitor.tail_text), pages=pages)
@@ -108,6 +123,15 @@ def run_scan(  # noqa: PLR0913
     if outcome is _Outcome.FAILED:
         raise ScanError(f"scanimage failed: {monitor.failure}", pages=pages)
     return _interpret(pages, proc.returncode, monitor.tail_text)
+
+
+def _unclean_noter(job: ScanJob) -> Callable[[], None]:
+    """What to call when this scan ends abnormally: it leaves the note that lets the next
+    pre-scan check free the scanner. A network scanner has no USB address, so nothing."""
+    address = usb_address(job.device)
+    if address is None:
+        return lambda: None
+    return lambda: unclean.mark(*address)
 
 
 def _start(
@@ -131,16 +155,18 @@ def _supervise(
     monitor: StderrMonitor,
     deadline: float | None,
     cancel: threading.Event | None,
+    note: Callable[[], None],
 ) -> _Outcome:
     try:
         outcome = _watch(proc, monitor, deadline, cancel)
     except BaseException:  # incl. KeyboardInterrupt and a failing on_progress
-        _stop(proc)
+        _stop(proc, on_kill=note)
         raise
     if outcome is _Outcome.EXITED:
         monitor.finish()
     else:
-        _stop(proc, FAIL_FAST_GRACE_S if outcome is _Outcome.FAILED else TERMINATE_GRACE_S)
+        grace = FAIL_FAST_GRACE_S if outcome is _Outcome.FAILED else TERMINATE_GRACE_S
+        _stop(proc, grace, note)
         monitor.drain()  # what scanimage said while it was stopping
     return outcome
 
@@ -176,8 +202,15 @@ def _watch(
             return _Outcome.TIMED_OUT
 
 
-def _stop(proc: "subprocess.Popen[bytes]", grace_s: float | None = None) -> None:
-    """SIGTERM first (scanimage then cancels the scanner), SIGKILL after ``grace_s`` seconds."""
+def _stop(
+    proc: "subprocess.Popen[bytes]",
+    grace_s: float | None = None,
+    on_kill: Callable[[], None] | None = None,
+) -> None:
+    """SIGTERM first (scanimage then cancels the scanner), SIGKILL after ``grace_s`` seconds.
+
+    ``on_kill`` is called when SIGKILL was needed: the scanner may be left mid-command.
+    """
     grace = TERMINATE_GRACE_S if grace_s is None else grace_s
     proc.terminate()
     try:
@@ -186,6 +219,8 @@ def _stop(proc: "subprocess.Popen[bytes]", grace_s: float | None = None) -> None
         logger.warning("scanimage ignored SIGTERM for %g s; killing it", grace)
         proc.kill()
         proc.wait()
+        if on_kill is not None:
+            on_kill()
 
 
 def _interpret(pages: tuple[Path, ...], returncode: int, tail: str) -> ScanResult:

@@ -73,7 +73,13 @@ the front end inside a Flatpak sandbox. Setting it in a different shell does not
   is continued from where it stopped, with the same timeout per call, until all of it went, another
   error came, or `FF680W_OUT_FINISH_MS` has passed (measured from the first call). The gap is
   applied once, before the first call. IN transfers are never retried, other devices are left
-  alone, and a `NULL` `transferred` pointer is allowed (the total is then not reported).
+  alone, and a `NULL` `transferred` pointer is allowed (the total is then not reported). A call
+  that took nothing and came back at once is followed by a 1 ms nap, so a refusal that costs no
+  time cannot turn into a busy loop.
+- Finishing a send is **fail-closed**: it is done only for a device whose identity was read and
+  is the FF-680W. If the identity cannot be read (the libusb symbols are missing, or the call
+  fails) the send is not finished, because a retry that can hold one call for up to ten minutes
+  must not happen to a device that is not the FF-680W. (The gap, above, stays fail-open.)
 - `libusb_close` is wrapped to forget the handle, so a device opened later at a recycled handle
   address is identified afresh.
 - At most 16 handles are tracked at once. A 17th evicts the handle whose last IN is oldest (or that

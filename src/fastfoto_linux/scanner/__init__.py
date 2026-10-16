@@ -10,7 +10,9 @@ from fastfoto_linux.scanner.errors import (
     ScanCancelledError,
     ScanError,
     ScannerError,
+    ScannerInUseError,
     ScannerNotFoundError,
+    ScannerStuckError,
     ShimMissingError,
 )
 from fastfoto_linux.scanner.job import (
@@ -47,7 +49,9 @@ __all__ = [
     "ScanResult",
     "ScanTarget",
     "ScannerError",
+    "ScannerInUseError",
     "ScannerNotFoundError",
+    "ScannerStuckError",
     "ShimMissingError",
     "Source",
     "UsbScanner",

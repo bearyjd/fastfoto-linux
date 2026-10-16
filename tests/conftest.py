@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from fastfoto_linux.scanner import shim_trust
+from fastfoto_linux.scanner import libusb, precheck, shim_trust
 from tests._skips import scans_dir_from_env, skip_reason
 
 REAL_SCANS_DIR = scans_dir_from_env(os.environ, Path(__file__).parent.parent / "test-scans")
@@ -38,3 +38,15 @@ def shim_trust_root(
     """Test files live under /tmp, which anyone can write to, so the shim policy would refuse
     every one of them: its walk up the folders stops at pytest's own (private) base folder."""
     monkeypatch.setattr(shim_trust, "SHIM_TRUST_ROOT", tmp_path_factory.getbasetemp())
+
+
+@pytest.fixture(autouse=True)
+def no_scanner_precheck(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The check before a scan talks to the scanner over USB, and a real one may be plugged in.
+
+    Two independent locks: the check is switched off, and libusb cannot be found, so that code
+    which forgot the first still cannot open a device. A test that exercises the check removes
+    the first lock itself and hands it a fake transport or a fake library.
+    """
+    monkeypatch.setenv(precheck.SKIP_ENV_VAR, "1")
+    monkeypatch.setattr(libusb, "_LIBRARY_NAMES", ())

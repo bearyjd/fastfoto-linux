@@ -24,6 +24,7 @@ from fastfoto_linux.scanner import (
     Source,
     run_scan,
 )
+from fastfoto_linux.scanner.precheck import check_scanner
 from fastfoto_linux.session.raw import (
     create_raw_dir,
     is_complete_png,
@@ -39,6 +40,8 @@ ScanFn = Callable[..., ScanResult]
 """``run_scan``'s call shape: ``(job, *, env, on_progress, cancel) -> ScanResult``."""
 ProcessFn = Callable[..., ProcessResult]
 """``process_pages``' call shape; ``on_photo`` and ``cancel`` are passed only when given."""
+PrecheckFn = Callable[..., None]
+"""``check_scanner``'s call shape: ``(device, *, cancel)``; raises a ScannerError."""
 
 
 @dataclass(frozen=True)
@@ -47,6 +50,7 @@ class _Hooks:
 
     scan: ScanFn
     process: ProcessFn
+    precheck: PrecheckFn
     on_page: Callable[[int], None] | None
     on_photo: Callable[[WrittenFiles], None] | None
     on_stage: Callable[[Stage], None] | None
@@ -85,6 +89,7 @@ def run_session(  # noqa: PLR0913 - the callbacks are the interface; scan/proces
     cancel: threading.Event | None = None,
     scan: ScanFn | None = None,
     process: ProcessFn | None = None,
+    precheck: PrecheckFn | None = None,
 ) -> SessionResult:
     """Scan the document feeder, process the pages and settle the raw pages.
 
@@ -121,6 +126,7 @@ def run_session(  # noqa: PLR0913 - the callbacks are the interface; scan/proces
     hooks = _Hooks(
         scan=run_scan if scan is None else scan,
         process=process_pages if process is None else process,
+        precheck=check_scanner if precheck is None else precheck,
         on_page=on_page,
         on_photo=on_photo,
         on_stage=on_stage,

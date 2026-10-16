@@ -43,7 +43,7 @@ def error_text(error: BaseException) -> str:
     return f"{type(error).__name__}: {error}"
 
 
-def progress_text(state: State, pages: int, photos: int) -> str:
+def progress_text(state: State, pages: int, photos: int, *, checking: bool = False) -> str:
     """ "Scanning page N" / "Processing photo N" while busy, empty otherwise."""
     return {
         State.CHECKING: "Looking for the scanner…",

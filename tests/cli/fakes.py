@@ -24,6 +24,9 @@ _TRANSPORT_NAMES = {
     "fastfoto_linux.cli.cmd_devices": ("find_usb_scanners",),
     "fastfoto_linux.scanner": ("resolve_target", "run_scan", "find_usb_scanners"),
     "fastfoto_linux.scanner.run": ("run_scan",),
+    "fastfoto_linux.session.run": ("run_scan", "check_scanner"),
+    "fastfoto_linux.scanner.precheck": ("check_scanner", "open_scanner"),
+    "fastfoto_linux.scanner.libusb": ("open_scanner",),
     "fastfoto_linux.scanner.target": ("resolve_target",),
     "fastfoto_linux.scanner.usb": ("find_usb_scanners",),
 }

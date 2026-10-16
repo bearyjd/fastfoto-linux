@@ -28,6 +28,8 @@ logger = logging.getLogger(__name__)
 DEFAULT_TIMEOUT_S = 30 * 60.0
 # After SIGTERM scanimage calls sane_cancel(); give it this long before SIGKILL.
 TERMINATE_GRACE_S = 10.0
+# After a scanimage error line the process is stopped with this shorter grace: it is going down.
+FAIL_FAST_GRACE_S = 2.0
 # How often stderr reading wakes up to check the cancel event, the timeout and finished pages.
 POLL_INTERVAL_S = 0.1
 # SANE_Status value (sane/sane.h); scanimage passes the status straight to exit().

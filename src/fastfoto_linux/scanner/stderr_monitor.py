@@ -41,6 +41,7 @@ class StderrMonitor:
         self._pending_pages: deque[int] = deque()
         self._tail: deque[str] = deque(maxlen=STDERR_TAIL_LINES)
         self.at_eof = False
+        self.failure: str | None = None  # the first sane_start/sane_read error scanimage printed
 
     def __enter__(self) -> "StderrMonitor":
         return self

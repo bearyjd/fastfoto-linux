@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from fastfoto_linux.gui.state import State
-from fastfoto_linux.pipeline.issues import failed_sheet_line
+from fastfoto_linux.pipeline.issues import SheetIssue, failed_sheet_line
 from fastfoto_linux.pipeline.process import ProcessResult
 from fastfoto_linux.scanner import NoDocumentsError, ScannerError
 from fastfoto_linux.session import RawReason, SessionResult
@@ -115,8 +115,10 @@ def _cancelled(result: SessionResult) -> Banner:
     if result.process is not None:
         saved = result.process.photos
         verb = "was" if saved == 1 else "were"
-        text = f"Cancelled. {_count(saved, 'photo')} {verb} saved.{_raw_note(result.raw_dir, None)}"
-        return Banner("info", text)
+        text = f"Cancelled. {_count(saved, 'photo')} {verb} saved."
+        if whole := _saved_whole(result.process):
+            text += f" {_needs_checking(len(whole))}"
+        return Banner("info", text + _raw_note(result.raw_dir, None))
     if result.kept_pages:
         return Banner("info", kept_text(result))
     return Banner("info", "Cancelled. Nothing was scanned.")
@@ -136,20 +138,29 @@ def _done(result: SessionResult, process: ProcessResult) -> Banner:
     return Banner("positive", f"{_count(process.photos, 'photo')} saved to {folder}.{note}")
 
 
+def _saved_whole(process: ProcessResult) -> list[SheetIssue]:
+    """The failed sheets whose whole pages were saved: photos that need checking."""
+    return [issue for issue in process.failed if issue.saved is not None]
+
+
+def _needs_checking(count: int) -> str:
+    verb = "needs" if count == 1 else "need"
+    return f"{_count(count, 'photo')} {verb} checking."
+
+
 def _failed_text(process: ProcessResult) -> str:
     """The failed sheets: those lost, those saved whole (which need checking), the photos saved.
 
     Each sheet saved whole gets a line of its own saying which photo of the batch it was, in
     feed order, why, and the file.
     """
-    whole = [issue for issue in process.failed if issue.saved is not None]
+    whole = _saved_whole(process)
     lost = len(process.failed) - len(whole)
     parts = []
     if lost:
         parts.append(f"{_count(lost, 'sheet')} could not be processed.")
     if whole:
-        verb = "needs" if len(whole) == 1 else "need"
-        parts.append(f"{_count(len(whole), 'photo')} {verb} checking.")
+        parts.append(_needs_checking(len(whole)))
     if process.photos:
         parts.append(f"{_count(process.photos, 'photo')} saved.")
     lines = [_sentence(_capitalised(failed_sheet_line(i, process.sheets))) for i in whole]

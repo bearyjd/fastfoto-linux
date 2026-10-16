@@ -118,3 +118,20 @@ def test_an_item_of_a_normal_photo_is_not_flagged() -> None:
     item = item_from_files(written(OUT, 4))
     assert item.unprocessed is False
     assert item.unprocessed_reason is None
+
+
+def test_a_cancelled_run_counts_the_photos_saved_whole_too() -> None:
+    process = ProcessResult(
+        written=(written(OUT, 1),), failed=(issue(2, whole_page(2)),), sheets=3, cancelled=True
+    )
+    result = SessionResult(
+        process=process,
+        pages_scanned=4,
+        raw_dir=RAW,
+        raw_reason=RawReason.CANCELLED,
+        cancelled=True,
+    )
+    banner = result_banner(State.CANCELLED, result)
+    assert banner is not None
+    assert "Cancelled. 1 photo was saved. 1 photo needs checking." in banner.text
+    assert str(RAW) in banner.text

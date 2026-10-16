@@ -62,10 +62,10 @@ def scripted_scan(out: Path):
 
 
 def test_only_the_whole_page_has_the_label_and_the_reason(
-    make_bridge: Any, open_window: Any, out: Path
+    make_bridge: Any, open_window: Any, messages: list[str], out: Path
 ) -> None:
     bridge = make_bridge(session=scripted_scan(out))
-    window, _ = open_window(bridge)
+    window, warnings = open_window(bridge)
     ready(bridge)
     bridge.startScan()
     wait_until(lambda: bridge.state == "done", "the scan to finish")
@@ -80,6 +80,9 @@ def test_only_the_whole_page_has_the_label_and_the_reason(
     assert labels[1][0].property("text") == "Not processed"
     reasons = [i for cell in cells_of(grid) for i in named_items(cell, "reasonLabel")]
     assert [i.property("text") for i in reasons if i.property("visible")] == [REASON]
+    settle()
+    assert warnings == []
+    assert messages == []
 
 
 def test_the_banner_counts_the_photo_that_needs_checking(

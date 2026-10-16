@@ -4,8 +4,12 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
+from fastfoto_linux.documents import DocumentSettings
 from fastfoto_linux.pipeline.process import ProcessSettings
-from fastfoto_linux.scanner import SUPPORTED_DPI, ScanTarget
+from fastfoto_linux.scanner import MAX_LENGTH_MM, SUPPORTED_DPI, Mode, ScanTarget
+
+DOCUMENT_DPI = (200, 300, 600)
+DEFAULT_DOCUMENT_DPI = 300
 
 
 class RawPolicy(StrEnum):
@@ -31,7 +35,8 @@ class ScanRequest:
     ``settings.duplex``, which says whether the pages are paired as front and back.
     ``raw_parent`` is the folder the raw pages live in (a hidden temporary folder, or ``.raw/``
     for kept pages); it defaults to the output folder, whose file system a kept folder is
-    renamed on, and must exist.
+    renamed on, and must exist. ``mode`` and ``max_length_mm`` go to scanimage as they are
+    (colour, the scanner's full length: what photos have always been scanned with).
     """
 
     target: ScanTarget
@@ -40,6 +45,8 @@ class ScanRequest:
     settings: ProcessSettings
     raw_policy: RawPolicy = RawPolicy.AUTO
     raw_parent: Path | None = None
+    mode: Mode = Mode.COLOR
+    max_length_mm: float = MAX_LENGTH_MM
 
     def __post_init__(self) -> None:
         if self.duplex != self.settings.duplex:
@@ -49,6 +56,46 @@ class ScanRequest:
             )
         if self.dpi not in SUPPORTED_DPI:
             raise ValueError(f"dpi {self.dpi!r} is not supported; use one of {SUPPORTED_DPI}")
+
+    @property
+    def raw_root(self) -> Path:
+        """The folder the raw pages are created in."""
+        return self.settings.output_root if self.raw_parent is None else self.raw_parent
+
+
+@dataclass(frozen=True)
+class DocumentScanRequest:
+    """One scan of the document feeder and the PDF made from its pages.
+
+    ``dpi`` is one of ``DOCUMENT_DPI``. A document is always scanned in colour (so that the page
+    can be trimmed before it is made grey or black and white) and at the scanner's full length
+    (never a paper size): ``mode`` and ``max_length_mm`` are read-only, not settings of the
+    request. ``raw_parent`` and ``raw_policy`` are those of :class:`ScanRequest`; the pages are
+    taken at ``dpi`` when the scanner's file does not say its own resolution.
+    """
+
+    target: ScanTarget
+    settings: DocumentSettings
+    dpi: int = DEFAULT_DOCUMENT_DPI
+    duplex: bool = True
+    raw_policy: RawPolicy = RawPolicy.AUTO
+    raw_parent: Path | None = None
+
+    def __post_init__(self) -> None:
+        if self.dpi not in DOCUMENT_DPI:
+            raise ValueError(
+                f"dpi {self.dpi!r} is not supported for documents; use one of {DOCUMENT_DPI}"
+            )
+
+    @property
+    def mode(self) -> Mode:
+        """The scan mode: colour, whatever the PDF will be."""
+        return Mode.COLOR
+
+    @property
+    def max_length_mm(self) -> float:
+        """The scan length: the scanner's full length."""
+        return MAX_LENGTH_MM
 
     @property
     def raw_root(self) -> Path:

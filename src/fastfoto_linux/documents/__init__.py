@@ -5,11 +5,13 @@ from fastfoto_linux.documents.build import (
     DocumentResult,
     DocumentSettings,
     build_document,
+    check_settings,
 )
 from fastfoto_linux.documents.errors import (
     AllPagesBlankError,
     DocumentCancelledError,
     DocumentError,
+    DocumentSettingsError,
     OcrCancelledError,
     OcrMissingError,
     UnsupportedPageError,
@@ -33,6 +35,7 @@ __all__ = [
     "DocumentError",
     "DocumentResult",
     "DocumentSettings",
+    "DocumentSettingsError",
     "OcrCancelledError",
     "OcrMissingError",
     "OcrMode",
@@ -40,6 +43,7 @@ __all__ = [
     "OcrStatus",
     "UnsupportedPageError",
     "build_document",
+    "check_settings",
     "find_ocrmypdf",
     "validate_langs",
 ]

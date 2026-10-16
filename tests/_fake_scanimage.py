@@ -21,7 +21,13 @@ stderr and outlives the script; "flood" makes it write to stderr non-stop until 
 ``early_stderr_lines`` (lines said right after the pages, before ``hang`` and before the exit),
 ``exit_delay_s`` (sleep this long just before exiting, like scanimage's slow exit path),
 ``die_by_signal`` (signal number the script sends itself after ``early_stderr_lines``: it dies of
-it, as scanimage does from a crash or an outside kill, and its exit status is minus the number).
+it, as scanimage does from a crash or an outside kill, and its exit status is minus the number),
+``page_sources`` (list of PNG files, one per page: the pages are then real PNGs, not ``b"fake"``,
+drawn from those files the way the argv asks: RGB for ``--mode Color``, 8-bit grey for
+``--mode Gray``, resampled to ``--resolution`` and saved with that resolution; any other mode
+makes the script fail like a scanner that does not know it; the page count defaults to the
+number of files) and ``no_dpi`` (leave the resolution out of the PNGs, as a scanimage that
+writes none would).
 """
 
 import json
@@ -36,12 +42,35 @@ SPEC_ENV = "FAKE_SCANIMAGE_SPEC"
 _SCRIPT = textwrap.dedent(
     """\
     #!{python}
-    import json, os, signal, sys, time
+    import io, json, os, signal, sys, time
 
     spec = json.loads(os.environ["{spec_env}"])
     argv = sys.argv[1:]
     batch = next((a for a in argv if a.startswith("--batch=")), "--batch=").split("=", 1)[1]
     err = sys.stderr.buffer
+    PNG_MODES = {{"Color": "RGB", "Gray": "L"}}
+
+
+    def value_after(flag):
+        return argv[argv.index(flag) + 1]
+
+
+    def png_page(source):
+        from PIL import Image
+        mode = value_after("--mode")
+        if mode not in PNG_MODES:
+            sys.stderr.write("fake scanimage: cannot scan in mode %s\\n" % mode)
+            sys.exit(2)
+        dpi = int(value_after("--resolution"))
+        with Image.open(source) as opened:
+            source_dpi = round(opened.info["dpi"][0])
+            picture = opened.convert(PNG_MODES[mode])
+        if dpi != source_dpi:
+            size = tuple(round(side * dpi / source_dpi) for side in picture.size)
+            picture = picture.resize(size, Image.Resampling.NEAREST)
+        out = io.BytesIO()
+        picture.save(out, "PNG", **({{}} if spec.get("no_dpi") else {{"dpi": (dpi, dpi)}}))
+        return out.getvalue()
 
 
     def say(text):
@@ -73,7 +102,8 @@ _SCRIPT = textwrap.dedent(
             [sys.executable, "-c", code], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL
         )
 
-    numbers = spec.get("numbers") or list(range(1, spec.get("pages", 0) + 1))
+    sources = spec.get("page_sources", [])
+    numbers = spec.get("numbers") or list(range(1, spec.get("pages", len(sources)) + 1))
     for index, n in enumerate(numbers):
         say("Scanning page %d\\n" % n)
         time.sleep(spec.get("page_delay_s", 0))
@@ -81,7 +111,7 @@ _SCRIPT = textwrap.dedent(
         is_last = index == len(numbers) - 1
         failed = is_last and spec.get("fail_last_page_status")
         if not failed:
-            open(part, "wb").write(b"fake")
+            open(part, "wb").write(png_page(sources[index]) if sources else b"fake")
         status = spec["fail_last_page_status"] if failed else 0
         line = "Scanned page %d. (scanner status = %d)\\n" % (n, status)
         if spec.get("split_lines"):

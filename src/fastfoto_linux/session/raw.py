@@ -18,6 +18,7 @@ KEPT_DIR_NAME = ".raw"
 TEMP_PREFIX = ".ffscan-raw-"
 # No ':' in the stamp: FAT and exFAT drives refuse it in a folder name.
 STAMP_FORMAT = "%Y%m%dT%H%M%SZ"
+PRIVATE_DIR_MODE = 0o700  # owner only: the raw pages of a document may be a letter or a bill
 # Every PNG ends with this IEND chunk (empty data, fixed CRC).
 _PNG_END = b"\x00\x00\x00\x00IEND\xaeB`\x82"
 _PAGE = re.compile(rf"{re.escape(DEFAULT_FILE_PREFIX)}-([0-9]{{4,}})\.png")
@@ -57,17 +58,22 @@ def is_complete_png(path: Path) -> bool:
         return False
 
 
-def create_raw_dir(root: Path, *, keep: bool) -> Path:
+def create_raw_dir(root: Path, *, keep: bool, private: bool = False) -> Path:
     """A new folder for the scanner to write pages into, on ``root``'s filesystem.
 
     With ``keep`` it is ``root/.raw/<stamp>/`` from the start (two scans in the same second share
     it; the scanner refuses to overwrite pages that are already there); otherwise a uniquely
-    named hidden folder in ``root``, which ``settle_raw_dir`` removes (or moves) when the work is
-    done.
+    named hidden folder in ``root`` (always owner-only), which ``settle_raw_dir`` removes (or
+    moves) when the work is done. With ``private`` a kept folder is owner-only too (mode 0700,
+    also if it already existed); without it the folder gets the usual mode of a new folder.
     """
     if keep:
         kept = _kept_dir(root)
-        kept.mkdir(parents=True, exist_ok=True)
+        if private:
+            kept.mkdir(mode=PRIVATE_DIR_MODE, parents=True, exist_ok=True)
+            kept.chmod(PRIVATE_DIR_MODE)  # the mode of mkdir is not applied to a folder that exists
+        else:
+            kept.mkdir(parents=True, exist_ok=True)
         return kept
     return Path(tempfile.mkdtemp(prefix=TEMP_PREFIX, dir=root))
 

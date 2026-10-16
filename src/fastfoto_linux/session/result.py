@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from enum import StrEnum, auto
 from pathlib import Path
 
+from fastfoto_linux.documents import DocumentResult
 from fastfoto_linux.pipeline.process import ProcessResult
 
 
@@ -67,4 +68,39 @@ class SessionResult:
             and not self.cancelled
             and self.process is not None
             and self.process.ok
+        )
+
+
+class DocumentRawReason(StrEnum):
+    """Why the raw pages are still on disk after a document session (the first that applies)."""
+
+    CANCELLED = auto()  # the scan or the PDF was cancelled or interrupted
+    SCAN_ERROR = auto()  # the scanner failed
+    ERROR = auto()  # anything else went wrong (a page unusable, every page blank, a crash)
+    OCR_FAILED = auto()  # the PDF was written without its searchable text
+    REQUESTED = auto()  # the raw policy is KEEP
+    PAGES_DROPPED = auto()  # blank pages were left out of the PDF (policy AUTO)
+    NOT_DELETED = auto()  # nothing asked for them, but they could not be deleted
+
+
+@dataclass(frozen=True)
+class DocumentSessionResult:
+    """How a document session ended; the fields mean what they do in :class:`SessionResult`."""
+
+    document: DocumentResult | None = None
+    pages_scanned: int = 0
+    raw_dir: Path | None = None
+    raw_reason: DocumentRawReason | None = None
+    error: Exception | None = None
+    cancelled: bool = False
+    kept_pages: tuple[Path, ...] = ()
+
+    @property
+    def ok(self) -> bool:
+        """True when the PDF was made without a problem (searchable text included)."""
+        return (
+            self.error is None
+            and not self.cancelled
+            and self.document is not None
+            and self.document.ok
         )

@@ -23,3 +23,8 @@ class DocumentCancelledError(DocumentError):
 
 class OcrCancelledError(DocumentCancelledError):
     """The caller asked to stop while OCR was running; the OCR process is gone."""
+
+
+class DocumentSettingsError(DocumentError, ValueError):
+    """The settings cannot be used (the name, the OCR languages, the output folder): nothing was
+    scanned or written."""

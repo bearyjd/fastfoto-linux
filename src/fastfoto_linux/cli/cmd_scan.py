@@ -2,10 +2,7 @@
 
 import argparse
 import contextlib
-import logging
-import os
 import sys
-import tempfile
 from pathlib import Path
 
 from fastfoto_linux.cli.errors import EXIT_OK, EXIT_PROCESSING_ERROR
@@ -16,27 +13,16 @@ from fastfoto_linux.cli.options import (
     common_parent,
     prepare_output_root,
 )
+from fastfoto_linux.cli.scan_support import announce_stage, log_page, raw_policy, scan_target
 from fastfoto_linux.cli.summary import print_summary
 from fastfoto_linux.pipeline.process import ProcessSettings, process_pages
-from fastfoto_linux.scanner import (
-    ScanTarget,
-    default_shim_candidates,
-    resolve_target,
-    run_scan,
-)
-from fastfoto_linux.session import (
-    RawPolicy,
-    RawReason,
-    ScanRequest,
-    SessionResult,
-    Stage,
-    run_session,
-)
+from fastfoto_linux.scanner import ScanTarget, resolve_target, run_scan
+from fastfoto_linux.session import RawReason, ScanRequest, SessionResult, run_session
 
-logger = logging.getLogger(__name__)
-
-CONFIG_DIR_PREFIX = "ffscan-sane-"
-WAITING_TEXT = "Waiting for the scanner to answer\u2026"
+# Under the names this module has always had them: tests call and replace these here.
+_raw_policy = raw_policy
+_announce_stage = announce_stage
+_log_page = log_page
 
 
 def add_parser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]") -> None:
@@ -55,16 +41,7 @@ def add_parser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]"
 def run(args: argparse.Namespace) -> int:
     settings = build_settings(args)  # check every option before the scanner is touched
     root = prepare_output_root(args)
-    with contextlib.ExitStack() as stack:
-        config_dir = None
-        if args.net is not None:  # a private SANE config dir, removed again when the scan is over
-            private = tempfile.TemporaryDirectory(prefix=CONFIG_DIR_PREFIX)
-            config_dir = Path(stack.enter_context(private))
-        target = resolve_target(
-            shim_candidates=default_shim_candidates(os.environ),
-            net_host=args.net,
-            config_dir=config_dir,
-        )
+    with scan_target(args.net, resolve_target) as target:
         return _scan_into(root, target, settings, args)
 
 
@@ -100,12 +77,6 @@ def _scan_into(
     return EXIT_OK if session.ok else EXIT_PROCESSING_ERROR
 
 
-def _raw_policy(args: argparse.Namespace) -> RawPolicy:
-    if args.keep_raw:
-        return RawPolicy.KEEP
-    return RawPolicy.DISCARD if args.discard_raw else RawPolicy.AUTO
-
-
 def _report_kept(session: SessionResult) -> None:
     """Say where the raw pages are: on stdout when it was planned, on stderr when it was not.
 
@@ -128,14 +99,3 @@ def _report_kept(session: SessionResult) -> None:
             print(f"raw pages kept in: {kept}")
         else:
             print(f"ffscan: raw pages kept in {kept}", file=sys.stderr)
-
-
-def _announce_stage(stage: Stage) -> None:
-    """One line when the check waits for a slow scanner, so the wait is not taken for a hang."""
-    if stage is Stage.WAITING:
-        with contextlib.suppress(OSError):  # a hung-up terminal must not stop the scan
-            print(WAITING_TEXT, file=sys.stderr)
-
-
-def _log_page(number: int) -> None:
-    logger.info("page %d scanned", number)

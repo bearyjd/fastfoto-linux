@@ -57,7 +57,7 @@ def is_complete_png(path: Path) -> bool:
         return False
 
 
-def create_raw_dir(root: Path, *, keep: bool) -> Path:
+def create_raw_dir(root: Path, *, keep: bool, private: bool = False) -> Path:
     """A new folder for the scanner to write pages into, on ``root``'s filesystem.
 
     With ``keep`` it is ``root/.raw/<stamp>/`` from the start (two scans in the same second share

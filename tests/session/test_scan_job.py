@@ -91,11 +91,25 @@ def test_the_scan_is_in_colour_whatever_the_pdf_will_be(out, doc_transport, colo
     assert doc_transport.jobs[0].mode is Mode.COLOR
 
 
-def test_a_document_request_hands_its_mode_and_length_to_the_job(out, doc_transport) -> None:
+@pytest.mark.parametrize("knob", [{"mode": Mode.GRAY}, {"max_length_mm": 297.0}], ids=str)
+def test_a_document_request_has_no_mode_or_length_to_choose(out: Path, knob) -> None:
+    """Colour and the scanner's full length are what a document is scanned with, always."""
+    with pytest.raises(TypeError):
+        dataclasses.replace(make_doc_request(out), **knob)
+    with pytest.raises(TypeError):
+        DocumentScanRequest(
+            target=ScanTarget(device=DEVICE), settings=DocumentSettings(output_root=out), **knob
+        )
+
+
+@pytest.mark.parametrize("dpi", DOCUMENT_DPI)
+def test_a_document_job_is_always_colour_and_full_length(out, doc_transport, dpi) -> None:
     doc_transport.scenes = [text_scene(1)]
-    request = dataclasses.replace(make_doc_request(out), mode=Mode.GRAY, max_length_mm=297.0)
+    request = make_doc_request(out, dpi=dpi)
+    assert (request.mode, request.max_length_mm) == (Mode.COLOR, MAX_LENGTH_MM)
     run_doc(request, doc_transport)
-    assert (doc_transport.jobs[0].mode, doc_transport.jobs[0].max_length_mm) == (Mode.GRAY, 297.0)
+    (job,) = doc_transport.jobs
+    assert (job.mode, job.max_length_mm) == (Mode.COLOR, MAX_LENGTH_MM)
 
 
 def test_the_raw_pages_are_scanned_into_a_folder_of_the_output_folder(out, doc_transport) -> None:

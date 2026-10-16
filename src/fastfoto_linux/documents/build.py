@@ -76,6 +76,11 @@ class DocumentResult:
         return self.ocr.status not in (OcrStatus.FAILED, OcrStatus.TIMED_OUT)
 
 
+def check_settings(settings: DocumentSettings) -> None:
+    """Refuse settings that cannot make a PDF, before any page is scanned or read."""
+    raise NotImplementedError
+
+
 def _now() -> datetime:
     return datetime.now().astimezone()
 

@@ -21,7 +21,8 @@ class DocTransport:
     of its scene (none when ``dpi_in_file`` is False, like a scanimage that writes none).
     ``failure`` builds the exception raised once the pages are on disk; it is given the pages
     ``pages_before_failure`` says the scanner had finished. ``corrupt_page`` (1-based) is
-    overwritten with bytes that are no PNG.
+    overwritten with bytes that are no PNG; ``truncate_page`` is cut to its first half (a page
+    the scanner was writing when it stopped).
     """
 
     scenes: Sequence[Scene] = ()
@@ -30,6 +31,7 @@ class DocTransport:
     failure: Callable[[tuple[Path, ...]], BaseException] | None = None
     resolve_error: Exception | None = None
     corrupt_page: int | None = None
+    truncate_page: int | None = None
     resolve_calls: list[dict[str, Any]] = field(default_factory=list)
     config_dir_existed: list[bool] = field(default_factory=list)
     jobs: list[ScanJob] = field(default_factory=list)
@@ -58,6 +60,9 @@ class DocTransport:
         ]
         if self.corrupt_page is not None:
             pages[self.corrupt_page - 1].write_bytes(b"not a png")
+        if self.truncate_page is not None:
+            cut = pages[self.truncate_page - 1]
+            cut.write_bytes(cut.read_bytes()[: cut.stat().st_size // 2])
         on_progress = kwargs.get("on_progress")
         for number in range(1, len(pages) + 1):
             if on_progress is not None:

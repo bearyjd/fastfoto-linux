@@ -80,7 +80,7 @@ def test_a_failed_sheet_is_reported_exit_1_and_its_raw_pages_are_kept(
     out, transport, capsys
 ) -> None:
     transport.sheets = [plain_sheet(0), plain_sheet(1), plain_sheet(2)]
-    transport.corrupt_page = 3
+    transport.corrupt_page = (3, 4)  # both pages: with one readable page the sheet is saved whole
     assert scan(out) == 1
     assert [n for n in names(out) if n.endswith(".jpg")] == [
         "FastFoto_0001.jpg",

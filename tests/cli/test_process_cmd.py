@@ -70,7 +70,8 @@ def test_a_bad_sheet_is_exit_1_and_lists_its_pages_while_the_rest_is_written(
     tmp_path, out, capsys
 ) -> None:
     pages = write_sheets(tmp_path / "raw", [plain_sheet(0), plain_sheet(1), plain_sheet(2)])
-    pages[2].write_bytes(b"not a png")
+    for page in pages[2:4]:  # both pages: with one readable page the sheet is saved whole
+        page.write_bytes(b"not a png")
     assert process(out, pages) == 1
     assert names(out) == ["FastFoto_0001.jpg", "FastFoto_0002.jpg"]
     err = capsys.readouterr().err

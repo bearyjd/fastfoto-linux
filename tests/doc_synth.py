@@ -292,7 +292,11 @@ def _pad_wedge(rng: np.random.Generator, dpi: int, width: int) -> np.ndarray:
     above_bottom = (rows - 1 - np.arange(rows))[:, None] * (PAD_WEDGE_MM / rows)
     across = np.arange(width)[None, :] / width
     pad = above_bottom < PAD_WEDGE_MM * (PAD_FIRST_ROW_SHARE - across)
-    return np.where(pad[..., None], 255, _noisy(rng, BACKING_RGB, rows, width)).astype(np.uint8)
+    image = np.where(pad[..., None], 255, _noisy(rng, BACKING_RGB, rows, width)).astype(np.uint8)
+    cross = cv2.getStructuringElement(cv2.MORPH_CROSS, (3, 3))
+    fringe = cv2.dilate(pad.astype(np.uint8), cross).astype(bool) & ~pad
+    image[fringe] = (255 + np.asarray(BACKING_RGB)) // 2  # one pixel where the two blend
+    return image
 
 
 def banded_scene(  # noqa: PLR0913

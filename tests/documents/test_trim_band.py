@@ -132,7 +132,7 @@ def test_ink_in_the_band_cancels_the_cut_and_the_page_is_left_whole(dpi: int) ->
     scene = band_page(dpi)
     image = scene.image.copy()
     row = scene.paper_end + px(5.0, dpi)
-    image[row : row + px(3.0, dpi), px(80.0, dpi) : px(90.0, dpi)] = 30  # a stamp on the backing
+    image[row : row + px(3.0, dpi), px(60.0, dpi) : px(63.0, dpi)] = 30  # a mark on the backing
     result = trim_page(colour_page(replace(scene, image=image)))
     assert (result.bottom, result.band_bottom) == (0, False)
 
@@ -141,7 +141,7 @@ def test_ink_in_the_band_cancels_the_cut_and_the_page_is_left_whole(dpi: int) ->
 
 
 @pytest.mark.parametrize("dpi", DPIS)
-@pytest.mark.parametrize("band_mm", [2.0, 25.0], ids=["too-thin", "too-tall"])
+@pytest.mark.parametrize("band_mm", [1.0, 25.0], ids=["too-thin", "too-tall"])
 def test_a_band_under_3_mm_or_over_20_mm_is_not_cut(dpi: int, band_mm: float) -> None:
     result = trim_page(colour_page(band_page(dpi, band_mm=band_mm)))
     assert (result.bottom, result.band_bottom) == (0, False)  # as before: nothing is cut
@@ -161,7 +161,7 @@ def test_a_footer_bar_in_another_blue_grey_is_not_backing(dpi: int) -> None:
 def test_a_full_width_pale_bar_at_the_edge_is_the_known_limit(dpi: int) -> None:
     """A form margin printed edge to edge within the backing's tolerance (18 from it) cannot be
     told from the band: it is cut with it, as a full-height sidebar of that colour is at a side."""
-    scene = band_page(dpi, band_mm=3.0, shadow_mm=0.5, edge_line=False)
+    scene = band_page(dpi, band_mm=3.0, shadow_mm=0.0, edge_line=False)
     image = scene.image.copy()
     image[scene.paper_end - px(6.0, dpi) : scene.paper_end] = PALE_BACKING
     result = trim_page(colour_page(replace(scene, image=image)))
@@ -171,7 +171,7 @@ def test_a_full_width_pale_bar_at_the_edge_is_the_known_limit(dpi: int) -> None:
 
 @pytest.mark.parametrize("dpi", DPIS)
 def test_a_pale_form_margin_taller_than_the_band_cap_is_kept(dpi: int) -> None:
-    scene = band_page(dpi)
+    scene = band_page(dpi, shadow_mm=0.0)
     image = scene.image.copy()
     image[scene.paper_end - px(25.0, dpi) : scene.paper_end] = PALE_BACKING
     result = trim_page(colour_page(replace(scene, image=image)))
@@ -208,9 +208,9 @@ def test_grey_and_bilevel_pages_are_not_cut_by_the_band_rule(make) -> None:
 
 @pytest.mark.parametrize("dpi", DPIS)
 def test_a_page_whose_paper_would_be_under_30_mm_is_not_cut(dpi: int) -> None:
-    scene = band_page(dpi, paper_mm=22.0, top_mm=1.5)
+    scene = band_page(dpi, paper_mm=22.0)  # the cut would leave about 26 mm
     result = trim_page(colour_page(scene))
-    assert (result.bottom, result.top) == (0, 0)
+    assert (result.bottom, result.top, result.band_bottom) == (0, 0, False)
 
 
 @pytest.mark.parametrize("dpi", DPIS)
@@ -220,3 +220,70 @@ def test_the_30_mm_of_paper_stay_between_the_top_cut_and_the_bottom_cut_together
     assert result.band_bottom
     assert result.top == 0
     assert result.page.pixels.shape[0] >= px(30.0, dpi)
+
+
+@pytest.mark.parametrize("dpi", DPIS)
+def test_a_narrow_item_on_the_backing_has_the_band_below_it_cut_and_nothing_beside_it(
+    dpi: int,
+) -> None:
+    scene = band_page(dpi, paper_mm=60.0)
+    image = scene.image.copy()
+    image[: scene.paper_end, : px(25.0, dpi)] = BACKING_RGB  # the sheet is a 65 mm slip
+    image[: scene.paper_end, px(25.0 + 65.0, dpi) :] = BACKING_RGB
+    result = trim_page(colour_page(replace(scene, image=image)))
+    kept = scene.height - result.bottom
+    assert result.band_bottom
+    assert abs(kept - (scene.paper_end + px(KEEP_MM, dpi))) <= 1
+
+
+@pytest.mark.parametrize("dpi", [200, 300])
+def test_a_slip_14_mm_wide_on_the_backing_is_not_a_band_row(dpi: int) -> None:
+    """Its rows are 93% backing: 5% of the width is the most a band row may hold."""
+    scene = band_page(dpi, paper_mm=60.0)
+    image = scene.image.copy()
+    image[: scene.paper_end, : px(100.0, dpi)] = BACKING_RGB
+    image[: scene.paper_end, px(114.0, dpi) :] = BACKING_RGB
+    result = trim_page(colour_page(replace(scene, image=image)))
+    assert result.band_bottom
+    assert abs(scene.height - result.bottom - (scene.paper_end + px(KEEP_MM, dpi))) <= 1
+
+
+@pytest.mark.parametrize("dpi", [200, 300])
+def test_a_mark_in_the_pad_means_it_is_not_pad_and_nothing_is_cut(dpi: int) -> None:
+    scene = band_page(dpi)
+    image = scene.image.copy()
+    image[-px(6.0, dpi) : -px(4.0, dpi), px(20.0, dpi) : px(30.0, dpi)] = 30  # a black rectangle
+    result = trim_page(colour_page(replace(scene, image=image)))
+    assert (result.bottom, result.band_bottom) == (0, False)
+
+
+@pytest.mark.parametrize("dpi", [200, 300])
+def test_a_band_more_than_20_mm_from_the_bottom_edge_is_not_looked_for(dpi: int) -> None:
+    scene = band_page(dpi)
+    white = np.full((px(30.0, dpi), scene.width, 3), 255, np.uint8)
+    deep = replace(scene, image=np.concatenate([scene.image, white]))
+    result = trim_page(colour_page(deep))
+    assert not result.band_bottom  # the white tail rule decides, as before
+
+
+@pytest.mark.parametrize("dpi", [200, 300])
+def test_dust_in_the_pad_does_not_stop_the_cut(dpi: int) -> None:
+    scene = band_page(dpi)
+    image = scene.image.copy()
+    for number, row in enumerate(range(px(1.0, dpi), px(8.0, dpi), px(1.5, dpi))):
+        column = px(20.0 + 15.0 * number, dpi)
+        image[-row - 3 : -row, column : column + 3] = 120  # a speck of three pixels
+    result = trim_page(colour_page(replace(scene, image=image)))
+    assert result.band_bottom
+
+
+@pytest.mark.parametrize("dpi", [200, 300])
+def test_a_band_cut_that_is_cancelled_leaves_the_white_tail_rule_to_decide(dpi: int) -> None:
+    scene = band_page(dpi)
+    white = np.full((px(8.0, dpi), scene.width, 3), 255, np.uint8)
+    image = np.concatenate([scene.image, white])
+    row = scene.paper_end + px(5.0, dpi)
+    image[row : row + px(3.0, dpi), px(60.0, dpi) : px(63.0, dpi)] = 30  # a mark on the backing
+    result = trim_page(colour_page(replace(scene, image=image)))
+    assert not result.band_bottom
+    assert 0 < result.bottom <= px(8.0, dpi)  # only the white tail goes, as before

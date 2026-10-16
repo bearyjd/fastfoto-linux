@@ -141,10 +141,24 @@ uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr o
   below the tail's white it must be about 21 levels darker than the slip to count. A page
   that would be under 10 mm tall or wide after trimming is kept whole instead of stopping the
   run.
+- The scanner's backing band is cut too, on colour pages. A deskewed page ends in a slanted pad of
+  pure white, then a full-width backing band of 6 to 15 mm (darker next to the paper), an
+  optional dark edge line of about 1 mm, then the paper, which is often pure 255 like the pad;
+  at the top there are 1 to 2 mm of the same backing. A band row is one in which 95% of all the
+  pixels are the backing colour or its shadow (within 36 of it); the band is a run of them at the
+  edge, a band of 3 to 20 mm at the bottom and of 1 to 4 mm at the top, and a longer run is not a
+  band. The cut is made at the band's border with the paper, never through the edge line, and at
+  most 1 mm of the band stays at the bottom (none at the top). The last check and 30 mm of page
+  apply to the cut, and grey and 1-bit pages are not cut by the band rule. Limits: side slivers
+  of up to 2 mm are left (slanted, under the 3 mm of the strip rule), and a full-width bar in the
+  backing colour at the top or bottom edge is cut with the band, like a sidebar of that colour at
+  a side.
 - A page is blank only when it has no mark at all inside its 5 mm margin: dust, paper texture
   and faint show-through from the other side do not count, while a single short line, a
   signature, a lone page number or pencil at least about 45 grey levels darker than the paper
-  keep the page. Pencil fainter than that cannot be told from show-through and does not.
+  keep the page. Pencil fainter than that cannot be told from show-through and does not. After a
+  band cut the blank-page margin is measured in full from the new edge, so the kept edge line is
+  margin, not a mark.
   `--keep-blank` keeps every page. The summary lists the dropped pages by number. If every page looks blank nothing is
   written and the exit code is 1.
 - Searchable text needs `ocrmypdf` and, for its page rotation, Tesseract's orientation data:

@@ -1,4 +1,4 @@
-"""Cut off what is certainly empty: the scanner's blank white tail and its backing strip.
+"""Cut off what is certainly empty: the scanner's blank white tail and its backing.
 
 Both cuts need positive evidence and otherwise do nothing, because a missing strip of white costs
 nothing and a missing line of text costs the scan:
@@ -48,7 +48,11 @@ for the blur of an edge, and a stroke 1 pixel wide is diluted to a third of its 
 count). A page that would be under 10 mm tall or wide after trimming (the least ``find_marks``
 accepts) is kept whole.
 
-The top is never trimmed.
+The top is trimmed only by the band rule of ``band``: the scanner's full-width backing band at the
+bottom (with the pad below it) and at the top is cut, below the edge line and with at most 1 mm of
+it left at the bottom, on colour pages only. At least 30 mm of page stay after each cut and the
+last check applies to each; the white-tail rule runs where there is no band cut. After a band cut
+the new edge is the paper's, so ``Trimmed.tail_rows`` is 0 and the blank-page margin is whole.
 """
 
 import logging
@@ -58,6 +62,7 @@ from dataclasses import dataclass, replace
 import cv2
 import numpy as np
 
+from fastfoto_linux.documents.band import BOTTOM_EDGE, TOP_EDGE, EdgeRule, band_cut
 from fastfoto_linux.documents.loader import MIN_PAGE_MM, WHITE, LoadedPage
 from fastfoto_linux.documents.marks import find_marks
 from fastfoto_linux.documents.modes import ColourMode
@@ -110,8 +115,9 @@ class Trimmed:
 
     @property
     def tail_rows(self) -> int:
-        """Rows cut off the bottom that were the white tail: they take the blank-page margin."""
-        return self.bottom
+        """Rows cut off the bottom that were the white tail: they take their share of the
+        blank-page margin with them. A band cut leaves the paper's own edge, so none do."""
+        return 0 if self.band_bottom else self.bottom
 
 
 def _is_backing(colours: np.ndarray) -> np.ndarray:
@@ -319,6 +325,29 @@ def _bottom_cut(page: LoadedPage) -> int:
     return cut
 
 
+def _band_cut(page: LoadedPage, rule: EdgeRule, other: int = 0) -> int:
+    """Rows to cut at the edge ``rule`` is for when the scanner's backing band lies there; 0 when
+    there is none or the cut is not safe, which leaves the tail rule to decide.
+
+    Not safe: ``other`` rows are cut at the opposite edge and 30 mm of page must stay; the last
+    check finds something but white and backing in the strip (the rows the pad's slant still
+    touches are left out, being slivers under the blur of that check: the band judges them).
+    """
+    if page.kind is not ColourMode.COLOUR:
+        return 0
+    band = band_cut(page.pixels, page.dpi, rule)
+    height = page.pixels.shape[0]
+    if band is None or height - band.cut - other < mm_to_px(MIN_PAPER_MM, page.dpi):
+        return 0
+    strip = (
+        page.pixels[height - band.cut : height - band.pad]
+        if rule.bottom
+        else page.pixels[band.pad : band.cut]
+    )
+    white = _tail_white(page.pixels, page.dpi)
+    return 0 if strip.size and _holds_content(strip, white, page.dpi) else band.cut
+
+
 def _trimmed(page: LoadedPage) -> Trimmed:
     left = right = 0
     if page.kind is ColourMode.COLOUR:
@@ -326,13 +355,16 @@ def _trimmed(page: LoadedPage) -> Trimmed:
         left, right = _side_cuts(page.pixels if tail is None else page.pixels[:tail], page.dpi)
         left, right = _vetted_sides(page, left, right)
     sides = replace(page, pixels=page.pixels[:, left : page.pixels.shape[1] - right])
-    bottom = _bottom_cut(sides)
-    kept = sides.pixels[: sides.pixels.shape[0] - bottom]
-    return Trimmed(replace(page, pixels=kept), left, right, bottom)
+    band = _band_cut(sides, BOTTOM_EDGE)
+    bottom = band or _bottom_cut(sides)
+    top = _band_cut(sides, TOP_EDGE, other=bottom)
+    kept = sides.pixels[top : sides.pixels.shape[0] - bottom]
+    return Trimmed(replace(page, pixels=kept), left, right, bottom, top, bool(band))
 
 
 def trim_page(page: LoadedPage) -> Trimmed:
-    """Trim the tail below the paper and backing strips beside it; when unsure, trim nothing.
+    """Trim the tail below the paper, the backing band and strips beside it; when unsure, trim
+    nothing.
 
     The input is not modified; the trimmed page may share memory with it. A page that would be
     left under ``MIN_PAGE_MM`` each way is returned whole.

@@ -126,14 +126,11 @@ def _add_enhancement_options(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def add_scan_options(parser: argparse.ArgumentParser) -> None:
-    """Options that only matter when pages are scanned."""
-    scanning = parser.add_argument_group("scanning")
-    scanning.add_argument(
-        "--dpi", type=int, choices=SUPPORTED_DPI, default=DEFAULT_DPI, help="scan resolution"
-    )
-    scanning.add_argument("--net", type=host, metavar="HOST", help="use a Wi-Fi scanner at HOST")
-    raw = scanning.add_mutually_exclusive_group()
+def add_transport_options(group: "argparse._ArgumentGroup") -> None:
+    """How to reach the scanner and what happens to the raw pages: ``--net``, ``--keep-raw``,
+    ``--discard-raw``. ``scan`` and ``doc scan`` share them."""
+    group.add_argument("--net", type=host, metavar="HOST", help="use a Wi-Fi scanner at HOST")
+    raw = group.add_mutually_exclusive_group()
     raw.add_argument(
         "--keep-raw", action="store_true", help="keep the raw pages in DIR/.raw/<UTC time>/"
     )
@@ -142,6 +139,15 @@ def add_scan_options(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="delete the raw pages after a clean run even if backs with no writing were dropped",
     )
+
+
+def add_scan_options(parser: argparse.ArgumentParser) -> None:
+    """Options that only matter when pages are scanned."""
+    scanning = parser.add_argument_group("scanning")
+    scanning.add_argument(
+        "--dpi", type=int, choices=SUPPORTED_DPI, default=DEFAULT_DPI, help="scan resolution"
+    )
+    add_transport_options(scanning)
 
 
 def prepare_output_root(args: argparse.Namespace) -> Path:

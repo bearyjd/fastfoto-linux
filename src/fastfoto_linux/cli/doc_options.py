@@ -4,6 +4,7 @@ import argparse
 from pathlib import Path
 
 from fastfoto_linux.cli.errors import EXIT_USAGE, CliError
+from fastfoto_linux.cli.options import add_transport_options
 from fastfoto_linux.documents import (
     DEFAULT_LANGS,
     DEFAULT_NAME,
@@ -15,6 +16,7 @@ from fastfoto_linux.documents import (
 from fastfoto_linux.documents.loader import MAX_DPI, MIN_DPI
 from fastfoto_linux.output.errors import InvalidPrefixError
 from fastfoto_linux.output.naming import sanitise_prefix
+from fastfoto_linux.session import DEFAULT_DOCUMENT_DPI, DOCUMENT_DPI
 
 
 def _langs(text: str) -> str:
@@ -69,12 +71,30 @@ def add_document_options(parser: argparse.ArgumentParser) -> None:
         metavar="LANGS",
         help="OCR languages as Tesseract codes, e.g. eng or eng+deu (default: eng)",
     )
-    pdf.add_argument(
+
+
+def add_fallback_dpi_option(parser: argparse.ArgumentParser) -> None:
+    """``--dpi`` of ``doc process``: the resolution of a PNG that does not say its own."""
+    parser.add_argument_group("pages").add_argument(
         "--dpi",
         type=_dpi,
         metavar="DPI",
         help="resolution for a PNG that does not say; a file that does keeps its own",
     )
+
+
+def add_document_scan_options(parser: argparse.ArgumentParser) -> None:
+    """Options that only matter when pages are scanned from the feeder."""
+    scanning = parser.add_argument_group("scanning")
+    scanning.add_argument(
+        "--dpi",
+        type=int,
+        choices=DOCUMENT_DPI,
+        default=DEFAULT_DOCUMENT_DPI,
+        help=f"scan resolution (default: {DEFAULT_DOCUMENT_DPI})",
+    )
+    scanning.add_argument("--simplex", action="store_true", help="every page is a front (no backs)")
+    add_transport_options(scanning)
 
 
 def build_settings(args: argparse.Namespace) -> DocumentSettings:

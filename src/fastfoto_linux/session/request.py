@@ -65,7 +65,14 @@ class ScanRequest:
 
 @dataclass(frozen=True)
 class DocumentScanRequest:
-    """One scan of the document feeder and the PDF made from its pages."""
+    """One scan of the document feeder and the PDF made from its pages.
+
+    ``dpi`` is one of ``DOCUMENT_DPI``. ``mode`` and ``max_length_mm`` are what ``ffscan doc scan``
+    always asks for (colour, so that the page can be trimmed before it is made grey or black and
+    white; the scanner's full length, never a paper size). ``raw_parent`` and ``raw_policy`` are
+    those of :class:`ScanRequest`; the pages are taken at ``dpi`` when the scanner's file does not
+    say its own resolution.
+    """
 
     target: ScanTarget
     settings: DocumentSettings
@@ -75,6 +82,12 @@ class DocumentScanRequest:
     raw_parent: Path | None = None
     mode: Mode = Mode.COLOR
     max_length_mm: float = MAX_LENGTH_MM
+
+    def __post_init__(self) -> None:
+        if self.dpi not in DOCUMENT_DPI:
+            raise ValueError(
+                f"dpi {self.dpi!r} is not supported for documents; use one of {DOCUMENT_DPI}"
+            )
 
     @property
     def raw_root(self) -> Path:

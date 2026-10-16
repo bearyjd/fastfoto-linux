@@ -6,69 +6,42 @@ installs signal handlers or exits. A front end passes callbacks in and reads a
 """
 
 import logging
-import os
 import threading
 from collections.abc import Callable
-from dataclasses import dataclass, replace
-from functools import partial
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from fastfoto_linux.output import WrittenFiles
 from fastfoto_linux.pipeline.process import ProcessResult, ProcessSettings, process_pages
-from fastfoto_linux.scanner import (
-    ScanCancelledError,
-    ScanError,
-    ScanJob,
-    ScannerError,
-    ScanResult,
-    Source,
-    run_scan,
-)
-from fastfoto_linux.scanner.precheck import check_scanner, precheck_applies
-from fastfoto_linux.session.raw import (
-    create_raw_dir,
-    is_complete_png,
-    list_pages,
-    settle_raw_dir,
-)
+from fastfoto_linux.scanner import ScannerError, run_scan
+from fastfoto_linux.scanner.precheck import check_scanner
+from fastfoto_linux.session.raw import create_raw_dir, settle_raw_dir
 from fastfoto_linux.session.request import RawPolicy, ScanRequest
 from fastfoto_linux.session.result import RawReason, SessionResult, Stage
+from fastfoto_linux.session.scanning import (
+    PrecheckFn,
+    ScanFn,
+    Scanned,
+    SessionHooks,
+    announce_done,
+    keep_after_abort,
+    scan_pages,
+    settle_pages,
+)
 
 logger = logging.getLogger(__name__)
 
-ScanFn = Callable[..., ScanResult]
-"""``run_scan``'s call shape: ``(job, *, env, on_progress, cancel) -> ScanResult``."""
 ProcessFn = Callable[..., ProcessResult]
 """``process_pages``' call shape; ``on_photo`` and ``cancel`` are passed only when given."""
-PrecheckFn = Callable[..., None]
-"""``check_scanner``'s call shape: ``(device, *, cancel)``; raises a ScannerError."""
 
 
 @dataclass(frozen=True)
-class _Hooks:
+class _Hooks(SessionHooks):
     """The callbacks and collaborators of one session, so they travel as one argument."""
 
-    scan: ScanFn
     process: ProcessFn
-    precheck: PrecheckFn | None
-    on_page: Callable[[int], None] | None
     on_photo: Callable[[WrittenFiles], None] | None
-    on_stage: Callable[[Stage], None] | None
-    cancel: threading.Event | None
-
-    def stage(self, stage: Stage) -> None:
-        if self.on_stage is not None:
-            self.on_stage(stage)
-
-
-@dataclass(frozen=True)
-class _Scanned:
-    """What the scan left: the pages, and why it stopped early if it did."""
-
-    pages: tuple[Path, ...] = ()
-    error: ScanError | None = None
-    cancelled: bool = False
 
 
 @dataclass(frozen=True)
@@ -147,68 +120,38 @@ def run_session(  # noqa: PLR0913 - the callbacks are the interface; scan/proces
     try:
         outcome = _work(request, raw, hooks)
     except BaseException as abort:  # not an Exception: it cannot come back as a result
-        _keep_after_abort(raw, request.raw_root, abort)
+        keep_after_abort(raw, request.raw_root, abort, settle_raw_dir)
         raise
-    return _announce_done(_settle(request, raw, outcome), hooks)
-
-
-def _keep_after_abort(raw: Path, root: Path, abort: BaseException) -> None:
-    """Keep the raw pages while ``abort`` is on its way; failing to must not replace it."""
-    try:
-        kept = settle_raw_dir(raw, root, keep=True)
-    except Exception:
-        logger.exception("the raw pages in %s could not be settled while aborting", raw)
-        return
-    if kept is not None:
-        logger.error("aborted by %s; the raw pages are kept in %s", type(abort).__name__, kept)
+    return announce_done(_settle(request, raw, outcome), hooks)
 
 
 def _settle(request: ScanRequest, raw: Path, outcome: _Outcome) -> SessionResult:
     """Keep or delete the raw pages as the outcome and the policy say, and report it."""
-    reason = _keep_reason(request.raw_policy, outcome)
-    kept = settle_raw_dir(
-        raw, request.raw_root, keep=reason is not None, album=request.settings.output_root
+    settled = settle_pages(
+        raw,
+        request.raw_root,
+        reason=_keep_reason(request.raw_policy, outcome),
+        not_deleted=RawReason.NOT_DELETED,
+        reported=outcome.pages,
+        settle=settle_raw_dir,
+        album=request.settings.output_root,
     )
-    if kept is not None and reason is None:
-        reason = RawReason.NOT_DELETED
     return SessionResult(
         process=outcome.process,
         pages_scanned=len(outcome.pages),
-        raw_dir=kept,
-        raw_reason=reason if kept is not None else None,
+        raw_dir=settled.raw_dir,
+        raw_reason=settled.reason,
         error=outcome.error,
         cancelled=outcome.cancelled,
-        kept_pages=() if kept is None else _finished_pages(kept, outcome.pages),
+        kept_pages=settled.kept_pages,
     )
-
-
-def _finished_pages(kept: Path, reported: tuple[Path, ...]) -> tuple[Path, ...]:
-    """The pages in ``kept`` the scanner finished: complete PNGs, and only the reported ones
-    when the scan reported any (a cancel or a kill can leave the last page cut off mid-write,
-    and ``run_scan`` reports every page file it finds)."""
-    finished = {page.name for page in reported}
-    return tuple(
-        page
-        for page in list_pages(kept)
-        if (not finished or page.name in finished) and is_complete_png(page)
-    )
-
-
-def _announce_done(result: SessionResult, hooks: _Hooks) -> SessionResult:
-    """Tell the DONE stage; a callback that raises costs the result nothing."""
-    try:
-        hooks.stage(Stage.DONE)
-    except Exception as error:
-        logger.exception("the DONE callback raised; the result is returned anyway")
-        return replace(result, error=error if result.error is None else result.error)
-    return result
 
 
 def _work(request: ScanRequest, raw: Path, hooks: _Hooks) -> _Outcome:
     """Scan into ``raw`` and process what was scanned; never raises an ``Exception``."""
-    scanned = _Scanned()
+    scanned = Scanned()
     try:
-        scanned = _scan(request, raw, hooks)
+        scanned = scan_pages(request, raw, hooks, check_scanner)
         if scanned.cancelled:
             return _Outcome(scanned.pages, cancelled=True)
         hooks.stage(Stage.PROCESSING)
@@ -220,44 +163,6 @@ def _work(request: ScanRequest, raw: Path, hooks: _Hooks) -> _Outcome:
         logger.debug("the session ended by an exception", exc_info=True)
         return _Outcome(scanned.pages, error=error)
     return _Outcome(scanned.pages, processed, scanned.error, processed.cancelled)
-
-
-def _scan(request: ScanRequest, raw: Path, hooks: _Hooks) -> _Scanned:
-    """Run the scan. A scanner failure part-way keeps the pages finished before it."""
-    job = ScanJob(
-        device=request.target.device,
-        output_dir=raw,
-        source=Source.DUPLEX if request.duplex else Source.FRONT,
-        resolution=request.dpi,
-    )
-    env = request.target.env(os.environ)
-    try:
-        _check_scanner(request, hooks)
-        hooks.stage(Stage.SCANNING)
-        result = hooks.scan(job, env=env, on_progress=hooks.on_page, cancel=hooks.cancel)
-    except ScanCancelledError as error:
-        return _Scanned(error.pages, cancelled=True)
-    except ScanError as error:
-        if not error.pages:
-            raise
-        logger.error("the scan stopped early; processing the %d finished pages", len(error.pages))
-        return _Scanned(error.pages, error=error)
-    return _Scanned(result.pages)
-
-
-def _check_scanner(request: ScanRequest, hooks: _Hooks) -> None:
-    """Make sure a USB scanner answers before scanimage starts, freeing it if a failed send
-    jammed it. Without a ``precheck`` of the caller's the real check runs, for a USB scanner
-    only and not when ``FF680W_NO_PRECHECK=1``; the CHECKING stage is announced only then, and
-    WAITING if the real check runs long."""
-    device = request.target.device
-    check = hooks.precheck
-    if check is None:
-        if not precheck_applies(device, os.environ):
-            return
-        check = partial(check_scanner, on_slow=lambda: hooks.stage(Stage.WAITING))
-    hooks.stage(Stage.CHECKING)
-    check(device, cancel=hooks.cancel)
 
 
 def _process(pages: tuple[Path, ...], settings: ProcessSettings, hooks: _Hooks) -> ProcessResult:

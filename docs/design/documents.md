@@ -39,7 +39,7 @@ ffscan doc process PAGE.png ... --out DIR [--mkdir] [same output options]
   the file written and where raw pages were kept.
 
 ## Pipeline for one batch
-1. **Scan** (later PR): always `Color`, whatever the output colour — trimming needs colour to tell the
+1. **Scan** (`ffscan doc scan`): always `Color`, whatever the output colour — trimming needs colour to tell the
    scanner's blue-grey backing from pale paper; grey and black-and-white (our own adaptive threshold)
    are made after trimming. Grey PNGs given to `ffscan doc process` are trimmed very cautiously
    (white tail only; never the sides). Duplex unless `--simplex`; scanner deskew on;
@@ -152,7 +152,7 @@ What the first pull request settled where the specification left room.
   side, and a grey receipt keeps its tail (see the last check, below). The top is never trimmed.
   A colour page is trimmed in colour and only then made grey or black and white (`build` trims
   the loaded page, `encode_page` converts it), so `--colour grey` and `--colour bw` on colour
-  pages get the colour trim; `ffscan doc scan` will always scan in colour for the same reason. A printed sidebar in any
+  pages get the colour trim; `ffscan doc scan` always scans in colour for the same reason. A printed sidebar in any
   other colour (a blue-grey of (140,160,185), slate, navy) is not backing and is never cut; one
   printed edge to edge and full height within the tolerance of the backing colour (a pale
   blue-grey such as (190,200,210), 18 from it, and 40 levels darker than the paper) would be cut
@@ -179,8 +179,8 @@ What the first pull request settled where the specification left room.
   a grey page has no backing: only blank white is exempt, and any other ink-sized cluster, backing
   grey included, is content. Beside a receipt the backing runs on below the paper, in columns
   that are not white, so a grey receipt keeps its tail: a missed trim, accepted (a missed trim
-  costs nothing, a cut slip costs the scan) and the reason `ffscan doc scan` will scan in colour
-  and make the grey page after trimming.
+  costs nothing, a cut slip costs the scan) and the reason `ffscan doc scan` scans in colour
+  and makes the grey page after trimming.
   On a colour page, pixels within 2 px of both white and backing (the blur of an edge between
   them) are neither a note nor content, but a stroke on a slip borders only one of them. A
   missed trim costs nothing, so the check errs towards keeping, and a dark dot just under the
@@ -247,3 +247,58 @@ Trim on real pages (backing colour, tail tone), blank detection on real backs, w
 writes for Gray, speed at 300 dpi, OCR quality on real letters, and whether real `ocrmypdf`
 keeps the producer metadata (it may overwrite it; CI has no `ocrmypdf`).
 
+## Decisions in `ffscan doc scan` (D2)
+What the second pull request settled where the specification left room.
+
+- **One scan job, two sessions.** A scan request carries `mode` and `max_length_mm` to the
+  scanimage job. A photo request defaults them to colour and the scanner's full length, which
+  is what `ScanJob` always used, so a photo scan's argv is unchanged (a test pins it as a
+  literal). A document request defaults to the same pair and has nothing to turn them into
+  grey: `ffscan doc scan` is always `--mode Color` (tested for every `--colour` and every
+  resolution), with deskew on and no paper size.
+- **The document session.** `DocumentScanRequest`, `run_document_session` and
+  `DocumentSessionResult` sit beside the photo ones in `fastfoto_linux.session`. What is
+  shared lives in `session/scanning.py`: building the scan job, the scanner check with its
+  CHECKING and WAITING stages, the scan with its partial pages, the list of pages the scanner
+  finished, settling the raw pages, the abort path that keeps them and the DONE callback.
+  What differs stays in each session: the photo one pairs sheets into photos, the document one
+  makes one PDF; each has its own reasons for keeping the raw pages (`RawReason` is pinned by
+  the photo tests and the desktop app, so `DocumentRawReason` is a separate enum). The scanner
+  check and the scan runner are looked up in each session's own module when it runs, which is
+  also where a test replaces them. The command line shares the `--net` address (a private
+  SANE config folder, removed afterwards), the raw policy flags and the stage lines
+  (`cli/scan_support.py`).
+- **Raw pages.** A document session scans into a hidden folder of the output folder, or
+  straight into `DIR/.raw/<UTC time>/` with `--keep-raw`. After the run they are kept when,
+  in this order, the run was cancelled or interrupted, the scanner failed, anything else went
+  wrong (an unusable page, every page blank, a crash), searchable text failed or timed out,
+  `--keep-raw` says so, or a page was dropped as blank (unless `--discard-raw`). Otherwise
+  they are deleted. `--discard-raw` therefore only overrides dropped blank pages: a failure,
+  a stop or a failed OCR keeps them whatever the flag says. A missing `ocrmypdf` under
+  `--ocr auto` is not a failure and does not keep them.
+- **A scanner that stops part-way** (a jam, the cover opened) leaves the pages it finished,
+  and no PDF is made from part of a stack: the design note's own rule is that a PDF with a
+  page missing is worse than none, and a document, unlike photos, is one ordered whole. The
+  pages are kept, the error is raised (exit 1) and the command line names `ffscan doc process`
+  for making a PDF from them. A cancel during the scan makes no PDF either, as it never did
+  for photos.
+- **Fallback resolution.** What `scanimage` writes into the PNG header could not be checked
+  without the scanner, so the session gives the loader the resolution it asked the scanner for
+  as the fallback resolution (`DocumentSettings.fallback_dpi`): a page that does not say its
+  resolution is taken at it, a page that does keeps its own.
+- **Order of checks.** The options are checked first (a usage error costs nothing), then
+  `--ocr on` is checked before anything is scanned (before the output folder is made, the
+  scanner looked for or checked), then the output folder, the scanner and the scan.
+- **Stopping.** Ctrl-C, SIGTERM and SIGHUP are the same cancel as for photos: scanimage is
+  stopped, nothing is published, the raw pages are kept and the exit code is 130. A cancel is
+  honoured before each page is made and during OCR (the OCR process and its children are
+  gone when the command returns).
+- **Exit codes.** 0 ok; 1 a problem (OCR failed and the plain PDF was written, every page
+  blank, an unusable page, the scanner failed part-way); 2 usage; 3 the scanner or its shim is
+  missing, does not answer or is in use, or `--ocr on` has no `ocrmypdf`; 4 the feeder is
+  empty; 130 stopped.
+
+### Needs real hardware
+The Gray PNG that `scanimage` writes (`doc scan` does not ask for it), trimming on real
+pages, blank detection on real backs, speed at 300 dpi, and whether the PNG header carries the
+resolution (the fallback covers it if not).

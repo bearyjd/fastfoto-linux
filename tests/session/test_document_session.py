@@ -21,6 +21,8 @@ from tests.session.doc_session_helpers import make_doc_request, run_doc
 
 pytestmark = pytest.mark.usefixtures("no_real_ocr")
 
+LETTER_WIDTH_PT = 612  # 8.5 inches
+
 
 @dataclass
 class Heard:
@@ -134,11 +136,11 @@ def test_a_page_that_does_not_say_its_resolution_is_taken_at_the_one_that_was_as
     out, doc_transport
 ) -> None:
     doc_transport.dpi_in_file = False
-    doc_transport.scenes = [text_scene(1)]  # 850 pixels wide
-    result = run_doc(make_doc_request(out, dpi=600), doc_transport)
+    doc_transport.scenes = [text_scene(1, dpi=200)]  # a Letter page: 1700 pixels wide
+    result = run_doc(make_doc_request(out, dpi=200), doc_transport)
     assert result.ok
     width, _ = page_size_pt(reader(result.document.pdf.read_bytes()), 0)
-    assert width == pytest.approx(850 * 72 / 600, abs=0.5)
+    assert width == pytest.approx(LETTER_WIDTH_PT, abs=0.5)
 
 
 def test_a_page_that_says_its_resolution_keeps_it(out, doc_transport) -> None:

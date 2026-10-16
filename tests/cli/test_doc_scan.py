@@ -13,6 +13,7 @@ from tests.documents.helpers import blank_scene, reader, text_scene
 
 pytestmark = pytest.mark.usefixtures("no_real_ocr", "fixed_stamp")
 
+LETTER_WIDTH_PT = 612  # 8.5 inches
 THREE = ["page-0001.png", "page-0002.png", "page-0003.png"]
 
 
@@ -117,10 +118,10 @@ def test_keep_blank_keeps_every_page(out, doc_transport, capsys) -> None:
 
 def test_a_page_without_a_resolution_is_taken_at_the_one_asked_for(out, doc_transport) -> None:
     doc_transport.dpi_in_file = False
-    doc_transport.scenes = [text_scene(1)]
-    assert doc_scan(out, "--dpi", "600") == 0
+    doc_transport.scenes = [text_scene(1, dpi=200)]  # a Letter page: 1700 pixels wide
+    assert doc_scan(out, "--dpi", "200") == 0
     width = float(reader((out / "Document_0001.pdf").read_bytes()).pages[0].mediabox.width)
-    assert width == pytest.approx(850 * 72 / 600, abs=0.5)
+    assert width == pytest.approx(LETTER_WIDTH_PT, abs=0.5)
 
 
 def test_verbose_logs_each_page(out, doc_transport, capsys) -> None:

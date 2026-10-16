@@ -85,11 +85,13 @@ uv run ffscan process page-*.png --out ~/Scans --album "Family Trips" --feed fac
 ## Documents to PDF (preview)
 
 Letters, forms and receipts to one multi-page PDF, with blank pages dropped and, when OCRmyPDF is
-installed, searchable text. This first step works on pages you already have as PNGs; `ffscan doc
-scan` (feeder to PDF in one go) and a Documents mode in the desktop app come next. The design is
-in [`docs/design/documents.md`](docs/design/documents.md).
+installed, searchable text. `ffscan doc scan` takes the pages from the document feeder in one go;
+`ffscan doc process` makes the same PDF from PNGs you already have. A Documents mode in the
+desktop app comes next. The design is in [`docs/design/documents.md`](docs/design/documents.md).
 
 ```sh
+uv run ffscan doc scan --out ~/Documents/Scans --name "Tax Return" --colour grey --dpi 300
+uv run ffscan doc scan --out ~/Documents/Scans --simplex --ocr on --lang eng+deu
 uv run ffscan doc process page-*.png --out ~/Documents/Scans --name "Tax Return" --colour grey
 uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr on --lang eng+deu
 ```
@@ -122,7 +124,7 @@ uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr o
   distance of the backing colour (a pale blue-grey such as (190, 200, 210)) would be. A grey
   page has no hue to tell backing, pastel paper and a pale slip apart, so it is trimmed at the
   bottom only, never at a side: it loses the white tail only, never a side, and a grey receipt
-  keeps its tail (a missed trim, by design; `ffscan doc scan`, next, will scan in colour and make
+  keeps its tail (a missed trim, by design; `ffscan doc scan` always scans in colour and makes
   the grey page after trimming). A colour page is trimmed in colour and only then made grey or
   black and white, so `--colour grey` and `--colour bw` trim a colour page exactly as `colour` does.
   Every strip a trim would remove, the tail and each side strip, is then checked over all of its
@@ -155,7 +157,35 @@ uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr o
   the output folder. The Flatpak build has no OCR yet.
 - Exit codes are those of `ffscan`: 0 ok, 1 a processing problem (an unusable page stops the run
   before anything is written, and a file that is cut off or corrupt counts as unusable), 2 usage,
-  3 a required tool is missing.
+  3 a required tool is missing (`doc scan`: also the scanner or its shim, which is missing, not
+  answering or in use), 4 the feeder is empty (`doc scan` only), 130 stopped (Ctrl-C, SIGTERM or
+  SIGHUP).
+
+### Scanning with `ffscan doc scan`
+
+- Load the stack and run it: both sides of every page are scanned unless `--simplex`, and one
+  PDF comes out. `--out`, `--mkdir`, `--name`, `--colour`, `--keep-blank`, `--ocr` and `--lang`
+  mean what they mean for `doc process` (so do the summary and its lines, with "pages scanned"
+  for "pages read"). `--dpi` is the scan resolution: 200, 300 (default) or 600 dpi. `--net HOST`
+  uses a Wi-Fi scanner, as in `ffscan scan`.
+- `ffscan doc scan` always scans in colour, whatever `--colour` says: trimming needs colour to
+  tell the scanner's backing from pale paper, and the page is made grey or black and white only
+  after it has been trimmed. The scan is the scanner's full length, never a fixed paper size, so
+  a Legal page is not cut at Letter. The scanner's own deskew stays on. Pages that do not say
+  their resolution are taken at the one you asked for.
+- The scanner's pages go to a hidden folder in `DIR` and are deleted after a clean run. They are
+  kept in `DIR/.raw/<UTC time>/` when a page was dropped as blank, searchable text failed, a
+  step failed, the run was stopped, or `--keep-raw` says so (`--discard-raw` deletes them even
+  then, but only when blank pages dropped are the one reason: a failure or a stop always keeps
+  them). The summary says where they are.
+- If the scanner stops part-way (a jam, the cover opened), no PDF is made from part of a stack:
+  a PDF with its last pages missing is too easy to take for the whole. The pages already scanned
+  are kept, the error says where, and `ffscan doc process` makes a PDF from them when you want
+  one. If every page looks blank nothing is written and the exit code is 1, with the raw pages
+  kept. `--ocr on` without `ocrmypdf` is refused (exit 3) before anything is scanned.
+- Needs the scanner (not checked in CI): the Gray PNG that scanimage writes (`doc scan` does not
+  ask for it, but pages given to `doc process` may be grey), trimming on real pages, blank
+  detection on real backs, speed at 300 dpi, and OCR quality on real letters.
 
 ## Fix sideways photos in an existing library
 

@@ -51,7 +51,9 @@ def test_a_cancel_during_the_scan_makes_no_pdf_and_keeps_the_pages_scanned_so_fa
     assert result.pages_scanned == 2
     assert result.raw_reason is DocumentRawReason.CANCELLED
     assert result.raw_dir == out / ".raw" / STAMP
-    assert [page.name for page in result.kept_pages] == PAGES[:2]  # a third was cut off mid-write
+    assert [page.name for page in result.kept_pages] == PAGES[
+        :2
+    ]  # the runner did not report the third
     assert no_pdf(out)
 
 

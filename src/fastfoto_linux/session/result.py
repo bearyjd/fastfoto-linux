@@ -97,5 +97,10 @@ class DocumentSessionResult:
 
     @property
     def ok(self) -> bool:
-        """True when the PDF was made without a problem."""
-        raise NotImplementedError
+        """True when the PDF was made without a problem (searchable text included)."""
+        return (
+            self.error is None
+            and not self.cancelled
+            and self.document is not None
+            and self.document.ok
+        )

@@ -4,6 +4,7 @@ import pytest
 
 from fastfoto_linux.documents import OcrMode
 from fastfoto_linux.session import DocumentRawReason, RawPolicy
+from fastfoto_linux.session.documents import _keep_reason, _Outcome
 from tests import _fake_ocrmypdf as fake
 from tests.documents.helpers import blank_scene, text_scene
 from tests.session.conftest import STAMP, kept_names, raw_leftovers
@@ -123,3 +124,7 @@ def test_a_pdf_with_its_searchable_text_is_a_clean_run(out, doc_transport, monke
     assert result.ok
     assert (out / "Document_0001.pdf").read_bytes().endswith(fake.MARKER)
     assert (result.raw_dir, result.raw_reason) == (None, None)
+
+
+def test_a_run_that_ended_without_a_result_or_a_cause_keeps_the_pages() -> None:
+    assert _keep_reason(DISCARD, _Outcome()) is REASON.ERROR

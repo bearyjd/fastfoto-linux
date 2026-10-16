@@ -51,6 +51,7 @@ class Scene:
     content: Box | None  # box around everything inked (None: nothing)
     paper_end: int  # first row below the paper (the height when there is no tail)
     paper_x: tuple[int, int]  # first column of the paper, and the first one after it
+    paper_top: int = 0  # first row of the paper; positions in mm are measured from here
 
     @property
     def height(self) -> int:
@@ -127,7 +128,7 @@ def with_text(  # noqa: PLR0913
     height, width = px(height_mm, dpi), px(height_mm * 0.6, dpi)
     stroke = max(MIN_STROKE_PX, px(STROKE_MM, dpi))
     advance = width + 2 * stroke
-    left, top = scene.paper_x[0] + px(x_mm, dpi), px(y_mm, dpi)
+    left, top = scene.paper_x[0] + px(x_mm, dpi), scene.paper_top + px(y_mm, dpi)
     fill = (tone, tone, tone)
 
     def paint(draw: ImageDraw.ImageDraw) -> None:
@@ -158,7 +159,7 @@ def with_signature(  # noqa: PLR0913
 ) -> Scene:
     """One long connected pen stroke: a single mark far bigger than a letter."""
     dpi = scene.dpi
-    left, top = scene.paper_x[0] + px(x_mm, dpi), px(y_mm, dpi)
+    left, top = scene.paper_x[0] + px(x_mm, dpi), scene.paper_top + px(y_mm, dpi)
     width, height = px(width_mm, dpi), px(height_mm, dpi)
     stroke = max(MIN_STROKE_PX, px(STROKE_MM, dpi))
     xs = np.linspace(0, width - 1, 60)
@@ -211,7 +212,7 @@ def with_solid_block(scene: Scene, x_mm: float, y_mm: float, size_mm: float, ton
     """A filled square (a stamp, a logo), counted as content."""
     left, top, side = (
         scene.paper_x[0] + px(x_mm, scene.dpi),
-        px(y_mm, scene.dpi),
+        scene.paper_top + px(y_mm, scene.dpi),
         px(size_mm, scene.dpi),
     )
     image = scene.image.copy()
@@ -225,7 +226,7 @@ def with_tinted_block(
     scene: Scene, x_mm: float, y_mm: float, size_mm: tuple[float, float], rgb: tuple[int, int, int]
 ) -> Scene:
     """A filled rectangle of one colour that is not counted as content (a form's coloured bar)."""
-    left, top = scene.paper_x[0] + px(x_mm, scene.dpi), px(y_mm, scene.dpi)
+    left, top = scene.paper_x[0] + px(x_mm, scene.dpi), scene.paper_top + px(y_mm, scene.dpi)
     width, height = px(size_mm[0], scene.dpi), px(size_mm[1], scene.dpi)
     image = scene.image.copy()
     image[top : top + height, left : left + width] = rgb
@@ -257,3 +258,84 @@ def write_png(
     extra = {} if dpi is None else {"dpi": (dpi, dpi)}
     picture.save(path, "PNG", **extra)
     return path
+
+
+# ---- the scanner's backing band, as measured on real pages (numbers only, no pixels) ----------
+
+SHADOW_RGB = (189, 194, 202)  # backing next to the paper: about 27 from the backing, past 20
+PAD_WEDGE_MM = 10.0  # the deskew's pad: its upper boundary is slanted over this much height
+PAD_FIRST_ROW_SHARE = 0.95  # the pad covers this much of the bottom row; none of it at the top
+EDGE_LINE_MM = 1.0
+EDGE_LINE_TONE = 105  # the dark pixels of the paper's edge line (under 120)
+EDGE_LINE_SHARE = {"bottom": 0.45, "top": 0.2}  # the share of a row's pixels on the line
+TOP_PAD_SHARE = 0.15  # the first row at the top: this much of it is pad, the rest backing
+BAND_NOISE = 2
+
+
+def _noisy(rng: np.random.Generator, rgb: tuple[int, int, int], rows: int, width: int):
+    """``rows`` x ``width`` pixels of ``rgb`` with +-``BAND_NOISE`` levels on every channel."""
+    noise = rng.integers(-BAND_NOISE, BAND_NOISE + 1, (rows, width, 3))
+    return np.clip(np.asarray(rgb) + noise, 0, 255).astype(np.uint8)
+
+
+def _edge_line(rng: np.random.Generator, rows: int, width: int, share: float, paper: int):
+    """A dark edge line of ``rows``: ``share`` of each row's pixels are dark, the rest paper."""
+    dark = rng.random((rows, width, 1)) < share
+    return np.where(dark, EDGE_LINE_TONE, paper).astype(np.uint8).repeat(3, axis=2)
+
+
+def _pad_wedge(rng: np.random.Generator, dpi: int, width: int) -> np.ndarray:
+    """The rows at the bottom of the frame: pure white pad over a slanted boundary above the
+    bottom edge, backing beside it; at the first row the pad is 95% of the width, at the top of
+    the wedge nothing is left."""
+    rows = px(PAD_WEDGE_MM, dpi)
+    above_bottom = (rows - 1 - np.arange(rows))[:, None] * (PAD_WEDGE_MM / rows)
+    across = np.arange(width)[None, :] / width
+    pad = above_bottom < PAD_WEDGE_MM * (PAD_FIRST_ROW_SHARE - across)
+    return np.where(pad[..., None], 255, _noisy(rng, BACKING_RGB, rows, width)).astype(np.uint8)
+
+
+def banded_scene(  # noqa: PLR0913
+    *,
+    dpi: int = 100,
+    width_mm: float = LETTER_MM[0],
+    paper_mm: float = 60.0,
+    band_mm: float = 10.0,
+    top_mm: float = 0.0,
+    shadow_mm: float = 0.8,
+    edge_line: bool = True,
+    paper_noise: int = 0,
+    seed: int = 0,
+) -> Scene:
+    """A page as the scanner delivered it with the paper deskewed: from the top, ``top_mm`` of
+    backing (the first row part pad), the paper (pure 255, or 254-255 with ``paper_noise``) with
+    an edge line of 1 mm on each side that has backing, ``shadow_mm`` of darker backing, the
+    full-width ``band_mm`` of backing, and the slanted pad over the bottom edge.
+
+    ``paper_top`` is the first row of the paper including its top edge line, ``paper_end`` the
+    first row after the paper including its bottom edge line. ``edge_line`` draws the lines.
+    """
+    rng = np.random.default_rng(seed)
+    width = px(width_mm, dpi)
+    line = px(EDGE_LINE_MM, dpi) if edge_line else 0
+
+    def paper_rows(rows: int) -> np.ndarray:
+        tone = 255 - rng.integers(0, paper_noise + 1, (rows, width, 1))
+        return tone.astype(np.uint8).repeat(3, axis=2)
+
+    parts: list[np.ndarray] = []
+    if top_mm:
+        top = _noisy(rng, BACKING_RGB, px(top_mm, dpi), width)
+        top[0, : round(width * TOP_PAD_SHARE)] = 255
+        parts.append(top)
+    if line and top_mm:
+        parts.append(_edge_line(rng, line, width, EDGE_LINE_SHARE["top"], 255))
+    paper_top = sum(part.shape[0] for part in parts) - (line if top_mm else 0)
+    parts.append(paper_rows(px(paper_mm, dpi)))
+    paper_end = sum(part.shape[0] for part in parts) + line
+    if line:
+        parts.append(_edge_line(rng, line, width, EDGE_LINE_SHARE["bottom"], 255))
+    parts.append(_noisy(rng, SHADOW_RGB, px(shadow_mm, dpi), width))
+    parts.append(_noisy(rng, BACKING_RGB, px(band_mm, dpi), width))
+    parts.append(_pad_wedge(rng, dpi, width))
+    return Scene(np.concatenate(parts), dpi, None, paper_end, (0, width), max(0, paper_top))

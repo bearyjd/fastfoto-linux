@@ -105,6 +105,13 @@ class Trimmed:
     left: int
     right: int
     bottom: int
+    top: int = 0
+    band_bottom: bool = False  # the bottom cut ended at the paper's edge, in the backing band
+
+    @property
+    def tail_rows(self) -> int:
+        """Rows cut off the bottom that were the white tail: they take the blank-page margin."""
+        return self.bottom
 
 
 def _is_backing(colours: np.ndarray) -> np.ndarray:

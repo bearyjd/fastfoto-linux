@@ -94,6 +94,17 @@ def test_blue_grey_beyond_the_scanner_tolerance_is_not_backing(
     assert (result.left, result.right) == (0, 0)
 
 
+def test_a_full_height_sidebar_within_the_backing_tolerance_is_trimmed_known_limit() -> None:
+    """Documented (README, design doc): a sidebar printed edge to edge, full height, in a
+    blue-grey within 20 levels (RGB distance) of the backing and clearly darker than the paper
+    beside it cannot be told from backing and is cut."""
+    pale_blue = (190, 200, 210)  # distance 18 from the backing colour
+    scene = letter_text(paper_scene(dpi=DPI))
+    scene = with_tinted_block(scene, 0, 0, (SIDEBAR_MM, LETTER_MM[1]), pale_blue)
+    result = trim_page(colour_page(scene))
+    assert abs(result.left - mm(SIDEBAR_MM)) <= 1
+
+
 def test_the_backing_colour_and_tolerance_are_the_photo_cropper_s_not_copies() -> None:
     assert getattr(trim, "BACKGROUND_PRIOR_RGB", None) is crop.BACKGROUND_PRIOR_RGB
     assert getattr(trim, "BACKGROUND_PRIOR_TOLERANCE", None) is crop.BACKGROUND_PRIOR_TOLERANCE

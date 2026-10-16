@@ -14,16 +14,16 @@ from fastfoto_linux.documents.modes import ColourMode
 from tests.doc_synth import write_png
 
 RNG = np.random.default_rng(7)
-RGB = RNG.integers(0, 256, (40, 30, 3), dtype=np.uint8)
-GREY = RNG.integers(0, 256, (40, 30), dtype=np.uint8)
-BILEVEL = np.where(RNG.random((40, 30)) > 0.5, 255, 0).astype(np.uint8)
+RGB = RNG.integers(0, 256, (400, 300, 3), dtype=np.uint8)
+GREY = RNG.integers(0, 256, (400, 300), dtype=np.uint8)
+BILEVEL = np.where(RNG.random((400, 300)) > 0.5, 255, 0).astype(np.uint8)
 
 
 def test_an_rgb_png_loads_as_colour_with_its_resolution(tmp_path: Path) -> None:
     page = load_page(write_png(tmp_path / "p.png", RGB, dpi=300))
     assert page.kind is ColourMode.COLOUR
     assert page.dpi == 300
-    assert page.pixels.shape == (40, 30, 3)
+    assert page.pixels.shape == (400, 300, 3)
     assert page.pixels.dtype == np.uint8
     assert np.array_equal(page.pixels, RGB)
 
@@ -32,7 +32,7 @@ def test_an_8_bit_grey_png_loads_as_grey(tmp_path: Path) -> None:
     page = load_page(write_png(tmp_path / "p.png", GREY, dpi=200))
     assert page.kind is ColourMode.GREY
     assert page.dpi == 200
-    assert page.pixels.shape == (40, 30)
+    assert page.pixels.shape == (400, 300)
     assert np.array_equal(page.pixels, GREY)
 
 
@@ -54,7 +54,7 @@ def test_a_resolution_written_as_pixels_per_metre_is_rounded_to_whole_dpi(tmp_pa
 
 def test_inspect_reports_kind_resolution_and_size_without_decoding(tmp_path: Path) -> None:
     info = inspect_page(write_png(tmp_path / "p.png", GREY, dpi=300))
-    assert (info.kind, info.dpi, info.width, info.height) == (ColourMode.GREY, 300, 30, 40)
+    assert (info.kind, info.dpi, info.width, info.height) == (ColourMode.GREY, 300, 300, 400)
 
 
 def test_a_page_without_a_resolution_needs_the_fallback(tmp_path: Path) -> None:

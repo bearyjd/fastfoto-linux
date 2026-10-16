@@ -136,3 +136,26 @@ def test_a_wide_band_of_light_shading_stays_white() -> None:
     scene = with_tinted_block(paper_scene(dpi=100), 20, 100, (150.0, 6.0), (215,) * 3)
     grey = to_grey(scene.image)
     assert binarise(grey, 100).mean() > 0.995
+
+
+# ---- the known limit: dark shading is solid black ---------------------------------------------
+
+DARK_FILL = 80  # darker than the absolute dark level (96), lighter than the text on it
+DARK_TEXT = 20
+
+
+def test_black_text_on_a_dark_fill_is_lost_in_a_solid_black_area() -> None:
+    """Documented (README, design doc): in black and white a fill darker than the dark level is
+    black all the way through, so text printed on it in black cannot be read. Grey or colour
+    keeps such a page."""
+    scene = with_text(box_scene(DARK_FILL, 100), 44.0, 66.0, 12, tone=DARK_TEXT)
+    white = binarise(to_grey(scene.image), 100)
+    assert black_share(white, 100) >= 0.99
+
+
+def test_light_text_on_a_dark_fill_stays_white_in_the_black_area() -> None:
+    """A reversed heading is the use the dark rule exists for."""
+    scene = with_text(box_scene(0, 100), 44.0, 66.0, 12, tone=255)
+    grey = to_grey(scene.image)
+    white = binarise(grey, 100)
+    assert white[grey == 255].mean() > 0.9

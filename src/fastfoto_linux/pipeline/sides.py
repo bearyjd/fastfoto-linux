@@ -9,6 +9,13 @@ from pathlib import Path
 
 import numpy as np
 
+from fastfoto_linux.pipeline.batch_errors import (
+    BatchError,
+    NoPhotoOnSheetError,
+    PageResolutionError,
+    UnreadablePageError,
+    release_frames,
+)
 from fastfoto_linux.pipeline.crop import Box, Detection, NoPhotoFoundError, crop, detect_photo
 from fastfoto_linux.pipeline.geometry import mm_to_px
 from fastfoto_linux.pipeline.ink import (
@@ -30,7 +37,10 @@ __all__ = [
     "BackPolicy",
     "BatchError",
     "HandwritingEvidence",
+    "NoPhotoOnSheetError",
+    "PageResolutionError",
     "Photo",
+    "UnreadablePageError",
     "assemble_photos",
     "front_needs_correction",
     "handwriting_candidates",
@@ -47,17 +57,6 @@ FRONT_FROM_BACK_X_OFFSET_MM = 1.2  # measured shift of the front box against the
 FRONT_BACK_SIZE_TOLERANCE_MM = 3.0  # a front box this much off the back's size is distrusted
 
 FrameLoader = Callable[[Path], tuple[np.ndarray, int]]
-
-
-class BatchError(ValueError):
-    """The pages of a batch cannot be turned into photos (odd page count, no photo, ...).
-
-    ``sheet`` is the 1-based number of the sheet at fault, or None when the batch as a whole is.
-    """
-
-    def __init__(self, message: str, *, sheet: int | None = None) -> None:
-        super().__init__(message)
-        self.sheet = sheet
 
 
 class BackPolicy(StrEnum):
@@ -153,14 +152,19 @@ def _detect(path: Path, frame: np.ndarray, dpi: int) -> Detection | None:
 
 
 def _load_page(number: int, path: Path, loader: FrameLoader) -> _Page:
-    """Load and detect one page; any failure becomes a ``BatchError`` naming sheet and page."""
+    """Load and detect one page.
+
+    A page that cannot be loaded is an ``UnreadablePageError`` naming sheet and page. A detector
+    that fails on a loaded page is another matter: that error goes on as it is (``_photo_at``
+    makes a ``BatchError`` of it), so it is not mistaken for a damaged file.
+    """
     try:
         frame, dpi = loader(path)
-        return _Page(path, frame, dpi, _detect(path, frame, dpi))
     except Exception as error:
-        raise BatchError(
+        raise UnreadablePageError(
             f"sheet {number}: cannot read {path.name}: {error}", sheet=number
         ) from error
+    return _Page(path, frame, dpi, _detect(path, frame, dpi))
 
 
 def _view(page: _Page, box: Box) -> np.ndarray:
@@ -172,7 +176,7 @@ def _own_boxes(number: int, first: _Page, second: _Page) -> tuple[Box, Box]:
     """Each page's detected box; a page with none borrows the other page's, mirrored."""
     one, two = first.detection, second.detection
     if one is None and two is None:
-        raise BatchError(f"sheet {number}: no photo found on either page", sheet=number)
+        raise NoPhotoOnSheetError(f"sheet {number}: no photo found on either page", sheet=number)
     box_one = one.box if one else mirrored_front_box(two.box, first.frame.shape, first.dpi)
     box_two = two.box if two else mirrored_front_box(one.box, second.frame.shape, second.dpi)
     return box_one, box_two
@@ -207,7 +211,7 @@ def _sheet_photo(
     number = index + 1
     first, second = pages
     if first.dpi != second.dpi:
-        raise BatchError(
+        raise PageResolutionError(
             f"sheet {number}: pages differ in dpi ({first.dpi} and {second.dpi})", sheet=number
         )
     boxes = _own_boxes(number, first, second)
@@ -252,7 +256,9 @@ def _front_only_photo(index: int, path: Path, loader: FrameLoader, *, dangling: 
     """
     page = _load_page(index + 1, path, loader)
     if page.detection is None:
-        raise BatchError(f"sheet {index + 1}: {path.name}: no photo found", sheet=index + 1)
+        raise NoPhotoOnSheetError(
+            f"sheet {index + 1}: {path.name}: no photo found", sheet=index + 1
+        )
     suspicious = dangling and paper_score(_view(page, page.detection.box)) >= BACK_LIKE_PAPER_SCORE
     if suspicious:
         logger.warning(
@@ -304,6 +310,7 @@ def _generate(
             if on_sheet_error is None:
                 raise
             logger.error("%s; skipping the sheet", error)
+            release_frames(error)  # the callback may load the sheet's pages again
             on_sheet_error(error)
             continue
         if duplex and 2 * index + 1 < len(pages) and not photo.side_uncertain:

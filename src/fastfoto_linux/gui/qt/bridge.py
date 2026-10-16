@@ -22,13 +22,21 @@ from fastfoto_linux.gui.form import (
 )
 from fastfoto_linux.gui.prefs import load_form, save_form
 from fastfoto_linux.gui.qt.photos_model import PhotosModel, file_url
+from fastfoto_linux.gui.report import photos_heading
 from fastfoto_linux.gui.state import ActionBlockedError
 from fastfoto_linux.gui.worker import DiscoverFn, ProcessFn, SessionFn, Worker
 from fastfoto_linux.scanner import SUPPORTED_DPI
+from fastfoto_linux.scanner.run import TERMINATE_GRACE_S
 
 logger = logging.getLogger(__name__)
 
-SHUTDOWN_WAIT = 10.0  # seconds to wait for a cancelled job to wind down on shutdown
+# On top of the Cancel grace: a job that is cancelled starts the grace when it notices (up to a
+# poll later) and the SIGKILL, the reaping and the settling of the pages come after it.
+SHUTDOWN_MARGIN_S = 3.0
+# How long to wait for a cancelled job to wind down on shutdown. Longer than the grace scanimage is
+# given to stop the scanner, so the SIGKILL of one that ignores SIGTERM happens before the app
+# gives up (it would otherwise leave an orphan scanimage holding the scanner).
+SHUTDOWN_WAIT = TERMINATE_GRACE_S + SHUTDOWN_MARGIN_S
 SHUTDOWN_SLICE = 0.1  # the wait is made of short joins, so an abort is noticed
 ABORT_GRACE = 1.0  # after an abort: just long enough for the job to stop scanimage
 PRESERVE_SPACES = "white-space:pre-wrap"
@@ -307,6 +315,12 @@ class Bridge(QObject):
     @Property(int, notify=changed)
     def photoCount(self) -> int:
         return len(self.controller.photos)
+
+    @Property(str, notify=changed)
+    def photosHeading(self) -> str:
+        """The results grid's heading: the photos, and the ones saved whole counted apart."""
+        photos = self.controller.photos
+        return photos_heading(len(photos), sum(item.unprocessed for item in photos))
 
     @Property(str, notify=changed)
     def outputUrl(self) -> str:

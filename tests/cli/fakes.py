@@ -24,6 +24,9 @@ _TRANSPORT_NAMES = {
     "fastfoto_linux.cli.cmd_devices": ("find_usb_scanners",),
     "fastfoto_linux.scanner": ("resolve_target", "run_scan", "find_usb_scanners"),
     "fastfoto_linux.scanner.run": ("run_scan",),
+    "fastfoto_linux.session.run": ("run_scan", "check_scanner"),
+    "fastfoto_linux.scanner.precheck": ("check_scanner", "open_scanner"),
+    "fastfoto_linux.scanner.libusb": ("open_scanner",),
     "fastfoto_linux.scanner.target": ("resolve_target",),
     "fastfoto_linux.scanner.usb": ("find_usb_scanners",),
 }
@@ -55,7 +58,7 @@ class FakeTransport:
     pages_before_failure: int = 0
     failure: Callable[[tuple[Path, ...]], BaseException] | None = None
     resolve_error: Exception | None = None
-    corrupt_page: int | None = None
+    corrupt_page: int | tuple[int, ...] | None = None
     keep_on_disk: int | None = None
     resolve_calls: list[dict[str, Any]] = field(default_factory=list)
     config_dir_existed: list[bool] = field(default_factory=list)
@@ -77,8 +80,12 @@ class FakeTransport:
         job.output_dir.mkdir(parents=True, exist_ok=True)
         pages = write_sheets(job.output_dir, self.sheets, front_first=self.front_first)
         pages += write_front_pages(job.output_dir, self.front_pages, first_number=len(pages) + 1)
-        if self.corrupt_page is not None:
-            pages[self.corrupt_page - 1].write_bytes(b"not a png")
+        damaged = (
+            self.corrupt_page if isinstance(self.corrupt_page, tuple) else (self.corrupt_page,)
+        )
+        for number in damaged:
+            if number is not None:
+                pages[number - 1].write_bytes(b"not a png")
         on_progress = kwargs.get("on_progress")
         for number in range(1, len(pages) + 1):
             if on_progress is not None:

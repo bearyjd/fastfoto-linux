@@ -20,8 +20,9 @@ DPI = 300
 
 @pytest.fixture(autouse=True)
 def no_hardware(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The real scan function is what a session uses unless a test hands it another one."""
+    """The real scan and check are what a session uses unless a test hands it another one."""
     monkeypatch.setattr("fastfoto_linux.session.run.run_scan", refuse)
+    monkeypatch.setattr("fastfoto_linux.session.run.check_scanner", refuse)
 
 
 @pytest.fixture(autouse=True)

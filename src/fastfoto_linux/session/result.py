@@ -10,6 +10,8 @@ from fastfoto_linux.pipeline.process import ProcessResult
 class Stage(StrEnum):
     """Where a session is, for a progress display."""
 
+    CHECKING = auto()  # the scanner is checked (and freed if stuck) before the scan starts
+    WAITING = auto()  # the check ran past a couple of seconds: the scanner is slow to answer
     SCANNING = auto()
     PROCESSING = auto()
     DONE = auto()  # the raw pages are settled and the result is about to be returned

@@ -17,6 +17,21 @@ Status: with this shim preloaded, `scanimage -d epsonds:libusb:BBB:DDD -A` (open
 query, i.e. the INFO and CAPA exchanges) succeeds on a real FF-680W; without it the same command
 fails with "Error during device I/O". A full scan has not been tried with the shim yet.
 
+## The second quirk: a send that times out half-way
+
+The scanner can also be left half-way through a command. After it dozes, a command whose payload
+send times out has been taken only in part; the scanner then waits for the rest and swallows every
+later byte, so even a hello gets no answer until it is switched off and on (or the command is
+padded out, which `ffscan scan` now does before each USB scan; see the project README).
+
+libusb reports how many bytes of a timed-out bulk transfer went. The shim therefore continues a
+bulk OUT that timed out with fewer bytes sent than asked (including none), with the same per-call
+timeout, until all of it went or `FF680W_OUT_FINISH_MS` has passed. The total goes in
+`*transferred`, and the call succeeds only if everything went.
+
+**Status: expected to prevent the stuck state; needs a hardware test after the scanner sleeps.**
+It is covered by C-level tests with a fake libusb, but it has not been tried on the scanner.
+
 ## Build and use
 
 From the repository root:
@@ -40,7 +55,8 @@ the front end inside a Flatpak sandbox. Setting it in a different shell does not
 
 | Variable | Meaning |
 | --- | --- |
-| `FF680W_USB_GAP_US` | Gap in microseconds: an integer from `0` to `10000000` (10 s), default `2000`. `0` turns the shim into a pass-through. Anything else (not a number, negative, or above 10 s) falls back to the default. Read once, when the first transfer happens. |
+| `FF680W_USB_GAP_US` | Gap in microseconds: an integer from `0` to `10000000` (10 s), default `2000`. `0` turns the gap off. Anything else (not a number, negative, or above 10 s) falls back to the default. Read once, when the first transfer happens. |
+| `FF680W_OUT_FINISH_MS` | How long a bulk OUT that timed out part-way keeps sending the rest, in milliseconds: an integer from `0` to `600000` (10 min), default `30000`. `0` turns it off (with the gap off too, the shim is a pass-through). Anything else falls back to the default. Read once, when the first transfer happens. |
 
 ## Behaviour
 
@@ -53,6 +69,17 @@ the front end inside a Flatpak sandbox. Setting it in a different shell does not
   `libusb_get_device` and `libusb_get_device_descriptor`. If those symbols cannot be found, or
   the call fails, the gap is applied anyway: a 2 ms delay on another device is harmless, a missing
   delay wedges this scanner.
+- A bulk OUT to the FF-680W that returns `LIBUSB_ERROR_TIMEOUT` having sent fewer bytes than asked
+  is continued from where it stopped, with the same timeout per call, until all of it went, another
+  error came, or `FF680W_OUT_FINISH_MS` has passed (measured from the first call). The gap is
+  applied once, before the first call. IN transfers are never retried, other devices are left
+  alone, and a `NULL` `transferred` pointer is allowed (the total is then not reported). A call
+  that took nothing and came back at once is followed by a 1 ms nap, so a refusal that costs no
+  time cannot turn into a busy loop.
+- Finishing a send is **fail-closed**: it is done only for a device whose identity was read and
+  is the FF-680W. If the identity cannot be read (the libusb symbols are missing, or the call
+  fails) the send is not finished, because a retry that can hold one call for up to ten minutes
+  must not happen to a device that is not the FF-680W. (The gap, above, stays fail-open.)
 - `libusb_close` is wrapped to forget the handle, so a device opened later at a recycled handle
   address is identified afresh.
 - At most 16 handles are tracked at once. A 17th evicts the handle whose last IN is oldest (or that
@@ -64,7 +91,9 @@ the front end inside a Flatpak sandbox. Setting it in a different shell does not
 
 `tests/test_usb_gap_shim.py` builds the shim, a stub libusb and a small driver with `gcc`, replays
 IN/OUT sequences (including 8 concurrent threads) with the shim preloaded and checks the logged
-timestamps (it is skipped when `gcc` is missing). Run it with `uv run pytest tests/test_usb_gap_shim.py`.
+timestamps (it is skipped when `gcc` is missing). `tests/test_usb_gap_shim_finish.py` scripts
+partial and timed-out sends in the stub and checks the bytes it receives. Run them with
+`uv run pytest tests/test_usb_gap_shim.py tests/test_usb_gap_shim_finish.py`.
 
 ## The proper fix
 

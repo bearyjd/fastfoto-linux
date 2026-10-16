@@ -3,10 +3,21 @@
  *
  *   FF680W_USB_GAP_US   gap in microseconds: an integer from 0 to 10000000 (10 s), default 2000,
  *                       0 = off. Anything else (junk, negative, out of range) means the default.
+ *   FF680W_OUT_FINISH_MS  how long a bulk OUT that timed out part-way keeps sending the rest:
+ *                       an integer from 0 to 600000 (10 min), default 30000, 0 = off. Anything
+ *                       else means the default.
  *
- * Timestamps are kept per device handle and the gap is only applied to the FF-680W. If the
- * device's VID/PID cannot be looked up (libusb symbols not found, or the call fails) the gap is
- * applied anyway: delaying an OUT by ~2 ms is harmless, missing the delay wedges the scanner.
+ * Why finish a send: when an OUT to the FF-680W times out after the scanner took only part of its
+ * payload, the scanner swallows every later byte while it waits for the rest, and only a power
+ * cycle (or padding the command out) frees it. libusb reports the bytes that did go in
+ * *transferred, so the remainder can be sent with the same per-call timeout. This is expected to
+ * prevent that state; it has not been tried on the scanner yet.
+ *
+ * Timestamps are kept per device handle and the gap, and the finishing of a send, are only applied
+ * to the FF-680W. If the device's VID/PID cannot be looked up (libusb symbols not found, or the
+ * call fails) the two differ: the gap is applied anyway (delaying an OUT by ~2 ms is harmless,
+ * missing the delay wedges the scanner), but a send is NOT finished (it can hold a call for up to
+ * 10 minutes, which another device must never suffer), so the identity decides it.
  * libusb headers are not needed; the 18-byte device descriptor layout is declared locally. */
 #define _GNU_SOURCE
 #include <dlfcn.h>
@@ -21,9 +32,13 @@
 #define FF680W_PID 0x016b
 #define DEFAULT_GAP_US 2000L
 #define MAX_GAP_US 10000000L
+#define DEFAULT_OUT_FINISH_MS 30000L
+#define MAX_OUT_FINISH_MS 600000L
 #define MAX_HANDLES 16
+#define RETRY_NAP_NS 1000000L /* an OUT refused at once is offered again after this long */
 #define ENDPOINT_IN 0x80
 #define LIBUSB_ERROR_NOT_FOUND (-5)
+#define LIBUSB_ERROR_TIMEOUT (-7)
 
 struct libusb_device_descriptor {
     uint8_t bLength;
@@ -57,6 +72,7 @@ static close_fn real_close;
 static get_device_fn get_device;
 static get_descriptor_fn get_descriptor;
 static long gap_us = DEFAULT_GAP_US;
+static long out_finish_ms = DEFAULT_OUT_FINISH_MS;
 static pthread_once_t init_once = PTHREAD_ONCE_INIT;
 
 /* Per-handle state, guarded by table_lock. A handle is identified by its pointer and forgotten
@@ -64,7 +80,8 @@ static pthread_once_t init_once = PTHREAD_ONCE_INIT;
  * is oldest (or that never saw an IN) is recycled; an evicted handle loses its last-IN time. */
 struct slot {
     libusb_device_handle *handle; /* NULL = free */
-    int gap_applies;
+    int gap_applies;              /* the FF-680W, or a device that could not be identified */
+    int finish_applies;           /* the FF-680W, identified */
     int have_in;
     struct timespec last_in;
 };
@@ -76,25 +93,33 @@ static void *lookup(const char *name) {
     return symbol ? symbol : dlsym(RTLD_DEFAULT, name);
 }
 
-static void init(void) {
-    const char *env = getenv("FF680W_USB_GAP_US");
+/* The integer in environment variable `name` if it is in [0, max], else `fallback`. */
+static long env_limit(const char *name, long fallback, long max) {
+    const char *env = getenv(name);
     if (env) {
         char *end;
         errno = 0;
         long value = strtol(env, &end, 10);
-        if (end != env && *end == '\0' && errno != ERANGE && value >= 0 && value <= MAX_GAP_US)
-            gap_us = value;
+        if (end != env && *end == '\0' && errno != ERANGE && value >= 0 && value <= max)
+            return value;
     }
+    return fallback;
+}
+
+static void init(void) {
+    gap_us = env_limit("FF680W_USB_GAP_US", DEFAULT_GAP_US, MAX_GAP_US);
+    out_finish_ms = env_limit("FF680W_OUT_FINISH_MS", DEFAULT_OUT_FINISH_MS, MAX_OUT_FINISH_MS);
     real_bulk = (bulk_fn)dlsym(RTLD_NEXT, "libusb_bulk_transfer");
     real_close = (close_fn)dlsym(RTLD_NEXT, "libusb_close");
     get_device = (get_device_fn)lookup("libusb_get_device");
     get_descriptor = (get_descriptor_fn)lookup("libusb_get_device_descriptor");
 }
 
-static int gap_applies_to(libusb_device_handle *h) {
+/* 1 = the FF-680W, 0 = another device, -1 = it cannot be told (see the header). */
+static int identify(libusb_device_handle *h) {
     struct libusb_device_descriptor desc;
     libusb_device *dev = get_device && get_descriptor ? get_device(h) : NULL;
-    if (!dev || get_descriptor(dev, &desc) != 0) return 1; /* fail-safe, see header */
+    if (!dev || get_descriptor(dev, &desc) != 0) return -1;
     return desc.idVendor == FF680W_VID && desc.idProduct == FF680W_PID;
 }
 
@@ -116,7 +141,9 @@ static struct slot *slot_for(libusb_device_handle *h) {
     struct slot *s = free_slot ? free_slot : oldest;
     memset(s, 0, sizeof *s);
     s->handle = h;
-    s->gap_applies = gap_applies_to(h);
+    int identity = identify(h);
+    s->gap_applies = identity != 0;     /* fail-open: a gap is cheap */
+    s->finish_applies = identity == 1;  /* fail-closed: only for a device known to need it */
     return s;
 }
 
@@ -130,9 +157,46 @@ static struct timespec add_us(struct timespec t, long us) {
     return t;
 }
 
+static void nap(void) {
+    struct timespec pause = {0, RETRY_NAP_NS};
+    nanosleep(&pause, NULL);
+}
+
 static void sleep_until(const struct timespec *deadline) {
     while (clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, deadline, NULL) == EINTR) {
     }
+}
+
+static long elapsed_ms(const struct timespec *from, const struct timespec *to) {
+    return (long)((to->tv_sec - from->tv_sec) * 1000L + (to->tv_nsec - from->tv_nsec) / 1000000L);
+}
+
+/* An OUT to the FF-680W. If it times out having sent only part of `data` (possibly none), send the
+ * rest with the same per-call timeout until all of it went, another error came, or
+ * out_finish_ms has passed. A call that took nothing and came back at once is followed by a short
+ * nap, so that a refusal that costs no time cannot become a busy loop.
+ * *done (if given) gets the total; success only if everything went. */
+static int send_all(libusb_device_handle *h, unsigned char ep, unsigned char *data, int len,
+                    int *done, unsigned int timeout) {
+    struct timespec start, before, now;
+    int total = 0;
+    int rc;
+
+    clock_gettime(CLOCK_MONOTONIC, &start);
+    for (;;) {
+        int step = 0;
+        clock_gettime(CLOCK_MONOTONIC, &before);
+        rc = real_bulk(h, ep, data + total, len - total, &step, timeout);
+        if (step < 0) step = 0;
+        if (step > len - total) step = len - total;
+        total += step;
+        if (rc != LIBUSB_ERROR_TIMEOUT || total >= len) break;
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        if (elapsed_ms(&start, &now) >= out_finish_ms) break;
+        if (step == 0 && elapsed_ms(&before, &now) < 1) nap();
+    }
+    if (done) *done = total;
+    return (rc == LIBUSB_ERROR_TIMEOUT && total >= len) ? 0 : rc;
 }
 
 int libusb_bulk_transfer(libusb_device_handle *h, unsigned char ep, unsigned char *data, int len,
@@ -140,14 +204,16 @@ int libusb_bulk_transfer(libusb_device_handle *h, unsigned char ep, unsigned cha
     int is_in = (ep & ENDPOINT_IN) != 0;
     struct timespec deadline = {0, 0};
     int must_wait = 0;
+    int finish = 0;
 
     pthread_once(&init_once, init);
     if (!real_bulk) return LIBUSB_ERROR_NOT_FOUND;
 
-    if (!is_in && gap_us > 0) {
+    if (!is_in && (gap_us > 0 || out_finish_ms > 0)) {
         pthread_mutex_lock(&table_lock);
         struct slot *s = slot_for(h);
-        if (s->gap_applies && s->have_in) {
+        finish = out_finish_ms > 0 && len > 0 && s->finish_applies;
+        if (gap_us > 0 && s->gap_applies && s->have_in) {
             deadline = add_us(s->last_in, gap_us);
             must_wait = 1;
         }
@@ -155,7 +221,8 @@ int libusb_bulk_transfer(libusb_device_handle *h, unsigned char ep, unsigned cha
     }
     if (must_wait) sleep_until(&deadline);
 
-    int rc = real_bulk(h, ep, data, len, done, timeout);
+    int rc = finish ? send_all(h, ep, data, len, done, timeout)
+                    : real_bulk(h, ep, data, len, done, timeout);
 
     if (is_in) {
         struct timespec now;

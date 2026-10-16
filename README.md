@@ -31,6 +31,25 @@ uv run ffscan process page-*.png --out ~/Scans --album "Family Trips" --feed fac
 - `scan` scans the document feeder (both sides, 600 dpi) and processes the pages. Photos are
   loaded face down by default (`--feed face-down`: the back is scanned first); use
   `--feed face-up` if yours are loaded the other way. `--simplex` scans fronts only.
+- Before each USB scan `scan` checks that the scanner answers (it says "Checking the scanner…" in
+  the app, and "Waiting for the scanner to answer…" on the terminal if that takes over 2 seconds;
+  a scanner that is waking up is given about 15 seconds). A scanner that a failed send left
+  half-way through a command, which then swallows every byte, is freed with a little padding and
+  `-v` says "scanner was stuck; freed it". The padding is only sent when `ffscan` itself left a
+  note that its last scan on this USB address ended badly: an I/O error, a scanimage that had to
+  be killed, or one that died of a signal (a busy, jammed or cover-open reply does not count). The
+  note is a small file, `scanner-unclean`, in `$XDG_STATE_HOME/fastfoto-linux` or
+  `~/.local/state/fastfoto-linux`; it is ignored after a reboot or after 24 hours, and a scanner
+  that answers clears it. A scanner that is silent without such a note may be busy with another
+  device over Wi-Fi, so nothing is sent to it:
+  "The scanner isn't answering. It may be busy with another device, or stuck — switch it off and
+  on, then try again." (exit 3). `FF680W_FORCE_UNSTICK=1` sends the padding without a note; use it
+  only as a last resort, when you know nothing else is using the scanner. One that still does not
+  answer, or that another program holds, also stops the scan before scanimage starts (exit 3).
+  The check needs libusb and is skipped without it, for `--net`, and with `FF680W_NO_PRECHECK=1`.
+  scanimage runs in the C locale, so its error messages are the English ones the app recognises.
+  It stops waiting at its first real error (I/O error, jam, cover open); Cancel gives scanimage up
+  to 10 seconds to stop the scanner cleanly, then ends it.
 - `process` handles raw pages scanned earlier, in natural filename order.
 - Per photo it writes `Album_0001.jpg` (the original, turned upright by its faces), an enhanced
   copy `Album_0001_a.jpg` (colour restoration) and `Album_0001_b.jpg` when the back has
@@ -40,14 +59,28 @@ uv run ffscan process page-*.png --out ~/Scans --album "Family Trips" --feed fac
   original, loses only the `_a` copy and the exit code is 1. `--no-orient`, `--no-restore` and
   `--enhanced-only` switch parts off; `--redeye` adds red-eye removal to the enhanced copy and is off by default
   because roughly one fix in six is visibly wrong.
+- A sheet whose photo cannot be found (two items fed together, say) is not lost or skipped: its
+  whole pages are saved in its place in the sequence as `Album_0004_unprocessed.jpg` (the front)
+  and `Album_0004_unprocessed_b.jpg` (the back, unless `--backs never`; with `auto` the back is
+  kept, because nothing was cropped to judge its writing). Each page is saved as the whole
+  scanner page, white area included, so that nothing is hidden while you look for the photo.
+  If just one of the two pages can be read, that page is saved alone (a back keeps its `_b` name,
+  whatever `--backs` says) and the summary says which side is missing. The next sheet gets the
+  next number, so the files stay in the order the photos were fed, and the summary says which one
+  it was: `photo 4 of 6 fed: the photo's edges were not found
+  (two items fed together?) — whole page saved as Album_0004_unprocessed.jpg`. The desktop app
+  shows the image in the results with a "Not processed" label and the reason; the heading counts
+  these apart ("Photos (5), 1 photo needs checking"). Such a sheet still
+  counts as failed (exit code 1) and its raw pages are kept as below.
 - `--out` must exist unless `--mkdir` is given. A sheet that cannot be processed never stops the
   others: it is listed at the end and the exit code is 1. `scan` keeps the raw pages in
   `DIR/.raw/<UTC time>/` (so nothing needs rescanning) when anything went wrong (a failed or
   degraded sheet, a scanner error, Ctrl-C, SIGTERM or SIGHUP), when a back was dropped for lack
   of writing (the run says so; raw PNGs use disk space), and always with `--keep-raw`;
   `--discard-raw` deletes them after an otherwise clean run even if a back was dropped.
-- Exit codes: 0 ok, 1 processing error, 2 usage, 3 scanner not found or shim missing, 4 no
-  documents in the feeder. `-v` logs progress, `--debug` adds tracebacks.
+- Exit codes: 0 ok, 1 processing error, 2 usage, 3 scanner not found, shim missing, scanner not
+  answering or in use by another program, 4 no documents in the feeder. `-v` logs progress,
+  `--debug` adds tracebacks.
 
 ## Documents to PDF (preview)
 
@@ -171,7 +204,8 @@ uv run ffscan library fix ~/Documents/library-plan.csv \
 
 `fastfoto` is a KDE desktop app over the same scan session as `ffscan`: pick an output folder, album
 and date, press **Scan**, and the photos appear in the window as they are saved (originals or
-enhanced copies, with each back beside its front). **Cancel** stops the scan; the pages scanned
+enhanced copies, with each back beside its front; a sheet whose photo could not be found is shown
+as a "Not processed" page with the reason). **Cancel** stops the scan; the pages scanned
 so far are kept and **Process them now** turns them into photos later. Closing the window during
 a scan asks to cancel first, and the settings you used are remembered for next time.
 

@@ -12,7 +12,12 @@ from fastfoto_linux.output.errors import (
     OutputRootMissingError,
 )
 from fastfoto_linux.output.metadata import DateRange, PhotoDate
-from fastfoto_linux.output.writer import DEFAULT_QUALITY, WrittenFiles, write_photo
+from fastfoto_linux.output.writer import (
+    DEFAULT_QUALITY,
+    WrittenFiles,
+    write_photo,
+    write_unprocessed,
+)
 
 __all__ = [
     "DEFAULT_QUALITY",
@@ -29,4 +34,5 @@ __all__ = [
     "PhotoDate",
     "WrittenFiles",
     "write_photo",
+    "write_unprocessed",
 ]

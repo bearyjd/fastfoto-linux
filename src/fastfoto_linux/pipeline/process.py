@@ -10,7 +10,6 @@ import logging
 import threading
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -27,7 +26,14 @@ from fastfoto_linux.output.errors import InvalidNotesError
 from fastfoto_linux.output.metadata import MAX_NOTES_CHARS
 from fastfoto_linux.output.naming import sanitise_album, sanitise_prefix
 from fastfoto_linux.output.writer import MAX_QUALITY, MIN_QUALITY
-from fastfoto_linux.pipeline.sides import BackPolicy, Photo, iter_photos
+from fastfoto_linux.pipeline.io import scan_time
+from fastfoto_linux.pipeline.issues import SheetIssue, sheet_issue, sheet_pages
+from fastfoto_linux.pipeline.sides import BackPolicy, BatchError, Photo, iter_photos
+from fastfoto_linux.pipeline.unprocessed import (
+    plain_failure_reason,
+    plain_reason,
+    save_unprocessed,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -79,29 +85,23 @@ class ProcessSettings:
 
 
 @dataclass(frozen=True)
-class SheetIssue:
-    """A sheet worth telling the user about: ``sheet`` is 1-based, ``pages`` are file names."""
-
-    sheet: int | None
-    pages: tuple[str, ...]
-    reason: str
-
-
-@dataclass(frozen=True)
 class ProcessResult:
     """What ``process_pages`` did.
 
-    ``written`` holds one entry per photo that reached disk. ``failed`` lists the sheets that
-    were skipped (unreadable page, no photo found, the writer failing); nothing of such a sheet
-    is written. ``degraded`` lists written sheets whose orienter or an enhancer failed: they got
-    their original (turned only if the orienter worked) but no enhanced copy. ``uncertain``
-    lists written photos that need a look: front and back could not be told apart by content
-    (they keep their back, whatever the back policy), or only one page of the sheet was
-    scanned. ``dropped_backs`` names the back pages the ``AUTO`` policy left out for want of
-    writing, so that dropping one is never silent. ``unchanged`` counts the sheets whose
-    enhancers left the picture byte-identical: they get no ``_a`` copy. ``cancelled`` is True
-    when the caller's cancel event stopped the run before every sheet was handled: what is listed
-    is only the part that was done.
+    ``written`` holds one entry per photo that reached disk. ``failed`` lists the sheets that did
+    not become a photo (unreadable page, no photo found, the writer failing). Where possible the
+    whole pages of such a sheet were saved instead (``SheetIssue.saved``, as ``_unprocessed``
+    files in the sheet's place in the sequence); otherwise nothing of it is written. ``degraded``
+    lists written sheets whose orienter or an enhancer failed: they got their original (turned
+    only if the orienter worked) but no enhanced copy. ``uncertain`` lists written photos that
+    need a look: front and back could not be told apart by content (they keep their back,
+    whatever the back policy), or only one page of the sheet was scanned. ``dropped_backs`` names
+    the back pages the ``AUTO`` policy left out for want of writing, so that dropping one is never
+    silent. ``unchanged`` counts the sheets whose enhancers left the picture byte-identical: they
+    get no ``_a`` copy. ``cancelled`` is True when the caller's cancel event stopped the run
+    before every sheet was handled: what is listed is only the part that was done. ``sheets`` is
+    how many sheets were fed (a duplex batch has two pages per sheet), the "of M" of "photo N of M
+    fed".
     """
 
     written: tuple[WrittenFiles, ...] = ()
@@ -111,6 +111,7 @@ class ProcessResult:
     dropped_backs: tuple[str, ...] = ()
     unchanged: int = 0
     cancelled: bool = False
+    sheets: int = 0
 
     @property
     def photos(self) -> int:
@@ -161,6 +162,7 @@ class _Tally:
 
     paths: tuple[Path, ...]
     duplex: bool
+    sheets: int
     written: list[WrittenFiles] = field(default_factory=list)
     failed: list[SheetIssue] = field(default_factory=list)
     uncertain: list[SheetIssue] = field(default_factory=list)
@@ -168,8 +170,17 @@ class _Tally:
     dropped: list[str] = field(default_factory=list)
     unchanged: int = 0
 
-    def fail(self, sheet: int | None, reason: str) -> None:
-        self.failed.append(_sheet_issue(sheet, self.paths, self.duplex, reason))
+    def fail(
+        self,
+        sheet: int | None,
+        reason: str,
+        saved: WrittenFiles | None = None,
+        *,
+        save_failed: bool = False,
+    ) -> None:
+        self.failed.append(
+            sheet_issue(sheet, self.paths, self.duplex, reason, saved, save_failed=save_failed)
+        )
 
     def add(self, sheet: int, handled: _Handled) -> WrittenFiles | None:
         """Record what became of one sheet; its files if it was written."""
@@ -183,7 +194,7 @@ class _Tally:
             (handled.uncertain, self.uncertain),
         ):
             if reason is not None:
-                issues.append(_sheet_issue(sheet, self.paths, self.duplex, reason))
+                issues.append(sheet_issue(sheet, self.paths, self.duplex, reason))
         if handled.dropped_back is not None:
             self.dropped.append(handled.dropped_back)
         return handled.files
@@ -197,6 +208,7 @@ class _Tally:
             tuple(self.dropped),
             self.unchanged,
             cancelled,
+            self.sheets,
         )
 
 
@@ -216,6 +228,10 @@ def process_pages(
     sheet is still written (without ``_a``) and listed as degraded. An odd page count in a
     duplex batch makes the last page a front without a back (a warning is logged, and the sheet
     is listed as incomplete). The scan time of a photo is the modification time of its page file.
+    A sheet that cannot be turned into a photo (no photo found on its pages, say) is not lost: its
+    whole pages are saved in its place in the sequence and listed in ``failed`` with the files
+    (see ``ProcessResult``); ``on_photo`` hears them like a photo. If they cannot be saved, the
+    sheet is just listed.
     Raises ``OutputRootMissingError`` before reading anything when the output folder does not
     exist.
 
@@ -236,14 +252,14 @@ def process_pages(
             "odd number of pages (%d) in a duplex batch; the last is a front", len(paths)
         )
     total = (len(paths) + 1) // 2 if settings.duplex else len(paths)
-    tally = _Tally(paths, settings.duplex)
+    tally = _Tally(paths, settings.duplex, total)
     batch = iter_photos(
         paths,
         duplex=settings.duplex,
         back_policy=settings.back_policy,
         expect_front_first=settings.expect_front_first,
         allow_odd=True,
-        on_sheet_error=lambda error: tally.fail(error.sheet, str(error)),
+        on_sheet_error=lambda error: _sheet_failed(error, tally, settings, on_photo),
     )
     done = 0  # the sheets up to this number are settled: written, failed or skipped
     while not (cancelled := _cancelled_early(cancel, done, total)):
@@ -262,6 +278,27 @@ def process_pages(
     return tally.result(cancelled=cancelled)
 
 
+def _sheet_failed(
+    error: BatchError,
+    tally: _Tally,
+    settings: ProcessSettings,
+    on_photo: Callable[[WrittenFiles], None] | None,
+) -> None:
+    """Record a sheet that could not become a photo, saving its whole pages when that works."""
+    if error.sheet is None:
+        tally.fail(None, str(error))
+        return
+    reason = plain_reason(error)
+    saved = save_unprocessed(sheet_pages(error.sheet, tally.paths, tally.duplex), settings, reason)
+    if saved is None:
+        logger.debug("sheet %d could not be saved whole: %s", error.sheet, error)
+        tally.fail(error.sheet, reason, save_failed=True)
+        return
+    tally.fail(error.sheet, saved.unprocessed_reason or reason, saved)
+    if on_photo is not None:
+        on_photo(saved)
+
+
 def _cancelled_early(cancel: threading.Event | None, done: int, total: int) -> bool:
     """Whether ``cancel`` is set while sheets are still waiting to be handled."""
     return cancel is not None and cancel.is_set() and done < total
@@ -274,8 +311,9 @@ def _handle(photo: Photo, settings: ProcessSettings) -> _Handled:
         prepared = _prepare(photo, settings)
         files = _write(photo, prepared, settings)
     except Exception as error:  # any writer failure costs this sheet only
-        reason = _reason(error)
+        reason = plain_failure_reason(error)
         logger.error("sheet %d: %s", sheet, reason)
+        logger.debug("sheet %d: %s", sheet, _reason(error), exc_info=True)
         return _Handled(failure=reason)
     if prepared.degraded is not None:
         logger.error("sheet %d: %s; wrote the original only", sheet, prepared.degraded)
@@ -338,34 +376,11 @@ def _write(photo: Photo, prepared: _Prepared, settings: ProcessSettings) -> Writ
         prefix=settings.prefix,
         date=settings.date,
         notes=settings.notes,
-        scanned_at=_scanned_at(photo),
+        scanned_at=scan_time(photo.source_pages[0]),
         quality=settings.quality,
         keep_original=settings.keep_original,
     )
 
 
-def _scanned_at(photo: Photo) -> datetime | None:
-    """When the photo's front page file was written: the scan time, as the file system knows it.
-
-    None (the writer then uses the current time) when the file cannot be inspected.
-    """
-    try:
-        return datetime.fromtimestamp(photo.source_pages[0].stat().st_mtime)
-    except OSError as error:
-        logger.debug("cannot read the time of %s: %s", photo.source_pages[0].name, error)
-        return None
-
-
 def _reason(error: Exception) -> str:
     return str(error) or type(error).__name__
-
-
-def _sheet_issue(
-    sheet: int | None, paths: tuple[Path, ...], duplex: bool, reason: str
-) -> SheetIssue:
-    """An issue for sheet number ``sheet`` (1-based), naming its pages in scan order."""
-    if sheet is None:
-        return SheetIssue(None, (), reason)
-    first = 2 * (sheet - 1) if duplex else sheet - 1
-    names = tuple(p.name for p in paths[first : first + (2 if duplex else 1)])
-    return SheetIssue(sheet, names, reason)

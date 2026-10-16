@@ -204,8 +204,27 @@ def test_build_env_without_extras_returns_an_equal_but_new_dict() -> None:
 
     env = build_env(base)
 
-    assert env == base
+    assert env == {**base, "LC_ALL": "C"}
     assert env is not base
+
+
+def test_build_env_forces_the_c_locale_and_drops_language() -> None:
+    """scanimage's error texts are matched in English, and its -y 393.7 needs a decimal point."""
+    base = {"LC_ALL": "de_DE.UTF-8", "LANGUAGE": "de:en", "LANG": "de_DE.UTF-8", "PATH": "/bin"}
+
+    env = build_env(base)
+
+    assert env["LC_ALL"] == "C"
+    assert "LANGUAGE" not in env
+    assert env["PATH"] == "/bin"
+    assert base["LANGUAGE"] == "de:en"  # the caller's environment is left alone
+
+
+def test_build_env_sets_the_c_locale_when_none_was_set() -> None:
+    env = build_env({}, shim=SHIM, sane_config_dir=Path("/tmp/cfg"))
+
+    assert env["LC_ALL"] == "C"
+    assert "LANGUAGE" not in env
 
 
 def test_build_env_accepts_any_mapping_and_never_mutates_the_input() -> None:

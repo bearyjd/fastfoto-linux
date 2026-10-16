@@ -17,7 +17,11 @@ Spec keys (all optional): ``pages`` (int) or ``numbers`` (list of page numbers),
 does), ``record_to`` (file that receives argv, the FAKE_PROBE variable, whether stdin was at
 EOF and whether the script is a session leader), ``grandchild`` (start a process that inherits
 stderr and outlives the script; "flood" makes it write to stderr non-stop until the pipe closes),
-``unterminated_stderr_bytes`` (write this many bytes, then "END", without a newline).
+``unterminated_stderr_bytes`` (write this many bytes, then "END", without a newline),
+``early_stderr_lines`` (lines said right after the pages, before ``hang`` and before the exit),
+``exit_delay_s`` (sleep this long just before exiting, like scanimage's slow exit path),
+``die_by_signal`` (signal number the script sends itself after ``early_stderr_lines``: it dies of
+it, as scanimage does from a crash or an outside kill, and its exit status is minus the number).
 """
 
 import json
@@ -90,6 +94,11 @@ _SCRIPT = textwrap.dedent(
         if not failed:
             os.rename(part, batch % n)
 
+    for text in spec.get("early_stderr_lines", []):
+        say(text + "\\n")
+    if spec.get("die_by_signal"):
+        os.kill(os.getpid(), spec["die_by_signal"])
+        time.sleep(30)
     if spec.get("unterminated_stderr_bytes"):
         err.write(b"x" * spec["unterminated_stderr_bytes"] + b"END")
         err.flush()
@@ -102,6 +111,7 @@ _SCRIPT = textwrap.dedent(
     if spec.get("stderr_hex"):
         err.write(bytes.fromhex(spec["stderr_hex"]))
         err.flush()
+    time.sleep(spec.get("exit_delay_s", 0))
     sys.exit(spec.get("exit_code", 0))
     """
 )

@@ -20,6 +20,7 @@ WHEEL_NAME = re.compile(
     r"(?P<name>[^-]+)-(?P<version>[^-]+)-(?P<python>[^-]+)-(?P<abi>[^-]+)-(?P<platform>.+)\.whl"
 )
 STABLE_ABI_PYTHON = re.compile(r"cp3(?:[7-9]|1[0-3])")  # abi3 wheels that run on CPython 3.13
+PURE_PYTHON_TAGS = frozenset({"py3", "py2.py3", "py313"})
 
 
 def pins(path: Path) -> dict[str, tuple[str, set[str]]]:
@@ -74,17 +75,50 @@ def test_the_runtime_wheels_are_the_pinned_runtime_dependencies_and_nothing_else
     assert "opencv-python-headless" in names
 
 
-def test_every_runtime_wheel_is_cpython_313_manylinux_x86_64() -> None:
+def accepted(filename: str) -> bool:
+    """Whether a wheel runs on CPython 3.13 / x86_64 Linux: pure Python, or cp313 / abi3
+    manylinux. (The generator also checks the glibc a manylinux tag needs.)"""
+    match = WHEEL_NAME.fullmatch(filename)
+    if match is None:
+        return False
+    python, abi, platform = match["python"], match["abi"], match["platform"]
+    if python in PURE_PYTHON_TAGS and abi == "none" and platform == "any":
+        return True
+    cpython_313 = python == abi == "cp313"
+    stable_abi = abi == "abi3" and STABLE_ABI_PYTHON.fullmatch(python) is not None
+    tags = platform.split(".")
+    linux = any("manylinux" in tag and "x86_64" in tag for tag in tags)
+    return (cpython_313 or stable_abi) and linux
+
+
+def test_every_runtime_wheel_is_cpython_313_manylinux_x86_64_or_pure_python() -> None:
     for source in wheel_sources(load_json(RUNTIME_MODULE)):
-        match = WHEEL_NAME.fullmatch(source["url"].rsplit("/", 1)[-1])
-        assert match, source["url"]
-        cpython_313 = match["python"] == match["abi"] == "cp313"
-        stable_abi = match["abi"] == "abi3" and STABLE_ABI_PYTHON.fullmatch(match["python"])
-        assert cpython_313 or stable_abi, source["url"]
-        assert "manylinux" in match["platform"], source["url"]
-        assert "x86_64" in match["platform"], source["url"]
-        assert "musllinux" not in match["platform"], source["url"]
+        filename = source["url"].rsplit("/", 1)[-1]
+        assert accepted(filename), filename
+        assert "musllinux" not in filename, filename
         assert re.fullmatch(r"[0-9a-f]{64}", source["sha256"])
+
+
+@pytest.mark.parametrize(
+    "filename",
+    [
+        "x-1-py3-none-any.whl",
+        "x-1-py2.py3-none-any.whl",
+        "x-1-py313-none-any.whl",
+        "x-1-py312-none-any.whl",
+        "x-1-py3-none-manylinux_2_28_x86_64.whl",
+        "x-1-cp313-cp313-manylinux_2_28_x86_64.whl",
+        "x-1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
+        "x-1-cp312-cp312-manylinux_2_28_x86_64.whl",
+        "x-1-cp313-cp313-musllinux_1_2_x86_64.whl",
+        "x-1-cp313-cp313-manylinux_2_28_aarch64.whl",
+        "x-1-cp39-abi3-manylinux_2_17_x86_64.whl",
+        "x-1-cp314-abi3-manylinux_2_17_x86_64.whl",
+        "x-1-cp313-cp313-win_amd64.whl",
+    ],
+)
+def test_the_test_accepts_exactly_the_wheels_the_generator_accepts(filename: str) -> None:
+    assert accepted(filename) == (generator()._rank(filename) is not None)
 
 
 def test_each_package_has_exactly_one_runtime_wheel() -> None:

@@ -10,7 +10,7 @@ import traceback
 from collections.abc import Generator, Sequence
 from types import FrameType
 
-from fastfoto_linux.cli import cmd_devices, cmd_library, cmd_process, cmd_scan
+from fastfoto_linux.cli import cmd_devices, cmd_doc, cmd_library, cmd_process, cmd_scan
 from fastfoto_linux.cli.errors import (
     EXIT_INTERRUPTED,
     EXIT_NO_DOCUMENTS,
@@ -42,7 +42,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     add_log_options(parser, default=False)
     commands = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
-    for module in (cmd_devices, cmd_scan, cmd_process, cmd_library):
+    for module in (cmd_devices, cmd_scan, cmd_process, cmd_doc, cmd_library):
         module.add_parser(commands)
     return parser
 

@@ -162,6 +162,13 @@ def photo_paths(directory: Path, prefix: str, index: int) -> PhotoPaths:
     )
 
 
+def pdf_path(directory: Path, prefix: str, index: int) -> Path:
+    """Path of the PDF numbered ``index``; the number is shared with the photos of ``prefix``."""
+    if not 1 <= index <= MAX_INDEX:
+        raise ValueError(f"index must be 1-{MAX_INDEX}, got {index}")
+    return directory / f"{prefix}_{index:0{INDEX_WIDTH}d}.pdf"
+
+
 def unprocessed_paths(directory: Path, prefix: str, index: int) -> tuple[Path, Path]:
     """Paths of the whole-page front and back files for ``index``; the back ends in ``_b``."""
     stem = _stem(prefix, index) + UNPROCESSED_SUFFIX

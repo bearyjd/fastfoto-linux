@@ -82,6 +82,81 @@ uv run ffscan process page-*.png --out ~/Scans --album "Family Trips" --feed fac
   answering or in use by another program, 4 no documents in the feeder. `-v` logs progress,
   `--debug` adds tracebacks.
 
+## Documents to PDF (preview)
+
+Letters, forms and receipts to one multi-page PDF, with blank pages dropped and, when OCRmyPDF is
+installed, searchable text. This first step works on pages you already have as PNGs; `ffscan doc
+scan` (feeder to PDF in one go) and a Documents mode in the desktop app come next. The design is
+in [`docs/design/documents.md`](docs/design/documents.md).
+
+```sh
+uv run ffscan doc process page-*.png --out ~/Documents/Scans --name "Tax Return" --colour grey
+uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr on --lang eng+deu
+```
+
+- Writes `DIR/<NAME>_NNNN.pdf` (`NAME` defaults to `Document`), numbered like photos: a number is
+  never reused and nothing is overwritten. The page files are never changed or deleted. Pages are
+  taken in natural filename order and must be RGB, 8-bit grey or 1-bit PNGs that carry their
+  resolution (`--dpi` supplies one for a PNG that does not; a file that says otherwise wins) and
+  measure at least 10 mm each way at it (a smaller page is refused by name).
+- `--colour colour|grey|bw` (default `colour`) is a limit, not a conversion to force: a grey page
+  stays grey when `colour` is asked for, and a page already 1-bit stays as it is. Colour and grey
+  pages are stored as JPEG and black and white as lossless CCITT G4, all embedded in the PDF
+  as they are, and each page gets its physical size from its resolution. In black and white a
+  solid dark area (darker than 96 of 255) is black all the way through, and shading lighter than
+  that is treated as paper: a grey box comes out white, with its text still black. Dark shading
+  is the limit: black text printed on a fill darker than 96 is lost in the black area (light
+  text on it stays white), so scan such pages in grey or colour.
+- Only what is certainly empty is trimmed, blank white or the scanner's backing; when in doubt
+  nothing is cut. Below the paper that is the scanner's white tail: flat rows at the bottom, 4 mm or longer and at least 4 levels
+  brighter than the 10 mm above them, of which 3 mm stay. Anything in the tail columns that is
+  12 or more levels darker than that white and 0.3 mm or larger, in whole pixels rounded up (a lone
+  page number, a faint footer, a watermark) keeps its rows and 5 mm below it, as does every mark; only ink fainter
+  than 12 levels, which cannot be told from paper texture, can be trimmed away with the empty
+  margin under it. On colour pages it is also the scanner's own backing strip beside a narrow
+  item such as a receipt: the blue-grey the photo cropper measured on real scans (RGB distance
+  of at most 20 from (202, 210, 219), blue above red), in columns that start at the edge of the
+  scan and are backing in at least 99% of their rows, 3 mm or wider, next to paper at least 25
+  levels brighter. A tilted receipt is therefore cut only up to its nearest corner. A sidebar
+  printed in any other colour is never cut; one printed edge to edge, full height, within that
+  distance of the backing colour (a pale blue-grey such as (190, 200, 210)) would be. A grey
+  page has no hue to tell backing, pastel paper and a pale slip apart, so it is trimmed at the
+  bottom only, never at a side: it loses the white tail only, never a side, and a grey receipt
+  keeps its tail (a missed trim, by design; `ffscan doc scan`, next, will scan in colour and make
+  the grey page after trimming). A colour page is trimmed in colour and only then made grey or
+  black and white, so `--colour grey` and `--colour bw` trim a colour page exactly as `colour` does.
+  Every strip a trim would remove, the tail and each side strip, is then checked over all of its
+  columns, on a blurred copy (3x3) so that scanner noise makes no clusters of its own, and a
+  dark dot that is 2 pixels shorter than the cluster size counts (two or three pixels at 300
+  dpi): if it holds a cluster of 0.3 mm or more that is neither blank
+  white nor backing (less than 12 levels darker than the tail's white; a pale slip or sticky
+  note hanging below the paper, with pencil on it, is neither), that cut is cancelled and the
+  strip stays. Backing there is backing-coloured and joined to a side of the strip; a grey page
+  has no backing, since pastel paper and a pale slip look just like it: only blank white is
+  exempt. The limits of that check: on a colour page a note of the backing's colour that touches
+  the side of its strip cannot be told from backing, a stroke under 3 pixels wide within 2 pixels of both white and backing is taken for the blur of an edge, and a
+  stroke 1 pixel wide is diluted to a third of its depth by the blur, so on a slip only 5 levels
+  below the tail's white it must be about 21 levels darker than the slip to count. A page
+  that would be under 10 mm tall or wide after trimming is kept whole instead of stopping the
+  run.
+- A page is blank only when it has no mark at all inside its 5 mm margin: dust, paper texture
+  and faint show-through from the other side do not count, while a single short line, a
+  signature, a lone page number or pencil at least about 45 grey levels darker than the paper
+  keep the page. Pencil fainter than that cannot be told from show-through and does not.
+  `--keep-blank` keeps every page. The summary lists the dropped pages by number. If every page looks blank nothing is
+  written and the exit code is 1.
+- Searchable text needs `ocrmypdf` and, for its page rotation, Tesseract's orientation data:
+  `sudo dnf install ocrmypdf tesseract-osd`. `--ocr auto` (default) uses it
+  when present and otherwise writes the plain PDF and says so; `--ocr on` refuses to start
+  without it (exit 3); `--ocr off` never runs it. `--lang` takes Tesseract codes (`eng`,
+  `eng+deu`). If OCR fails or times out the plain PDF is still written, with one warning and exit
+  code 1; the warning says why from `ocrmypdf`'s exit code (for a missing language it names the
+  `tesseract-langpack-*` packages to install). OCR works in a private temporary folder, not in
+  the output folder. The Flatpak build has no OCR yet.
+- Exit codes are those of `ffscan`: 0 ok, 1 a processing problem (an unusable page stops the run
+  before anything is written, and a file that is cut off or corrupt counts as unusable), 2 usage,
+  3 a required tool is missing.
+
 ## Fix sideways photos in an existing library
 
 Scans made by other software (or by earlier runs) are often stored sideways or upside-down. Two

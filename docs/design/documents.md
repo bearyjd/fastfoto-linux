@@ -219,8 +219,10 @@ What the first pull request settled where the specification left room.
   the backing of the last check (20), so a cut that took it would be cancelled by that check; the
   cut therefore never takes a row of the last 4 mm of the band in which under 95% of the pixels
   are within 20, and a darker shadow stays with the paper.
-  The last check applies to the strip a band cut removes, except to the rows still touched by the
-  pad's slant, which are judged by the rows themselves (above): the slant tapers to slivers under
+  The last check applies to the strip a band cut removes, except to the rows from the frame's edge up to
+  the first one with no pad in it (0.1% of white pixels), and three more, where the pad's slant
+  still reaches; those are judged by the rows themselves (above), and white pixels further in,
+  such as a white slip in the band or a tilted paper edge, are not pad and stay under the check: the slant tapers to slivers under
   3 px that the 3x3 blur turns into tones that are neither white nor backing. At least 30 mm of
   page stay after the bottom cut, and after the top cut as well. Where there is no band cut,
   because there is no band or the cut is not safe, the tail rule above runs as before. Colour pages only: grey and 1-bit pages are not cut by the band rule

@@ -22,8 +22,9 @@ reliable sign of where the paper ends.
   (at most 20 from the backing colour), so the cut never takes a row of the last 4 mm of the band
   in which that is not backing in 95% of the pixels: a darker shadow stays with the paper.
 * At least 30 mm of page stay after each cut, and the last check in ``trim`` applies to each
-  cut, except to the rows still touched by the pad's slant: it tapers to slivers under 3 px that
-  the blur of the check turns into tones that are neither white nor backing. Those rows are
+  cut, except to the rows the pad's slant still reaches, counted from the frame's edge up to the
+  first row with no pad in it: it tapers to slivers under 3 px that the blur of the check turns
+  into tones that are neither white nor backing. White further in is not pad. Those rows are
   judged here instead: 99% of every row between the edge and the band is pad or backing (the
   blend of the two, under 2 px from both, included).
 * After a band cut the new edge is the paper's, so the blank-page margin is measured in full
@@ -48,8 +49,8 @@ SHADOW_TOLERANCE = 36  # a shadow pixel is at most this far from the backing col
 PAD_WHITE_MIN = 250  # the pad is pure 255; every channel at least this counts as white
 PAD_EMPTY_SHARE = 0.99  # the rows between the edge and the band are pad and backing to this share
 FRINGE_PX = 2  # where the pad and the backing blend, a pixel lies this close to both
-PAD_ROW_SHARE = 0.005  # a row with this share of pad pixels is still in the pad's slant
-PAD_MARGIN_PX = 3  # rows beyond the last one with pad, where the blur of the last check reaches
+PAD_ROW_SHARE = 0.001  # a row with this share of pad pixels is still in the pad's slant
+PAD_MARGIN_PX = 3  # rows beyond the pad that the blur of the last check still takes it from
 SHADOW_ZONE_MM = 4.0  # the shadow lies in this much of the band next to the paper
 WINDOW_SLACK_MM = 1.0  # rows looked at beyond the longest band (the paper, to see its end)
 
@@ -137,6 +138,8 @@ def band_cut(pixels: np.ndarray, dpi: int, rule: EdgeRule) -> Band | None:
     clean = end if not dark.size else zone + int(dark[0])
     keep = mm_to_px(rule.keep_mm, dpi) if rule.keep_mm else 0
     cut = max(0, min(end - keep, clean))
-    in_pad = np.flatnonzero(white[:end].mean(axis=1) >= PAD_ROW_SHARE)
-    pad = 0 if not in_pad.size else int(in_pad[-1]) + 1 + PAD_MARGIN_PX
+    clear = np.flatnonzero(white[:end].mean(axis=1) < PAD_ROW_SHARE)  # rows with no pad left
+    if not clear.size:
+        return None
+    pad = int(clear[0]) + PAD_MARGIN_PX if clear[0] else 0  # the pad that touches the frame's edge
     return Band(cut, min(pad, cut))

@@ -287,3 +287,38 @@ def test_a_band_cut_that_is_cancelled_leaves_the_white_tail_rule_to_decide(dpi: 
     result = trim_page(colour_page(replace(scene, image=image)))
     assert not result.band_bottom
     assert 0 < result.bottom <= px(8.0, dpi)  # only the white tail goes, as before
+
+
+def with_mark(scene: Scene, row: int, column: int, *, size_px: int) -> Scene:
+    image = scene.image.copy()
+    image[row : row + size_px, column : column + size_px] = 30
+    return replace(scene, image=image)
+
+
+@pytest.mark.parametrize("dpi", [200, 300])
+def test_a_white_slip_in_the_band_with_a_mark_on_it_cancels_the_cut(dpi: int) -> None:
+    """Pure white in the band is not the pad: the last check still looks at the slip's rows."""
+    scene = band_page(dpi)
+    image = scene.image.copy()
+    row, column = scene.paper_end + px(3.0, dpi), px(60.0, dpi)
+    image[row : row + px(6.0, dpi), column : column + px(10.0, dpi)] = 255  # 4.6% of the width
+    marked = with_mark(
+        replace(scene, image=image), row + px(1.5, dpi), column + px(3.0, dpi), size_px=px(3.0, dpi)
+    )
+    result = trim_page(colour_page(marked))
+    assert (result.bottom, result.band_bottom) == (0, False)
+    assert trim_page(colour_page(replace(scene, image=image))).band_bottom  # blank, it goes
+
+
+@pytest.mark.parametrize("dpi", [200, 300])
+def test_white_next_to_the_paper_does_not_switch_the_last_check_off(dpi: int) -> None:
+    """A slightly tilted paper edge leaves a few percent of white in the first band rows."""
+    scene = band_page(dpi)
+    image = scene.image.copy()
+    row = scene.paper_end + px(0.8, dpi)
+    image[row : row + 2, : round(scene.width * 0.03)] = 255
+    tilted = replace(scene, image=image)
+    assert trim_page(colour_page(tilted)).band_bottom
+    marked = with_mark(tilted, scene.paper_end + px(5.0, dpi), px(60.0, dpi), size_px=px(3.0, dpi))
+    result = trim_page(colour_page(marked))
+    assert (result.bottom, result.band_bottom) == (0, False)

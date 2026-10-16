@@ -58,6 +58,7 @@ class StderrMonitor:
         self._tail: deque[str] = deque(maxlen=STDERR_TAIL_LINES)
         self.at_eof = False
         self.failure: str | None = None  # the first sane_start/sane_read error scanimage printed
+        self.io_error = False
 
     def __enter__(self) -> "StderrMonitor":
         return self

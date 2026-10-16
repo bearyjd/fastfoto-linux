@@ -14,7 +14,9 @@ from pathlib import Path
 import pytest
 
 from tests.test_usb_gap_shim import (
+    SUPPORT_DIR,
     Harness,
+    gcc,
     ms_between,
     pytestmark,  # noqa: F401 - the same gcc / Linux conditions
 )
@@ -32,6 +34,14 @@ def harness(tmp_path_factory: pytest.TempPathFactory) -> Harness:
     built = Harness(tmp_path_factory.mktemp("usb_gap_shim_finish"))
     built.build()
     return built
+
+
+@pytest.fixture(scope="module")
+def fake_clock(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """A virtual CLOCK_MONOTONIC that only sleeping moves forward (see fake_clock.c)."""
+    library = tmp_path_factory.mktemp("usb_gap_shim_clock") / "fake_clock.so"
+    gcc("-shared", "-fPIC", "-o", library, SUPPORT_DIR / "fake_clock.c")
+    return library
 
 
 def pattern(length: int) -> bytes:
@@ -166,6 +176,33 @@ def test_an_unusable_value_means_the_default_and_the_retries_stay_on(
     run = send(harness, tmp_path, 1000, "t100,ok", **{FINISH_ENV: value})
 
     assert (run.rc, run.transferred, run.out_calls) == (0, 1000, 2)
+
+
+# --- the default time -----------------------------------------------------------------------------
+
+VIRTUAL_CALL_MS = 1000  # every OUT call of these tests "waits" this long, in virtual time
+
+
+@pytest.mark.parametrize(
+    ("setting", "calls"),
+    [(None, 30), ("30000", 30), ("10000", 10)],
+    ids=["unset-is-30-s", "30-s", "10-s"],
+)
+def test_the_time_allowed_for_finishing_a_send_defaults_to_30_seconds(
+    harness: Harness, fake_clock: Path, tmp_path: Path, setting: str | None, calls: int
+) -> None:
+    """On a virtual clock, 30 s of calls that take 1 s each and take nothing are 30 calls."""
+    env = {
+        "LD_PRELOAD": f"{fake_clock}:{harness.shim}",  # the clock first, so that it is the one used
+        "STUB_TIMEOUT_MS": str(VIRTUAL_CALL_MS),
+    }
+    if setting is not None:
+        env[FINISH_ENV] = setting
+
+    run = send(harness, tmp_path, 1000, "t0", **env)
+
+    assert (run.rc, run.transferred, run.out_calls) == (TIMEOUT, 0, calls)
+    assert run.elapsed_s < 3.0  # the 30 seconds were virtual
 
 
 # --- no busy spin --------------------------------------------------------------------------------

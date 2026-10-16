@@ -39,7 +39,10 @@ DRAIN_WAIT_MS = 50
 MAX_DRAIN_READS = 32
 FILLER_REPLY_WAIT_MS = 300
 OUT_BUDGET_S = 15.0  # how long a scanner may refuse an OUT (it is waking up) before it is "stuck"
+RETRY_NAP_S = 0.001
 SLOW_NOTICE_S = 2.0  # a check that takes longer than this tells the caller it is waiting
+
+_sleep = time.sleep
 
 
 class TransportError(Exception):

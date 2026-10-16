@@ -29,6 +29,7 @@ from fastfoto_linux.scanner import SUPPORTED_DPI
 logger = logging.getLogger(__name__)
 
 SHUTDOWN_WAIT = 10.0  # seconds to wait for a cancelled job to wind down on shutdown
+SHUTDOWN_MARGIN_S = 0.0
 SHUTDOWN_SLICE = 0.1  # the wait is made of short joins, so an abort is noticed
 ABORT_GRACE = 1.0  # after an abort: just long enough for the job to stop scanimage
 PRESERVE_SPACES = "white-space:pre-wrap"

@@ -405,13 +405,14 @@ def test_a_scan_that_succeeds_clears_nothing_and_notes_nothing(job: ScanJob, bin
     assert not unclean.marker_path().exists()
 
 
-def test_an_error_exit_status_after_pages_leaves_the_note(job: ScanJob, bin_dir: Path) -> None:
+def test_a_status_reply_exit_after_pages_leaves_no_note(job: ScanJob, bin_dir: Path) -> None:
+    """Exit 6 (jammed) is a reply: the command channel was in step (round 2 changed this)."""
     env = fake_env(bin_dir, pages=1, exit_code=6)
 
     with pytest.raises(ScanError, match="exit status 6"):
         run_scan(job, env=env, timeout_s=TIMEOUT_S)
 
-    assert noted()
+    assert not unclean.marker_path().exists()
 
 
 def test_a_network_scanner_leaves_no_note(tmp_path: Path, bin_dir: Path) -> None:

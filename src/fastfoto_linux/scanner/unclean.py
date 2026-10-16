@@ -21,6 +21,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 MARKER_NAME = "scanner-unclean"
+BOOT_ID_PATH = Path("/proc/sys/kernel/random/boot_id")
 STATE_DIR_NAME = "fastfoto-linux"
 _NOTE = re.compile(r"([0-9]{3}):([0-9]{3}) \S+\n?")
 
@@ -51,7 +52,7 @@ def mark(bus: int, address: int, *, now: datetime | None = None) -> None:
             temporary.unlink(missing_ok=True)
 
 
-def is_marked(bus: int, address: int) -> bool:
+def is_marked(bus: int, address: int, *, now: datetime | None = None) -> bool:
     """True if the note names ``bus``:``address``; a missing or unreadable note is no evidence."""
     try:
         text = marker_path().read_text(encoding="ascii")

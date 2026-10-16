@@ -85,6 +85,22 @@ def test_without_a_back_only_the_front_is_written(tmp_path: Path) -> None:
     assert result.back is None
 
 
+def test_a_back_alone_is_written_under_its_b_name_with_no_front(tmp_path: Path) -> None:
+    result = write_unprocessed(
+        None, dpi=DPI, output_root=tmp_path, back=rgb((30, 30, 200)), reason=REASON
+    )
+    assert names(tmp_path) == ["FastFoto_0001_unprocessed_b.jpg"]
+    assert (result.original, result.enhanced) == (None, None)
+    assert result.back == tmp_path / "FastFoto_0001_unprocessed_b.jpg"
+    assert result.unprocessed_reason == REASON
+
+
+def test_a_whole_page_write_needs_a_front_or_a_back(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="front or a back"):
+        write_unprocessed(None, dpi=DPI, output_root=tmp_path, reason=REASON)
+    assert names(tmp_path) == []
+
+
 def test_a_normal_photo_has_no_unprocessed_reason(tmp_path: Path) -> None:
     assert write_photo(rgb(), dpi=DPI, output_root=tmp_path).unprocessed_reason is None
 

@@ -5,6 +5,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 
+import numpy as np
 import pytest
 from PIL import Image
 
@@ -29,11 +30,13 @@ from tests.process_helpers import (
     workspace,
     write_sheets,
 )
-from tests.synth import GREY_BAND_MM, make_frame
+from tests.synth import make_frame
 
 WHOLE_PAGE = "FastFoto_0002_unprocessed.jpg"
 DARK_BELOW, WHITE_ABOVE = 150, 230  # mean grey of a dark textured front and of white paper
-WORK_FACTOR = 2
+BACKGROUND = (202, 210, 219)  # the scanner's blue-grey background
+CARD_GREY, INK_GREY, RULE_GREY = 252, 110, 170  # white card, writing on it, ruled lines
+CARD_TOP_MM, FRAME_MM, FRAME_WIDTH_MM = 30.0, 300.0, 216.0
 
 
 def unprocessed(out: Path) -> list[str]:
@@ -45,10 +48,28 @@ def mean_of(out: Path, name: str) -> float:
     return jpeg_mean(out / name)
 
 
-def tail_row() -> int:
-    """The first row of the synthetic tail under a ``WIDE`` card."""
-    top, height = WIDE["offset_mm"][1], WIDE["photo_mm"][1]
-    return mm_to_px(top + height, DPI) + mm_to_px(GREY_BAND_MM, DPI)
+def mm(value: float) -> int:
+    return mm_to_px(value, DPI)
+
+
+def card_frame() -> np.ndarray:
+    """A full-width white card from ``CARD_TOP_MM`` to the end of the frame: no photo to find."""
+    frame = np.empty((mm(FRAME_MM), mm(FRAME_WIDTH_MM), 3), np.uint8)
+    frame[:] = BACKGROUND
+    frame[mm(CARD_TOP_MM) :] = CARD_GREY
+    return frame
+
+
+def with_line(frame: np.ndarray, top: float, height: float) -> np.ndarray:
+    frame[mm(top) : mm(top + height), mm(20) : mm(180)] = INK_GREY
+    return frame
+
+
+def ruled(frame: np.ndarray) -> np.ndarray:
+    """Thin rules all the way across, every 8 mm: a blank ruled card."""
+    for top in np.arange(CARD_TOP_MM + 10.0, FRAME_MM - 5.0, 8.0):
+        frame[mm(top) : mm(top) + 2, mm(5) : mm(FRAME_WIDTH_MM - 5)] = RULE_GREY
+    return frame
 
 
 def test_a_sheet_without_a_findable_photo_is_saved_whole_in_its_place(tmp_path) -> None:
@@ -95,18 +116,37 @@ def test_the_back_of_a_whole_page_follows_the_back_policy(tmp_path, policy, back
     assert WHOLE_PAGE in unprocessed(out)
 
 
-def test_the_whole_pages_are_jpegs_without_the_scanner_tail(tmp_path) -> None:
+def test_the_whole_pages_are_jpegs_of_the_whole_scanner_frame(tmp_path) -> None:
     raw, out = workspace(tmp_path)
-    result = process_pages(write_sheets(raw, [wide_sheet(0)]), settings_for(out))
+    pages = write_sheets(raw, [wide_sheet(0)])
+    result = process_pages(pages, settings_for(out))
     saved = result.failed[0].saved
     assert saved is not None
     assert saved.original is not None and saved.back is not None
-    for path in (saved.original, saved.back):
-        width, height = jpeg_size(path)
-        assert width == mm_to_px(WIDE["photo_mm"][0], DPI)
-        assert tail_row() <= height < tail_row() + WORK_FACTOR
+    for path, page in zip((saved.back, saved.original), pages, strict=True):
+        with Image.open(page) as raw_page:
+            assert jpeg_size(path) == raw_page.size  # the white tail stays
         with Image.open(path) as image:
             assert image.format == "JPEG"
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        pytest.param(lambda: with_line(card_frame(), 100.0, 2.5), id="2.5 mm caption"),
+        pytest.param(lambda: with_line(card_frame(), 100.0, 3.0), id="3 mm caption"),
+        pytest.param(lambda: ruled(card_frame()), id="blank ruled card"),
+    ],
+)
+def test_a_card_with_next_to_nothing_on_it_is_saved_at_the_full_height_of_the_frame(
+    tmp_path, build
+) -> None:
+    raw, out = workspace(tmp_path)
+    page = save_page(raw, 1, build())
+    result = process_pages([page], ProcessSettings(output_root=out, duplex=False))
+    (issue,) = result.failed
+    assert issue.saved is not None and issue.saved.original is not None
+    assert jpeg_size(issue.saved.original) == (mm(FRAME_WIDTH_MM), mm(FRAME_MM))
 
 
 @pytest.mark.parametrize(
@@ -212,5 +252,5 @@ def test_a_failing_write_of_the_whole_pages_falls_back_to_listing_the_sheet(
     assert result.photos == 2
     (issue,) = result.failed
     assert (issue.sheet, issue.saved) == (2, None)
-    assert "no photo found" in issue.reason
+    assert issue.reason == NO_PHOTO_REASON
     assert result.ok is False

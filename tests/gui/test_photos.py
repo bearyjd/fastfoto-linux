@@ -66,3 +66,19 @@ def test_the_title_of_an_enhanced_only_photo_drops_the_copy_suffix() -> None:
 
 def test_the_title_of_a_photo_without_files_is_its_number() -> None:
     assert item_from_files(files(original=None, enhanced=None, back=None)).title == "Photo 3"
+
+
+def test_a_back_alone_is_what_a_page_that_was_not_processed_shows() -> None:
+    back = DIRECTORY / "Family Trips_0003_unprocessed_b.jpg"
+    item = item_from_files(
+        WrittenFiles(
+            directory=DIRECTORY,
+            index=3,
+            original=None,
+            enhanced=None,
+            back=back,
+            unprocessed_reason="the front page (a.png) could not be read; only the other is saved",
+        )
+    )
+    assert item.front == back
+    assert item.title == "Family Trips_0003_unprocessed"

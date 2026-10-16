@@ -35,7 +35,7 @@ def test_an_unreadable_sheet_is_reported_and_the_others_are_written(tmp_path) ->
     (issue,) = result.failed
     assert issue.sheet == 2
     assert issue.pages == (page_name(3), page_name(4))
-    assert page_name(3) in issue.reason
+    assert issue.reason == "a page of the sheet could not be read"
 
 
 def test_a_failing_writer_loses_only_its_own_sheet(tmp_path, monkeypatch) -> None:

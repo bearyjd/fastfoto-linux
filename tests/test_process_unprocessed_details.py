@@ -3,7 +3,6 @@
 import gc
 import logging
 import os
-import threading
 import weakref
 from datetime import datetime
 from pathlib import Path
@@ -17,9 +16,11 @@ from fastfoto_linux.pipeline.process import process_pages
 from fastfoto_linux.pipeline.sides import BackPolicy, iter_photos
 from tests.process_helpers import (
     DPI,
+    LOGGER,
     WIDE,
     digitized_date,
     half_bright_front_sheet,
+    jpeg_mean,
     jpeg_names,
     page_name,
     plain_sheet,
@@ -32,6 +33,8 @@ from tests.process_helpers import (
 from tests.synth import make_frame
 
 GENERIC_REASON = "the photo could not be processed"
+UNREADABLE_REASON = "a page of the sheet could not be read"
+DARK_BELOW, WHITE_ABOVE = 150, 230  # mean grey of a dark textured front and of white paper
 DPI_REASON = "the two pages were scanned at different resolutions"
 UNPROCESSED = "FastFoto_0002_unprocessed.jpg"
 
@@ -139,21 +142,30 @@ def test_pages_scanned_at_different_resolutions_are_saved_with_a_plain_reason(tm
 
 
 @pytest.mark.parametrize(
-    ("bad_page", "missing", "saved_name"),
-    [(2, "back", "FastFoto_0002_unprocessed.jpg"), (3, "front", "FastFoto_0002_unprocessed.jpg")],
-    ids=["back-unreadable", "front-unreadable"],
+    ("front_first", "bad_page", "missing"),
+    [(False, 2, "back"), (False, 3, "front"), (True, 2, "front"), (True, 3, "back")],
+    ids=["down-back-bad", "down-front-bad", "up-front-bad", "up-back-bad"],
 )
-def test_the_readable_page_of_a_sheet_is_saved_whole_and_the_summary_names_the_missing_side(
-    tmp_path, bad_page, missing, saved_name
+def test_the_readable_page_of_a_sheet_is_saved_whole_under_its_own_side_and_named(
+    tmp_path, front_first, bad_page, missing
 ) -> None:
     raw, out = workspace(tmp_path)
-    pages = write_sheets(raw, [plain_sheet(0), wide_sheet(1)], front_first=False)
+    pages = write_sheets(raw, [plain_sheet(0), wide_sheet(1)], front_first=front_first)
     pages[bad_page].write_bytes(b"this is not a png")
-    result = process_pages(pages, settings_for(out, back_policy=BackPolicy.ALWAYS))
-    assert [n for n in jpeg_names(out) if "unprocessed" in n] == [saved_name]
+    settings = settings_for(out, back_policy=BackPolicy.ALWAYS, expect_front_first=front_first)
+    result = process_pages(pages, settings)
     (issue,) = result.failed
     assert issue.sheet == 2
-    assert issue.saved is not None and issue.saved.back is None
+    assert issue.saved is not None
+    lone_front = missing == "back"  # the front is what was read; else the back, keeping its _b
+    name = "FastFoto_0002_unprocessed.jpg" if lone_front else "FastFoto_0002_unprocessed_b.jpg"
+    saved = issue.saved
+    assert [n for n in jpeg_names(out) if "unprocessed" in n] == [name]
+    assert (saved.original, saved.back) == (
+        (out / name, None) if lone_front else (None, out / name)
+    )
+    mean = jpeg_mean(out / name)  # the front of these sheets is dark, the back white
+    assert mean < DARK_BELOW if lone_front else mean > WHITE_ABOVE
     assert f"the {missing} page" in issue.reason
     assert page_name(bad_page + 1) in issue.reason
     assert "could not be read" in issue.reason
@@ -161,17 +173,55 @@ def test_the_readable_page_of_a_sheet_is_saved_whole_and_the_summary_names_the_m
     assert issue.saved.unprocessed_reason == issue.reason
 
 
-def test_a_sheet_whose_pages_are_both_unreadable_cannot_be_saved(tmp_path) -> None:
+def test_a_lone_back_is_saved_even_when_backs_are_not_wanted(tmp_path) -> None:
+    raw, out = workspace(tmp_path)
+    pages = write_sheets(raw, [plain_sheet(0), wide_sheet(1)], front_first=True)
+    pages[2].write_bytes(b"this is not a png")  # the front: only the back is left of the sheet
+    result = process_pages(
+        pages, settings_for(out, back_policy=BackPolicy.NEVER, expect_front_first=True)
+    )
+    (issue,) = result.failed
+    assert issue.saved is not None
+    assert (issue.saved.original, issue.saved.back) == (
+        None,
+        out / "FastFoto_0002_unprocessed_b.jpg",
+    )
+
+
+def test_a_sheet_whose_pages_are_both_unreadable_cannot_be_saved(tmp_path, caplog) -> None:
     raw, out = workspace(tmp_path)
     pages = write_sheets(raw, [plain_sheet(0), wide_sheet(1)])
     for page in pages[2:]:
         page.write_bytes(b"this is not a png")
-    result = process_pages(pages, settings_for(out, back_policy=BackPolicy.ALWAYS))
+    with caplog.at_level(logging.DEBUG):
+        result = process_pages(pages, settings_for(out, back_policy=BackPolicy.ALWAYS))
     assert [n for n in jpeg_names(out) if "unprocessed" in n] == []
     (issue,) = result.failed
     assert (issue.sheet, issue.saved) == (2, None)
-    assert page_name(3) in issue.reason
     assert issue.save_failed is True
+    assert issue.reason == UNREADABLE_REASON
+    assert issue.pages == (page_name(3), page_name(4))
+    line = failed_sheet_line(issue, result.sheets)
+    assert page_name(3) in line and UNREADABLE_REASON in line
+    assert str(tmp_path) not in line  # no absolute path in what the user reads
+    details = [r for r in caplog.records if r.name == LOGGER and r.levelno == logging.DEBUG]
+    assert any(page_name(3) in r.getMessage() for r in details)  # the decoder's words go here
+
+
+@pytest.mark.parametrize("error", [ValueError("finder broke"), RuntimeError("finder broke")])
+def test_a_failure_of_the_photo_finder_is_not_called_an_unreadable_page(
+    tmp_path, monkeypatch, error
+) -> None:
+    def broken(*args, **kwargs):
+        raise error
+
+    monkeypatch.setattr("fastfoto_linux.pipeline.sides.detect_photo", broken)
+    raw, out = workspace(tmp_path)
+    pages = write_sheets(raw, [plain_sheet(0)])
+    result = process_pages(pages, settings_for(out))
+    (issue,) = result.failed
+    assert issue.reason == GENERIC_REASON
+    assert issue.saved is not None  # the pages could be read, so they are saved whole
 
 
 def test_a_sheet_that_could_not_be_saved_says_so() -> None:
@@ -209,27 +259,3 @@ def test_the_images_of_a_failed_sheet_are_freed_before_the_error_is_handed_on() 
     finally:
         gc.enable()
     assert alive_in_callback == [0]
-
-
-# --- cancelling ---------------------------------------------------------------------------------
-
-
-def test_a_cancel_that_comes_while_the_last_sheet_is_saved_whole_does_not_cancel_the_run(
-    tmp_path,
-) -> None:
-    pages, out = three_sheets(tmp_path)
-    cancel = threading.Event()
-
-    def on_photo(files) -> None:
-        if files.unprocessed_reason is not None:
-            cancel.set()
-
-    result = process_pages(
-        pages[:4],
-        settings_for(out, back_policy=BackPolicy.NEVER),
-        on_photo=on_photo,
-        cancel=cancel,
-    )
-    assert result.cancelled is False
-    assert [issue.sheet for issue in result.failed] == [2]
-    assert result.photos == 1

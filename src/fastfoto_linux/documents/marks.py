@@ -10,7 +10,7 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 
-from fastfoto_linux.documents.loader import LoadedPage
+from fastfoto_linux.documents.loader import LoadedPage, require_size
 from fastfoto_linux.documents.units import MM_PER_INCH, mm_to_px
 from fastfoto_linux.imaging import RGB_NDIM
 
@@ -73,8 +73,10 @@ def find_marks(
     A mark is a connected spot that is dark against the local paper tone (or very dark outright)
     and at least a letter's size; dust, paper texture and faint show-through are not marks.
     ``trimmed_bottom`` rows were cut off the bottom of the scanner's frame before ``page`` was
-    made; the bottom margin is the frame's, so it is that much smaller.
+    made; the bottom margin is the frame's, so it is that much smaller. A page under 10 mm each
+    way raises UnsupportedPageError: no marks must never be mistaken for a blank page.
     """
+    require_size(page.pixels.shape[1], page.pixels.shape[0], page.dpi)
     factor = max(1, int(page.dpi // WORK_DPI))
     work_dpi = page.dpi / factor
     grey = shrink_keeping_darkest(_darkest_channel(page.pixels), factor)

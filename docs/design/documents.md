@@ -112,27 +112,47 @@ What the first pull request settled where the specification left room.
   non-PNG files are refused by name. Every page file is checked, header and a full decode (a
   truncated PNG is found at once, not after ten pages of work), before any page is processed, and
   nothing is written when one is unusable: a PDF with a page silently missing is worse than none.
+  Each side must be at least 10 mm at the page's resolution (checked once the resolution is
+  known, so the resolution errors keep their messages): a smaller file is refused by name, and
+  `find_marks`, which a smaller page would crash in OpenCV, raises the same error rather than
+  return no marks (no marks means a blank page, and a blank page is dropped).
   A cancel is honoured before each page.
 - **Trim.** The tail is the run of rows at the bottom that is flat, 4 mm or longer and at least
-  4 levels brighter than the paper above it; 3 mm of it stays, and always 5 mm below the lowest
-  mark on the page. Only the columns that are at least 250 grey levels in the last 2 mm are
-  looked at (beside a narrow item the backing runs down the whole frame), and a row's tone is its
-  5th percentile, so that writing covering only part of a row, however faint (a footer, a
-  watermark at 215-225 on 255), keeps its rows; the median or a high percentile would count such
-  a row as tail. Paper as white as the tail is not trimmed at all. The backing strip is the
+  4 levels brighter than the 10 mm of rows directly above it; 3 mm of it stay, and always 5 mm
+  below the lowest mark and the lowest ink. Only the columns that are at least 250 grey levels in
+  the last 2 mm are looked at (beside a narrow item the backing runs down the whole frame), and
+  a row's tone is its 5th percentile, so that writing covering a twentieth of a row, however
+  faint (a watermark at 215-225 on 255), keeps its rows; the median or a high percentile would
+  count such a row as tail. Where the 10 mm above are as white as the tail, or less than 4
+  levels darker, nothing is trimmed; below solid content (a photo, a table) the empty paper is
+  that close to the tail's white and is trimmed with it, which is why ink is looked for
+  separately. **Ink** is a cluster of 0.3 mm or more (at least 2 pixels) whose darkest channel
+  is 12 levels or more below the tail's white (the median of the last 2 mm), in any tail column
+  of the would-be tail, found by connected components on the whole region, not on sampled rows
+  and not through the row tones, which cannot see one short word (a lone page number is under
+  5% of a row). 12 is four times the scanner's noise and far under any pencil, so dust specks
+  below 0.3 mm and noise never stop a cut, while a footer at 225 or 235 on 253-255 paper does.
+  Ink fainter than 12 levels cannot be told from paper texture; it can be trimmed away together
+  with the empty margin under the last visible mark. The backing strip is the
   scanner's own background colour: the one the photo cropper measured on real scans
   (`BACKGROUND_PRIOR_RGB`, tolerance `BACKGROUND_PRIOR_TOLERANCE`, imported from
-  `pipeline.crop`, not copied), and blue over red. A strip is a band of columns that starts at
-  the first column of the frame (touches the edge), is backing in at least 95% of its pixels,
-  is 3 mm or wider and has paper at least 25 levels brighter beside it, leaving at least 30 mm
-  of paper. It is measured on the rows above the tail only, because the tail may be white across
-  the whole width. Only colour pages are checked, since grey and 1-bit pages have no hue to tell
-  it by. The top is never trimmed. A printed sidebar in any other colour (a blue-grey of
-  (140,160,185), slate, navy) is not backing and is never cut; one printed in the backing
-  colour itself, edge to edge, full height, would be, and that is the one known way to lose
-  printed content. The measured colour may glow brighter in the first millimetres of the frame
-  (the photo cropper skips them); a strip whose edge columns are outside the tolerance is simply
-  not recognised, which loses only a trim.
+  `pipeline.crop`, not copied: RGB distance at most 20 from (202, 210, 219)), and blue over red.
+  A strip is a band of columns that starts at the first column of the frame (touches the edge),
+  in each of which at least 99% of the rows above the tail are backing (1000 rows are sampled),
+  is 3 mm or wider and has paper beside it (the median of its non-backing pixels in the next
+  3 mm) at least 25 levels brighter, leaving at least 30 mm of paper. The first column that is
+  not 99% backing ends the cut, so the cut of a receipt that is tilted by 2 to 5 degrees stops at
+  its nearest corner (a median over the column would cut the corners off), and a tab of paper
+  that sticks out stops it where the tab starts. It is measured on the rows above the tail only,
+  because the tail may be white across the whole width. Only colour pages are checked, since grey
+  and 1-bit pages have no hue to tell it by. The top is never trimmed. A printed sidebar in any
+  other colour (a blue-grey of (140,160,185), slate, navy) is not backing and is never cut; one
+  printed edge to edge and full height within the tolerance of the backing colour (a pale
+  blue-grey such as (190,200,210), 18 from it, and 40 levels darker than the paper) would be cut
+  up to its first column that is not, and that is the one known way to lose printed content. The
+  measured colour may glow brighter in the first millimetres of the frame (the photo cropper
+  skips them); a strip whose edge columns are outside the tolerance is simply not recognised,
+  which loses only a trim.
 - **Blank pages.** Marks are found on the darkest colour channel, shrunk to at most 150 dpi
   keeping the darkest pixel: a spot is a mark when it is 45 grey levels darker than the paper
   around it (measured against an 8 mm morphological closing, so strokes thinner than that are
@@ -152,7 +172,12 @@ What the first pull request settled where the specification left room.
   draws a black outline round a shaded box and leaves a big black block hollow. Decided: shading
   lighter than 96 is background, so a filled grey box (160 on 240) comes out white with its text
   black, and a black block of 40 x 20 mm is black through and through; a thin rule in mid grey is
-  ink, a 6 mm bar of light grey is not.
+  ink, a 6 mm bar of light grey is not. **Known limit:** the absolute rule also holds for text
+  on the dark fill, so black text printed on a fill darker than 96 (say text at 20 on a fill at
+  80) is lost in a solid black area, while light text on it stays white (a reversed heading).
+  Black and white turns dark shaded areas solid; a page like that should be scanned in grey or
+  colour. A fix that tells text from fill (apply the rule only to large regions with no lighter
+  strokes inside) was left out as more than this PR needs.
 - **Every page blank.** No PDF is written, the exit code is 1, and the message names
   `--keep-blank`.
 - **OCR** runs on a staging copy in a private (mode 0700) `.ffscan-ocr-*` folder of the system

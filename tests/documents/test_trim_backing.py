@@ -105,6 +105,12 @@ def test_a_full_height_sidebar_within_the_backing_tolerance_is_trimmed_known_lim
     assert abs(result.left - mm(SIDEBAR_MM)) <= 1
 
 
+def test_a_page_too_narrow_to_leave_paper_beside_a_strip_is_not_side_trimmed() -> None:
+    scene = paper_scene(dpi=DPI, paper_mm=(25.0, 100.0), scan_mm=(25.0, 120.0))
+    result = trim_page(colour_page(with_text(scene, 5, 10, 6)))
+    assert (result.left, result.right) == (0, 0)
+
+
 def test_the_backing_colour_and_tolerance_are_the_photo_cropper_s_not_copies() -> None:
     assert getattr(trim, "BACKGROUND_PRIOR_RGB", None) is crop.BACKGROUND_PRIOR_RGB
     assert getattr(trim, "BACKGROUND_PRIOR_TOLERANCE", None) is crop.BACKGROUND_PRIOR_TOLERANCE

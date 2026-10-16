@@ -1,8 +1,8 @@
 """Read one scanned page (PNG) into an array, or refuse it with a clear message.
 
 Accepted: RGB, 8-bit grey and 1-bit PNGs that say how many dots per inch they hold. Anything
-else (palette, alpha, 16-bit, other formats, a missing or absurd resolution) is refused by
-name, so a run stops before it writes a PDF with a page missing.
+else (palette, alpha, 16-bit, other formats, a missing or absurd resolution, a page under
+10 mm each way) is refused by name, so a run stops before it writes a PDF with a page missing.
 """
 
 from dataclasses import dataclass
@@ -13,9 +13,11 @@ from PIL import Image
 
 from fastfoto_linux.documents.errors import UnsupportedPageError
 from fastfoto_linux.documents.modes import ColourMode
+from fastfoto_linux.documents.units import MM_PER_INCH, mm_to_px
 
 MIN_DPI = 50
 MAX_DPI = 2400
+MIN_PAGE_MM = 10.0  # a page is at least this long and wide: below it there is nothing to analyse
 DPI_AGREEMENT = 1.0  # horizontal and vertical resolution may differ by this much (rounding)
 PNG_FORMAT = "PNG"
 _KINDS = {"RGB": ColourMode.COLOUR, "L": ColourMode.GREY, "1": ColourMode.BW}
@@ -72,6 +74,19 @@ def _resolution(path: Path, image: Image.Image, fallback_dpi: int | None) -> int
     return dpi
 
 
+def require_size(width: int, height: int, dpi: int, *, name: str | None = None) -> None:
+    """Raise UnsupportedPageError unless a ``width`` x ``height`` pixel page at ``dpi`` is at
+    least ``MIN_PAGE_MM`` each way; ``name`` (a file name) leads the message."""
+    if min(width, height) >= mm_to_px(MIN_PAGE_MM, dpi):
+        return
+    prefix = f"{name}: " if name else ""
+    raise UnsupportedPageError(
+        f"{prefix}the page is only {width * MM_PER_INCH / dpi:.1f} x "
+        f"{height * MM_PER_INCH / dpi:.1f} mm at {dpi} dpi; each side must be at least "
+        f"{MIN_PAGE_MM:.0f} mm"
+    )
+
+
 def _inspect(path: Path, image: Image.Image, fallback_dpi: int | None) -> PageInfo:
     if image.format != PNG_FORMAT:
         raise UnsupportedPageError(f"{path.name}: not a PNG file (it is {image.format})")
@@ -80,7 +95,9 @@ def _inspect(path: Path, image: Image.Image, fallback_dpi: int | None) -> PageIn
         raise UnsupportedPageError(
             f"{path.name}: unsupported PNG mode {image.mode}; need RGB, 8-bit grey or 1-bit"
         )
-    return PageInfo(kind, _resolution(path, image, fallback_dpi), image.width, image.height)
+    dpi = _resolution(path, image, fallback_dpi)
+    require_size(image.width, image.height, dpi, name=path.name)
+    return PageInfo(kind, dpi, image.width, image.height)
 
 
 def _decode(path: Path, image: Image.Image) -> None:

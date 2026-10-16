@@ -64,3 +64,12 @@ def test_a_tab_of_paper_sticking_out_stops_the_side_cut_where_the_tab_starts() -
     assert cut == 0
     result = trim_page(LoadedPage(scene.image, ColourMode.COLOUR, DPI))
     assert abs(result.left - (scene.paper_x[0] - mm(TAB_MM))) <= 1
+
+
+def test_a_short_tab_of_paper_is_found_too_because_the_rows_are_sampled_densely() -> None:
+    """4 mm of 200 is 2% of the rows: more than the 1% a column may differ in."""
+    scene = tinted(receipt_scene(), -TAB_MM, 80.0, (TAB_MM, 4.0), (PAPER_TONE,) * 3)
+    scene = with_text(scene, 1.5 - TAB_MM, 80.7, 4)
+    ink, cut = ink_cut_off(scene.image)
+    assert ink > 0
+    assert cut == 0

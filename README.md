@@ -64,19 +64,29 @@ uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr o
 - Writes `DIR/<NAME>_NNNN.pdf` (`NAME` defaults to `Document`), numbered like photos: a number is
   never reused and nothing is overwritten. The page files are never changed or deleted. Pages are
   taken in natural filename order and must be RGB, 8-bit grey or 1-bit PNGs that carry their
-  resolution (`--dpi` supplies one for a PNG that does not; a file that says otherwise wins).
+  resolution (`--dpi` supplies one for a PNG that does not; a file that says otherwise wins) and
+  measure at least 10 mm each way at it (a smaller page is refused by name).
 - `--colour colour|grey|bw` (default `colour`) is a limit, not a conversion to force: a grey page
   stays grey when `colour` is asked for, and a page already 1-bit stays as it is. Colour and grey
   pages are stored as JPEG and black and white as lossless CCITT G4, all embedded in the PDF
   as they are, and each page gets its physical size from its resolution. In black and white a
   solid dark area (darker than 96 of 255) is black all the way through, and shading lighter than
-  that is treated as paper: a grey box comes out white, with its text still black.
-- Only what is certainly not paper is trimmed: the scanner's white tail below the paper and, on
-  colour pages, the scanner's own backing strip beside a narrow item such as a receipt (the
-  blue-grey the photo cropper measured on real scans, within its tolerance, touching the edge of
-  the scan and uniform). A sidebar printed in any other colour is never cut; one printed in
-  exactly the backing colour would be. A faint footer or watermark on very white paper keeps
-  its rows. When in doubt nothing is cut.
+  that is treated as paper: a grey box comes out white, with its text still black. Dark shading
+  is the limit: black text printed on a fill darker than 96 is lost in the black area (light
+  text on it stays white), so scan such pages in grey or colour.
+- Only what is certainly not paper is trimmed; when in doubt nothing is cut. Below the paper that
+  is the scanner's white tail: flat rows at the bottom, 4 mm or longer and at least 4 levels
+  brighter than the 10 mm above them, of which 3 mm stay. Anything in the tail columns that is
+  12 or more levels darker than that white and 0.3 mm or larger (a lone page number, a faint
+  footer, a watermark) keeps its rows and 5 mm below it, as does every mark; only ink fainter
+  than 12 levels, which cannot be told from paper texture, can be trimmed away with the empty
+  margin under it. On colour pages it is also the scanner's own backing strip beside a narrow
+  item such as a receipt: the blue-grey the photo cropper measured on real scans (RGB distance
+  of at most 20 from (202, 210, 219), blue above red), in columns that start at the edge of the
+  scan and are backing in at least 99% of their rows, 3 mm or wider, next to paper at least 25
+  levels brighter. A tilted receipt is therefore cut only up to its nearest corner. A sidebar
+  printed in any other colour is never cut; one printed edge to edge, full height, within that
+  distance of the backing colour (a pale blue-grey such as (190, 200, 210)) would be.
 - A page is blank only when it has no mark at all inside its 5 mm margin: dust, paper texture
   and faint show-through from the other side do not count, while a single short line, a
   signature, a lone page number or pencil at least about 45 grey levels darker than the paper

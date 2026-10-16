@@ -74,10 +74,13 @@ def test_the_runtime_wheels_are_the_pinned_runtime_dependencies_and_nothing_else
     assert "opencv-python-headless" in names
 
 
-def test_every_runtime_wheel_is_cpython_313_manylinux_x86_64() -> None:
+def test_every_runtime_wheel_is_cpython_313_manylinux_x86_64_or_pure_python() -> None:
     for source in wheel_sources(load_json(RUNTIME_MODULE)):
         match = WHEEL_NAME.fullmatch(source["url"].rsplit("/", 1)[-1])
         assert match, source["url"]
+        if (match["python"], match["abi"], match["platform"]) == ("py3", "none", "any"):
+            assert re.fullmatch(r"[0-9a-f]{64}", source["sha256"])
+            continue
         cpython_313 = match["python"] == match["abi"] == "cp313"
         stable_abi = match["abi"] == "abi3" and STABLE_ABI_PYTHON.fullmatch(match["python"])
         assert cpython_313 or stable_abi, source["url"]

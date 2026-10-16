@@ -1,4 +1,4 @@
-"""Trim only what is certainly not paper; when unsure, trim nothing and never cut content."""
+"""Trim only what is certainly empty; when unsure, trim nothing and never cut content."""
 
 from dataclasses import replace
 

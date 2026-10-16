@@ -22,6 +22,7 @@ from fastfoto_linux.gui.form import (
 )
 from fastfoto_linux.gui.prefs import load_form, save_form
 from fastfoto_linux.gui.qt.photos_model import PhotosModel, file_url
+from fastfoto_linux.gui.report import photos_heading
 from fastfoto_linux.gui.state import ActionBlockedError
 from fastfoto_linux.gui.worker import DiscoverFn, ProcessFn, SessionFn, Worker
 from fastfoto_linux.scanner import SUPPORTED_DPI
@@ -314,6 +315,12 @@ class Bridge(QObject):
     @Property(int, notify=changed)
     def photoCount(self) -> int:
         return len(self.controller.photos)
+
+    @Property(str, notify=changed)
+    def photosHeading(self) -> str:
+        """The results grid's heading: the photos, and the ones saved whole counted apart."""
+        photos = self.controller.photos
+        return photos_heading(len(photos), sum(item.unprocessed for item in photos))
 
     @Property(str, notify=changed)
     def outputUrl(self) -> str:

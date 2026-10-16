@@ -15,6 +15,9 @@ WRITTEN = {"writing": True}
 BLANK = {"imprint": False}
 DARK_BACK = {"photo_rgb": (70, 70, 70), "imprint": False}
 LOGGER = "fastfoto_linux.pipeline.process"
+# One 216 mm card on each page spans the frame and fits no print size: ``detect_photo`` gives up.
+WIDE = {"photo_mm": (216, 150), "offset_mm": (0, 0.5), "right_margin_mm": 0.0}
+NO_PHOTO_REASON = "the photo's edges were not found (two items fed together?)"
 
 
 def page_name(number: int) -> str:
@@ -33,6 +36,13 @@ def plain_sheet(seed: int = 0) -> Sheet:
 
 def written_sheet(seed: int = 0) -> Sheet:
     return make_duplex_sheet(dpi=DPI, rng_seed=seed, back=WRITTEN)
+
+
+def wide_sheet(seed: int = 0) -> Sheet:
+    """A sheet the cropper cannot use: a dark front and a white back, both as wide as the frame."""
+    front = make_frame(dpi=DPI, side="front", rng_seed=seed + 1, **WIDE)
+    back = make_frame(dpi=DPI, side="back", rng_seed=seed, **WIDE)
+    return front, back
 
 
 def half_bright_front_sheet() -> Sheet:

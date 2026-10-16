@@ -15,8 +15,9 @@ ColumnLayout {
         Layout.fillWidth: true
 
         Kirigami.Heading {
+            objectName: "photosHeading"
             level: 3
-            text: bridge.photoCount === 0 ? qsTr("Photos") : qsTr("Photos (%1)").arg(bridge.photoCount)
+            text: bridge.photosHeading
         }
 
         Item {

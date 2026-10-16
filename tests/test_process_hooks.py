@@ -51,7 +51,8 @@ def test_on_photo_runs_on_the_calling_thread(tmp_path) -> None:
 
 def test_a_failed_sheet_is_not_announced(tmp_path) -> None:
     pages, out = batch(tmp_path)
-    pages[2].write_bytes(b"not a png")  # the second sheet's front
+    for page in pages[2:4]:  # both pages of the second sheet (with one readable it is saved whole)
+        page.write_bytes(b"not a png")
     seen: list[WrittenFiles] = []
     result = process_pages(pages, settings_for(out), on_photo=seen.append)
     assert len(result.failed) == 1

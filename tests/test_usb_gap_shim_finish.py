@@ -41,11 +41,19 @@ def pattern(length: int) -> bytes:
 class Sent:
     """One driver run: the result it printed, the calls the stub saw and the bytes it got."""
 
-    def __init__(self, harness: Harness, tmp_path: Path, script: list[str], **env: str) -> None:
+    def __init__(
+        self,
+        harness: Harness,
+        tmp_path: Path,
+        script: list[str],
+        *,
+        variant: str = "shim",
+        **env: str,
+    ) -> None:
         self.sent_file = tmp_path / "sent.bin"
         started = time.monotonic()
         result, self.calls = harness.execute(
-            script, gap_us=0, env={"STUB_SENT": str(self.sent_file), **env}
+            script, gap_us=0, variant=variant, env={"STUB_SENT": str(self.sent_file), **env}
         )
         self.elapsed_s = time.monotonic() - started
         match = RESULT.search(result.stdout)
@@ -62,8 +70,10 @@ class Sent:
         return self.sent_file.read_bytes() if self.sent_file.exists() else b""
 
 
-def send(harness: Harness, tmp_path: Path, length: int, plan: str, **env: str) -> Sent:
-    return Sent(harness, tmp_path, [f"send:A:{length}"], STUB_OUT_PLAN=plan, **env)
+def send(
+    harness: Harness, tmp_path: Path, length: int, plan: str, *, variant: str = "shim", **env: str
+) -> Sent:
+    return Sent(harness, tmp_path, [f"send:A:{length}"], variant=variant, STUB_OUT_PLAN=plan, **env)
 
 
 # --- the remainder is sent -----------------------------------------------------------------------
@@ -158,6 +168,20 @@ def test_an_unusable_value_means_the_default_and_the_retries_stay_on(
     assert (run.rc, run.transferred, run.out_calls) == (0, 1000, 2)
 
 
+# --- no busy spin --------------------------------------------------------------------------------
+
+
+def test_a_timeout_that_returns_at_once_with_nothing_sent_is_not_retried_in_a_busy_spin(
+    harness: Harness, tmp_path: Path
+) -> None:
+    """A transfer that times out instantly (no time spent waiting) must not be hammered."""
+    run = send(harness, tmp_path, 1000, "t0", **{FINISH_ENV: "300", "STUB_TIMEOUT_MS": "0"})
+
+    assert (run.rc, run.transferred) == (TIMEOUT, 0)
+    assert 0.3 <= run.elapsed_s < 3.0
+    assert 50 <= run.out_calls <= 400  # about one try per millisecond; a spin makes thousands
+
+
 # --- what is left alone --------------------------------------------------------------------------
 
 
@@ -168,6 +192,18 @@ def test_another_device_is_not_retried(
     harness: Harness, tmp_path: Path, vid: str, pid: str
 ) -> None:
     run = send(harness, tmp_path, 1000, "t100,ok", STUB_VID=vid, STUB_PID=pid)
+
+    assert (run.rc, run.transferred, run.out_calls) == (TIMEOUT, 100, 1)
+
+
+def test_a_device_whose_identity_cannot_be_read_is_not_retried(
+    harness: Harness, tmp_path: Path
+) -> None:
+    """Fail closed: finishing a send is only right for the FF-680W, so with no proof it is not.
+
+    (The gap, whose worst case is a 2 ms delay, is applied anyway: see test_usb_gap_shim.)
+    """
+    run = send(harness, tmp_path, 1000, "t100,ok", variant="noident")
 
     assert (run.rc, run.transferred, run.out_calls) == (TIMEOUT, 100, 1)
 
@@ -203,4 +239,5 @@ def test_the_readme_describes_the_setting_and_does_not_claim_a_fix() -> None:
     assert FINISH_ENV in text
     assert "expected to prevent the stuck state" in text
     assert "needs a hardware test" in text
+    assert "identity" in text  # what happens when the device cannot be told apart
     assert "prevents the stuck" not in text  # it has not been tried on the scanner yet

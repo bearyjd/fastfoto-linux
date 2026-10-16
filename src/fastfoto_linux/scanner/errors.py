@@ -16,6 +16,11 @@ class ShimMissingError(ScannerError):
 
 
 STUCK_MESSAGE = "The scanner isn't answering. Switch it off and on, then try again."
+NO_ANSWER_MESSAGE = (
+    "The scanner isn't answering. It may be busy with another device, or stuck — "
+    "switch it off and on, then try again."
+)
+DISCONNECTED_MESSAGE = "The scanner disappeared (it may have restarted) — try again."
 IN_USE_MESSAGE = "The scanner is in use by another program. Close it and try again."
 
 
@@ -23,6 +28,13 @@ class ScannerStuckError(ScannerError):
     """The scanner is on USB but does not answer, even after it was nudged (see ``unstick``)."""
 
     def __init__(self, message: str = STUCK_MESSAGE) -> None:
+        super().__init__(message)
+
+
+class ScannerDisconnectedError(ScannerError):
+    """The scanner vanished from USB while it was being checked (it may have restarted)."""
+
+    def __init__(self, message: str = DISCONNECTED_MESSAGE) -> None:
         super().__init__(message)
 
 

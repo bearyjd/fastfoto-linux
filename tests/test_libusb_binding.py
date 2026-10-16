@@ -12,11 +12,13 @@ from fastfoto_linux.scanner.libusb import (
     LibusbUnavailableError,
     open_scanner,
 )
-from fastfoto_linux.scanner.unstick import TransportError
+from fastfoto_linux.scanner.unstick import DeviceGoneError, TransportError
 from tests.libusb_fake import (
     LIBUSB_ERROR_ACCESS,
     LIBUSB_ERROR_BUSY,
     LIBUSB_ERROR_IO,
+    LIBUSB_ERROR_NO_DEVICE,
+    LIBUSB_ERROR_TIMEOUT,
     UNSET,
     FakeDevice,
     FakeLibusb,
@@ -176,7 +178,7 @@ def test_every_function_has_its_argument_and_result_types_declared() -> None:
     lib = FakeLibusb()
 
     with opened(lib) as transport:
-        transport.write(b"x")
+        transport.write(b"x", 250)
         transport.read(8, 10)
 
     used = [fn for fn in lib.functions() if fn.name in set(lib.calls)]
@@ -207,24 +209,54 @@ def test_read_error_is_a_transport_error() -> None:
         transport.read(512, 100)
 
 
-def test_write_sends_all_of_it_in_one_transfer_on_the_out_endpoint() -> None:
+def test_write_sends_all_of_it_in_one_transfer_on_the_out_endpoint_with_the_timeout_asked() -> None:
     lib = FakeLibusb()
 
     with opened(lib) as transport:
-        transport.write(b"\x1cX")
+        assert transport.write(b"\x1cX", 250) == 2
 
     assert lib.sent == [b"\x1cX"]
-    assert [ep for ep, _ in lib.timeouts] == [0x01]
+    assert lib.timeouts == [(0x01, 250)]
+
+
+def test_write_error_is_a_transport_error_but_not_a_vanished_device() -> None:
+    lib = FakeLibusb(out_rc=LIBUSB_ERROR_IO)
+
+    with opened(lib) as transport, pytest.raises(TransportError) as excinfo:
+        transport.write(b"\x1cX", 250)
+
+    assert not isinstance(excinfo.value, DeviceGoneError)
 
 
 @pytest.mark.parametrize(
-    "options", [{"out_rc": LIBUSB_ERROR_IO}, {"out_short_by": 1}], ids=["error", "short"]
+    ("short_by", "went"), [(0, 2), (1, 1), (2, 0)], ids=["all", "part", "nothing"]
 )
-def test_write_that_did_not_all_go_is_a_transport_error(options: dict[str, int]) -> None:
-    lib = FakeLibusb(**options)
+def test_a_timed_out_write_is_not_an_error_it_says_how_much_went(short_by: int, went: int) -> None:
+    lib = FakeLibusb(out_rc=LIBUSB_ERROR_TIMEOUT, out_short_by=short_by)
 
-    with opened(lib) as transport, pytest.raises(TransportError):
-        transport.write(b"\x1cX")
+    with opened(lib) as transport:
+        assert transport.write(b"\x1cX", 250) == went
+
+
+def test_a_write_that_went_short_without_an_error_says_how_much_went() -> None:
+    lib = FakeLibusb(out_short_by=1)
+
+    with opened(lib) as transport:
+        assert transport.write(b"\x1cX", 250) == 1
+
+
+def test_a_scanner_that_is_no_longer_there_is_a_device_gone_error_on_a_read() -> None:
+    lib = FakeLibusb(in_rc=LIBUSB_ERROR_NO_DEVICE)
+
+    with opened(lib) as transport, pytest.raises(DeviceGoneError):
+        transport.read(512, 100)
+
+
+def test_a_scanner_that_is_no_longer_there_is_a_device_gone_error_on_a_write() -> None:
+    lib = FakeLibusb(out_rc=LIBUSB_ERROR_NO_DEVICE)
+
+    with opened(lib) as transport, pytest.raises(DeviceGoneError):
+        transport.write(b"\x1cX", 250)
 
 
 def timed_transport(lib: FakeLibusb, clock: FakeClock) -> tuple[Callable, list[float]]:
@@ -246,7 +278,7 @@ def test_an_out_right_after_an_in_waits_for_the_gap_the_scanner_needs() -> None:
     with manager as transport:
         transport.read(512, 100)
         clock.now += 0.001  # the next command comes 1 ms after the reply
-        transport.write(b"\x1cX")
+        transport.write(b"\x1cX", 250)
 
     assert len(sleeps) == 1
     assert sleeps[0] == pytest.approx(OUT_AFTER_IN_GAP_S - 0.001)
@@ -259,10 +291,10 @@ def test_an_out_after_a_long_pause_or_another_out_does_not_wait() -> None:
     manager, sleeps = timed_transport(lib, clock)
 
     with manager as transport:
-        transport.write(b"first")  # no IN yet
+        transport.write(b"first", 250)  # no IN yet
         transport.read(512, 100)
         clock.now += 1.0
-        transport.write(b"second")  # long after the IN
-        transport.write(b"third")  # after an OUT
+        transport.write(b"second", 250)  # long after the IN
+        transport.write(b"third", 250)  # after an OUT
 
     assert sleeps == []

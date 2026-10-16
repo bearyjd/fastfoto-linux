@@ -19,6 +19,7 @@ from fastfoto_linux.scanner.unstick import ensure_ready
 logger = logging.getLogger(__name__)
 
 SKIP_ENV_VAR = "FF680W_NO_PRECHECK"
+FORCE_ENV_VAR = "FF680W_FORCE_UNSTICK"
 _USB_DEVICE = re.compile(r"epsonds:libusb:([0-9]+):([0-9]+)")
 
 
@@ -33,13 +34,14 @@ def precheck_applies(device: str, env: Mapping[str, str]) -> bool:
     return usb_address(device) is not None and env.get(SKIP_ENV_VAR) != "1"
 
 
-def check_scanner(
+def check_scanner(  # noqa: PLR0913 - keyword-only knobs, most of them test seams
     device: str,
     *,
     env: Mapping[str, str] | None = None,
     cancel: threading.Event | None = None,
     opener: Callable[..., Any] | None = None,
     clock: Callable[[], float] = time.monotonic,
+    on_slow: Callable[[], None] | None = None,
 ) -> None:
     """Run the check for the SANE device ``device``; returns normally when scanning may go on.
 

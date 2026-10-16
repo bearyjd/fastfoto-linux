@@ -50,3 +50,13 @@ def no_scanner_precheck(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     monkeypatch.setenv(precheck.SKIP_ENV_VAR, "1")
     monkeypatch.setattr(libusb, "_LIBRARY_NAMES", ())
+
+
+@pytest.fixture(autouse=True)
+def private_state_dir(
+    monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory
+) -> None:
+    """The note "our last scan here ended badly" lives in the user's state folder, and it is the
+    evidence that lets the check send filler to a silent scanner. No test may write the real one,
+    or find one that happens to be there."""
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path_factory.mktemp("state")))

@@ -168,3 +168,27 @@ def test_a_network_scanner_is_not_checked_by_default(out, transport, default_che
 
     assert default_check == []
     assert events.stages[0] is Stage.SCANNING
+
+
+def test_the_default_check_is_given_a_way_to_say_it_is_waiting_and_the_stage_is_announced(
+    out, transport, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv(precheck_module.SKIP_ENV_VAR, raising=False)
+    transport.sheets = [plain_sheet(0)]
+    events = Events()
+
+    def slow_check(device: str, **options: Any) -> None:
+        if options.get("on_slow") is not None:
+            options["on_slow"]()
+
+    monkeypatch.setattr("fastfoto_linux.session.run.check_scanner", slow_check)
+
+    run(make_request(out), transport, **events.callbacks())
+
+    assert events.stages == [
+        Stage.CHECKING,
+        Stage.WAITING,
+        Stage.SCANNING,
+        Stage.PROCESSING,
+        Stage.DONE,
+    ]

@@ -288,6 +288,7 @@ def test_usb_target_env_preloads_the_shim_and_drops_a_stale_network_config(shim:
     assert env["LD_PRELOAD"] == f"{shim} /x/libfoo.so"
     assert "SANE_CONFIG_DIR" not in env
     assert env["PATH"] == "/usr/bin"
+    assert env["LC_ALL"] == "C"
     assert base == {"PATH": "/usr/bin", "LD_PRELOAD": "/x/libfoo.so", "SANE_CONFIG_DIR": "/stale"}
 
 
@@ -296,7 +297,7 @@ def test_network_target_env_points_sane_at_the_private_config(config_dir: Path) 
 
     env = target.env({"PATH": "/usr/bin"})
 
-    assert env == {"PATH": "/usr/bin", "SANE_CONFIG_DIR": str(config_dir)}
+    assert env == {"PATH": "/usr/bin", "SANE_CONFIG_DIR": str(config_dir), "LC_ALL": "C"}
 
 
 # --- the shim is loaded into scanimage, so a shim anyone else could have changed is refused ---

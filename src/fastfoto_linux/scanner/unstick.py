@@ -33,17 +33,23 @@ POLL_MS = 250  # one slice of a wait, and so the longest a cancel waits to be no
 DRAIN_WAIT_MS = 50
 MAX_DRAIN_READS = 32
 FILLER_REPLY_WAIT_MS = 300
+OUT_BUDGET_S = 15.0  # how long a scanner may refuse an OUT (it is waking up) before it is "stuck"
+SLOW_NOTICE_S = 2.0  # a check that takes longer than this tells the caller it is waiting
 
 
 class TransportError(Exception):
     """A USB transfer failed (not merely timed out)."""
 
 
+class DeviceGoneError(TransportError):
+    """The scanner is no longer on the bus (it may have restarted)."""
+
+
 class UsbTransport(Protocol):
     """The scanner's bulk endpoints."""
 
-    def write(self, data: bytes) -> None:
-        """Send ``data`` in one bulk OUT transfer; TransportError if it did not all go."""
+    def write(self, data: bytes, timeout_ms: int = POLL_MS) -> int:
+        """Send ``data`` in one bulk OUT transfer; returns how many bytes went."""
         ...
 
     def read(self, size: int, timeout_ms: int) -> bytes:
@@ -151,6 +157,8 @@ def ensure_ready(
     *,
     cancel: threading.Event | None = None,
     clock: Callable[[], float] = time.monotonic,
+    allow_filler: bool = False,
+    on_slow: Callable[[], None] | None = None,
 ) -> CheckResult:
     """Make sure the scanner answers a hello; raises ScannerStuckError if it cannot be freed.
 

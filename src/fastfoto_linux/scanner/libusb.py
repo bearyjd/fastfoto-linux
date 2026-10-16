@@ -200,7 +200,7 @@ class _Transport:
         self._sleep = sleep
         self._last_in: float | None = None
 
-    def write(self, data: bytes) -> None:
+    def write(self, data: bytes, timeout_ms: int = WRITE_TIMEOUT_MS) -> int:
         self._wait_for_gap()
         buffer = ctypes.create_string_buffer(data, len(data))
         sent = ctypes.c_int(0)
@@ -211,6 +211,7 @@ class _Transport:
             raise TransportError(
                 f"bulk OUT: {_error_name(rc)} ({sent.value} of {len(data)} bytes sent)"
             )
+        return sent.value
 
     def read(self, size: int, timeout_ms: int) -> bytes:
         buffer = (ctypes.c_ubyte * size)()

@@ -113,3 +113,13 @@ def test_the_report_has_the_checking_text_only_for_the_scanning_state() -> None:
     assert progress_text(State.SCANNING, 0, 0) == "Scanning page 1"
     assert progress_text(State.PROCESSING, 0, 0, checking=True) == "Processing photo 1"
     assert progress_text(State.CANCELLING, 0, 0, checking=True) == "Cancelling…"
+
+
+def test_a_slow_scanner_keeps_the_checking_text_and_the_state(page: Page) -> None:
+    controller = page.scanning()
+    controller.on_stage(Stage.CHECKING)
+
+    controller.on_stage(Stage.WAITING)
+
+    assert controller.state is State.SCANNING
+    assert controller.progress_text == CHECKING

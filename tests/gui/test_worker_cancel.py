@@ -91,5 +91,5 @@ def test_cancel_finishes_within_the_grace_period_plus_a_second(
     assert took >= GRACE_S * 0.8  # scanimage was given its grace, not killed at once
 
 
-def test_the_grace_period_is_short_enough_for_cancel_to_feel_immediate() -> None:
-    assert DEFAULT_GRACE_S <= 5.0
+def test_the_grace_period_is_long_enough_for_a_scanner_to_cancel_a_page_but_not_for_ever() -> None:
+    assert 10.0 <= DEFAULT_GRACE_S <= 15.0

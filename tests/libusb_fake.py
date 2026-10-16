@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 LIBUSB_ERROR_IO = -1
 LIBUSB_ERROR_ACCESS = -3
+LIBUSB_ERROR_NO_DEVICE = -4
 LIBUSB_ERROR_BUSY = -6
 LIBUSB_ERROR_TIMEOUT = -7
 UNSET = object()

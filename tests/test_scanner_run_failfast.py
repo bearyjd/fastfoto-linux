@@ -3,6 +3,7 @@
 import os
 import signal
 import subprocess
+import threading
 import time
 from collections.abc import Iterator
 from pathlib import Path
@@ -11,7 +12,8 @@ from typing import Any
 import pytest
 
 from fastfoto_linux.scanner import run as run_module
-from fastfoto_linux.scanner.errors import ScanError
+from fastfoto_linux.scanner import unclean
+from fastfoto_linux.scanner.errors import NoDocumentsError, ScanCancelledError, ScanError
 from fastfoto_linux.scanner.job import ScanJob
 from fastfoto_linux.scanner.run import run_scan
 from fastfoto_linux.scanner.stderr_monitor import StderrMonitor
@@ -30,7 +32,12 @@ SCANIMAGE_SAID = [
 # The fake would hang for 30 s; a fail-fast scan must be over long before that.
 FAST_S = 3.0
 TIMEOUT_S = 4.0  # red: a scan that is not cut short gives up here, not after 30 s
-GRACE_S = 0.3
+GRACE_S = 0.3  # the fail-fast grace while these tests run
+CANCEL_GRACE_S = 2.0  # the grace of a user Cancel while these tests run
+# What the runner really uses, read when this module is imported, before the fixture below
+# shortens them: a test that reads them later would only ever see the shortened values.
+DEFAULT_TERMINATE_GRACE_S = run_module.TERMINATE_GRACE_S
+DEFAULT_FAIL_FAST_GRACE_S = run_module.FAIL_FAST_GRACE_S
 
 
 class RecordingPopen:
@@ -56,7 +63,7 @@ def bin_dir(tmp_path: Path) -> Path:
 @pytest.fixture(autouse=True)
 def short_graces(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(run_module, "FAIL_FAST_GRACE_S", GRACE_S)
-    monkeypatch.setattr(run_module, "TERMINATE_GRACE_S", GRACE_S)
+    monkeypatch.setattr(run_module, "TERMINATE_GRACE_S", CANCEL_GRACE_S)
 
 
 def names(paths: tuple[Path, ...]) -> list[str]:
@@ -106,12 +113,45 @@ def test_scanimage_that_ignores_sigterm_is_killed_after_the_short_grace(
     with pytest.raises(ScanError, match="Error during device I/O"):
         run_scan(job, env=env, popen=popen, timeout_s=TIMEOUT_S)
 
-    assert time.monotonic() - started < FAST_S
+    assert time.monotonic() - started < CANCEL_GRACE_S - 0.3  # the short grace, not the long one
     assert popen.procs[0].returncode == -signal.SIGKILL
 
 
-def test_the_fail_fast_grace_is_short() -> None:
-    assert 0 < run_module.FAIL_FAST_GRACE_S <= 2.0
+def test_the_default_fail_fast_grace_is_short() -> None:
+    assert 0 < DEFAULT_FAIL_FAST_GRACE_S <= 2.0
+
+
+def test_the_default_grace_of_a_user_cancel_is_10_seconds() -> None:
+    """A mid-page sane_cancel needs time; nothing shows that 5 s is enough."""
+    assert DEFAULT_TERMINATE_GRACE_S == 10.0
+
+
+def test_a_user_cancel_gives_scanimage_the_long_grace_before_it_is_killed(
+    job: ScanJob, bin_dir: Path
+) -> None:
+    popen = RecordingPopen()
+    cancel = threading.Event()
+    asked: list[float] = []
+
+    def cancel_after_the_first_page(page: int) -> None:
+        asked.append(time.monotonic())
+        cancel.set()
+
+    env = fake_env(bin_dir, pages=1, hang=True, ignore_sigterm=True)
+
+    with pytest.raises(ScanCancelledError):
+        run_scan(
+            job,
+            env=env,
+            popen=popen,
+            timeout_s=TIMEOUT_S * 2,
+            on_progress=cancel_after_the_first_page,
+            cancel=cancel,
+        )
+
+    waited = time.monotonic() - asked[0]
+    assert CANCEL_GRACE_S - 0.3 <= waited < CANCEL_GRACE_S + 1.5
+    assert popen.procs[0].returncode == -signal.SIGKILL
 
 
 @pytest.mark.parametrize(
@@ -283,3 +323,116 @@ def test_the_first_error_is_the_one_kept(monitor: StderrMonitor) -> None:
 
     assert monitor.failure is not None
     assert "jammed" in monitor.failure
+
+
+# --- the note that this scan ended abnormally (the evidence for freeing the scanner later) -----
+
+
+def noted() -> bool:
+    return unclean.is_marked(1, 2)  # DEVICE is epsonds:libusb:001:002
+
+
+def test_a_fail_fast_error_leaves_the_note(job: ScanJob, bin_dir: Path) -> None:
+    env = fake_env(bin_dir, early_stderr_lines=SCANIMAGE_SAID[:3], hang=True)
+
+    with pytest.raises(ScanError):
+        run_scan(job, env=env, timeout_s=TIMEOUT_S)
+
+    assert noted()
+
+
+def test_a_scanimage_that_exits_with_an_error_status_at_once_leaves_the_note(
+    job: ScanJob, bin_dir: Path
+) -> None:
+    env = fake_env(bin_dir, early_stderr_lines=SCANIMAGE_SAID[2:], exit_code=9)
+
+    with pytest.raises(ScanError):
+        run_scan(job, env=env, timeout_s=TIMEOUT_S)
+
+    assert noted()
+
+
+def test_a_scanimage_that_has_to_be_killed_leaves_the_note(job: ScanJob, bin_dir: Path) -> None:
+    cancel = threading.Event()
+    env = fake_env(bin_dir, pages=1, hang=True, ignore_sigterm=True)
+
+    with pytest.raises(ScanCancelledError):
+        run_scan(
+            job,
+            env=env,
+            timeout_s=TIMEOUT_S * 2,
+            on_progress=lambda page: cancel.set(),
+            cancel=cancel,
+        )
+
+    assert noted()
+
+
+def test_a_cancel_that_scanimage_honours_leaves_no_note(job: ScanJob, bin_dir: Path) -> None:
+    cancel = threading.Event()
+    env = fake_env(bin_dir, pages=1, hang=True)  # SIGTERM ends it, as sane_cancel would
+
+    with pytest.raises(ScanCancelledError):
+        run_scan(
+            job, env=env, timeout_s=TIMEOUT_S, on_progress=lambda page: cancel.set(), cancel=cancel
+        )
+
+    assert not unclean.marker_path().exists()
+
+
+def test_the_normal_end_of_a_batch_leaves_no_note(job: ScanJob, bin_dir: Path) -> None:
+    env = fake_env(bin_dir, pages=2, early_stderr_lines=[OUT_OF_DOCS], exit_code=7)
+
+    run_scan(job, env=env, timeout_s=TIMEOUT_S)
+
+    assert not unclean.marker_path().exists()
+
+
+def test_an_empty_feeder_leaves_no_note(job: ScanJob, bin_dir: Path) -> None:
+    env = fake_env(bin_dir, early_stderr_lines=[OUT_OF_DOCS], exit_code=7)
+
+    with pytest.raises(NoDocumentsError):
+        run_scan(job, env=env, timeout_s=TIMEOUT_S)
+
+    assert not unclean.marker_path().exists()
+
+
+def test_a_scan_that_succeeds_clears_nothing_and_notes_nothing(job: ScanJob, bin_dir: Path) -> None:
+    env = fake_env(bin_dir, pages=1, exit_code=0)
+
+    run_scan(job, env=env, timeout_s=TIMEOUT_S)
+
+    assert not unclean.marker_path().exists()
+
+
+def test_an_error_exit_status_after_pages_leaves_the_note(job: ScanJob, bin_dir: Path) -> None:
+    env = fake_env(bin_dir, pages=1, exit_code=6)
+
+    with pytest.raises(ScanError, match="exit status 6"):
+        run_scan(job, env=env, timeout_s=TIMEOUT_S)
+
+    assert noted()
+
+
+def test_a_network_scanner_leaves_no_note(tmp_path: Path, bin_dir: Path) -> None:
+    net_job = ScanJob(device="epsonds:net:203.0.113.7", output_dir=tmp_path / "net-scans")
+    env = fake_env(bin_dir, early_stderr_lines=[IO_ERROR], hang=True)
+
+    with pytest.raises(ScanError):
+        run_scan(net_job, env=env, timeout_s=TIMEOUT_S)
+
+    assert not unclean.marker_path().exists()
+
+
+def test_a_note_that_cannot_be_written_does_not_replace_the_scan_error(
+    job: ScanJob, bin_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    blocker = tmp_path / "a-file"
+    blocker.write_text("not a folder")
+    monkeypatch.setenv("XDG_STATE_HOME", str(blocker / "state"))
+    env = fake_env(bin_dir, pages=1, early_stderr_lines=[IO_ERROR], hang=True)
+
+    with pytest.raises(ScanError, match="Error during device I/O") as excinfo:
+        run_scan(job, env=env, timeout_s=TIMEOUT_S)
+
+    assert names(excinfo.value.pages) == ["page-0001.png"]

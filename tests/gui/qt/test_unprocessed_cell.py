@@ -97,3 +97,17 @@ def test_the_banner_counts_the_photo_that_needs_checking(
     assert bridge.photoCount == 3
     assert "1 photo needs checking" in bridge.bannerText
     assert "Photo 2 of 3 fed" in bridge.bannerText
+
+
+def test_the_heading_counts_photos_and_the_one_needing_a_check_separately(
+    make_bridge: Any, open_window: Any, out: Path
+) -> None:
+    bridge = make_bridge(session=scripted_scan(out))
+    window, _ = open_window(bridge)
+    ready(bridge)
+    bridge.startScan()
+    wait_until(lambda: bridge.state == "done", "the scan to finish")
+    settle()
+    assert bridge.photosHeading == "Photos (2), 1 photo needs checking"
+    heading = child(window, "photosHeading")
+    assert heading.property("text") == "Photos (2), 1 photo needs checking"

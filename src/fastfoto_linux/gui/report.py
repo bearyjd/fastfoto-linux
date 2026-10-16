@@ -138,6 +138,11 @@ def _done(result: SessionResult, process: ProcessResult) -> Banner:
     return Banner("positive", f"{_count(process.photos, 'photo')} saved to {folder}.{note}")
 
 
+def photos_heading(total: int, unprocessed: int) -> str:
+    """The results grid's heading: the photos, and those saved whole counted apart."""
+    raise NotImplementedError
+
+
 def _saved_whole(process: ProcessResult) -> list[SheetIssue]:
     """The failed sheets whose whole pages were saved: photos that need checking."""
     return [issue for issue in process.failed if issue.saved is not None]

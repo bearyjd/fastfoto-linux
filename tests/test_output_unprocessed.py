@@ -153,3 +153,36 @@ def test_a_reason_is_required(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="reason"):
         write_unprocessed(rgb(), dpi=DPI, output_root=tmp_path, reason="")
     assert names(tmp_path) == []
+
+
+# --- a number belongs to the whole family of names ----------------------------------------------
+
+FAMILY = [
+    "X_0001.jpg",
+    "X_0001_a.jpg",
+    "X_0001_b.jpg",
+    "X_0001_unprocessed.jpg",
+    "X_0001_unprocessed_b.jpg",
+]
+
+
+def write_with_prefix_x(kind: str, root: Path):
+    if kind == "photo":
+        return write_photo(rgb(), dpi=DPI, output_root=root, prefix="X", enhanced=rgb(), back=rgb())
+    return write_unprocessed(
+        rgb(), dpi=DPI, output_root=root, prefix="X", back=rgb(), reason=REASON
+    )
+
+
+@pytest.mark.parametrize("taken", FAMILY)
+@pytest.mark.parametrize("kind", ["photo", "unprocessed"])
+def test_a_number_taken_by_any_name_of_the_family_is_skipped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, taken: str, kind: str
+) -> None:
+    """Even a writer that did not take the lock (and so saw a stale number) cannot reuse one."""
+    monkeypatch.setattr(writer, "next_index", lambda directory, prefix: 1)
+    touch(tmp_path, taken)
+    result = write_with_prefix_x(kind, tmp_path)
+    assert result.index == 2
+    assert not any(name.startswith("X_0001") and name != taken for name in names(tmp_path))
+    assert (tmp_path / taken).stat().st_size == 0

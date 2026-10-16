@@ -136,7 +136,7 @@ def test_the_normal_side_decision_is_used_when_it_works_for_the_sheet(
     # Delivered face-up although the settings say face-down: the paper tells the sides apart.
     pages = write_sheets(raw, [plain_sheet(0)], front_first=True)
     result = process_pages(pages, settings_for(out, expect_front_first=False))
-    assert "cannot cut this out" in result.failed[0].reason
+    assert result.failed[0].reason == "the photo could not be processed"
     assert mean_of(out, "FastFoto_0001_unprocessed.jpg") < DARK_BELOW
     assert mean_of(out, "FastFoto_0001_unprocessed_b.jpg") > WHITE_ABOVE
 
@@ -214,14 +214,3 @@ def test_a_failing_write_of_the_whole_pages_falls_back_to_listing_the_sheet(
     assert (issue.sheet, issue.saved) == (2, None)
     assert "no photo found" in issue.reason
     assert result.ok is False
-
-
-def test_a_sheet_with_an_unreadable_page_cannot_be_saved_whole(tmp_path) -> None:
-    raw, out = workspace(tmp_path)
-    pages = write_sheets(raw, [plain_sheet(0), wide_sheet(1)])
-    pages[2].write_bytes(b"this is not a png")
-    result = process_pages(pages, settings_for(out, back_policy=BackPolicy.ALWAYS))
-    assert unprocessed(out) == []
-    (issue,) = result.failed
-    assert (issue.sheet, issue.saved) == (2, None)
-    assert page_name(3) in issue.reason

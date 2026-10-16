@@ -10,13 +10,14 @@ class SheetIssue:
     """A sheet worth telling the user about: ``sheet`` is 1-based, ``pages`` are file names.
 
     ``saved`` is set on a failed sheet whose whole pages were saved (as ``_unprocessed`` files)
-    instead of being lost.
+    instead of being lost; ``save_failed`` says that saving them was tried and did not work.
     """
 
     sheet: int | None
     pages: tuple[str, ...]
     reason: str
     saved: WrittenFiles | None = None
+    save_failed: bool = False
 
 
 def failed_sheet_line(issue: SheetIssue, sheets: int) -> str:

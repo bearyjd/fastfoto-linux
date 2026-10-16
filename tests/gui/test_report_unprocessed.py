@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from fastfoto_linux.gui.photos import item_from_files
-from fastfoto_linux.gui.report import result_banner
+from fastfoto_linux.gui.report import photos_heading, result_banner
 from fastfoto_linux.gui.state import State
 from fastfoto_linux.output import WrittenFiles
 from fastfoto_linux.pipeline.process import ProcessResult, SheetIssue
@@ -135,3 +135,49 @@ def test_a_cancelled_run_counts_the_photos_saved_whole_too() -> None:
     assert banner is not None
     assert "Cancelled. 1 photo was saved. 1 photo needs checking." in banner.text
     assert str(RAW) in banner.text
+
+
+# --- many failed sheets: one line per kind ------------------------------------------------------
+
+
+def several(numbers: list[int], *, lost: tuple[int, ...] = (), sheets: int = 10) -> ProcessResult:
+    failed = [issue(n, whole_page(n)) for n in numbers] + [issue(n, None) for n in lost]
+    return ProcessResult(written=(written(OUT, 1),), failed=tuple(failed), sheets=sheets)
+
+
+def test_up_to_three_sheets_saved_whole_each_get_a_line() -> None:
+    banner = banner_for(several([2, 5, 7]))
+    assert banner.text.count("whole page saved as") == 3
+    assert "Photo 5 of 10 fed" in banner.text
+
+
+def test_more_than_three_sheets_saved_whole_are_one_line_with_their_feed_numbers() -> None:
+    banner = banner_for(several([2, 5, 7, 9]))
+    assert "4 photos need checking: photos 2, 5, 7, 9 fed." in banner.text
+    assert "whole page saved as" not in banner.text
+    assert "1 photo saved." in banner.text
+    assert len(banner.text.splitlines()) <= 2
+
+
+def test_lost_sheets_are_listed_by_feed_number_when_there_are_many() -> None:
+    banner = banner_for(several([2, 5], lost=(6, 8)))
+    assert "2 sheets could not be processed: photos 6, 8 fed." in banner.text
+    assert "2 photos need checking: photos 2, 5 fed." in banner.text
+    assert "whole page saved as" not in banner.text
+
+
+def test_the_rest_of_the_banner_is_unchanged_when_the_lines_collapse() -> None:
+    banner = banner_for(several([2, 5, 7, 9]))
+    assert banner.kind == "warning"
+    assert str(RAW) in banner.text
+
+
+# --- the results grid's heading says it the banner's way -----------------------------------------
+
+
+def test_the_heading_counts_photos_and_the_ones_needing_a_check_separately() -> None:
+    assert photos_heading(0, 0) == "Photos"
+    assert photos_heading(3, 0) == "Photos (3)"
+    assert photos_heading(3, 1) == "Photos (2), 1 photo needs checking"
+    assert photos_heading(4, 2) == "Photos (2), 2 photos need checking"
+    assert photos_heading(1, 1) == "Photos (0), 1 photo needs checking"

@@ -309,6 +309,11 @@ class Bridge(QObject):
         return len(self.controller.photos)
 
     @Property(str, notify=changed)
+    def photosHeading(self) -> str:
+        """The results grid's heading: the photos, and the ones saved whole counted apart."""
+        raise NotImplementedError
+
+    @Property(str, notify=changed)
     def outputUrl(self) -> str:
         """The folder "Open folder" opens: where the photos went, else the output folder."""
         folder = self.controller.results_folder

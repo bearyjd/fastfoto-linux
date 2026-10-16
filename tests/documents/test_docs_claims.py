@@ -28,6 +28,21 @@ def test_the_last_check_on_every_cut_strip_is_described(name: str) -> None:
     assert "neither blank white nor backing" in text
 
 
+@pytest.mark.parametrize("name", list(DOCUMENTS))
+def test_what_a_grey_page_trims_is_described(name: str) -> None:
+    text = " ".join(DOCUMENTS[name].split())
+    assert "trimmed at the bottom only, never at a side" in text
+    assert "backing across the whole width" in text
+    assert "backing in 99% of the rows above the strip" in text
+    assert "the join to a side is what tells" not in text  # true of colour, not of grey
+
+
+@pytest.mark.parametrize("name", list(DOCUMENTS))
+def test_the_blur_of_the_last_check_is_described(name: str) -> None:
+    text = " ".join(DOCUMENTS[name].split())
+    assert "blurred copy (3x3)" in text
+
+
 def test_the_bilevel_docstring_states_the_dark_fill_limit() -> None:
     text = " ".join((bilevel.__doc__ or "").split())
     assert "Limit" in text

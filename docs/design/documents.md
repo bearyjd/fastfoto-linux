@@ -145,7 +145,8 @@ What the first pull request settled where the specification left room.
   its nearest corner (a median over the column would cut the corners off), and a tab of paper
   that sticks out stops it where the tab starts. It is measured on the rows above the tail only,
   because the tail may be white across the whole width. Only colour pages are checked, since grey
-  and 1-bit pages have no hue to tell it by. The top is never trimmed. A printed sidebar in any
+  and 1-bit pages have no hue to tell it by: a grey page is trimmed at the bottom only, never at
+  a side, and a 1-bit page not at all. The top is never trimmed. A printed sidebar in any
   other colour (a blue-grey of (140,160,185), slate, navy) is not backing and is never cut; one
   printed edge to edge and full height within the tolerance of the backing colour (a pale
   blue-grey such as (190,200,210), 18 from it, and 40 levels darker than the paper) would be cut
@@ -158,19 +159,33 @@ What the first pull request settled where the specification left room.
   more over all of its columns and rows, because the tail is judged in the columns that are
   white in the last 2 mm while the cut spans every column: a pale slip or sticky note hanging
   below the paper, with pencil 15 to 40 levels darker on it, is in none of those columns. The
-  cut is cancelled when the strip holds an ink-sized cluster that is neither blank white nor
-  backing; blank white is less than 12 levels darker than the tail's white. Backing is a
-  backing-coloured area joined to a side of the strip; a backing-coloured note in the middle of
-  a strip is not. A grey page has no hue, so its backing is the grey of the backing colour
-  within the same distance, and the join to a side is what tells it from a pale slip. Pixels
-  within 2 px of both white and backing (the blur of an edge between them) are neither a note
-  nor content, but a stroke on a slip borders only one of them. A missed trim costs nothing, so
-  the check errs towards keeping. The cluster size is 0.3 mm rounded up to whole pixels (3 at
-  200 dpi, 8 at 600 dpi, never under 2), because a cluster shorter than 0.3 mm is dust. Known
-  limits: a note of the backing's colour that touches the side of its strip cannot be told from
-  backing, and a stroke under 3 px wide that lies within 2 px of both white and backing is taken
-  for the blur of an edge. A page that would be under 10 mm tall or wide after trimming is kept
-  whole (logged at debug) so that one such page does not abort the run.
+  examination runs on a blurred copy (3x3) of the strip, so that scanner noise (at 5 levels of
+  noise, 12 levels is 2.4 sigma: about one pixel in 120 is that far down) makes no
+  clusters of its own, and so that a dot of two or three pixels, which is under 0.3 mm at 300
+  dpi and would not count on a clean copy, grows into one. The cut is cancelled when the strip
+  holds an ink-sized cluster that is neither blank white nor backing; blank white is less than
+  12 levels darker than the tail's white. On a colour page backing is a backing-coloured area
+  joined to a side of the strip; a backing-coloured note in the middle of a strip is not.
+  A grey page has no hue, so its backing is the grey of the backing colour within the same
+  distance, and a pale slip flush with an edge of the frame is that grey too and is joined to
+  the side just as backing is: the join to a side tells nothing there. A backing grey therefore
+  counts only in a row that is backing across the whole width, or in a column that is backing in
+  99% of the rows above the strip. The backing beside a narrow item runs the whole height of
+  the frame, so its columns pass; a slip hanging below the paper has paper above it, so its
+  columns fail. (Rows that are backing across the whole width do not occur in a cut strip, since
+  the tail begins below them; the rule is kept as the plain statement of what backing across
+  the frame is.) Pixels within 2 px of both white and backing (the blur of an edge between
+  them) are neither a note nor content, but a stroke on a slip borders only one of them. A
+  missed trim costs nothing, so the check errs towards keeping, and a dot of a few pixels in the
+  tail keeps the tail. The cluster size is 0.3 mm rounded up to whole pixels (3 at 200 dpi, 8 at
+  600 dpi, never under 2), because a cluster shorter than 0.3 mm is dust; measured on the
+  blurred copy a dark cluster is 2 px larger than on the clean one, while a lone pixel is
+  diluted to a ninth of its depth. Known limits: on a colour page a note of the backing's
+  colour that touches the side of its strip cannot be told from backing; on a grey page neither
+  can a slip within the distance of the backing's grey that lies entirely on the full-height
+  backing beside a receipt, with pencil within that distance on it. A stroke under 3 px wide
+  that lies within 2 px of both white and backing is taken for the blur of an edge. A page that would be under 10 mm tall or wide after trimming is kept whole
+  (logged at debug) so that one such page does not abort the run.
 - **Blank pages.** Marks are found on the darkest colour channel, shrunk to at most 150 dpi
   keeping the darkest pixel: a spot is a mark when it is 45 grey levels darker than the paper
   around it (measured against an 8 mm morphological closing, so strokes thinner than that are

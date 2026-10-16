@@ -26,6 +26,7 @@ PENCIL_Y_MM = 284.0  # below the end of the paper in both
 STROKES = 5
 STROKE_STEP_PX = 12
 STROKE_SIZE_PX = (2, 12)
+TALL_SLIP_TOP_MM = 100.0
 BAND_MM = 8.0
 SLIPS = {
     "pale-blue": (200, 220, 255),  # 218 as grey: within 10 of the backing's grey
@@ -33,7 +34,14 @@ SLIPS = {
 }
 
 
-def flush_slip(on: str, side: str, slip: tuple[int, int, int], *, pencil: int | None) -> Scene:
+def flush_slip(
+    on: str,
+    side: str,
+    slip: tuple[int, int, int],
+    *,
+    pencil: int | None,
+    top_mm: float | None = None,
+) -> Scene:
     """A slip hanging below the paper, flush with the frame's edge (``on="page"``) or with the
     receipt's edge (``"receipt"``), with strokes ``pencil`` levels darker (None: no strokes)."""
     if on == "page":
@@ -51,7 +59,7 @@ def flush_slip(on: str, side: str, slip: tuple[int, int, int], *, pencil: int | 
         (left, left + mm(SLIP_WIDTH_MM)) if side == "left" else (right - mm(SLIP_WIDTH_MM), right)
     )
     image = scene.image.copy()
-    image[mm(SLIP_TOP_MM[on]) :, left:right] = slip
+    image[mm(top_mm or SLIP_TOP_MM[on]) :, left:right] = slip
     if pencil is not None:
         pen = tuple(max(0, channel - pencil) for channel in slip)
         top = mm(PENCIL_Y_MM)
@@ -90,3 +98,15 @@ def test_a_grey_letter_page_with_a_backing_band_below_the_paper_still_loses_its_
     image[scene.paper_end : band_end] = BACKING_RGB  # across the whole width
     result = trim_page(grey_page(replace(scene, image=image)))
     assert band_end <= result.page.pixels.shape[0] <= band_end + mm(4)
+
+
+@pytest.mark.parametrize("pencil", [15, 25])
+@pytest.mark.parametrize("on", ["page", "receipt"])
+def test_pencil_on_a_tall_slip_flush_with_an_edge_is_never_cut_from_a_grey_page(
+    on: str, pencil: int
+) -> None:
+    """The slip is backing grey over more than half of the rows above the strip, not 99%."""
+    drawn = flush_slip(on, "left", SLIPS["pale-blue"], pencil=pencil, top_mm=TALL_SLIP_TOP_MM)
+    plain = flush_slip(on, "left", SLIPS["pale-blue"], pencil=None, top_mm=TALL_SLIP_TOP_MM)
+    result = trim_page(grey_page(drawn))
+    assert changed_pixels_cut_off(result, drawn.image, plain.image) == 0

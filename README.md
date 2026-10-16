@@ -119,15 +119,24 @@ uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr o
   scan and are backing in at least 99% of their rows, 3 mm or wider, next to paper at least 25
   levels brighter. A tilted receipt is therefore cut only up to its nearest corner. A sidebar
   printed in any other colour is never cut; one printed edge to edge, full height, within that
-  distance of the backing colour (a pale blue-grey such as (190, 200, 210)) would be.
+  distance of the backing colour (a pale blue-grey such as (190, 200, 210)) would be. A grey
+  page has no hue to tell backing from a pale slip, so it is trimmed at the bottom only, never at
+  a side.
   Every strip a trim would remove, the tail and each side strip, is then checked over all of its
-  columns: if it holds a cluster of 0.3 mm or more that is neither blank white nor backing (less
-  than 12 levels darker than the tail's white; a pale slip or sticky note hanging below the paper,
-  with pencil on it, is neither), that cut is cancelled and the strip stays. The limits of that
-  check: a note of the backing's colour that touches the side of its strip cannot be told from
-  backing, and a stroke under 3 pixels wide within 2 pixels of both white and backing is taken for
-  the blur of an edge. A page that would be under 10 mm tall or wide after trimming is kept whole
-  instead of stopping the run.
+  columns, on a blurred copy (3x3) so that scanner noise makes no clusters of its own and a dot
+  of two or three pixels counts: if it holds a cluster of 0.3 mm or more that is neither blank
+  white nor backing (less than 12 levels darker than the tail's white; a pale slip or sticky
+  note hanging below the paper, with pencil on it, is neither), that cut is cancelled and the
+  strip stays. Backing there is backing-coloured and joined to a side of the strip; on a grey
+  page, where a pale slip flush with an edge of the frame looks just like it, a backing grey
+  counts only in a row that is backing across the whole width or in a column that is backing in
+  99% of the rows above the strip (the backing beside a receipt runs the whole height of the
+  frame). The limits of that check: on a colour page a note of the backing's colour that touches
+  the side of its strip cannot be told from backing, on a grey page neither can a slip of the
+  backing's grey that lies on the full-height backing beside a receipt, and a stroke under 3
+  pixels wide within 2 pixels of both white and backing is taken for the blur of an edge. A page
+  that would be under 10 mm tall or wide after trimming is kept whole instead of stopping the
+  run.
 - A page is blank only when it has no mark at all inside its 5 mm margin: dust, paper texture
   and faint show-through from the other side do not count, while a single short line, a
   signature, a lone page number or pencil at least about 45 grey levels darker than the paper

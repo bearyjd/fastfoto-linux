@@ -28,13 +28,37 @@ def test_the_last_check_on_every_cut_strip_is_described(name: str) -> None:
     assert "neither blank white nor backing" in text
 
 
+STALE_GREY_CLAIMS = (
+    "backing in 99% of the rows above the strip",  # the column rule: removed in round 5
+    "has paper above it",
+    "the join to a side is what tells",  # true of colour, not of grey
+    "full-height backing beside a receipt",
+    "the whole height of the frame",
+)
+
+
 @pytest.mark.parametrize("name", list(DOCUMENTS))
 def test_what_a_grey_page_trims_is_described(name: str) -> None:
     text = " ".join(DOCUMENTS[name].split())
     assert "trimmed at the bottom only, never at a side" in text
+    assert "the white tail only, never a side" in text
     assert "backing across the whole width" in text
-    assert "backing in 99% of the rows above the strip" in text
-    assert "the join to a side is what tells" not in text  # true of colour, not of grey
+    assert "a grey receipt keeps its tail" in text
+    for stale in STALE_GREY_CLAIMS:
+        assert stale not in text
+
+
+@pytest.mark.parametrize("name", ["README", "design note"])
+def test_a_colour_page_is_described_as_trimmed_before_it_is_made_grey_or_bw(name: str) -> None:
+    text = " ".join(DOCUMENTS[name].split())
+    assert "trimmed in colour and only then made grey or black and white" in text
+
+
+def test_the_design_note_scans_in_colour_whatever_the_output_colour() -> None:
+    text = " ".join(DOCUMENTS["design note"].split())
+    assert "always `Color`, whatever the output colour" in text
+    assert "`Gray` for grey" not in text
+    assert "(white tail only; never the sides)" in text
 
 
 @pytest.mark.parametrize("name", list(DOCUMENTS))

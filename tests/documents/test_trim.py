@@ -128,11 +128,13 @@ def test_the_millimetres_kept_do_not_depend_on_the_resolution(dpi: int) -> None:
     assert height / dpi * 25.4 == pytest.approx(RECEIPT_MM[1], abs=5.5)
 
 
-def test_a_grey_page_has_no_hue_to_find_backing_by_so_only_the_tail_goes() -> None:
-    scene = receipt()
-    result = trim_page(grey_page(scene))
-    assert (result.left, result.right) == (0, 0)
-    assert scene.paper_end <= result.page.pixels.shape[0] <= scene.paper_end + mm(5)
+def test_a_grey_receipt_keeps_its_tail_a_missed_trim_we_accept() -> None:
+    """A grey page has no hue to tell backing by: beside a receipt the backing grey is not
+    provably empty, so the tail beside it stays and no side is cut."""
+    page = grey_page(receipt())
+    result = trim_page(page)
+    assert (result.left, result.right, result.bottom) == (0, 0, 0)
+    assert result.page.pixels.shape == page.pixels.shape
     assert result.page.kind is ColourMode.GREY
 
 

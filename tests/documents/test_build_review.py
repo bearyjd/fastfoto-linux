@@ -16,7 +16,16 @@ from fastfoto_linux.documents import (
     build,
     build_document,
 )
-from tests.documents.helpers import text_scene, write_pages
+from fastfoto_linux.documents.modes import ColourMode
+from tests.documents.helpers import (
+    DPI,
+    expected_points,
+    page_size_pt,
+    reader,
+    text_scene,
+    write_pages,
+)
+from tests.documents.trim_helpers import mm, receipt
 
 
 def settings(out: Path, **changes: Any) -> DocumentSettings:
@@ -113,3 +122,24 @@ def test_a_cancel_that_is_already_set_processes_no_page(
 
 def test_stopping_during_ocr_and_between_pages_are_the_same_kind_of_stop() -> None:
     assert issubclass(OcrCancelledError, DocumentCancelledError)
+
+
+# ---- trimming happens in colour, before the page is made grey or black and white -----------------
+
+
+@pytest.mark.parametrize("mode", [ColourMode.GREY, ColourMode.BW])
+def test_a_colour_page_is_trimmed_in_colour_before_it_is_made_grey_or_bw(
+    raw: Path, out: Path, mode: ColourMode
+) -> None:
+    """A grey page keeps its sides and its tail (it has no hue to find the backing by), so a
+    colour receipt that came out the same size in grey and in black and white was trimmed first."""
+    scene = receipt()
+    pages = write_pages(raw, [scene])
+    sizes = {}
+    for colour in (ColourMode.COLOUR, mode):
+        result = build_document(pages, settings(out, colour=colour, keep_blank=True))
+        sizes[colour] = page_size_pt(reader(result.pdf.read_bytes()), 0)
+    assert sizes[mode] == pytest.approx(sizes[ColourMode.COLOUR], abs=0.01)
+    width, height = sizes[mode]
+    assert width < expected_points(scene.paper_x[1] - scene.paper_x[0] + mm(2), DPI)
+    assert height <= expected_points(scene.paper_end + mm(5), DPI)

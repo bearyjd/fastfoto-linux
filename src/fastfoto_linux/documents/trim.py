@@ -25,25 +25,26 @@ nothing and a missing line of text costs the scan:
   hue to tell it by, so they keep their sides: a grey page is trimmed at the bottom only, never at
   a side, and a 1-bit page not at all.
 
-The last check applies to every strip a trim would remove, the tail and each side strip, over
-all of its columns and rows, on a blurred copy (3x3) so that scanner noise makes no clusters of
-its own and a dot of two or three pixels grows into one. The tail is judged in the columns that
-are white, but the cut spans them all, so a pale slip or a sticky note that hangs below the
-paper would go with it. A cut is cancelled, and its strip kept, when the strip holds a cluster
-of ink size that is neither blank white nor backing. Blank white is less than 12 levels darker
-than the tail's white. Backing is an area of backing colour that is joined to a side of the
-strip. On a grey page there is no hue, and a pale slip flush with an edge of the frame looks
-just like backing joined to it; a grey within the same distance of the backing's grey counts as
-backing only in a row that is backing across the whole width, or in a column that is backing in
-99% of the rows above the strip (the backing beside a receipt runs the whole height of the
-frame, while a slip hanging below the paper has paper above it). Pixels where backing and white
-blend, at the edge of a blurred scan, are no content either. What is cut is therefore what is
-certainly empty, blank white or the scanner's backing, with the limits of that test: on a colour
-page a note of the backing's colour that touches the side of its strip cannot be told from
-backing, on a grey page neither can a slip of the backing's grey that lies on the full-height
-backing beside a receipt, and a stroke under 3 pixels wide within 2 pixels of both white and
-backing is taken for the blur of an edge. A page that would be under 10 mm tall or wide after
-trimming (the least ``find_marks`` accepts) is kept whole.
+The last check applies to every strip a trim would remove, the tail and each side strip, over all of
+its columns and rows, on a blurred copy (3x3) so that scanner noise makes no clusters of its own,
+and a dark dot grows by 2 pixels into a cluster (two or three pixels at 300 dpi). The tail is judged
+in the columns that are white, but the cut spans them all, so a pale slip or a sticky note that
+hangs below the paper would go with it. A cut is cancelled, and its strip kept, when the strip holds
+a cluster of ink size that is neither blank white nor backing. Blank white is less than 12 levels
+darker than the tail's white. Backing is an area of backing colour that is joined to a side of the
+strip. On a grey page there is no hue, and a pale slip flush with an edge of the frame looks just
+like backing joined to it; a grey within the same distance of the backing's grey counts as backing
+only in a row that is backing across the whole width, or in a column that is backing in 99% of the
+rows above the strip (the backing beside a receipt runs the whole height of the frame, while a slip
+hanging below the paper has paper above it). Pixels where backing and white blend, at the edge of a
+blurred scan, are no content either. What is cut is therefore what is certainly empty, blank white
+or the scanner's backing, with the limits of that test: on a colour page a note of the backing's
+colour that touches the side of its strip cannot be told from backing, on a grey page neither can a
+slip of the backing's grey that lies on the full-height backing beside a receipt, a stroke under 3
+pixels wide within 2 pixels of both white and backing is taken for the blur of an edge, and a stroke
+1 pixel wide is diluted to a third of its depth by the blur (on a slip only 5 levels below the
+tail's white it must be about 21 levels darker than the slip to count). A page that would be under
+10 mm tall or wide after trimming (the least ``find_marks`` accepts) is kept whole.
 
 The top is never trimmed.
 """

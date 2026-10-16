@@ -161,8 +161,8 @@ What the first pull request settled where the specification left room.
   below the paper, with pencil 15 to 40 levels darker on it, is in none of those columns. The
   examination runs on a blurred copy (3x3) of the strip, so that scanner noise (at 5 levels of
   noise, 12 levels is 2.4 sigma: about one pixel in 120 is that far down) makes no
-  clusters of its own, and so that a dot of two or three pixels, which is under 0.3 mm at 300
-  dpi and would not count on a clean copy, grows into one. The cut is cancelled when the strip
+  clusters of its own; a dark dot grows by 2 px, so one that is 2 px shorter than the cluster size
+  counts (two or three pixels, under 0.3 mm, at 300 dpi). The cut is cancelled when the strip
   holds an ink-sized cluster that is neither blank white nor backing; blank white is less than
   12 levels darker than the tail's white. On a colour page backing is a backing-coloured area
   joined to a side of the strip; a backing-coloured note in the middle of a strip is not.
@@ -176,15 +176,18 @@ What the first pull request settled where the specification left room.
   the tail begins below them; the rule is kept as the plain statement of what backing across
   the frame is.) Pixels within 2 px of both white and backing (the blur of an edge between
   them) are neither a note nor content, but a stroke on a slip borders only one of them. A
-  missed trim costs nothing, so the check errs towards keeping, and a dot of a few pixels in the
-  tail keeps the tail. The cluster size is 0.3 mm rounded up to whole pixels (3 at 200 dpi, 8 at
+  missed trim costs nothing, so the check errs towards keeping, and a dark dot just under the
+  cluster size in the tail keeps the tail. The cluster size is 0.3 mm rounded up to whole pixels (3 at 200 dpi, 8 at
   600 dpi, never under 2), because a cluster shorter than 0.3 mm is dust; measured on the
   blurred copy a dark cluster is 2 px larger than on the clean one, while a lone pixel is
   diluted to a ninth of its depth. Known limits: on a colour page a note of the backing's
   colour that touches the side of its strip cannot be told from backing; on a grey page neither
   can a slip within the distance of the backing's grey that lies entirely on the full-height
   backing beside a receipt, with pencil within that distance on it. A stroke under 3 px wide
-  that lies within 2 px of both white and backing is taken for the blur of an edge. A page that would be under 10 mm tall or wide after trimming is kept whole
+  that lies within 2 px of both white and backing is taken for the blur of an edge. A stroke
+  1 px wide is diluted to a third of its depth, so on a slip a gap below the tail's white (under
+  12 levels) it counts only when more than 3 x (12 - gap) levels darker than the slip: about 21
+  on a slip 5 below the white, where the unblurred check kept 15. A page that would be under 10 mm tall or wide after trimming is kept whole
   (logged at debug) so that one such page does not abort the run.
 - **Blank pages.** Marks are found on the darkest colour channel, shrunk to at most 150 dpi
   keeping the darkest pixel: a spot is a mark when it is 45 grey levels darker than the paper

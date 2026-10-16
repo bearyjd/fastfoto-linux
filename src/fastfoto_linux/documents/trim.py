@@ -23,7 +23,10 @@ nothing and a missing line of text costs the scan:
   above the tail only. A printed sidebar of any other colour is not backing; one printed
   edge to edge and full height within that distance is, and is cut. Grey and 1-bit pages have no
   hue to tell it by, so they keep their sides: a grey page is trimmed at the bottom only, never at
-  a side, and a 1-bit page not at all.
+  a side, and a 1-bit page not at all. In grey the backing is also the tone of pastel paper and of
+  a pale slip, so a grey page loses the white tail only, never a side, and a grey receipt keeps
+  its tail (a missed trim, by design: ``ffscan doc scan`` will scan in colour and make the grey
+  page after trimming, and a colour page is trimmed in colour before it is made grey or 1-bit).
 
 The last check applies to every strip a trim would remove, the tail and each side strip, over all of
 its columns and rows, on a blurred copy (3x3) so that scanner noise makes no clusters of its own,
@@ -31,20 +34,20 @@ and a dark dot grows by 2 pixels into a cluster (two or three pixels at 300 dpi)
 in the columns that are white, but the cut spans them all, so a pale slip or a sticky note that
 hangs below the paper would go with it. A cut is cancelled, and its strip kept, when the strip holds
 a cluster of ink size that is neither blank white nor backing. Blank white is less than 12 levels
-darker than the tail's white. Backing is an area of backing colour that is joined to a side of the
-strip. On a grey page there is no hue, and a pale slip flush with an edge of the frame looks just
-like backing joined to it; a grey within the same distance of the backing's grey counts as backing
-only in a row that is backing across the whole width, or in a column that is backing in 99% of the
-rows above the strip (the backing beside a receipt runs the whole height of the frame, while a slip
-hanging below the paper has paper above it). Pixels where backing and white blend, at the edge of a
-blurred scan, are no content either. What is cut is therefore what is certainly empty, blank white
-or the scanner's backing, with the limits of that test: on a colour page a note of the backing's
-colour that touches the side of its strip cannot be told from backing, on a grey page neither can a
-slip of the backing's grey that lies on the full-height backing beside a receipt, a stroke under 3
-pixels wide within 2 pixels of both white and backing is taken for the blur of an edge, and a stroke
-1 pixel wide is diluted to a third of its depth by the blur (on a slip only 5 levels below the
-tail's white it must be about 21 levels darker than the slip to count). A page that would be under
-10 mm tall or wide after trimming (the least ``find_marks`` accepts) is kept whole.
+darker than the tail's white. On a colour page backing is an area of backing colour that is joined
+to a side of the strip. On a grey page nothing but the tone tells backing, and a pale slip or
+pastel paper has it wherever it lies, so a grey within the same distance of the backing's grey
+counts as backing only in a row that is backing across the whole width. Where the backing beside a
+receipt runs on below the paper, the strip holds backing grey that is not in such a row, so the
+tail there is kept. Pixels where backing and
+white blend, at the edge of a blurred scan, are no content either. What is cut is therefore what
+is certainly empty, blank white or the scanner's backing, with the limits of that test: on a
+colour page a note of the backing's colour that touches the side of its strip cannot be told from
+backing, a stroke under 3 pixels wide within 2 pixels of both white and backing is taken for the
+blur of an edge, and a stroke 1 pixel wide is diluted to a third of its depth by the blur (on a
+slip only 5 levels below the tail's white it must be about 21 levels darker than the slip to
+count). A page that would be under 10 mm tall or wide after trimming (the least ``find_marks``
+accepts) is kept whole.
 
 The top is never trimmed.
 """
@@ -255,28 +258,18 @@ def _joined_to_sides(tone: np.ndarray) -> np.ndarray:
     return joined[labels]
 
 
-def _backing_columns(above: np.ndarray) -> np.ndarray:
-    """The columns of a page that are backing in ``COLUMN_BACKING_SHARE`` of the rows ``above``
-    the strip: the backing beside a narrow item runs the whole height of the frame, while a slip
-    that hangs below the paper has paper above it."""
-    rows = above[:: max(1, above.shape[0] // STRIP_ROWS)]
-    return _backing_tone(rows).mean(axis=0) >= COLUMN_BACKING_SHARE
-
-
-def _backing_pixels(strip: np.ndarray, columns: np.ndarray | None) -> np.ndarray:
+def _backing_pixels(strip: np.ndarray) -> np.ndarray:
     """Which pixels of ``strip`` are the scanner's backing and so need no keeping.
 
     On a colour page: backing-coloured and joined to a side of the strip. A grey page has no hue,
-    so a pale slip flush with the edge of the frame looks just like the backing joined to it;
-    there a backing-grey pixel counts only in a row that is backing across the whole width, or
-    in one of the ``columns`` known to be backing from the rows above.
+    and a pale slip or a pastel margin looks just like the backing wherever it lies; there a
+    backing-grey pixel counts only in a row that is backing across the whole width.
     """
     tone = _backing_tone(strip)
     if strip.ndim == RGB_NDIM:
         return _joined_to_sides(tone)
     across = tone.mean(axis=1) >= COLUMN_BACKING_SHARE
-    beside = np.zeros(strip.shape[1], dtype=bool) if columns is None else columns
-    return tone & (across[:, None] | beside[None, :])
+    return tone & across[:, None]
 
 
 def _blended(white: np.ndarray, backing: np.ndarray) -> np.ndarray:
@@ -288,21 +281,18 @@ def _blended(white: np.ndarray, backing: np.ndarray) -> np.ndarray:
     return near_white & near_backing
 
 
-def _holds_content(
-    strip: np.ndarray, white: float, dpi: int, columns: np.ndarray | None = None
-) -> bool:
+def _holds_content(strip: np.ndarray, white: float, dpi: int) -> bool:
     """Does ``strip``, which a trim would remove, hold an ink-sized cluster that is neither
     blank white (less than ``INK_DEVIATION`` darker than ``white``) nor backing?
 
     Judged on a copy blurred over ``GUARD_BLUR_PX``, so that noise does not make clusters of
-    its own and a dot of two or three pixels grows into one. ``columns`` are the backing columns
-    of a grey page (see ``_backing_pixels``).
+    its own and a dot of two or three pixels grows into one.
     """
     smooth = cv2.boxFilter(strip, cv2.CV_32F, (GUARD_BLUR_PX, GUARD_BLUR_PX))
     marked = _grey_of(smooth) <= white - INK_DEVIATION
     if not marked.any():
         return False
-    backing = _backing_pixels(smooth, columns)
+    backing = _backing_pixels(smooth)
     unexplained = marked & ~backing & ~_blended(~marked, backing)
     return bool(_ink_clusters(unexplained, dpi).size)
 
@@ -330,10 +320,7 @@ def _bottom_cut(page: LoadedPage) -> int:
     keep = max([start + mm_to_px(TAIL_KEEP_MM, page.dpi), *(row + room for row in reach)])
     cut = max(0, height - keep)
     if cut and _holds_content(
-        page.pixels[height - cut :],
-        _tail_white(page.pixels, page.dpi),
-        page.dpi,
-        _backing_columns(page.pixels[: height - cut]),
+        page.pixels[height - cut :], _tail_white(page.pixels, page.dpi), page.dpi
     ):
         return 0
     return cut

@@ -39,8 +39,10 @@ ffscan doc process PAGE.png ... --out DIR [--mkdir] [same output options]
   the file written and where raw pages were kept.
 
 ## Pipeline for one batch
-1. **Scan** (later PR): `Color` for colour; `Gray` for grey and for black-and-white (we threshold
-   ourselves — better than the backend's fixed threshold); duplex unless `--simplex`; scanner deskew on;
+1. **Scan** (later PR): always `Color`, whatever the output colour — trimming needs colour to tell the
+   scanner's blue-grey backing from pale paper; grey and black-and-white (our own adaptive threshold)
+   are made after trimming. Grey PNGs given to `ffscan doc process` are trimmed very cautiously
+   (white tail only; never the sides). Duplex unless `--simplex`; scanner deskew on;
    **full scan length** (the scanner pads the page after the paper ends). Never a fixed paper size: Letter
    would cut Legal pages.
 2. **Load** each page: RGB, 8-bit grey or 1-bit PNG — a loader of its own (the photo loader is RGB-only).
@@ -146,7 +148,11 @@ What the first pull request settled where the specification left room.
   that sticks out stops it where the tab starts. It is measured on the rows above the tail only,
   because the tail may be white across the whole width. Only colour pages are checked, since grey
   and 1-bit pages have no hue to tell it by: a grey page is trimmed at the bottom only, never at
-  a side, and a 1-bit page not at all. The top is never trimmed. A printed sidebar in any
+  a side, and a 1-bit page not at all. A grey page therefore loses the white tail only, never a
+  side, and a grey receipt keeps its tail (see the last check, below). The top is never trimmed.
+  A colour page is trimmed in colour and only then made grey or black and white (`build` trims
+  the loaded page, `encode_page` converts it), so `--colour grey` and `--colour bw` on colour
+  pages get the colour trim; `ffscan doc scan` will always scan in colour for the same reason. A printed sidebar in any
   other colour (a blue-grey of (140,160,185), slate, navy) is not backing and is never cut; one
   printed edge to edge and full height within the tolerance of the backing colour (a pale
   blue-grey such as (190,200,210), 18 from it, and 40 levels darker than the paper) would be cut
@@ -167,23 +173,26 @@ What the first pull request settled where the specification left room.
   12 levels darker than the tail's white. On a colour page backing is a backing-coloured area
   joined to a side of the strip; a backing-coloured note in the middle of a strip is not.
   A grey page has no hue, so its backing is the grey of the backing colour within the same
-  distance, and a pale slip flush with an edge of the frame is that grey too and is joined to
-  the side just as backing is: the join to a side tells nothing there. A backing grey therefore
-  counts only in a row that is backing across the whole width, or in a column that is backing in
-  99% of the rows above the strip. The backing beside a narrow item runs the whole height of
-  the frame, so its columns pass; a slip hanging below the paper has paper above it, so its
-  columns fail. (Rows that are backing across the whole width do not occur in a cut strip, since
-  the tail begins below them; the rule is kept as the plain statement of what backing across
-  the frame is.) Pixels within 2 px of both white and backing (the blur of an edge between
+  distance, and that is also the tone of pastel paper and of a pale slip, wherever they lie: a
+  pastel margin is backing grey in every row from the top of the frame down, and a slip flush
+  with an edge of the frame is joined to the side just as backing is. Neither the join to a
+  side nor a column of backing grey tells backing from them, so a backing grey counts only in a
+  row that is backing across the whole width, which no slip or margin is. (Such a row seldom
+  occurs in a cut strip, since the tail begins below the backing band; the rule is kept as the
+  plain statement of what backing across the frame is.) Any other backing grey in a strip is
+  content. Beside a receipt the backing runs on below the paper, in columns that are not white,
+  so a grey receipt keeps its tail: a missed trim, accepted (a missed trim costs nothing, a cut
+  slip costs the scan) and the reason `ffscan doc scan` will scan in colour and make the grey
+  page after trimming.
+  Pixels within 2 px of both white and backing (the blur of an edge between
   them) are neither a note nor content, but a stroke on a slip borders only one of them. A
   missed trim costs nothing, so the check errs towards keeping, and a dark dot just under the
   cluster size in the tail keeps the tail. The cluster size is 0.3 mm rounded up to whole pixels (3 at 200 dpi, 8 at
   600 dpi, never under 2), because a cluster shorter than 0.3 mm is dust; measured on the
   blurred copy a dark cluster is 2 px larger than on the clean one, while a lone pixel is
   diluted to a ninth of its depth. Known limits: on a colour page a note of the backing's
-  colour that touches the side of its strip cannot be told from backing; on a grey page neither
-  can a slip within the distance of the backing's grey that lies entirely on the full-height
-  backing beside a receipt, with pencil within that distance on it. A stroke under 3 px wide
+  colour that touches the side of its strip cannot be told from backing (on a grey page the
+  check errs the other way: a grey receipt keeps its tail). A stroke under 3 px wide
   that lies within 2 px of both white and backing is taken for the blur of an edge. A stroke
   1 px wide is diluted to a third of its depth, so on a slip a gap below the tail's white (under
   12 levels) it counts only when more than 3 x (12 - gap) levels darker than the slip: about 21

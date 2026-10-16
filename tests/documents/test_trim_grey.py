@@ -13,6 +13,7 @@ from dataclasses import replace
 import numpy as np
 import pytest
 
+from fastfoto_linux.documents import trim
 from fastfoto_linux.documents.trim import trim_page
 from tests.doc_synth import BACKING_RGB, LETTER_MM, Scene, paper_scene, with_text
 from tests.documents.helpers import grey_page
@@ -155,3 +156,15 @@ def test_pencil_on_a_tall_slip_flush_with_an_edge_is_never_cut_from_a_grey_page(
     plain = flush_slip(on, "left", SLIPS["pale-blue"], pencil=None, top_mm=TALL_SLIP_TOP_MM)
     result = trim_page(grey_page(drawn))
     assert changed_pixels_cut_off(result, drawn.image, plain.image) == 0
+
+
+def test_a_row_that_is_backing_across_the_whole_width_is_no_content_in_a_grey_strip() -> None:
+    """The one place backing grey is exempt. Such a row seldom lies in a cut strip (the tail begins
+    below the backing band), so the last check is asked about the strip directly; a slip of the
+    same grey, which spans a few columns only, is content."""
+    band = np.full((mm(10), mm(60)), 255, np.uint8)
+    band[mm(3) : mm(7)] = trim._PRIOR_GREY
+    slip = np.full_like(band, 255)
+    slip[:, mm(10) : mm(30)] = trim._PRIOR_GREY
+    assert trim._holds_content(band, 255.0, DPI) is False
+    assert trim._holds_content(slip, 255.0, DPI) is True

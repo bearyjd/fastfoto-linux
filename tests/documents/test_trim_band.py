@@ -15,6 +15,7 @@ from fastfoto_linux.documents.trim import trim_page
 from tests.doc_synth import (
     BACKING_RGB,
     EDGE_LINE_MM,
+    PAD_WEDGE_MM,
     Scene,
     banded_scene,
     px,
@@ -325,10 +326,19 @@ def test_white_next_to_the_paper_does_not_switch_the_last_check_off(dpi: int) ->
 
 
 @pytest.mark.parametrize("dpi", [200, 300])
+def test_a_band_at_the_frame_edge_with_no_pad_is_cut(dpi: int) -> None:
+    bare = band_page(dpi)
+    bare = replace(bare, image=bare.image[: -px(PAD_WEDGE_MM, dpi)])
+    result = trim_page(colour_page(bare))
+    assert result.band_bottom
+    assert abs(bare.height - result.bottom - (bare.paper_end + px(KEEP_MM, dpi))) <= 1
+
+
+@pytest.mark.parametrize("dpi", [200, 300])
 def test_a_band_with_white_in_every_row_is_not_trusted(dpi: int) -> None:
     """A white line down the whole band: no row without white to tell the pad from the rest."""
-    scene = band_page(dpi)
-    image = scene.image.copy()
-    image[scene.paper_end :, px(60.0, dpi) : px(60.0, dpi) + 3] = 255
-    result = trim_page(colour_page(replace(scene, image=image)))
+    bare = band_page(dpi)
+    image = bare.image[: -px(PAD_WEDGE_MM, dpi)].copy()
+    image[bare.paper_end :, px(60.0, dpi) : px(60.0, dpi) + 3] = 255
+    result = trim_page(colour_page(replace(bare, image=image)))
     assert (result.bottom, result.band_bottom) == (0, False)

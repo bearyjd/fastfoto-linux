@@ -226,16 +226,16 @@ def test_a_status_text_that_is_not_known_degrades_to_waiting_for_the_exit(
     assert not marker.exists()
 
 
-def test_a_scanimage_that_has_already_exited_keeps_its_exit_status_message(
+def test_a_scanimage_that_exits_at_once_after_its_error_still_reports_it(
     job: ScanJob, bin_dir: Path
 ) -> None:
+    """Whether the exit or the error line is noticed first is a race; either way it is reported."""
     env = fake_env(bin_dir, early_stderr_lines=SCANIMAGE_SAID[2:], exit_code=9)
 
-    with pytest.raises(ScanError) as excinfo:
+    with pytest.raises(ScanError, match="Error during device I/O") as excinfo:
         run_scan(job, env=env, timeout_s=TIMEOUT_S)
 
-    assert excinfo.value.returncode == 9
-    assert "exit status 9" in str(excinfo.value)
+    assert excinfo.value.returncode in (None, 9)
 
 
 # --- the stderr monitor ------------------------------------------------------------------------

@@ -26,9 +26,11 @@ from fastfoto_linux.scanner.stderr_monitor import StderrMonitor
 logger = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT_S = 30 * 60.0
-# After SIGTERM scanimage calls sane_cancel(); give it this long before SIGKILL.
-TERMINATE_GRACE_S = 10.0
-# After a scanimage error line the process is stopped with this shorter grace: it is going down.
+# After SIGTERM scanimage calls sane_cancel(); give it this long before SIGKILL. A scanimage that is
+# stuck in its exit path (it retries FIN for about a minute) ignores SIGTERM, so this is also how
+# long Cancel can take.
+TERMINATE_GRACE_S = 5.0
+# After a scanimage error line the process is already going down: a shorter grace.
 FAIL_FAST_GRACE_S = 2.0
 # How often stderr reading wakes up to check the cancel event, the timeout and finished pages.
 POLL_INTERVAL_S = 0.1
@@ -50,6 +52,7 @@ class _Outcome(Enum):
     EXITED = auto()
     TIMED_OUT = auto()
     CANCELLED = auto()
+    FAILED = auto()  # scanimage printed a real error; it was stopped without waiting for its exit
 
 
 def run_scan(  # noqa: PLR0913
@@ -76,6 +79,10 @@ def run_scan(  # noqa: PLR0913
     ``TERMINATE_GRACE_S``. scanimage runs in its own session, so a terminal Ctrl-C reaches only
     this process, whose KeyboardInterrupt handling stops scanimage the same way.
 
+    scanimage's own error report (``scanimage: sane_start: Error during device I/O``, jammed,
+    cover open...) is not waited out: the process is stopped with ``FAIL_FAST_GRACE_S`` and the
+    error is raised at once. Running out of documents is the normal end of a batch, not an error.
+
     Raises OutputDirError / OutputNotEmptyError before anything is started, NoDocumentsError if
     the feeder was empty, ScanCancelledError after a cancel and ScanError for every other
     failure; the cancel and scan errors carry the pages finished before the failure.
@@ -98,6 +105,8 @@ def run_scan(  # noqa: PLR0913
     if outcome is _Outcome.TIMED_OUT:
         message = _with_output(f"scanimage timed out after {timeout_s:g} s", monitor.tail_text)
         raise ScanError(message, pages=pages)
+    if outcome is _Outcome.FAILED:
+        raise ScanError(f"scanimage failed: {monitor.failure}", pages=pages)
     return _interpret(pages, proc.returncode, monitor.tail_text)
 
 
@@ -131,7 +140,7 @@ def _supervise(
     if outcome is _Outcome.EXITED:
         monitor.finish()
     else:
-        _stop(proc)
+        _stop(proc, FAIL_FAST_GRACE_S if outcome is _Outcome.FAILED else TERMINATE_GRACE_S)
         monitor.drain()  # what scanimage said while it was stopping
     return outcome
 
@@ -142,10 +151,12 @@ def _watch(
     deadline: float | None,
     cancel: threading.Event | None,
 ) -> _Outcome:
-    """Pump stderr until the process exits, the cancel event is set or the deadline passes.
+    """Pump stderr until the process exits, fails, the cancel event is set or the deadline passes.
 
     Exit is detected with ``poll()`` and not by stderr EOF: a grandchild that inherited the
-    pipe keeps it open after scanimage is gone.
+    pipe keeps it open after scanimage is gone. An error line from a scanimage that has not
+    exited yet ends the wait too (``_Outcome.FAILED``): its exit path can take a minute, and a
+    scanimage that has already exited keeps its exit status in the message.
     """
     while True:
         if monitor.at_eof:  # stderr closed; wait for the exit in short slices
@@ -157,19 +168,22 @@ def _watch(
         if proc.poll() is not None:
             monitor.drain()
             return _Outcome.EXITED
+        if monitor.failure is not None:
+            return _Outcome.FAILED
         if cancel is not None and cancel.is_set():
             return _Outcome.CANCELLED
         if deadline is not None and time.monotonic() >= deadline:
             return _Outcome.TIMED_OUT
 
 
-def _stop(proc: "subprocess.Popen[bytes]") -> None:
-    """SIGTERM first (scanimage then cancels the scanner), SIGKILL if it hangs."""
+def _stop(proc: "subprocess.Popen[bytes]", grace_s: float | None = None) -> None:
+    """SIGTERM first (scanimage then cancels the scanner), SIGKILL after ``grace_s`` seconds."""
+    grace = TERMINATE_GRACE_S if grace_s is None else grace_s
     proc.terminate()
     try:
-        proc.wait(timeout=TERMINATE_GRACE_S)
+        proc.wait(timeout=grace)
     except subprocess.TimeoutExpired:
-        logger.warning("scanimage ignored SIGTERM for %g s; killing it", TERMINATE_GRACE_S)
+        logger.warning("scanimage ignored SIGTERM for %g s; killing it", grace)
         proc.kill()
         proc.wait()
 

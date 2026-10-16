@@ -31,6 +31,13 @@ uv run ffscan process page-*.png --out ~/Scans --album "Family Trips" --feed fac
 - `scan` scans the document feeder (both sides, 600 dpi) and processes the pages. Photos are
   loaded face down by default (`--feed face-down`: the back is scanned first); use
   `--feed face-up` if yours are loaded the other way. `--simplex` scans fronts only.
+- Before each USB scan `scan` checks that the scanner answers (it says "Checking the scanner…" in
+  the app). A scanner that a failed send left half-way through a command, which then swallows
+  every byte, is freed with a little padding and `-v` says "scanner was stuck; freed it". One that
+  still does not answer, or that another program holds, stops the scan before scanimage starts
+  (exit 3: switch the scanner off and on). The check needs libusb and is skipped without it, for
+  `--net`, and with `FF680W_NO_PRECHECK=1`. scanimage stops waiting at its first real error
+  (I/O error, jam, cover open) and Cancel ends a hung scanimage after at most 5 seconds.
 - `process` handles raw pages scanned earlier, in natural filename order.
 - Per photo it writes `Album_0001.jpg` (the original, turned upright by its faces), an enhanced
   copy `Album_0001_a.jpg` (colour restoration) and `Album_0001_b.jpg` when the back has
@@ -46,8 +53,9 @@ uv run ffscan process page-*.png --out ~/Scans --album "Family Trips" --feed fac
   degraded sheet, a scanner error, Ctrl-C, SIGTERM or SIGHUP), when a back was dropped for lack
   of writing (the run says so; raw PNGs use disk space), and always with `--keep-raw`;
   `--discard-raw` deletes them after an otherwise clean run even if a back was dropped.
-- Exit codes: 0 ok, 1 processing error, 2 usage, 3 scanner not found or shim missing, 4 no
-  documents in the feeder. `-v` logs progress, `--debug` adds tracebacks.
+- Exit codes: 0 ok, 1 processing error, 2 usage, 3 scanner not found, shim missing, scanner not
+  answering or in use by another program, 4 no documents in the feeder. `-v` logs progress,
+  `--debug` adds tracebacks.
 
 ## Fix sideways photos in an existing library
 

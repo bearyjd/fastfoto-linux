@@ -24,7 +24,7 @@ from fastfoto_linux.scanner import (
     Source,
     run_scan,
 )
-from fastfoto_linux.scanner.precheck import check_scanner
+from fastfoto_linux.scanner.precheck import check_scanner, precheck_applies
 from fastfoto_linux.session.raw import (
     create_raw_dir,
     is_complete_png,
@@ -50,7 +50,7 @@ class _Hooks:
 
     scan: ScanFn
     process: ProcessFn
-    precheck: PrecheckFn
+    precheck: PrecheckFn | None
     on_page: Callable[[int], None] | None
     on_photo: Callable[[WrittenFiles], None] | None
     on_stage: Callable[[Stage], None] | None
@@ -101,6 +101,12 @@ def run_session(  # noqa: PLR0913 - the callbacks are the interface; scan/proces
     Callbacks should be quick: the scanner is not watched, and the next sheet is not processed,
     while they run.
 
+    Before scanimage starts, a USB scanner is checked and, if a failed send left it half-way
+    through a command, freed (``ScanTarget``'s device must be ``epsonds:libusb:BBB:DDD``; see
+    ``scanner.precheck``). A scanner that does not answer or that another program holds ends the
+    session with a ScannerError and nothing is scanned. ``precheck(device, *, cancel)`` replaces
+    that check (for tests); ``FF680W_NO_PRECHECK=1`` switches the default one off.
+
     Setting ``cancel`` (from any thread) stops scanimage. A cancel during the scan processes
     nothing, as Ctrl-C always did in ``ffscan scan``: the pages it had finished stay in the raw
     folder, ``process`` is None, and ``SessionResult.kept_pages`` lists them, so that a front end
@@ -126,7 +132,7 @@ def run_session(  # noqa: PLR0913 - the callbacks are the interface; scan/proces
     hooks = _Hooks(
         scan=run_scan if scan is None else scan,
         process=process_pages if process is None else process,
-        precheck=check_scanner if precheck is None else precheck,
+        precheck=precheck,
         on_page=on_page,
         on_photo=on_photo,
         on_stage=on_stage,
@@ -197,7 +203,6 @@ def _work(request: ScanRequest, raw: Path, hooks: _Hooks) -> _Outcome:
     """Scan into ``raw`` and process what was scanned; never raises an ``Exception``."""
     scanned = _Scanned()
     try:
-        hooks.stage(Stage.SCANNING)
         scanned = _scan(request, raw, hooks)
         if scanned.cancelled:
             return _Outcome(scanned.pages, cancelled=True)
@@ -222,6 +227,8 @@ def _scan(request: ScanRequest, raw: Path, hooks: _Hooks) -> _Scanned:
     )
     env = request.target.env(os.environ)
     try:
+        _check_scanner(request, hooks)
+        hooks.stage(Stage.SCANNING)
         result = hooks.scan(job, env=env, on_progress=hooks.on_page, cancel=hooks.cancel)
     except ScanCancelledError as error:
         return _Scanned(error.pages, cancelled=True)
@@ -231,6 +238,20 @@ def _scan(request: ScanRequest, raw: Path, hooks: _Hooks) -> _Scanned:
         logger.error("the scan stopped early; processing the %d finished pages", len(error.pages))
         return _Scanned(error.pages, error=error)
     return _Scanned(result.pages)
+
+
+def _check_scanner(request: ScanRequest, hooks: _Hooks) -> None:
+    """Make sure a USB scanner answers before scanimage starts, freeing it if a failed send
+    jammed it. Without a ``precheck`` of the caller's the real check runs, for a USB scanner
+    only and not when ``FF680W_NO_PRECHECK=1``; the CHECKING stage is announced only then."""
+    device = request.target.device
+    check = hooks.precheck
+    if check is None:
+        if not precheck_applies(device, os.environ):
+            return
+        check = check_scanner
+    hooks.stage(Stage.CHECKING)
+    check(device, cancel=hooks.cancel)
 
 
 def _process(pages: tuple[Path, ...], settings: ProcessSettings, hooks: _Hooks) -> ProcessResult:

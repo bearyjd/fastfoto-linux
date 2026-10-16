@@ -21,7 +21,13 @@ from fastfoto_linux.cli.errors import (
 )
 from fastfoto_linux.cli.options import add_log_options
 from fastfoto_linux.library import stopping
-from fastfoto_linux.scanner import NoDocumentsError, ScannerNotFoundError, ShimMissingError
+from fastfoto_linux.scanner import (
+    NoDocumentsError,
+    ScannerInUseError,
+    ScannerNotFoundError,
+    ScannerStuckError,
+    ShimMissingError,
+)
 
 PROG = "ffscan"
 LOG_FORMAT = "%(levelname)s: %(message)s"
@@ -43,9 +49,10 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     """Run ``ffscan`` and return its exit code.
 
-    0 ok, 1 processing error, 2 usage, 3 scanner not found or USB shim missing, 4 no documents
-    in the feeder, 130 interrupted (Ctrl-C, SIGTERM or SIGHUP). User-facing errors are one line
-    on stderr; ``--debug`` adds the traceback.
+    0 ok, 1 processing error, 2 usage, 3 scanner not found, USB shim missing, scanner not
+    answering or held by another program, 4 no documents in the feeder, 130 interrupted
+    (Ctrl-C, SIGTERM or SIGHUP). User-facing errors are one line on stderr; ``--debug`` adds
+    the traceback.
     """
     try:
         args = build_parser().parse_args(argv)
@@ -66,7 +73,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 def exit_code_for(error: Exception) -> int:
     if isinstance(error, CliError):
         return error.code
-    if isinstance(error, ScannerNotFoundError | ShimMissingError):
+    if isinstance(
+        error, ScannerNotFoundError | ShimMissingError | ScannerStuckError | ScannerInUseError
+    ):
         return EXIT_SCANNER
     if isinstance(error, NoDocumentsError):
         return EXIT_NO_DOCUMENTS

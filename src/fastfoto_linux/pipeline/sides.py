@@ -152,14 +152,19 @@ def _detect(path: Path, frame: np.ndarray, dpi: int) -> Detection | None:
 
 
 def _load_page(number: int, path: Path, loader: FrameLoader) -> _Page:
-    """Load and detect one page; any failure becomes a ``BatchError`` naming sheet and page."""
+    """Load and detect one page.
+
+    A page that cannot be loaded is an ``UnreadablePageError`` naming sheet and page. A detector
+    that fails on a loaded page is another matter: that error goes on as it is (``_photo_at``
+    makes a ``BatchError`` of it), so it is not mistaken for a damaged file.
+    """
     try:
         frame, dpi = loader(path)
-        return _Page(path, frame, dpi, _detect(path, frame, dpi))
     except Exception as error:
         raise UnreadablePageError(
             f"sheet {number}: cannot read {path.name}: {error}", sheet=number
         ) from error
+    return _Page(path, frame, dpi, _detect(path, frame, dpi))
 
 
 def _view(page: _Page, box: Box) -> np.ndarray:

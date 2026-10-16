@@ -165,7 +165,6 @@ class _Tally:
     degraded: list[SheetIssue] = field(default_factory=list)
     dropped: list[str] = field(default_factory=list)
     unchanged: int = 0
-    settled: int = 0  # the highest sheet that failed: it is settled, though no photo came of it
 
     def fail(
         self,
@@ -263,7 +262,7 @@ def process_pages(
         photo = next(batch, None)
         if photo is None:
             break
-        done = max(photo.index + 1, tally.settled)
+        done = photo.index + 1
         handled = _handle(photo, settings)
         del photo  # the next sheet is loaded while this loop waits; do not hold the last one
         files = tally.add(done, handled)
@@ -285,11 +284,11 @@ def _sheet_failed(
     if error.sheet is None:
         tally.fail(None, str(error))
         return
-    tally.settled = max(tally.settled, error.sheet)
     reason = plain_reason(error)
     saved = save_unprocessed(sheet_pages(error.sheet, tally.paths, tally.duplex), settings, reason)
     if saved is None:
-        tally.fail(error.sheet, str(error), save_failed=True)
+        logger.debug("sheet %d could not be saved whole: %s", error.sheet, error)
+        tally.fail(error.sheet, reason, save_failed=True)
         return
     tally.fail(error.sheet, saved.unprocessed_reason or reason, saved)
     if on_photo is not None:

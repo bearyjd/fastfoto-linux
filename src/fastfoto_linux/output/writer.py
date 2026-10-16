@@ -206,6 +206,7 @@ def write_photo(  # noqa: PLR0913
     but may not be durable. Names are not adapted to the reserved characters of FAT/exFAT
     (``<>:"|?*``), which such a drive would refuse.
     """
+    _check_image("front", front)
     return _write(
         front,
         dpi=dpi,
@@ -223,7 +224,7 @@ def write_photo(  # noqa: PLR0913
 
 
 def _write(  # noqa: PLR0913
-    front: np.ndarray,
+    front: np.ndarray | None,
     *,
     dpi: int,
     output_root: Path,
@@ -238,8 +239,10 @@ def _write(  # noqa: PLR0913
     keep_original: bool,
     unprocessed: bool = False,
 ) -> WrittenFiles:
-    """What ``write_photo`` and ``write_unprocessed`` share: check, encode, number and publish."""
-    _check_image("front", front)
+    """What ``write_photo`` and ``write_unprocessed`` share: check, encode, number and publish.
+
+    The caller has checked ``front`` (``None`` only for a whole-page back written alone).
+    """
     for name, array in (("back", back), ("enhanced", enhanced)):
         if array is not None:
             _check_image(name, array)
@@ -270,7 +273,7 @@ def _write(  # noqa: PLR0913
 
 
 def write_unprocessed(  # noqa: PLR0913
-    front: np.ndarray,
+    front: np.ndarray | None,
     *,
     dpi: int,
     output_root: Path,
@@ -290,10 +293,16 @@ def write_unprocessed(  # noqa: PLR0913
     ``<prefix>_NNNN_unprocessed_b.jpg`` (it ends in ``_b``, so tools that look for backs find
     it). ``reason`` says in words why the sheet is not a photo; it comes back as
     ``WrittenFiles.unprocessed_reason``. The sheet takes the next number, so it keeps its place
-    in the sequence.
+    in the sequence. ``front`` may be None when only the back could be read: ``back`` is then
+    written alone, still as ``_unprocessed_b``.
     """
     if not reason:
         raise ValueError("reason must say why the sheet was not processed")
+    if front is None:
+        if back is None:
+            raise ValueError("a whole-page write needs a front or a back")
+    else:
+        _check_image("front", front)
     files = _write(
         front,
         dpi=dpi,

@@ -2,10 +2,12 @@
 
 The sheet keeps its own number in the sequence, so that no photo of the batch goes missing
 unnoticed: its front page is written as ``<prefix>_NNNN_unprocessed.jpg`` and its back as
-``<prefix>_NNNN_unprocessed_b.jpg``. Nothing is cut away except the scanner's white tail.
+``<prefix>_NNNN_unprocessed_b.jpg``. Nothing is cut away: the user needs the whole scanner frame
+to find the photo, and a long white area costs only file size.
 """
 
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -18,7 +20,7 @@ from fastfoto_linux.pipeline.batch_errors import (
     PageResolutionError,
     UnreadablePageError,
 )
-from fastfoto_linux.pipeline.crop import detect_photo, trim_tail
+from fastfoto_linux.pipeline.crop import detect_photo
 from fastfoto_linux.pipeline.ink import paper_score
 from fastfoto_linux.pipeline.io import load_frame, scan_time
 from fastfoto_linux.pipeline.side_order import DEFAULT_FRONT_FIRST, decide_sides
@@ -57,9 +59,10 @@ def save_unprocessed(
 
     The front is chosen like a normal sheet's when both pages show a photo box, else by the feed
     order ``settings`` declares. The back follows the back policy. If only one of two pages can
-    be read, that page is saved alone and the reason says which side is missing. Never raises an
-    ``Exception``: pages that cannot be read or files that cannot be written leave the sheet as a
-    plain failure, which is the caller's business.
+    be read, that page is saved alone as the side the feed order makes it (a back keeps its ``_b``
+    name, whatever the back policy: it is all that is left of the sheet) and the reason says which
+    side is missing. Never raises an ``Exception``: pages that cannot be read or files that cannot
+    be written leave the sheet as a plain failure, which is the caller's business.
     """
     try:
         return _save(pages, settings, reason)
@@ -70,44 +73,75 @@ def save_unprocessed(
         return None
 
 
+@dataclass(frozen=True)
+class _Plan:
+    """What to write for a sheet: its front and back (either may be missing, never both).
+
+    ``dated_by`` is the page file whose time becomes the scan time; ``reason`` is why the sheet
+    is saved whole.
+    """
+
+    front: Page | None
+    back: Page | None
+    dated_by: Path
+    reason: str
+
+
 def _save(pages: tuple[Path, ...], settings: "ProcessSettings", reason: str) -> WrittenFiles:
-    loaded = _load_pages(pages)
-    readable = [at for at, page in enumerate(loaded) if page is not None]
-    if not readable:
-        raise ValueError("no page of the sheet can be read")
-    if len(readable) < len(pages):  # one page of two is damaged: the other is saved alone
-        reason = _missing_side_reason(pages, 1 - readable[0], settings.expect_front_first)
-    front_at, back = _sides(loaded, readable, settings)
-    frame, dpi = loaded[front_at]
+    plan = _plan(pages, _load_pages(pages), settings, reason)
+    main = plan.front or plan.back  # a plan always holds a page
     files = write_unprocessed(
-        trim_tail(frame, dpi),
-        dpi=dpi,
+        None if plan.front is None else plan.front[0],
+        dpi=main[1],
         output_root=settings.output_root,
-        reason=reason,
-        back=None if back is None else trim_tail(*back),
+        reason=plan.reason,
+        back=None if plan.back is None else plan.back[0],
         album=settings.album,
         prefix=settings.prefix,
         date=settings.date,
         notes=settings.notes,
-        scanned_at=scan_time(pages[front_at]),
+        scanned_at=scan_time(plan.dated_by),
         quality=settings.quality,
     )
-    logger.info("saved %s whole: %s", ", ".join(page.name for page in pages), reason)
+    logger.info("saved %s whole: %s", ", ".join(page.name for page in pages), plan.reason)
     return files
 
 
-def _sides(
-    loaded: list[Page | None], readable: list[int], settings: "ProcessSettings"
-) -> tuple[int, Page | None]:
-    """The place (0 or 1) of the front page, and the back page to keep if there is one."""
-    if len(readable) == 1:  # a lone page is a front
-        return readable[0], None
+def _plan(
+    pages: tuple[Path, ...], loaded: list[Page | None], settings: "ProcessSettings", reason: str
+) -> _Plan:
+    readable = [at for at, page in enumerate(loaded) if page is not None]
+    if not readable:
+        raise ValueError("no page of the sheet can be read")
+    if len(readable) < len(pages):  # one page of two is damaged: the other is saved alone
+        return _lone_page(pages, loaded, readable[0], settings.expect_front_first)
+    if len(readable) == 1:  # a sheet of one page: a front
+        return _Plan(loaded[0], None, pages[0], reason)
     front_at = _front_at([page for page in loaded if page is not None], settings.expect_front_first)
     # AUTO keeps the back too: with no photo box there is nothing to judge handwriting on, and a
     # back that is dropped here could not be asked for again. (A back scanned at another
     # resolution is stored with the front's; the sheet is a failure anyway.)
     keep_back = settings.back_policy is not BackPolicy.NEVER
-    return front_at, loaded[1 - front_at] if keep_back else None
+    back = loaded[1 - front_at] if keep_back else None
+    return _Plan(loaded[front_at], back, pages[front_at], reason)
+
+
+def _lone_page(
+    pages: tuple[Path, ...], loaded: list[Page | None], at: int, front_first: bool | None
+) -> _Plan:
+    """The plan for a sheet of which only page ``at`` can be read.
+
+    The feed order (the declared one, else the default) says whether that page is the front or
+    the back; the reason names the side that is missing, so the two cannot disagree.
+    """
+    first = DEFAULT_FRONT_FIRST if front_first is None else front_first
+    is_front = (at == 0) == first
+    missing = f"the {'back' if is_front else 'front'} page ({pages[1 - at].name})"
+    reason = f"{missing} could not be read; only the other is saved"
+    page = loaded[at]
+    return (
+        _Plan(page, None, pages[at], reason) if is_front else _Plan(None, page, pages[at], reason)
+    )
 
 
 def _load_pages(pages: tuple[Path, ...]) -> list[Page | None]:
@@ -120,13 +154,6 @@ def _load_pages(pages: tuple[Path, ...]) -> list[Page | None]:
             logger.error("cannot read %s: %s", page.name, str(error) or type(error).__name__)
             loaded.append(None)
     return loaded
-
-
-def _missing_side_reason(pages: tuple[Path, ...], missing_at: int, front_first: bool | None) -> str:
-    """Which side could not be read, by the feed order the user declared (else the default)."""
-    first = DEFAULT_FRONT_FIRST if front_first is None else front_first
-    side = "front" if (missing_at == 0) == first else "back"
-    return f"the {side} page ({pages[missing_at].name}) could not be read; only the other is saved"
 
 
 def _front_at(loaded: list[Page], expect_front_first: bool | None) -> int:

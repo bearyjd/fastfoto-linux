@@ -43,11 +43,12 @@ uv run ffscan process page-*.png --out ~/Scans --album "Family Trips" --feed fac
 - A sheet whose photo cannot be found (two items fed together, say) is not lost or skipped: its
   whole pages are saved in its place in the sequence as `Album_0004_unprocessed.jpg` (the front)
   and `Album_0004_unprocessed_b.jpg` (the back, unless `--backs never`; with `auto` the back is
-  kept, because nothing was cropped to judge its writing). Only the scanner's white tail is
-  trimmed, and only when it is unmistakable (when in doubt nothing is cut).
-  If just one of the two pages can be read, that page is saved alone and the summary says which
-  side is missing. The next sheet gets the next number, so the files stay in the order the photos were
-  fed, and the summary says which one it was: `photo 4 of 6 fed: the photo's edges were not found
+  kept, because nothing was cropped to judge its writing). Each page is saved as the whole
+  scanner page, white area included, so that nothing is hidden while you look for the photo.
+  If just one of the two pages can be read, that page is saved alone (a back keeps its `_b` name,
+  whatever `--backs` says) and the summary says which side is missing. The next sheet gets the
+  next number, so the files stay in the order the photos were fed, and the summary says which one
+  it was: `photo 4 of 6 fed: the photo's edges were not found
   (two items fed together?) — whole page saved as Album_0004_unprocessed.jpg`. The desktop app
   shows the image in the results with a "Not processed" label and the reason; the heading counts
   these apart ("Photos (5), 1 photo needs checking"). Such a sheet still

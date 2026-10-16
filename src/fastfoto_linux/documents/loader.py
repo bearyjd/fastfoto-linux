@@ -19,7 +19,7 @@ MAX_DPI = 2400
 DPI_AGREEMENT = 1.0  # horizontal and vertical resolution may differ by this much (rounding)
 PNG_FORMAT = "PNG"
 _KINDS = {"RGB": ColourMode.COLOUR, "L": ColourMode.GREY, "1": ColourMode.BW}
-_WHITE = 255
+WHITE = 255  # a white pixel of a 1-bit page, as the loader gives it (black is 0)
 
 
 @dataclass(frozen=True, eq=False)
@@ -83,25 +83,33 @@ def _inspect(path: Path, image: Image.Image, fallback_dpi: int | None) -> PageIn
     return PageInfo(kind, _resolution(path, image, fallback_dpi), image.width, image.height)
 
 
-def inspect_page(path: Path, *, fallback_dpi: int | None = None) -> PageInfo:
-    """Check a page file's header: a PNG that is RGB, 8-bit grey or 1-bit, with a resolution.
+def _decode(path: Path, image: Image.Image) -> None:
+    try:
+        image.load()
+    except (OSError, SyntaxError, ValueError, Image.DecompressionBombError) as error:
+        raise UnsupportedPageError(f"{path.name}: cannot be decoded ({error})") from error
 
-    ``fallback_dpi`` is used only when the file carries no resolution. Raises
-    UnsupportedPageError naming the file and the reason.
+
+def inspect_page(path: Path, *, fallback_dpi: int | None = None, decode: bool = False) -> PageInfo:
+    """Check a page file: a PNG that is RGB, 8-bit grey or 1-bit, with a resolution.
+
+    ``fallback_dpi`` is used only when the file carries no resolution. With ``decode`` the
+    pixels are decoded (and dropped) as well, which finds a truncated or corrupt file that the
+    header alone does not show. Raises UnsupportedPageError naming the file and the reason.
     """
     with _open(path) as image:
-        return _inspect(path, image, fallback_dpi)
+        info = _inspect(path, image, fallback_dpi)
+        if decode:
+            _decode(path, image)
+        return info
 
 
 def load_page(path: Path, *, fallback_dpi: int | None = None) -> LoadedPage:
     """Decode a page file; the same checks as ``inspect_page`` apply."""
     with _open(path) as image:
         info = _inspect(path, image, fallback_dpi)
-        try:
-            image.load()
-        except (OSError, SyntaxError, ValueError, Image.DecompressionBombError) as error:
-            raise UnsupportedPageError(f"{path.name}: cannot be decoded ({error})") from error
+        _decode(path, image)
         pixels = np.array(image)
     if info.kind is ColourMode.BW:
-        pixels = np.where(pixels, _WHITE, 0).astype(np.uint8)
+        pixels = np.where(pixels, WHITE, 0).astype(np.uint8)
     return LoadedPage(pixels, info.kind, info.dpi)

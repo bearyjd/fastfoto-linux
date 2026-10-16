@@ -89,7 +89,8 @@ speed at 300 dpi, OCR quality on real letters.
 ## Decisions in the core (D1)
 What the first pull request settled where the specification left room.
 
-- **PDF library.** `img2pdf`. It pulls `pikepdf`, `lxml` and `packaging`; the x86_64 wheels add
+- **PDF library.** `img2pdf` (and `pikepdf`, declared directly because the code imports it; both
+  are imported when a PDF is made, not when `ffscan` starts). `img2pdf` pulls `pikepdf`, `lxml` and `packaging`; the x86_64 wheels add
   about 8 MB, `tools/flatpak/gen_wheel_sources.py` accepts every wheel (CPython 3.13 and 3.14
   wheels exist) and the hashed requirements regenerate. It embeds a JPEG as DCTDecode and a CCITT
   G4 TIFF as CCITTFaxDecode untouched and sizes each page from the resolution stored in the
@@ -108,32 +109,61 @@ What the first pull request settled where the specification left room.
 - **Loader.** RGB, 8-bit grey and 1-bit PNGs that carry a resolution (50-2400 dpi, horizontal
   and vertical equal within 1 dpi; Pillow reads pixels per metre as values such as 299.9994, so
   it is rounded). `--dpi` only fills in for a file without one. Palette, alpha, 16-bit and
-  non-PNG files are refused by name. Every header is checked before any page is decoded, and
+  non-PNG files are refused by name. Every page file is checked, header and a full decode (a
+  truncated PNG is found at once, not after ten pages of work), before any page is processed, and
   nothing is written when one is unusable: a PDF with a page silently missing is worse than none.
-- **Trim.** The tail is the run of rows at the bottom that is at least 250 grey levels, flat,
-  4 mm or longer and at least 4 levels brighter than the paper above it; 3 mm of it stays, and
-  always 5 mm below the lowest mark on the page. Paper as white as the tail is not trimmed at
-  all. A backing strip is a uniform full-height band at the left or right edge, blue over red by
-  at least 12 levels, 3 mm or wider, beside paper at least 25 levels brighter, leaving at least
-  30 mm of paper; only colour pages are checked, since grey and 1-bit pages have no hue to tell
-  it by. The top is never trimmed. A full-height blue-grey sidebar printed on a page cannot be
-  told from backing; that is the one known way to lose printed content, and the reason these
-  thresholds need real pages.
+  A cancel is honoured before each page.
+- **Trim.** The tail is the run of rows at the bottom that is flat, 4 mm or longer and at least
+  4 levels brighter than the paper above it; 3 mm of it stays, and always 5 mm below the lowest
+  mark on the page. Only the columns that are at least 250 grey levels in the last 2 mm are
+  looked at (beside a narrow item the backing runs down the whole frame), and a row's tone is its
+  5th percentile, so that writing covering only part of a row, however faint (a footer, a
+  watermark at 215-225 on 255), keeps its rows; the median or a high percentile would count such
+  a row as tail. Paper as white as the tail is not trimmed at all. The backing strip is the
+  scanner's own background colour: the one the photo cropper measured on real scans
+  (`BACKGROUND_PRIOR_RGB`, tolerance `BACKGROUND_PRIOR_TOLERANCE`, imported from
+  `pipeline.crop`, not copied), and blue over red. A strip is a band of columns that starts at
+  the first column of the frame (touches the edge), is backing in at least 95% of its pixels,
+  is 3 mm or wider and has paper at least 25 levels brighter beside it, leaving at least 30 mm
+  of paper. It is measured on the rows above the tail only, because the tail may be white across
+  the whole width. Only colour pages are checked, since grey and 1-bit pages have no hue to tell
+  it by. The top is never trimmed. A printed sidebar in any other colour (a blue-grey of
+  (140,160,185), slate, navy) is not backing and is never cut; one printed in the backing
+  colour itself, edge to edge, full height, would be, and that is the one known way to lose
+  printed content. The measured colour may glow brighter in the first millimetres of the frame
+  (the photo cropper skips them); a strip whose edge columns are outside the tolerance is simply
+  not recognised, which loses only a trim.
 - **Blank pages.** Marks are found on the darkest colour channel, shrunk to at most 150 dpi
   keeping the darkest pixel: a spot is a mark when it is 45 grey levels darker than the paper
   around it (measured against an 8 mm morphological closing, so strokes thinner than that are
   ink), or 80 levels darker than the page's usual paper tone, or darker than 96, and its longer
-  side is at least 1 mm and its area at least 0.3 mm². The 5 mm margin is ignored. A page is
+  side is at least 1 mm and its area at least 0.3 mm². The length is judged in source pixels, less
+  the factor - 1 pixels that keeping the darkest pixel of a block adds, so a 0.9 mm speck is dust
+  at 200, 300 and 600 dpi alike. The 5 mm margin is ignored; it belongs to the scanner's frame, so
+  rows trimmed off the bottom take their share of it with them (today the 5 mm kept below the
+  lowest mark means the two never overlap). Pencil must be about 45 levels darker than the paper
+  (local contrast) to count; lighter pencil is indistinguishable from show-through. A page is
   blank when it has **no** mark, so one short line, a signature, a **lone page number** (decided:
   kept, it cannot be told from content), a punch hole or a scanner streak keeps the page; the cost
   of that caution is a few blank backs kept, never a page lost.
+- **Black and white.** A pixel is black when it is darker than 96 (the same level as a mark), or
+  when it is 25 levels darker than the mean of an 8 mm window and than the 8 mm closing of the
+  page (strokes thinner than the window removed). The mean alone follows uneven lighting but
+  draws a black outline round a shaded box and leaves a big black block hollow. Decided: shading
+  lighter than 96 is background, so a filled grey box (160 on 240) comes out white with its text
+  black, and a black block of 40 x 20 mm is black through and through; a thin rule in mid grey is
+  ink, a 6 mm bar of light grey is not.
 - **Every page blank.** No PDF is written, the exit code is 1, and the message names
   `--keep-blank`.
-- **OCR** runs on a staging copy in a hidden `.ffscan-ocr-*` folder inside the output folder,
-  in its own session so that SIGTERM and, after 5 s, SIGKILL reach `ocrmypdf` and everything it
+- **OCR** runs on a staging copy in a private (mode 0700) `.ffscan-ocr-*` folder of the system
+  temporary directory, not the output folder, removed on every path (success, failure, time-out,
+  cancel, Ctrl-C), in its own session so that SIGTERM and, after 5 s, SIGKILL reach `ocrmypdf` and everything it
   started. Its output streams go to /dev/null: recognised text is never read, and a chatty tool
   cannot fill a pipe. The result is used only if it is a PDF with the same page count; otherwise
-  the plain PDF is published. The limit is 120 s plus 60 s a page. Ctrl-C, SIGTERM or a cancel
+  the plain PDF is published, and the warning says why from the exit code alone (OCRmyPDF's
+  documented return codes; code 3, a missing program or language data, names the
+  `tesseract-langpack-*` and `tesseract-osd` packages). It is printed once, by the command line.
+  The limit is 120 s plus 60 s a page. Ctrl-C, SIGTERM or a cancel
   stops OCR, removes the staging folder and publishes nothing; the page files are untouched.
 - **Publishing** takes the folder lock only for numbering and writing, never while OCR runs
   (the lock gives up after 60 s). The number is chosen with `next_index`, shared with photos of

@@ -8,12 +8,11 @@ import numpy as np
 from PIL import Image
 
 from fastfoto_linux.documents.bilevel import binarise
-from fastfoto_linux.documents.loader import LoadedPage
+from fastfoto_linux.documents.loader import WHITE, LoadedPage
 from fastfoto_linux.documents.modes import ColourMode, output_mode
 
 JPEG_QUALITY = 85
 TIFF_CCITT_G4 = "group4"
-_WHITE = 255
 
 
 @dataclass(frozen=True)
@@ -59,7 +58,7 @@ def encode_page(page: LoadedPage, requested: ColourMode) -> EncodedPage:
     elif mode is ColourMode.GREY:
         data = _jpeg(_grey(page), page.dpi)
     elif page.kind is ColourMode.BW:
-        data = _group4(page.pixels == _WHITE, page.dpi)
+        data = _group4(page.pixels == WHITE, page.dpi)
     else:
         data = _group4(binarise(_grey(page), page.dpi), page.dpi)
     return EncodedPage(data, mode, width, height, page.dpi)

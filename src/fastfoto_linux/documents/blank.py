@@ -9,7 +9,11 @@ BLANK_MARGIN_MM = 5.0  # scanner shadows and edge marks live here; the margin is
 def is_blank(page: LoadedPage, *, trimmed_bottom: int = 0) -> bool:
     """True only when the page holds no mark at all inside its 5 mm margin.
 
+    The margin belongs to the scanner's frame, not to the trimmed page: ``trimmed_bottom`` rows
+    that were cut off the bottom (the tail) take their share of the margin with them, so
+    trimming never turns paper into margin.
+
     One confident mark keeps the page, so a signature, a short line, or a page number alone is
     not blank. When in doubt the answer is False.
     """
-    return not find_marks(page, margin_mm=BLANK_MARGIN_MM)
+    return not find_marks(page, margin_mm=BLANK_MARGIN_MM, trimmed_bottom=trimmed_bottom)

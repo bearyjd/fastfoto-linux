@@ -21,5 +21,5 @@ class DocumentCancelledError(DocumentError):
     """The caller asked to stop while pages were being processed; nothing was written."""
 
 
-class OcrCancelledError(DocumentError):
+class OcrCancelledError(DocumentCancelledError):
     """The caller asked to stop while OCR was running; the OCR process is gone."""

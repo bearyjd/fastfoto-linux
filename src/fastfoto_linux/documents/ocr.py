@@ -1,9 +1,11 @@
 """Add a text layer with ``ocrmypdf``, without ever losing the plain PDF.
 
-The PDF is staged in a hidden folder next to the output (``.ffscan-ocr-*``; a SIGKILL of
-``ffscan`` can leave one behind, and it can simply be deleted), ``ocrmypdf`` runs there in its own
-session so that it and its children can be stopped together, and the result is checked before it
-is trusted. The tool's output is thrown away: recognised text is never read, logged or printed.
+The PDF is staged in a private folder (mode 0700) of the system's temporary directory, never in
+the output folder; it is removed on every path except a SIGKILL of ``ffscan`` itself, which can
+leave an ``.ffscan-ocr-*`` folder behind that can simply be deleted. ``ocrmypdf`` runs there in
+its own session so that it and its children can be stopped together, and the result is checked
+before it is trusted. The tool's output is thrown away: recognised text is never read, logged or
+printed, and a failure is explained from the exit code alone (``ocr_codes``).
 """
 
 import contextlib
@@ -20,13 +22,11 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
-import pikepdf
-
 from fastfoto_linux.documents.errors import OcrCancelledError
+from fastfoto_linux.documents.ocr_codes import TOOL, describe_exit
 
 logger = logging.getLogger(__name__)
 
-TOOL = "ocrmypdf"
 LANGS_PATTERN = r"[a-z_]+(\+[a-z_]+)*"
 DEFAULT_LANGS = "eng"
 GRACE_S = 5.0  # SIGTERM to SIGKILL
@@ -130,6 +130,8 @@ def _checked(target: Path, page_count: int) -> bytes | str:
         return "ocrmypdf wrote no output file"
     if not data.startswith(PDF_MAGIC):
         return "ocrmypdf did not produce a PDF"
+    import pikepdf  # noqa: PLC0415 - loaded only when a PDF is checked, not at `ffscan` start
+
     try:
         with pikepdf.open(target) as pdf:
             pages = len(pdf.pages)
@@ -165,7 +167,7 @@ def _run(  # noqa: PLR0913
     if status is None:
         return OcrOutcome(OcrStatus.TIMED_OUT, f"ocrmypdf did not finish within {timeout_s:g} s")
     if status != 0:
-        return OcrOutcome(OcrStatus.FAILED, f"ocrmypdf exited with status {status}")
+        return OcrOutcome(OcrStatus.FAILED, describe_exit(status, langs))
     result = _checked(target, page_count)
     if isinstance(result, str):
         return OcrOutcome(OcrStatus.FAILED, result)
@@ -185,15 +187,15 @@ def run_ocr(  # noqa: PLR0913
 ) -> OcrOutcome:
     """Run ``ocrmypdf --output-type pdf --rotate-pages -l LANGS`` on a staging copy of the PDF.
 
-    Never raises for an OCR problem: a failure, a timeout or an unusable result is reported in
-    the outcome and the caller publishes the plain PDF. Raises OcrCancelledError when ``cancel``
-    is set, and lets KeyboardInterrupt through; in both cases the process group is stopped
-    (SIGTERM, then SIGKILL after ``grace_s``) and the staging folder removed. Recognised text is
-    never read or logged.
+    The copy lives in a new private folder (mode 0700) inside ``staging_parent``, which is the
+    system temporary directory unless a caller names another one (the output folder is not a
+    place for it). Never raises for an OCR problem: a failure, a timeout or an unusable result
+    is reported in the outcome and the caller publishes the plain PDF. Raises OcrCancelledError
+    when ``cancel`` is set, and lets KeyboardInterrupt through; in both cases the process group
+    is stopped (SIGTERM, then SIGKILL after ``grace_s``) and the staging folder removed.
+    Recognised text is never read or logged.
     """
     validate_langs(langs)
-    if staging_parent is None:
-        raise NotImplementedError("staging in the system temporary folder")
     try:
         with tempfile.TemporaryDirectory(prefix=STAGING_PREFIX, dir=staging_parent) as folder:
             return _run(
@@ -206,6 +208,6 @@ def run_ocr(  # noqa: PLR0913
                 grace_s=grace_s,
                 cancel=cancel,
             )
-    except OSError as error:
-        logger.warning("could not run %s: %s", TOOL, error)
+    except OSError as error:  # the caller reports the outcome once; this is only for --debug
+        logger.debug("could not run %s: %s", TOOL, error)
         return OcrOutcome(OcrStatus.FAILED, f"could not run ocrmypdf: {error.strerror or error}")

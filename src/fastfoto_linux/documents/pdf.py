@@ -7,8 +7,6 @@ are, and sizes every page from the resolution stored in its image.
 from collections.abc import Sequence
 from datetime import datetime
 
-import img2pdf
-
 from fastfoto_linux.documents.encode import EncodedPage
 from fastfoto_linux.documents.errors import DocumentError
 
@@ -23,6 +21,8 @@ def assemble_pdf(pages: Sequence[EncodedPage], *, title: str, created: datetime)
     """
     if not pages:
         raise DocumentError("no pages to put in a PDF")
+    import img2pdf  # noqa: PLC0415 - it loads pikepdf and lxml, which `ffscan` itself never needs
+
     return img2pdf.convert(
         *(page.data for page in pages),
         title=title,

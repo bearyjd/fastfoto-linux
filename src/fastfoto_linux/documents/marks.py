@@ -40,7 +40,7 @@ def _darkest_channel(pixels: np.ndarray) -> np.ndarray:
     return pixels.min(axis=2) if pixels.ndim == RGB_NDIM else pixels
 
 
-def _shrink(grey: np.ndarray, factor: int) -> np.ndarray:
+def shrink_keeping_darkest(grey: np.ndarray, factor: int) -> np.ndarray:
     """``grey`` reduced ``factor`` times keeping the darkest pixel of each block: thin pencil
     strokes keep their full contrast."""
     if factor == 1:
@@ -65,26 +65,34 @@ def _dark_mask(grey: np.ndarray, work_dpi: float) -> np.ndarray:
     return (local | page | (grey < VERY_DARK)).astype(np.uint8)
 
 
-def find_marks(page: LoadedPage, *, margin_mm: float = 0.0) -> tuple[Mark, ...]:
+def find_marks(
+    page: LoadedPage, *, margin_mm: float = 0.0, trimmed_bottom: int = 0
+) -> tuple[Mark, ...]:
     """The marks on ``page`` that lie inside a margin of ``margin_mm`` on every side.
 
     A mark is a connected spot that is dark against the local paper tone (or very dark outright)
     and at least a letter's size; dust, paper texture and faint show-through are not marks.
+    ``trimmed_bottom`` rows were cut off the bottom of the scanner's frame before ``page`` was
+    made; the bottom margin is the frame's, so it is that much smaller.
     """
     factor = max(1, int(page.dpi // WORK_DPI))
     work_dpi = page.dpi / factor
-    grey = _shrink(_darkest_channel(page.pixels), factor)
+    grey = shrink_keeping_darkest(_darkest_channel(page.pixels), factor)
     margin = mm_to_px(margin_mm, work_dpi) if margin_mm > 0 else 0
+    bottom = max(0, margin - trimmed_bottom // factor)
     mask = _dark_mask(grey, work_dpi)[
-        margin : grey.shape[0] - margin, margin : grey.shape[1] - margin
+        margin : grey.shape[0] - bottom, margin : grey.shape[1] - margin
     ]
     if mask.size == 0:
         return ()
     count, _, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
-    side = mm_to_px(MARK_MIN_MM, work_dpi)
     area = max(1, int(np.ceil(MARK_MIN_AREA_MM2 * (work_dpi / MM_PER_INCH) ** 2)))
     boxes = stats[1:count]  # row 0 is the background
-    wanted = (np.maximum(boxes[:, 2], boxes[:, 3]) >= side) & (boxes[:, 4] >= area)
+    # Keeping the darkest pixel of each block widens a spot by factor - 1 source pixels on
+    # average, so a speck would grow past the size limit at 600 dpi and not at 200: the length
+    # is judged in source pixels, less that growth.
+    length = np.maximum(boxes[:, 2], boxes[:, 3]) * factor - (factor - 1)
+    wanted = (length >= mm_to_px(MARK_MIN_MM, page.dpi)) & (boxes[:, 4] >= area)
     marks = [
         Mark(
             (x + margin) * factor,

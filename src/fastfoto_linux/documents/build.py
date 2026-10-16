@@ -2,10 +2,12 @@
 
 Order of work, and why:
 
-1. Everything that can be refused is refused before a pixel is decoded: the name, the languages,
-   a required ``ocrmypdf`` that is missing, and every page file's header. Nothing is written
+1. Everything that can be refused is refused before any page is processed: the name, the
+   languages, a required ``ocrmypdf`` that is missing, and every page file (header and a full
+   decode, so a truncated PNG is found now and not after ten pages of work). Nothing is written
    when a page is unusable, because a PDF with a page silently missing is worse than no PDF.
-2. Pages are then processed one at a time and only their encoded bytes are kept.
+2. Pages are then processed one at a time and only their encoded bytes are kept; a cancel is
+   honoured before each page.
 3. The OCR runs on the finished plain PDF *before* the output folder is locked (it can take
    minutes; the lock is for numbering and writing only), and a failed or timed-out OCR falls
    back to publishing the plain PDF.
@@ -20,7 +22,12 @@ from pathlib import Path
 
 from fastfoto_linux.documents.blank import is_blank
 from fastfoto_linux.documents.encode import EncodedPage, encode_page
-from fastfoto_linux.documents.errors import AllPagesBlankError, DocumentError, OcrMissingError
+from fastfoto_linux.documents.errors import (
+    AllPagesBlankError,
+    DocumentCancelledError,
+    DocumentError,
+    OcrMissingError,
+)
 from fastfoto_linux.documents.loader import inspect_page, load_page
 from fastfoto_linux.documents.modes import ColourMode
 from fastfoto_linux.documents.ocr import (
@@ -84,14 +91,17 @@ def _ocr_executable(mode: OcrMode) -> str | None:
 
 
 def _encode_pages(
-    pages: Sequence[Path], settings: DocumentSettings
+    pages: Sequence[Path], settings: DocumentSettings, cancel: threading.Event | None
 ) -> tuple[list[EncodedPage], tuple[int, ...]]:
     """Encode the pages that stay in the PDF, and number the ones dropped as blank."""
     kept: list[EncodedPage] = []
     dropped: list[int] = []
     for number, path in enumerate(pages, start=1):
-        page = trim_page(load_page(path, fallback_dpi=settings.fallback_dpi)).page
-        if not settings.keep_blank and is_blank(page):
+        if cancel is not None and cancel.is_set():
+            raise DocumentCancelledError(f"stopped before page {number} of {len(pages)}")
+        trimmed = trim_page(load_page(path, fallback_dpi=settings.fallback_dpi))
+        page = trimmed.page
+        if not settings.keep_blank and is_blank(page, trimmed_bottom=trimmed.bottom):
             logger.info("page %d (%s) is blank and left out", number, path.name)
             dropped.append(number)
             continue
@@ -118,12 +128,12 @@ def _searchable(
         executable=executable,
         langs=settings.langs,
         page_count=page_count,
-        staging_parent=settings.output_root,
         timeout_s=timeout,
         cancel=cancel,
     )
     if outcome.status is not OcrStatus.DONE:
-        logger.warning("searchable text was not added: %s", outcome.detail)
+        # The caller says so once (the CLI prints a warning); this is for the log of a long run.
+        logger.info("searchable text was not added: %s", outcome.detail)
     return outcome
 
 
@@ -139,6 +149,8 @@ def build_document(
     Every page file is checked first (nothing is written if one is unusable), then the pages
     are processed one at a time so only encoded bytes are kept. Input files are never touched.
     A failed or timed-out OCR still publishes the plain PDF (``result.ok`` is then False).
+    When ``cancel`` is set DocumentCancelledError (OcrCancelledError during OCR) is raised and
+    nothing is published.
     """
     if not pages:
         raise DocumentError("no pages to process")
@@ -146,8 +158,8 @@ def build_document(
     validate_langs(settings.langs)
     executable = _ocr_executable(settings.ocr)
     for path in pages:
-        inspect_page(path, fallback_dpi=settings.fallback_dpi)
-    encoded, dropped = _encode_pages(pages, settings)
+        inspect_page(path, fallback_dpi=settings.fallback_dpi, decode=True)
+    encoded, dropped = _encode_pages(pages, settings, cancel)
     if not encoded:
         raise AllPagesBlankError(f"all {len(pages)} pages look blank, so no PDF was written")
     plain = assemble_pdf(encoded, title=name, created=(clock or _now)())

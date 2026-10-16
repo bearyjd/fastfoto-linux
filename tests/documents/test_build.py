@@ -3,6 +3,7 @@
 import fcntl
 import hashlib
 import os
+import tempfile
 import threading
 from dataclasses import replace
 from pathlib import Path
@@ -241,6 +242,9 @@ def test_automatic_ocr_without_ocrmypdf_still_writes_the_plain_pdf(raw: Path, ou
 def test_ocr_that_works_publishes_the_searchable_pdf(
     raw: Path, out: Path, fake_on_path: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    temp = tmp_path / "system-tmp"
+    temp.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(temp))
     record = tmp_path / "record.json"
     fake.configure(monkeypatch, mode="mark", record_to=str(record))
     pages = write_pages(raw, [text_scene(1), text_scene(2)])
@@ -250,7 +254,9 @@ def test_ocr_that_works_publishes_the_searchable_pdf(
     assert result.pdf.read_bytes().endswith(fake.MARKER)
     argv = fake.read_record(record)["argv"]
     assert argv[3:5] == ["-l", "eng+deu"]
-    assert Path(argv[-2]).parent.parent == out  # staged beside the output, not in /tmp
+    assert Path(argv[-2]).parent.parent == temp  # staged in a private temporary folder ...
+    assert not Path(argv[-2]).is_relative_to(out)  # ... that is not in the output folder
+    assert list(temp.iterdir()) == []
     assert visible(out) == ["Document_0001.pdf"]
     assert hidden(out) == []
 

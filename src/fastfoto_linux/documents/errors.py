@@ -17,5 +17,9 @@ class OcrMissingError(DocumentError):
     """Searchable text was required (``--ocr on``) but ``ocrmypdf`` is not installed."""
 
 
+class DocumentCancelledError(DocumentError):
+    """The caller asked to stop while pages were being processed; nothing was written."""
+
+
 class OcrCancelledError(DocumentError):
     """The caller asked to stop while OCR was running; the OCR process is gone."""

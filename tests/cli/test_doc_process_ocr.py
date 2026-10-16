@@ -93,6 +93,18 @@ def test_ocr_that_fails_is_exit_1_with_a_warning_and_the_plain_pdf(
     assert sorted(p.name for p in out.iterdir() if p.name != ".fastfoto-linux.lock") == [pdf.name]
 
 
+def test_a_failed_ocr_is_reported_once_and_says_what_to_install(
+    pages, out, tmp_path, monkeypatch, capsys
+) -> None:
+    fake.put_on_path(tmp_path / "bin", monkeypatch)
+    fake.configure(monkeypatch, mode="exit", exit_code=3)
+    assert doc(out, pages, "--ocr", "on") == 1
+    mentions = [line for line in capsys.readouterr().err.splitlines() if "searchable text" in line]
+    assert len(mentions) == 1
+    assert "sudo dnf install tesseract-langpack-eng tesseract-osd" in mentions[0]
+    assert "status 3" in mentions[0]
+
+
 def test_recognised_text_never_reaches_the_terminal(
     pages, out, tmp_path, monkeypatch, capsys
 ) -> None:

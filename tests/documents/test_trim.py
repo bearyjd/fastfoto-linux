@@ -8,48 +8,24 @@ import pytest
 from fastfoto_linux.documents.modes import ColourMode
 from fastfoto_linux.documents.trim import trim_page
 from tests.doc_synth import (
+    BACKING_RGB,
     LEGAL_MM,
     LETTER_MM,
     Scene,
     paper_scene,
-    px,
     with_signature,
     with_text,
     with_tinted_block,
 )
 from tests.documents.helpers import bw_page, colour_page, grey_page
-
-DPI = 100
-RECEIPT_MM = (80.0, 200.0)
-BLUE_GREY = (140, 160, 185)
-
-
-def mm(value: float, dpi: int = DPI) -> int:
-    return px(value, dpi)
-
-
-def letter_text(scene: Scene) -> Scene:
-    """A few lines on the upper part of the page, like a short letter."""
-    for row in range(6):
-        scene = with_text(scene, 25, 30 + row * 8, 30)
-    return scene
-
-
-def receipt(dpi: int = DPI, *, offset_mm: float = 60.0) -> Scene:
-    scene = paper_scene(dpi=dpi, paper_mm=RECEIPT_MM, scan_mm=LETTER_MM, offset_mm=offset_mm)
-    for row in range(8):
-        scene = with_text(scene, 6, 10 + row * 20, 10)
-    return scene
-
-
-def assert_contains_content(scene: Scene, result, *, margin_px: int = 0) -> None:
-    """The kept area holds the whole content box and ``margin_px`` below it (when that exists)."""
-    assert scene.content is not None
-    x0, _, x1, y1 = scene.content
-    kept_h, kept_w = result.page.pixels.shape[:2]
-    assert result.left <= x0
-    assert x1 <= result.left + kept_w
-    assert y1 + min(margin_px, scene.height - y1) <= kept_h
+from tests.documents.trim_helpers import (
+    DPI,
+    RECEIPT_MM,
+    assert_contains_content,
+    letter_text,
+    mm,
+    receipt,
+)
 
 
 def test_a_full_width_letter_page_with_no_tail_is_unchanged() -> None:
@@ -169,7 +145,7 @@ def test_a_one_bit_page_is_left_alone() -> None:
 
 def test_a_form_with_a_coloured_bar_across_the_top_is_not_trimmed_there() -> None:
     scene = letter_text(paper_scene(dpi=DPI))
-    scene = with_tinted_block(scene, 0, 0, (LETTER_MM[0], 10.0), BLUE_GREY)
+    scene = with_tinted_block(scene, 0, 0, (LETTER_MM[0], 10.0), BACKING_RGB)
     result = trim_page(colour_page(scene))
     assert (result.left, result.right, result.bottom) == (0, 0, 0)
     assert result.page.pixels.shape == scene.image.shape
@@ -177,7 +153,7 @@ def test_a_form_with_a_coloured_bar_across_the_top_is_not_trimmed_there() -> Non
 
 def test_a_coloured_sidebar_that_is_not_the_whole_height_is_not_backing() -> None:
     scene = letter_text(paper_scene(dpi=DPI))
-    scene = with_tinted_block(scene, 0, 0, (12.0, 170.0), BLUE_GREY)
+    scene = with_tinted_block(scene, 0, 0, (12.0, 170.0), BACKING_RGB)
     result = trim_page(colour_page(scene))
     assert (result.left, result.right) == (0, 0)
 
@@ -205,7 +181,7 @@ def test_backing_that_is_not_blue_grey_is_not_recognised(backing: tuple[int, int
 
 def test_a_strip_beside_paper_that_is_no_brighter_is_not_backing() -> None:
     scene = paper_scene(
-        dpi=DPI, paper_mm=RECEIPT_MM, scan_mm=LETTER_MM, offset_mm=60.0, paper_tone=165
+        dpi=DPI, paper_mm=RECEIPT_MM, scan_mm=LETTER_MM, offset_mm=60.0, paper_tone=215
     )
     result = trim_page(colour_page(with_text(scene, 6, 10, 10)))
     assert (result.left, result.right) == (0, 0)

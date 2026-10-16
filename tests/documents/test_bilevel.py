@@ -4,7 +4,15 @@ import numpy as np
 import pytest
 
 from fastfoto_linux.documents.bilevel import binarise
-from tests.doc_synth import PENCIL_TONE, Scene, paper_scene, to_grey, with_show_through, with_text
+from tests.doc_synth import (
+    PENCIL_TONE,
+    Scene,
+    paper_scene,
+    to_grey,
+    with_show_through,
+    with_text,
+    with_tinted_block,
+)
 
 INK_BELOW = 100
 PAPER_ABOVE = 150
@@ -62,3 +70,69 @@ def test_the_input_is_not_modified() -> None:
     before = grey.copy()
     binarise(grey, 100)
     assert np.array_equal(grey, before)
+
+
+# ---- solid dark areas are black, shading is not ink ------------------------------------------
+
+BLOCK_MM = (40.0, 20.0)
+BLOCK_AT_MM = (40.0, 60.0)
+RING_MM = 3.0  # the outer band of a box, where an adaptive threshold would draw an outline
+SHADING = 160
+DARK_ENOUGH = 90  # below the absolute dark level: black wherever it is
+
+
+def box_scene(tone: int, dpi: int) -> Scene:
+    return with_tinted_block(paper_scene(dpi=dpi), *BLOCK_AT_MM, BLOCK_MM, (tone, tone, tone))
+
+
+def black_share(white: np.ndarray, dpi: int, *, inset_mm: float = 0.0, ring: bool = False) -> float:
+    """Share of black pixels in the block (``inset_mm`` smaller on every side), or in the
+    ``RING_MM`` band along its edge."""
+    x0, y0 = (round(v * dpi / 25.4) for v in BLOCK_AT_MM)
+    width, height = (round(v * dpi / 25.4) for v in BLOCK_MM)
+    cut = round((RING_MM if ring else inset_mm) * dpi / 25.4)
+    mask = np.zeros(white.shape, bool)
+    if ring:
+        mask[y0 : y0 + height, x0 : x0 + width] = True
+        mask[y0 + cut : y0 + height - cut, x0 + cut : x0 + width - cut] = False
+    else:
+        mask[y0 + cut : y0 + height - cut, x0 + cut : x0 + width - cut] = True
+    return float((~white[mask]).mean())
+
+
+@pytest.mark.parametrize("dpi", [100, 300])
+@pytest.mark.parametrize("tone", [0, DARK_ENOUGH])
+def test_a_big_solid_dark_block_is_black_all_the_way_through(dpi: int, tone: int) -> None:
+    white = binarise(to_grey(box_scene(tone, dpi).image), dpi)
+    assert black_share(white, dpi) >= 0.95
+
+
+@pytest.mark.parametrize("dpi", [100, 300])
+def test_shaded_grey_is_neither_outlined_nor_filled_black(dpi: int) -> None:
+    """Decided: shading lighter than the dark level is background, so a box of it comes out
+    white. A threshold that follows the local mean would draw a black outline round it."""
+    white = binarise(to_grey(box_scene(SHADING, dpi).image), dpi)
+    assert black_share(white, dpi, ring=True) <= 0.02
+    assert black_share(white, dpi, inset_mm=RING_MM) <= 0.02
+
+
+def test_text_inside_shading_stays_black_and_the_shading_stays_white() -> None:
+    scene = with_text(box_scene(SHADING, 100), BLOCK_AT_MM[0] + 4, BLOCK_AT_MM[1] + 6, 12)
+    grey = to_grey(scene.image)
+    white = binarise(grey, 100)
+    black_ink, _ = fractions(grey, white, ink=grey < INK_BELOW)
+    assert black_ink > 0.9
+    assert black_share(white, 100, ring=True) <= 0.02
+
+
+def test_a_thin_mid_grey_rule_is_ink() -> None:
+    scene = with_tinted_block(paper_scene(dpi=100), 20, 100, (150.0, 2.0), (SHADING,) * 3)
+    grey = to_grey(scene.image)
+    black_ink, _ = fractions(grey, binarise(grey, 100), ink=grey == SHADING)
+    assert black_ink > 0.9
+
+
+def test_a_wide_band_of_light_shading_stays_white() -> None:
+    scene = with_tinted_block(paper_scene(dpi=100), 20, 100, (150.0, 6.0), (215,) * 3)
+    grey = to_grey(scene.image)
+    assert binarise(grey, 100).mean() > 0.995

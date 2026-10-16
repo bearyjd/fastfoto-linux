@@ -13,6 +13,8 @@ import cv2
 import numpy as np
 from PIL import Image, ImageDraw
 
+from fastfoto_linux.pipeline.crop import BACKGROUND_PRIOR_RGB
+
 MM_PER_INCH = 25.4
 LETTER_MM = (215.9, 279.4)
 LEGAL_MM = (215.9, 355.6)
@@ -22,7 +24,13 @@ INK_TONE = 30
 PENCIL_TONE = 150
 LIGHT_PENCIL_TONE = 180  # 60 grey levels darker than the paper
 SPECK_TONE = 70
-BACKING_RGB = (140, 160, 185)  # the blue-grey strip beside a narrow item
+# The blue-grey strip beside a narrow item: the colour measured on real scans, which the photo
+# cropper also uses (a printed sidebar of any other blue-grey is not backing).
+BACKING_RGB = (
+    round(BACKGROUND_PRIOR_RGB[0]),
+    round(BACKGROUND_PRIOR_RGB[1]),
+    round(BACKGROUND_PRIOR_RGB[2]),
+)
 GLYPH_HEIGHT_MM = 2.5
 STROKE_MM = 0.4
 MIN_STROKE_PX = 2
@@ -221,6 +229,13 @@ def with_tinted_block(
     width, height = px(size_mm[0], scene.dpi), px(size_mm[1], scene.dpi)
     image = scene.image.copy()
     image[top : top + height, left : left + width] = rgb
+    return replace(scene, image=image)
+
+
+def with_full_width_tail(scene: Scene, tone: int = TAIL_TONE) -> Scene:
+    """The rows below the paper in ``tone`` across the whole width, backing columns included."""
+    image = scene.image.copy()
+    image[scene.paper_end :] = tone
     return replace(scene, image=image)
 
 

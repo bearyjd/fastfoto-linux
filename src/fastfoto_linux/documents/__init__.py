@@ -8,6 +8,7 @@ from fastfoto_linux.documents.build import (
 )
 from fastfoto_linux.documents.errors import (
     AllPagesBlankError,
+    DocumentCancelledError,
     DocumentError,
     OcrCancelledError,
     OcrMissingError,
@@ -28,6 +29,7 @@ __all__ = [
     "DEFAULT_NAME",
     "AllPagesBlankError",
     "ColourMode",
+    "DocumentCancelledError",
     "DocumentError",
     "DocumentResult",
     "DocumentSettings",

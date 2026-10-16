@@ -7,11 +7,14 @@ takes the two last arguments as input and output file, like the real tool.
 Spec keys (all optional): ``mode`` is ``copy`` (the default: output = input), ``mark`` (a copy
 with a marker line appended), ``fail`` (exit status 2), ``empty`` (exit 0 with an empty output),
 ``garbage`` (exit 0 with bytes that are not a PDF), ``no_output`` (exit 0, nothing written),
-``short`` (exit 0 with a one-page PDF) or ``hang`` (sleep up to 60 s). ``ignore_sigterm`` makes it
+``short`` (exit 0 with a one-page PDF), ``exit`` (exit with status ``exit_code``), ``kill`` (die of
+SIGKILL, as the out-of-memory killer would make it) or ``hang`` (sleep up to 60 s).
+``ignore_sigterm`` makes it
 survive SIGTERM, ``child`` starts a grandchild that sleeps, ``chatter`` is text written to stdout
 and stderr (stands for recognised text), ``flood`` is a number of bytes written to both (more than a
-pipe holds), ``record_to`` is a file that receives argv, its own pid and
-the grandchild's.
+pipe holds), ``record_to`` is a file that receives argv, its own pid, the
+grandchild's and the folder it was given (``staging_dir``) with that folder's permission bits
+(``staging_mode``).
 """
 
 import json
@@ -49,7 +52,11 @@ _SCRIPT = textwrap.dedent(
             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
     if spec.get("record_to"):
-        record = {{"argv": argv, "pid": os.getpid(), "child": child.pid if child else None}}
+        folder = os.path.dirname(os.path.abspath(source))
+        record = {{
+            "argv": argv, "pid": os.getpid(), "child": child.pid if child else None,
+            "staging_dir": folder, "staging_mode": os.stat(folder).st_mode & 0o777,
+        }}
         open(spec["record_to"], "w").write(json.dumps(record))
     if spec.get("chatter"):
         sys.stdout.write(spec["chatter"] + "\\n")
@@ -69,6 +76,10 @@ _SCRIPT = textwrap.dedent(
             time.sleep(0.05)
     elif mode == "fail":
         sys.exit(2)
+    elif mode == "exit":
+        sys.exit(spec["exit_code"])
+    elif mode == "kill":
+        os.kill(os.getpid(), signal.SIGKILL)
     elif mode == "no_output":
         pass
     elif mode == "empty":

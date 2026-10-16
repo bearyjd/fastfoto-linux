@@ -178,7 +178,7 @@ def run_ocr(  # noqa: PLR0913
     executable: str,
     langs: str,
     page_count: int,
-    staging_parent: Path,
+    staging_parent: Path | None = None,
     timeout_s: float,
     grace_s: float = GRACE_S,
     cancel: threading.Event | None = None,
@@ -192,6 +192,8 @@ def run_ocr(  # noqa: PLR0913
     never read or logged.
     """
     validate_langs(langs)
+    if staging_parent is None:
+        raise NotImplementedError("staging in the system temporary folder")
     try:
         with tempfile.TemporaryDirectory(prefix=STAGING_PREFIX, dir=staging_parent) as folder:
             return _run(

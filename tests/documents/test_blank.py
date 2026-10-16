@@ -13,6 +13,7 @@ from tests.doc_synth import (
     PENCIL_TONE,
     Scene,
     paper_scene,
+    px,
     with_show_through,
     with_signature,
     with_solid_block,
@@ -172,3 +173,16 @@ def test_the_margin_argument_leaves_out_marks_outside_it() -> None:
     page = colour_page(scene)
     assert len(find_marks(page)) == 4
     assert len(find_marks(page, margin_mm=5.0)) == 2
+
+
+# ---- the 5 mm margin belongs to the scanner's frame ------------------------------------------
+
+
+def test_the_bottom_margin_is_the_frames_not_the_trimmed_pages() -> None:
+    """Rows already trimmed off the bottom were part of the frame, so they take the margin with
+    them: a mark 2 mm above the end of a trimmed page was never inside the frame's 5 mm."""
+    mark = with_text(sheet(), 100, LETTER_MM[1] - 1.8, 3, height_mm=1.5)
+    page = colour_page(mark)
+    assert is_blank(page)  # nothing trimmed: the mark is in the margin
+    assert is_blank(page, trimmed_bottom=px(2.0, DPI))  # 3 mm of margin left: still ignored
+    assert not is_blank(page, trimmed_bottom=px(40.0, DPI))

@@ -150,6 +150,17 @@ def test_a_language_that_is_not_bundled_says_only_english_comes_with_the_flatpak
         assert command.lower() not in text.lower()
 
 
+@pytest.mark.parametrize(
+    ("langs", "same_as"),
+    [("osd", "eng"), ("eng+osd", "eng"), ("osd+eng", "eng"), ("deu+osd", "deu")],
+)
+def test_the_orientation_data_is_bundled_too_so_it_is_never_called_missing(
+    sandbox: Path, langs: str, same_as: str
+) -> None:
+    assert describe_exit(MISSING_DEPENDENCY, langs) == describe_exit(MISSING_DEPENDENCY, same_as)
+    assert "osd" not in describe_exit(MISSING_DEPENDENCY, "deu+osd")
+
+
 def test_when_english_itself_is_missing_the_bundle_is_broken(sandbox: Path) -> None:
     text = describe_exit(MISSING_DEPENDENCY, "eng")
     assert "reinstall" in text.lower()

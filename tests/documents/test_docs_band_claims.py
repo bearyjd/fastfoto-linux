@@ -27,6 +27,12 @@ from fastfoto_linux.documents.guard import (
     SHADOW_CLUSTER_MM,
     SHADOW_STRIP_MM,
 )
+from fastfoto_linux.documents.streak import (
+    STREAK_LIGHTER,
+    STREAK_MAX_MM,
+    STREAK_MIN_MM,
+    STREAK_SHARE,
+)
 from fastfoto_linux.documents.trim import MIN_PAPER_MM, TAIL_KEEP_MM
 from fastfoto_linux.pipeline.crop import BACKGROUND_PRIOR_TOLERANCE
 
@@ -57,6 +63,10 @@ FACTS = {
     "dust size": f"under {DUST_MM:g} mm",
     "dust colour": f"within {DUST_TOLERANCE} of the backing",
     "scrap at a side": f"in the first {TAIL_KEEP_MM:g} mm of the",
+    "streak width": f"up to {STREAK_MAX_MM:g} mm wide",
+    "streak brightness": f"{STREAK_LIGHTER:g} levels brighter",
+    "streak rows": f"{STREAK_SHARE:.0%} of the rows that have backing on both sides",
+    "streak length": f"at least {STREAK_MIN_MM:g} mm of such rows",
 }
 README_SKIPS = {"fringe", "wide tolerance", "shadow speck"}  # the README is short
 CONCEPTS = (
@@ -68,6 +78,8 @@ CONCEPTS = (
     "sliver",
     "flush with",
     "neutral grey",
+    "light vertical line",
+    "dark streak",
 )
 STALE = (
     "The top is never trimmed",
@@ -106,6 +118,19 @@ def test_the_numbers_of_the_band_rule_are_the_constants_of_the_code(name: str, f
 @pytest.mark.parametrize("name", list(DOCUMENTS))
 def test_the_band_rule_is_described(name: str, concept: str) -> None:
     assert concept in flat(DOCUMENTS[name]).lower()
+
+
+@pytest.mark.parametrize("name", ["README", "design note", "guard docstring"])
+def test_the_streak_rule_and_its_limit_are_described(name: str) -> None:
+    text = flat(TEXTS[name]).lower()
+    assert "light vertical line" in text
+    assert "dark streak" in text
+
+
+def test_the_readme_tells_what_a_streak_means_and_what_to_do_about_it() -> None:
+    text = flat(DOCUMENTS["README"]).lower()
+    assert "clean the scanner" in text
+    assert "glass" in text
 
 
 @pytest.mark.parametrize("stale", STALE)

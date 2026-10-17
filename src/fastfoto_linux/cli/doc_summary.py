@@ -34,7 +34,7 @@ def _searchable_line(result: DocumentResult, install_hint: str) -> str:
     if status is OcrStatus.SKIPPED:
         return "searchable text: no (off)"
     if status is OcrStatus.UNAVAILABLE:
-        return f"searchable text: no (ocrmypdf is not installed; to add it: {install_hint})"
+        return f"searchable text: no (OCR is not available; to add it: {install_hint})"
     return f"searchable text: no ({status.value})"
 
 

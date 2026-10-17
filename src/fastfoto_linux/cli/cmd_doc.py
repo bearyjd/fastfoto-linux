@@ -87,7 +87,8 @@ def add_parser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]"
 def _require_ocr_if_asked(settings: DocumentSettings) -> None:
     if settings.ocr is OcrMode.ON and find_ocrmypdf() is None:
         raise CliError(
-            f"--ocr on needs ocrmypdf, which is not installed ({ocr_install_hint()})",
+            "--ocr on needs OCR (ocrmypdf and Tesseract), which is not available "
+            f"({ocr_install_hint()})",
             EXIT_TOOL_MISSING,
         )
 

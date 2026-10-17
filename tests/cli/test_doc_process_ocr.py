@@ -147,7 +147,8 @@ def test_without_tesseract_the_default_writes_the_plain_pdf_with_the_dnf_hint(
     ocrmypdf_without_tesseract(tmp_path / "bin", monkeypatch)
     assert doc(out, pages) == 0
     lines = capsys.readouterr().out.splitlines()
-    assert [line for line in lines if HINT in line] != []
+    [hint_line] = [line for line in lines if HINT in line]
+    assert "ocrmypdf is not installed" not in hint_line  # it is Tesseract that is missing
     assert fake.MARKER not in (out / "Document_0001.pdf").read_bytes()
 
 
@@ -171,4 +172,5 @@ def test_required_ocr_without_tesseract_is_exit_3_with_the_hint_and_no_traceback
     assert doc(out, pages, "--ocr", "on") == 3
     err = capsys.readouterr().err
     assert HINT in err
+    assert "ocrmypdf, which is not installed" not in err  # it is Tesseract that is missing
     assert "Traceback" not in err

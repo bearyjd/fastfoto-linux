@@ -97,6 +97,29 @@ def test_the_interpreter_is_run_with_dash_m_when_it_has_the_module(
     ]
 
 
+def test_the_module_is_never_taken_from_the_folder_ffscan_runs_in(
+    staging: Path, module_record: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``python -m`` puts the current folder first on the import path: a folder that holds an
+    ``ocrmypdf`` package of its own must not get its code run."""
+    shadow = tmp_path / "elsewhere" / "ocrmypdf"
+    shadow.mkdir(parents=True)
+    (shadow / "__init__.py").write_text("", encoding="utf-8")
+    (shadow / "__main__.py").write_text("raise SystemExit(1)\n", encoding="utf-8")
+    monkeypatch.chdir(shadow.parent)
+    outcome = run_ocr(
+        PLAIN,
+        executable=sys.executable,
+        langs="eng",
+        page_count=2,
+        staging_parent=staging,
+        timeout_s=TIMEOUT_S,
+        grace_s=SHORT_GRACE_S,
+    )
+    assert outcome.status is OcrStatus.DONE, outcome.detail
+    assert module_record.is_file()
+
+
 def test_a_program_is_run_as_it_is_not_with_dash_m(
     fake_on_path: Path, staging: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

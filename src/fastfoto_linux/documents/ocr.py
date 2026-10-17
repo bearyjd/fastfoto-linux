@@ -75,8 +75,9 @@ def validate_langs(text: str) -> str:
 
 
 def _command(executable: str, langs: str, source: Path, target: Path) -> list[str]:
-    """The command line; ``executable`` is the running interpreter when ocrmypdf is its module."""
-    runner = [executable, "-m", TOOL] if executable == sys.executable else [executable]
+    """The command line; ``executable`` is the running interpreter when ocrmypdf is its module,
+    run in safe-path mode (-P) so that the current folder is not searched for modules."""
+    runner = [executable, "-P", "-m", TOOL] if executable == sys.executable else [executable]
     return [
         *runner,
         "--output-type",

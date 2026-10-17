@@ -450,7 +450,8 @@ What the first pull request settled where the specification left room.
 ### Where the OCR programs are
 `ocrmypdf` is the `ocr` extra of the package (`packaging/requirements-ocr.txt` holds its hashed wheels; the
 Flatpak does not install it yet), so the native install has it whatever the distribution packages. It
-is run as `python -m ocrmypdf` of the app's own interpreter when that can import it, else the
+is run as `python -P -m ocrmypdf` of the app's own interpreter when that can import it (`-P`, safe-path
+mode, so that the folder `ffscan` is run in is never searched for modules), else the
 `ocrmypdf` on PATH, else the one in Homebrew's folder. Tesseract is a program: on PATH, else in
 `/home/linuxbrew/.linuxbrew/bin`, which the PATH of a menu launcher lacks; `ocrmypdf` is started with
 that folder and the interpreter's folder in front of PATH. OCR is available only with both.

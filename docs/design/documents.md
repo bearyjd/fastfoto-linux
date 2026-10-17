@@ -272,7 +272,8 @@ What the first pull request settled where the specification left room.
      column are not both backing and that column is backing by colour (the blur of the mark with
      the streak), the run of streak columns and the pixel each side of it are not backing, so
      that the mark stays whole instead of being cut into dust-sized pieces by the streak. Below
-     170 dpi (two pixels are wider than 0.3 mm) the rule is off. At least 30 mm of page stay after the bottom cut, and after the top cut
+     170 dpi (two pixels are wider than 0.3 mm) the rule is off.
+     At least 30 mm of page stay after the bottom cut, and after the top cut
      as well. Where there is no band cut, because there is no band or the cut is not safe, the
      tail rule above runs as before. Colour pages only: grey and 1-bit pages are not cut by the
      band rule (a grey page has no hue to tell the backing by).

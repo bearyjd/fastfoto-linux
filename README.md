@@ -164,7 +164,7 @@ uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr o
   signature wave, a curved line, a pale highlighter band. Limits: a faint straight single stroke
   ("l", "I", "-", "!", a ruled line) is a line too and may be ignored, and so are the stems of a
   faint "i", "j" or "ii"; creases that cross are one big mark and keep the page; a speck under a
-  millimetre next to a crease segment under 2 mm long keeps the page; ink lying along a crease
+  millimetre next to a crease segment under 2 mm long can keep the page (at 300 dpi and finer); ink lying along a crease
   counts only where it leaves it. Trimming is not affected.
 - Searchable text needs `ocrmypdf` and, for its page rotation, Tesseract's orientation data:
   `sudo dnf install ocrmypdf tesseract-osd`. `--ocr auto` (default) uses it

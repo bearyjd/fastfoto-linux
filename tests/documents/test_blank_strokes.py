@@ -22,6 +22,7 @@ from tests.doc_synth_faint import (
     with_seven,
     with_stem,
     with_wave,
+    with_zigzag,
 )
 from tests.documents.blank_helpers import (
     BLANK,
@@ -112,6 +113,24 @@ def test_a_faint_roman_ii_is_two_straight_strokes_and_may_be_ignored(dpi: int, t
 @pytest.mark.parametrize("dpi", DPIS)
 def test_a_faint_roman_ii_joined_in_cursive_keeps_the_page(dpi: int) -> None:
     scene = with_roman_two(sheet(dpi), 50.0, 60.0, tone=160, joined=True)
+    assert verdicts(scene) == KEPT
+
+
+@pytest.mark.parametrize("dpi", DPIS)
+def test_a_faint_tight_zigzag_scribble_keeps_the_page(dpi: int) -> None:
+    """Every tooth is a bit under a millimetre off the axis, too small to be a mark of its own, but
+    the scribble as a whole is far from straight."""
+    scene = with_zigzag(
+        sheet(dpi, WORD_MM),
+        20.0,
+        30.0,
+        40.0,
+        tone=160,
+        swing_mm=0.7,
+        tooth_mm=1.2,
+        stroke_mm=0.2,
+    )
+    assert len(marks_of(scene)) == 1
     assert verdicts(scene) == KEPT
 
 

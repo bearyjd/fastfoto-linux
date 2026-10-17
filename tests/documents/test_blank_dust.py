@@ -116,6 +116,38 @@ def test_a_speck_next_to_a_crease_segment_under_2_mm_long_keeps_the_page(dpi: in
     assert verdicts(scene) == KEPT
 
 
+THICK_CREASE_MM = 0.5  # the thickest real crease; a segment this thick and 2 mm long is squat
+STUB_LIMIT_MM = 1.8  # under 2 mm; the speck sits in the middle, the segment shows no course
+
+
+@pytest.mark.parametrize("dpi", DPIS)
+def test_a_speck_at_the_end_of_the_squattest_real_segment_leaves_the_page_blank(dpi: int) -> None:
+    """2 mm long and 0.5 thick: once the speck and its halo are taken off, what is left is no
+    longer than 2.5 times its width, but the crease as a whole is."""
+    crease = with_line(
+        sheet(dpi, PAPER_MM),
+        (20.0, CREASE_Y_MM),
+        (20.0 + SHORTEST_REAL_SEGMENT_MM, CREASE_Y_MM),
+        tone=CREASE_TONE,
+        thickness_mm=THICK_CREASE_MM,
+    )
+    speck = with_solid_block(
+        crease, 20.0 + SHORTEST_REAL_SEGMENT_MM - SPECK_MM / 2, CREASE_Y_MM - 0.3, SPECK_MM, 70
+    )
+    assert marks_of(speck)
+    assert verdicts(speck) == BLANK
+
+
+@pytest.mark.parametrize("dpi", [300, 600])
+def test_a_speck_in_the_middle_of_a_crease_segment_of_1_8_mm_keeps_the_page(dpi: int) -> None:
+    """Known limit, at 300 dpi and finer: what is left of the segment once the speck and its halo
+    are taken off is a stub shorter than a mark, which shows nothing of the crease's course."""
+    scene = with_speck(
+        creased(dpi, STUB_LIMIT_MM), STUB_LIMIT_MM, SPECK_TOPS_MM["across"], SPECK_MM
+    )
+    assert verdicts(scene) == KEPT
+
+
 # ---- writing on a crease is kept -------------------------------------------------------------
 
 

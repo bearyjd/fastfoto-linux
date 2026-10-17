@@ -136,6 +136,27 @@ def with_roman_two(
     return _stroke(both, link, tone, stroke)
 
 
+def with_zigzag(  # noqa: PLR0913
+    scene: Scene,
+    x_mm: float,
+    y_mm: float,
+    length_mm: float,
+    *,
+    tone: int,
+    swing_mm: float,
+    tooth_mm: float,
+    stroke_mm: float,
+) -> Scene:
+    """A scribble-out: a stroke ``stroke_mm`` wide zigzagging ``swing_mm`` either side of a line
+    through (``x_mm``, ``y_mm``), a tooth every ``tooth_mm``."""
+    count = round(length_mm / tooth_mm)
+    points = [
+        (x_mm + length_mm * step / count, y_mm + swing_mm * (1 if step % 2 else -1))
+        for step in range(count + 1)
+    ]
+    return _stroke(scene, _paper_points(scene, points), tone, stroke_mm)
+
+
 def with_bowed_line(  # noqa: PLR0913
     scene: Scene,
     x_mm: float,

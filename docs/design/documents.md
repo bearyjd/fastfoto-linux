@@ -244,8 +244,9 @@ What the first pull request settled where the specification left room.
   a faint straight single stroke ("l", "I", "-", "!", a ruled line) is a line and may be
   ignored, and so are the stems of a faint "i", "j" or "ii" (separate marks, each a stroke; joined
   in cursive they are not straight); creases that cross are one big mark and keep the page; a
-  speck under a millimetre next to a crease segment under 2 mm long keeps the page (a stub that
-  short shows nothing of the crease's course, and real segments are 2 to 23 mm); ink lying along a
+  speck under a millimetre next to a crease segment under 2 mm long can keep the page, at
+  300 dpi and finer (a stub that short shows nothing of the crease's course, and real segments
+  are 2 to 23 mm); ink lying along a
   crease counts only where it leaves it, so a stroke that is a mark only thanks to the part inside
   the crease can be missed; a speck on a crease counts when the scan is soft enough to grow it
   past a millimetre.

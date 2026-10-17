@@ -45,7 +45,13 @@ def test_blank_pages_are_listed_by_number(
     [
         (OcrStatus.DONE, "", "Searchable text: yes", False),
         (OcrStatus.SKIPPED, "", "Searchable text: no (turned off)", False),
-        (OcrStatus.UNAVAILABLE, "x", "Searchable text: no (OCRmyPDF is not installed)", False),
+        (
+            OcrStatus.UNAVAILABLE,
+            "Tesseract is not installed",
+            "Searchable text: no (Tesseract is not installed)",
+            False,
+        ),
+        (OcrStatus.UNAVAILABLE, "", "Searchable text: no (OCR is not available)", False),
         (
             OcrStatus.FAILED,
             "ocrmypdf exited with 6",

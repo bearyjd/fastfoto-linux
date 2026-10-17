@@ -13,6 +13,7 @@ from fastfoto_linux.documents import (
     OcrStatus,
 )
 from fastfoto_linux.documents.errors import OutputFolderMissingError
+from fastfoto_linux.documents.ocr_tools import OCR_UNAVAILABLE_TEXT
 from fastfoto_linux.gui.documents import item_from_document
 from fastfoto_linux.gui.report import (
     CHECKING_SCANNER_TEXT,
@@ -194,9 +195,7 @@ def _saved(document: DocumentResult, result: DocumentSessionResult) -> Banner:
         warning = said[:1].lower() + said[1:]
         return Banner("warning", f"{where}, but {warning}.{note}")
     if item.ocr is OcrStatus.UNAVAILABLE:  # asked for, and the tool was gone when the PDF was made
-        return Banner(
-            "warning",
-            f"{where}, but searchable text was not added (OCRmyPDF is not installed).{note}",
-        )
+        reason = item.ocr_detail or OCR_UNAVAILABLE_TEXT  # it names what is missing
+        return Banner("warning", f"{where}, but searchable text was not added ({reason}).{note}")
     dropped = f" {item.dropped_text}." if item.dropped else ""
     return Banner("positive", f"{where}: {item.pages_text}.{dropped}{note}")

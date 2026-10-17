@@ -45,7 +45,7 @@ def test_the_languages_are_checked_even_with_ocr_off(out: Path) -> None:
 
 
 def test_ocr_on_without_ocrmypdf_is_refused(out: Path) -> None:
-    with pytest.raises(OcrMissingError, match="ocrmypdf"):
+    with pytest.raises(OcrMissingError, match="OCRmyPDF"):
         check_settings(settings(out, ocr=OcrMode.ON))
 
 

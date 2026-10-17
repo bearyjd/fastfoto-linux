@@ -16,10 +16,10 @@ from fastfoto_linux.documents.errors import OcrCancelledError
 from fastfoto_linux.documents.ocr import (
     OcrOutcome,
     OcrStatus,
-    find_ocrmypdf,
     run_ocr,
     validate_langs,
 )
+from fastfoto_linux.documents.ocr_tools import find_ocrmypdf
 from tests import _fake_ocrmypdf as fake
 
 TIMEOUT_S = 20.0
@@ -110,7 +110,10 @@ def test_it_runs_the_documented_command_on_a_staging_copy_and_returns_the_result
     )
     seen = fake.read_record(record)
     source, target = Path(seen["argv"][-2]), Path(seen["argv"][-1])
-    assert seen["argv"][:-2] == ["--output-type", "pdf", "--rotate-pages", "-l", "eng+deu"]
+    assert seen["argv"][:-2] == [
+        *["--output-type", "pdf", "--rotate-pages", "-l", "eng+deu"],
+        *["--rasterizer", "pypdfium"],
+    ]
     assert source.parent == target.parent
     assert source.parent.parent == staging
     assert source.parent.name.startswith(".")

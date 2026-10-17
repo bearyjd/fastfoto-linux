@@ -4,13 +4,13 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from fastfoto_linux.documents import DocumentResult, find_ocrmypdf
-from fastfoto_linux.documents.ocr import OCR_INSTALL_HINT
+from fastfoto_linux.documents.ocr_tools import DNF_INSTALL_HINT, TESSERACT_NAME, ocr_fixes
 from fastfoto_linux.gui.docform import DocumentForm
 from fastfoto_linux.gui.state import Mode
 from fastfoto_linux.scanner.shim_trust import inside_flatpak
 from fastfoto_linux.session import DocumentSessionResult
 
-NATIVE_OCR_HINT = f"Install OCRmyPDF: {OCR_INSTALL_HINT}"
+NATIVE_OCR_HINT = f"Install {TESSERACT_NAME}: {DNF_INSTALL_HINT}"  # classic system, only it missing
 FLATPAK_OCR_HINT = "Searchable text needs the native install"
 
 
@@ -26,7 +26,7 @@ class DocumentTools:
 
     @property
     def ocr_available(self) -> bool:
-        """True when ``ocrmypdf`` is installed (looked up each time: it may be installed later)."""
+        """True when OCR is available, OCRmyPDF and Tesseract both (looked up each time)."""
         return self.find_ocr() is not None
 
     @property
@@ -34,7 +34,9 @@ class DocumentTools:
         """What to do about missing searchable text, empty when it is available."""
         if self.ocr_available:
             return ""
-        return FLATPAK_OCR_HINT if self.in_flatpak() else NATIVE_OCR_HINT
+        if self.in_flatpak():
+            return FLATPAK_OCR_HINT
+        return "; ".join(f"Install {name}: {fix}" for name, fix in ocr_fixes())
 
 
 @dataclass(frozen=True)

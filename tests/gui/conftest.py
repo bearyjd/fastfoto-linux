@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from fastfoto_linux.documents import ocr_tools
 from tests.cli.fakes import block_hardware, refuse
 
 WORKER_TRANSPORT = (
@@ -28,3 +29,11 @@ def out(tmp_path: Path) -> Path:
     root = tmp_path / "out"
     root.mkdir()
     return root
+
+
+@pytest.fixture
+def ocrmypdf_comes_with_the_app(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The app's own environment has ocrmypdf, so only Tesseract (a program) is missing: the hint
+    a test sees does not depend on whether the environment it runs in has the ocr extra. For the
+    tests that look at the hint of a machine without Tesseract."""
+    monkeypatch.setattr(ocr_tools, "OCR_MODULE", "json")

@@ -18,6 +18,7 @@ from fastfoto_linux.gui.form import ScanForm
 from fastfoto_linux.gui.state import ActionBlockedError, Mode, State
 from fastfoto_linux.scanner import ScanError, ScannerNotFoundError
 from fastfoto_linux.session import DocumentRawReason, DocumentSessionResult, Stage
+from tests import _fake_ocrmypdf as fake
 from tests.gui.doc_helpers import (
     DocFakeWorker,
     cancelled_document,
@@ -26,6 +27,8 @@ from tests.gui.doc_helpers import (
     stopped_document,
 )
 from tests.gui.helpers import clean_result
+
+pytestmark = pytest.mark.usefixtures("ocrmypdf_comes_with_the_app")
 
 
 class Page:
@@ -237,6 +240,15 @@ def test_searchable_text_is_off_and_explained_when_ocrmypdf_is_missing(out: Path
         page.controller.searchable_checked is False
     )  # the box cannot show a tick it cannot honour
     assert page.controller.document_form.searchable is True  # what was asked for is remembered
+
+
+def test_the_hint_under_the_box_names_ocrmypdf_when_it_is_the_part_that_is_missing(
+    out: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake.ocr_machine(tmp_path / "bin", monkeypatch, ocrmypdf=False, tesseract=True)
+    page = Page(out, ocr=None)
+    assert page.controller.ocr_hint.startswith("Install OCRmyPDF: ")
+    assert "Tesseract" not in page.controller.ocr_hint
 
 
 def test_inside_a_flatpak_the_hint_says_the_native_install_is_needed(out: Path) -> None:

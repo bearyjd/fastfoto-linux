@@ -3,6 +3,12 @@
 Dust, paper texture and faint show-through from the other side are not marks; anything a reader
 could take for writing is, however big (a signature is one large mark). Every length is in
 millimetres and turned into pixels with the page's resolution.
+
+The blank rule also leaves out a fold crease: a mark that is both line-like (a hair's width, or
+many times longer than wide) and faint (its darkest pixel is light grey) does not keep a page.
+The letter folded in thirds that was scanned on both sides has them on its blank back. Limit: a
+single faint pencil stroke, or a faint "1" alone, is such a line and may be ignored; a dark speck
+touching a crease makes one mark that is not faint, and keeps the page.
 """
 
 from dataclasses import dataclass
@@ -70,6 +76,27 @@ def _dark_mask(grey: np.ndarray, work_dpi: float) -> np.ndarray:
     return (local | page | (grey < VERY_DARK)).astype(np.uint8)
 
 
+def _source_sides(boxes: np.ndarray, factor: int) -> np.ndarray:
+    """The short and the long side of each box in source pixels, less the ``factor - 1`` pixels
+    that keeping the darkest pixel of a block adds (see ``find_marks``). Shape (n, 2)."""
+    return np.sort(boxes[:, 2:4], axis=1) * factor - (factor - 1)
+
+
+def _darkest_per_mark(labels: np.ndarray, grey: np.ndarray, count: int) -> np.ndarray:
+    """The darkest grey level of each component of ``labels`` (row 0 is the background)."""
+    darkest = np.full(count, _TONES - 1, dtype=np.uint8)
+    inside = labels > 0
+    np.minimum.at(darkest, labels[inside], grey[inside])
+    return darkest
+
+
+def _faint_lines(boxes: np.ndarray, darkest: np.ndarray, factor: int, dpi: float) -> np.ndarray:
+    """Which components are both line-like and faint (``darkest`` is for the same components)."""
+    short, long = _source_sides(boxes, factor).T
+    line_like = (short <= mm_to_px(LINE_MAX_MM, dpi)) | (long >= LINE_ASPECT * short)
+    return line_like & (darkest >= FAINT_DARKEST)
+
+
 def find_marks(
     page: LoadedPage,
     *,
@@ -84,6 +111,10 @@ def find_marks(
     ``trimmed_bottom`` rows were cut off the bottom of the scanner's frame before ``page`` was
     made; the bottom margin is the frame's, so it is that much smaller. A page under 10 mm each
     way raises UnsupportedPageError: no marks must never be mistaken for a blank page.
+
+    With ``ignore_faint_lines`` a fold crease is not a mark either: a mark whose short side is at
+    most ``LINE_MAX_MM`` or whose long side is ``LINE_ASPECT`` times its short side, and whose
+    darkest pixel is ``FAINT_DARKEST`` or lighter. Other marks are as without it.
     """
     require_size(page.pixels.shape[1], page.pixels.shape[0], page.dpi)
     factor = max(1, int(page.dpi // WORK_DPI))
@@ -91,19 +122,21 @@ def find_marks(
     grey = shrink_keeping_darkest(_darkest_channel(page.pixels), factor)
     margin = mm_to_px(margin_mm, work_dpi) if margin_mm > 0 else 0
     bottom = max(0, margin - trimmed_bottom // factor)
-    mask = _dark_mask(grey, work_dpi)[
-        margin : grey.shape[0] - bottom, margin : grey.shape[1] - margin
-    ]
+    rows, columns = slice(margin, grey.shape[0] - bottom), slice(margin, grey.shape[1] - margin)
+    mask = _dark_mask(grey, work_dpi)[rows, columns]
     if mask.size == 0:
         return ()
-    count, _, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
     area = max(1, int(np.ceil(MARK_MIN_AREA_MM2 * (work_dpi / MM_PER_INCH) ** 2)))
     boxes = stats[1:count]  # row 0 is the background
     # Keeping the darkest pixel of each block widens a spot by factor - 1 source pixels on
     # average, so a speck would grow past the size limit at 600 dpi and not at 200: the length
     # is judged in source pixels, less that growth.
-    length = np.maximum(boxes[:, 2], boxes[:, 3]) * factor - (factor - 1)
+    length = _source_sides(boxes, factor)[:, 1]
     wanted = (length >= mm_to_px(MARK_MIN_MM, page.dpi)) & (boxes[:, 4] >= area)
+    if ignore_faint_lines:
+        darkest = _darkest_per_mark(labels, grey[rows, columns], count)[1:]
+        wanted &= ~_faint_lines(boxes, darkest, factor, page.dpi)
     marks = [
         Mark(
             (x + margin) * factor,

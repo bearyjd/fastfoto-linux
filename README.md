@@ -147,6 +147,16 @@ uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr o
   keep the page. Pencil fainter than that cannot be told from show-through and does not.
   `--keep-blank` keeps every page. The summary lists the dropped pages by number. If every page looks blank nothing is
   written and the exit code is 1.
+- The blank rule ignores faint fold creases. A letter folded in thirds has two rows of them on
+  its blank back, and a deskewed scan can leave a faint line along the page edge. A mark counts
+  toward "not blank" unless it is line-like and faint. Line-like: 0.6 mm thick or less, or at
+  least 8 times longer than wide. Faint: its darkest pixel is 140 or lighter (of 255, on the
+  darkest colour channel). Real creases measured 0.17 to 0.51 mm and 152 to 204; text measured
+  120 or darker, and pencil 110 to 150. A dark ruled line, a page number, and any mark that is
+  neither thin nor long counts however faint, so pencil handwriting keeps the page. Limits: a
+  single faint pencil stroke or a faint "1" alone may be ignored, a dust speck touching a crease
+  keeps the page, and creases that cross are one big mark and keep it too. Trimming is not
+  affected.
 - Searchable text needs `ocrmypdf` and, for its page rotation, Tesseract's orientation data:
   `sudo dnf install ocrmypdf tesseract-osd`. `--ocr auto` (default) uses it
   when present and otherwise writes the plain PDF and says so; `--ocr on` refuses to start
@@ -163,16 +173,18 @@ uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr o
 
 ### Scanning with `ffscan doc scan`
 
-- Load the stack and run it: both sides of every page are scanned unless `--simplex`, and one
-  PDF comes out. `--out`, `--mkdir`, `--name`, `--colour`, `--keep-blank`, `--ocr` and `--lang`
+- Load the stack face down, top edge first: the printed side is then scanned first and comes out
+  upright, and a one-sided scan (`--simplex`) reads that side (checked on the FF-680W). Both sides
+  of every page are scanned unless `--simplex`, and one PDF comes out. `--out`, `--mkdir`, `--name`, `--colour`, `--keep-blank`, `--ocr` and `--lang`
   mean what they mean for `doc process` (so do the summary and its lines, with "pages scanned"
   for "pages read"). `--dpi` is the scan resolution: 200, 300 (default) or 600 dpi. `--net HOST`
   uses a Wi-Fi scanner, as in `ffscan scan`.
 - `ffscan doc scan` always scans in colour, whatever `--colour` says: trimming needs colour to
   tell the scanner's backing from pale paper, and the page is made grey or black and white only
   after it has been trimmed. The scan is the scanner's full length, never a fixed paper size, so
-  a Legal page is not cut at Letter. The scanner's own deskew stays on. Pages that do not say
-  their resolution are taken at the one you asked for.
+  a Legal page is not cut at Letter. The scanner's own deskew stays on. The scanner's PNG carries its
+  resolution (checked on the FF-680W); a page that does not say its resolution is taken at the one
+  you asked for.
 - The scanner's pages go to a hidden folder in `DIR` and are deleted after a clean run. They are
   kept in `DIR/.raw/<UTC time>/` when a page was dropped as blank, searchable text failed, a
   step failed, the run was stopped, or `--keep-raw` says so (`--discard-raw` deletes them even

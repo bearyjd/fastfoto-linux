@@ -208,6 +208,23 @@ What the first pull request settled where the specification left room.
   blank when it has **no** mark, so one short line, a signature, a **lone page number** (decided:
   kept, it cannot be told from content), a punch hole or a scanner streak keeps the page; the cost
   of that caution is a few blank backs kept, never a page lost.
+- **Fold creases.** The blank back of a letter folded in thirds was kept: its two rows of creases
+  are marks. The blank rule (not trimming: `find_marks` has a flag, `ignore_faint_lines`, that
+  only `is_blank` sets) ignores faint fold creases, a mark that is line-like and faint. Line-like:
+  its short side is at most 0.6 mm (`LINE_MAX_MM`) or its long side at least 8 times its short
+  side (`LINE_ASPECT`), judged in source pixels like the length. Faint: its darkest pixel, on the
+  darkest-channel grey, is 140 or lighter (`FAINT_DARKEST`). Two real creased backs gave the
+  numbers: creases 0.17 to 0.51 mm thick, darkest 152 to 204, in segments 2 to 23 mm long in two
+  rows at a third and two thirds of the height; one faint tall artefact 7.6 x 153 mm (ratio 20,
+  darkest 176) along the slanted edge of the deskew pad; text darkest 0 to 12 on every mark,
+  never above 120. So 140 sits 12 below the darkest crease and 20 above the lightest text, 0.6
+  is just over the thickest crease, and 8 is far under the artefact. Pencil measured 110 to 150
+  with letters of 2 to 3 mm: its round letters are neither thin nor long, so they count even at
+  150, and a dark ruled line or a page number counts because it is not faint. Known limits, all
+  on the side of keeping a page or ignoring a stroke that cannot be told from a crease: a single
+  faint pencil stroke or a faint "1" alone may be ignored; dust touching a crease makes one mark
+  whose darkest pixel is not faint, so the page is kept; creases that cross are one big mark and keep it; a slanted crease whose box is neither
+  thin nor long is kept.
 - **Black and white.** A pixel is black when it is darker than 96 (the same level as a mark), or
   when it is 25 levels darker than the mean of an 8 mm window and than the 8 mm closing of the
   page (strokes thinner than the window removed). The mean alone follows uneven lighting but
@@ -286,10 +303,13 @@ What the second pull request settled where the specification left room.
   `--dpi` and every option that is not the default, quoted for the shell). A page the scanner
   was writing when it stopped is not among them. A cancel during the scan makes no PDF either,
   as it never did for photos.
-- **Fallback resolution.** What `scanimage` writes into the PNG header could not be checked
-  without the scanner, so the session gives the loader the resolution it asked the scanner for
-  as the fallback resolution (`DocumentSettings.fallback_dpi`): a page that does not say its
-  resolution is taken at it, a page that does keeps its own.
+- **Fallback resolution.** The scanner's PNG carries its resolution (checked on the FF-680W).
+  The session still gives the loader the resolution it asked the scanner for as the fallback
+  resolution (`DocumentSettings.fallback_dpi`), for a file that does not say: a page that does not
+  say its resolution is taken at it, a page that does keeps its own.
+- **Loading the feeder.** Load documents face down, top edge first: the printed side is then
+  scanned first and comes out upright, and a one-sided scan (`--simplex`) reads that side
+  (checked on the FF-680W).
 - **Order of checks.** The options are checked first (a usage error costs nothing), then
   `--ocr on` is checked before anything is scanned (before the output folder is made, the
   scanner looked for or checked), then the output folder, the scanner and the scan. The
@@ -310,5 +330,4 @@ What the second pull request settled where the specification left room.
 
 ### Needs real hardware
 The Gray PNG that `scanimage` writes (`doc scan` does not ask for it), trimming on real
-pages, blank detection on real backs, speed at 300 dpi, and whether the PNG header carries the
-resolution (the fallback covers it if not).
+pages, blank detection on real backs and speed at 300 dpi.

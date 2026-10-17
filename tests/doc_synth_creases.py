@@ -11,13 +11,14 @@ from dataclasses import replace
 import numpy as np
 from PIL import ImageDraw
 
-from tests.doc_synth import MM_PER_INCH, Scene, _draw, px
+from tests.doc_synth import MM_PER_INCH, Scene, _draw, px, with_specks
 
 CREASE_TONE = 175
 CREASE_MM = 0.3
 CREASE_SEGMENT_MM = (2.0, 23.0)
 CREASE_GAP_MM = (3.0, 15.0)  # gaps stay wider than two pixels at 150 dpi: pieces never join
 CREASE_SHARES = (1 / 3, 2 / 3)
+DUST_CLEARANCE_MM = 2.0
 ARTEFACT_TONE = 176
 ARTEFACT_BOX_MM = (7.6, 153.0)
 ARTEFACT_THICKNESS_MM = 0.4
@@ -116,6 +117,20 @@ def with_creases(  # noqa: PLR0913
             )
             scene = with_line(scene, *ends, tone=tone, thickness_mm=thickness_mm)
     return scene
+
+
+def with_dust_clear_of_creases(
+    creased: Scene, count: int, *, max_px: int = 3, seed: int = 1
+) -> Scene:
+    """Dust on a scene with horizontal creases, none of it within 2 mm of a crease: a speck that
+    touches a crease would join it into one mark that is not faint."""
+    dusty = with_specks(creased, count, max_px=max_px, seed=seed)
+    rows = np.arange(creased.image.shape[0]) * MM_PER_INCH / creased.dpi
+    height = _paper_size_mm(creased)[1]
+    near = np.zeros(rows.shape, bool)
+    for share in CREASE_SHARES:
+        near |= np.abs(rows - height * share) < DUST_CLEARANCE_MM
+    return replace(dusty, image=np.where(near[:, None, None], creased.image, dusty.image))
 
 
 def with_slanted_artefact(

@@ -14,6 +14,9 @@ def is_blank(page: LoadedPage, *, trimmed_bottom: int = 0) -> bool:
     trimming never turns paper into margin.
 
     One confident mark keeps the page, so a signature, a short line, or a page number alone is
-    not blank. When in doubt the answer is False.
+    not blank. The one thing that is not a mark is a faint fold crease: a mark that is both
+    line-like and faint (see ``find_marks``). When in doubt the answer is False.
     """
-    return not find_marks(page, margin_mm=BLANK_MARGIN_MM, trimmed_bottom=trimmed_bottom)
+    return not find_marks(
+        page, margin_mm=BLANK_MARGIN_MM, trimmed_bottom=trimmed_bottom, ignore_faint_lines=True
+    )

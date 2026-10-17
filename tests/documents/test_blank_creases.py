@@ -21,11 +21,11 @@ from tests.doc_synth import (
     paper_scene,
     with_show_through,
     with_solid_block,
-    with_specks,
     with_text,
 )
 from tests.doc_synth_creases import (
     with_creases,
+    with_dust_clear_of_creases,
     with_line,
     with_pencil_words,
     with_slanted_artefact,
@@ -116,8 +116,8 @@ def test_creases_with_show_through_texture_are_blank() -> None:
 
 
 def test_creases_among_dust_are_blank() -> None:
-    creased = with_creases(with_specks(sheet(300), 40, max_px=8), broken=True)
-    assert verdicts(creased) == BLANK
+    dusty = with_dust_clear_of_creases(with_creases(sheet(300), broken=True), 40, max_px=8)
+    assert verdicts(dusty) == BLANK
 
 
 def test_a_faint_tall_artefact_is_blank() -> None:
@@ -128,8 +128,8 @@ def test_a_faint_tall_artefact_is_blank() -> None:
 def test_creases_artefact_dust_and_texture_together_are_blank() -> None:
     """What one real back looked like: broken creases, the artefact, dust, paper texture."""
     scene = with_slanted_artefact(sheet(300, TALL_MM, noise=6))
-    scene = with_creases(with_specks(scene, 40, max_px=8), broken=True, from_mm=20.0)
-    assert verdicts(scene) == BLANK
+    scene = with_creases(scene, broken=True, from_mm=20.0)
+    assert verdicts(with_dust_clear_of_creases(scene, 40, max_px=8)) == BLANK
 
 
 # ---- pages that are not blank ----------------------------------------------------------------

@@ -393,8 +393,8 @@ What the first pull request settled where the specification left room.
   only 55 levels darker than the paper is not one). A mark's shape is the whole dark shape that
   meets its box, cropped to its own bounding box, not clipped by the box or by the 5 mm blank
   margin: the margin is not looked at, so a hole that straddles it is counted as a mark only
-  where it lies inside, and its box starts at the margin while its dark shape starts 0.2 to
-  0.5 mm before it (a real one: 1.19 x 0.68 mm, starting at 4.8 mm, its box at 5.1 mm). A shape
+  where it lies inside, and its box starts at the margin while its dark shape starts before it
+  (a real one: 1.19 x 0.68 mm, starting at 4.8 mm from the top, its box at 5.1 mm). A shape
   longer than 8 mm (`HOLE_MAX_MM`) is not a hole: a small mark joined to a long dark line is
   content. Only the window of 8 mm round the box is labelled, since a shape that reaches its edge
   is longer than that. They match when each side of the other shape's
@@ -411,9 +411,10 @@ What the first pull request settled where the specification left room.
   the two backs that were kept for staple holes (overlap 0.84 to 0.88, and 0.59 to 0.87 for three
   marks near a corner), kept every text page, and explained one real hole on a text page of 1128
   marks. That was measured with the prototype. The first shipped version took the shape from the
-  dark pixels in the mark's box and kept the app back, whose one mark straddles the margin (the
-  box cut it short, and the whole shape opposite then failed the size and the overlap); the shape
-  is now the whole dark shape, and the shipped rule has to be measured on the real pages again.
+  dark pixels in the mark's box and kept the app back, one of whose two marks straddles the margin
+  (the box cut it short, and the whole shape opposite then failed the size and the overlap); the
+  shape is now the whole dark shape, and the shipped rule has to be measured on the real pages
+  again.
 - **Pairing.** Pages are paired in order, 1+2, 3+4 and so on, as the two sides of sheets
   (`DocumentSettings.duplex`, default true). `doc scan` pairs the pages it scans unless
   `--simplex`, and `doc process` pairs the pages it is given unless `--simplex`, because raw pages

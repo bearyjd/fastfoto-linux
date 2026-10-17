@@ -27,6 +27,7 @@ Usage: install-desktop.sh [--uninstall] [--dry-run] [--with-tesseract] [--help]
   --dry-run         list what would be done and change nothing
   --with-tesseract  install Tesseract (for searchable text) with Homebrew when it is missing;
                     never with sudo. Without this option the command to run is only printed.
+                    Ignored with --uninstall.
   --help            show this text
 
 Environment: HOME and XDG_DATA_HOME (when it is an absolute path) say where things go;
@@ -90,6 +91,8 @@ OSTREE_MARKER="${FASTFOTO_OSTREE_MARKER:-/run/ostree-booted}" # exists on an rpm
 BREW_INSTALL_HINT="brew install tesseract"
 BREW_LANG_HINT="brew install tesseract-lang"
 DNF_INSTALL_HINT="sudo dnf install tesseract tesseract-osd"
+RPM_OSTREE_INSTALL_HINT="rpm-ostree install tesseract tesseract-osd"
+OSTREE_NO_BREW_HINT="$RPM_OSTREE_INSTALL_HINT (then reboot), or install Homebrew and run $BREW_INSTALL_HINT"
 LIB_DIR="$HOME/.local/lib/fastfoto-linux"
 SHIM="$LIB_DIR/ff680w_usb_gap.so"
 BIN_DIR="$HOME/.local/bin"
@@ -243,10 +246,13 @@ find_program() {
   command -v "$1" 2> /dev/null || { [[ -x "$BREW_BIN/$1" ]] && echo "$BREW_BIN/$1"; }
 }
 
-# The command that installs Tesseract here: Homebrew's on an immutable system or where brew is.
+# The command that installs Tesseract here: Homebrew's where brew is, else rpm-ostree's (or Homebrew's,
+# once installed) on an immutable system, else dnf's.
 tesseract_hint() {
-  if [[ -e "$OSTREE_MARKER" ]] || find_program brew > /dev/null; then
+  if find_program brew > /dev/null; then
     echo "$BREW_INSTALL_HINT"
+  elif [[ -e "$OSTREE_MARKER" ]]; then
+    echo "$OSTREE_NO_BREW_HINT"
   else
     echo "$DNF_INSTALL_HINT"
   fi
@@ -371,6 +377,7 @@ uninstall_all() {
 }
 
 if ((UNINSTALL)); then
+  ((!WITH_TESSERACT)) || echo "note: --with-tesseract is ignored with --uninstall; Homebrew packages are left alone" >&2
   uninstall_all
 else
   install_all

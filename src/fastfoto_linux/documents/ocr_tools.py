@@ -3,18 +3,26 @@
 ``ocrmypdf`` comes with the app (it is installed into the app's own environment); Tesseract does
 not, because it is a program, not a Python package. On an immutable system (Bazzite, Silverblue)
 without root, Tesseract comes from Homebrew, whose folder is not on the PATH of a program started
-from a menu entry, so it is looked for there as well.
+from a menu entry, so it is looked for there as well, last: the order of the folders is the PATH
+the program was started with, then (for the run only) the interpreter's folder, then Homebrew's,
+so that Homebrew never shadows the system's own programs. Homebrew's folder is used only when it
+is owned by root or by the user and nobody else can write to it (``brew_folder_problem``).
 
 The three places that differ from machine to machine are module-level names that a test replaces:
 ``BREW_BIN``, ``OSTREE_MARKER`` and ``OCR_MODULE``. They are read when a function runs.
 """
 
 import importlib.util
+import logging
 import os
 import shutil
+import stat
 import sys
 from pathlib import Path
 
+logger = logging.getLogger(__name__)
+
+ROOT_UID = 0
 BREW_BIN = Path("/home/linuxbrew/.linuxbrew/bin")
 OSTREE_MARKER = Path("/run/ostree-booted")  # exists on an rpm-ostree system
 TOOL = "ocrmypdf"
@@ -33,6 +41,7 @@ OSTREE_NO_BREW_HINT = (
 OCRMYPDF_NAME = "OCRmyPDF"
 TESSERACT_NAME = "Tesseract"
 OCR_NEEDS = f"{OCRMYPDF_NAME} and {TESSERACT_NAME}"  # what searchable text needs
+OCR_UNAVAILABLE_TEXT = "OCR is not available"
 
 
 def _module_importable() -> bool:
@@ -42,9 +51,46 @@ def _module_importable() -> bool:
         return False
 
 
+def brew_folder_problem(mode: int, owner: int, uid: int) -> str | None:
+    """Why a folder with permission bits ``mode`` owned by ``owner`` is not to be trusted when
+    ``uid`` runs the program, or None when it is."""
+    if owner not in (ROOT_UID, uid):
+        return f"not owned by root or by the user (owner {owner})"
+    if mode & (stat.S_IWGRP | stat.S_IWOTH):
+        return "writable by its group or by others"
+    return None
+
+
+def _brew_folders() -> list[str]:
+    """Homebrew's bin folder as a list of one, or an empty list when it is not there or not to be
+    trusted (the reason is logged for ``--debug``)."""
+    try:
+        info = BREW_BIN.stat()
+    except OSError:
+        return []
+    problem = (
+        brew_folder_problem(info.st_mode, info.st_uid, os.getuid())
+        if stat.S_ISDIR(info.st_mode)
+        else "not a folder"
+    )
+    if problem is not None:
+        logger.debug("ignoring %s: %s", BREW_BIN, problem)
+        return []
+    return [str(BREW_BIN)]
+
+
+def _inherited_path() -> str:
+    return os.environ.get("PATH", os.defpath)
+
+
+def _join(folders: list[str]) -> str:
+    """A PATH of ``folders``; an empty entry would mean the current folder, so it is left out."""
+    return os.pathsep.join(folder for folder in folders if folder)
+
+
 def _find(name: str) -> str | None:
     """``name`` on PATH, else in Homebrew's folder (which a menu entry's PATH does not have)."""
-    return shutil.which(name) or shutil.which(name, path=str(BREW_BIN))
+    return shutil.which(name, path=_join([_inherited_path(), *_brew_folders()]))
 
 
 def locate_ocrmypdf() -> str | None:
@@ -67,34 +113,44 @@ def find_ocrmypdf() -> str | None:
     return found if found is not None and find_tesseract() is not None else None
 
 
+def ocr_missing_text() -> str:
+    """What stops OCR here, in the words every message uses: "Tesseract is not installed"."""
+    missing = [
+        name
+        for name, found in (
+            (OCRMYPDF_NAME, locate_ocrmypdf()),
+            (TESSERACT_NAME, find_tesseract()),
+        )
+        if found is None
+    ]
+    if not missing:
+        return OCR_UNAVAILABLE_TEXT
+    return f"{' and '.join(missing)} {'is' if len(missing) == 1 else 'are'} not installed"
+
+
 def ocr_environment() -> dict[str, str]:
-    """A copy of the environment for ``ocrmypdf``: PATH leads with Homebrew's folder (when it
-    exists) and the folder of the running interpreter, so that it finds Tesseract and its own
-    helpers."""
+    """A copy of the environment for ``ocrmypdf``. PATH is the inherited one (the default path
+    when there is none), then the folder of the running interpreter, so that ocrmypdf finds its
+    own helpers, then Homebrew's folder: the order in which Tesseract was looked for."""
     environment = dict(os.environ)
-    leading = [str(BREW_BIN)] if BREW_BIN.is_dir() else []
-    leading.append(str(Path(sys.executable).parent))
-    inherited = environment.get("PATH")
-    environment["PATH"] = os.pathsep.join([*leading, *([inherited] if inherited else [])])
+    folders = [_inherited_path(), str(Path(sys.executable).parent), *_brew_folders()]
+    environment["PATH"] = _join(folders)
     return environment
 
 
 def uses_homebrew() -> bool:
-    """True on an immutable system or where ``brew`` is installed: Tesseract comes from there."""
-    return OSTREE_MARKER.exists() or _find(BREW) is not None
+    """True where ``brew`` can be run: Tesseract then comes from Homebrew."""
+    return _find(BREW) is not None
+
+
+def on_ostree() -> bool:
+    """True on an rpm-ostree system (Bazzite, Silverblue), where ``dnf`` cannot install."""
+    return OSTREE_MARKER.exists()
 
 
 def ocr_install_hint() -> str:
-    """The command that installs Tesseract on this system."""
-    return BREW_INSTALL_HINT if uses_homebrew() else DNF_INSTALL_HINT
-
-
-def brew_folder_problem(mode: int, owner: int, uid: int) -> str | None:
-    """Why a folder with permission bits ``mode`` owned by ``owner`` is not to be trusted when
-    ``uid`` runs the program, or None when it is."""
-    raise NotImplementedError
-
-
-def ocr_missing_text() -> str:
-    """What stops OCR here, in the words every message uses: "Tesseract is not installed"."""
-    raise NotImplementedError
+    """The command that installs Tesseract on this system: Homebrew's where brew runs, else
+    rpm-ostree's (or Homebrew's, once installed) on an immutable system, else dnf's."""
+    if uses_homebrew():
+        return BREW_INSTALL_HINT
+    return OSTREE_NO_BREW_HINT if on_ostree() else DNF_INSTALL_HINT

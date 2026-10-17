@@ -86,8 +86,8 @@ uv run ffscan process page-*.png --out ~/Scans --album "Family Trips"
 
 ## Documents to PDF (preview)
 
-Letters, forms and receipts to one multi-page PDF, with blank pages dropped and, when OCRmyPDF is
-installed, searchable text. `ffscan doc scan` takes the pages from the document feeder in one go;
+Letters, forms and receipts to one multi-page PDF, with blank pages dropped and, when OCR is
+available (OCRmyPDF and Tesseract), searchable text. `ffscan doc scan` takes the pages from the document feeder in one go;
 `ffscan doc process` makes the same PDF from PNGs you already have. The desktop app has a
 Documents mode too (see [Desktop app](#desktop-app-preview)). The design is in
 [`docs/design/documents.md`](docs/design/documents.md).
@@ -243,13 +243,17 @@ uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr o
   affected.
 - Searchable text: `ocrmypdf` comes with the app (the installer puts it in the app's own
   environment; from a checkout, `uv sync --extra ocr`), so only Tesseract, the program it drives,
-  is left to install. On Bazzite, Silverblue and other immutable systems (the check is that
-  `/run/ostree-booted` exists), and wherever Homebrew is installed, run `brew install tesseract`
-  (English and the orientation data that page rotation needs) and, for other languages,
-  `brew install tesseract-lang`. On classic Fedora run `sudo dnf install tesseract tesseract-osd`
-  (`tesseract-langpack-*` for other languages). Tesseract is looked for on PATH and in Homebrew's
-  own bin folder, which the PATH of a menu launcher does not have.
-  Pages are rasterized with pdfium, never Ghostscript. `--ocr auto` (default) uses OCR
+  is left to install. Wherever Homebrew is installed (Bazzite ships it), run
+  `brew install tesseract` (English and the orientation data that page rotation needs) and, for
+  other languages, `brew install tesseract-lang`. On an immutable system without Homebrew
+  (Bazzite, Silverblue: `/run/ostree-booted` exists) run `rpm-ostree install tesseract tesseract-osd`
+  (then reboot), or install Homebrew. On classic Fedora run
+  `sudo dnf install tesseract tesseract-osd` (`tesseract-langpack-*` for other languages).
+  Tesseract is looked for on PATH, then in Homebrew's own bin folder, which the PATH of a menu
+  launcher does not have; that folder is used only when it is owned by root or by you and
+  nobody else can write to it. With OCRmyPDF 17 or newer (the app's own copy) pages are
+  rasterized with pdfium, never Ghostscript; an older `ocrmypdf` found on PATH does not know
+  that option and is run without it. `--ocr auto` (default) uses OCR
   when it is all there and otherwise writes the plain PDF and says so; `--ocr on` refuses to start
   without it (exit 3); `--ocr off` never runs it. `--lang` takes Tesseract codes (`eng`,
   `eng+deu`). If OCR fails or times out the plain PDF is still written, with one warning and exit
@@ -370,8 +374,9 @@ the PDF from just those pages with the same settings (it is offered again after 
 folder that cannot be written to, once that is fixed). Each form says how to load the feeder, as
 the label on the scanner does. **Searchable text** needs Tesseract (OCRmyPDF comes with the app);
 without it the box is off and says `Install Tesseract: sudo dnf install tesseract tesseract-osd`,
-or `Install Tesseract: brew install tesseract` on Bazzite, Silverblue and other systems with
-Homebrew. The Flatpak has no OCR yet (it will bundle it in a later release) and says that
+or `Install Tesseract: brew install tesseract` on systems with Homebrew (Bazzite has it), or
+`Install Tesseract: rpm-ostree install tesseract tesseract-osd (then reboot), or install Homebrew
+and run brew install tesseract` on an immutable system without it. The Flatpak has no OCR yet (it will bundle it in a later release) and says that
 searchable text needs the native install; everything else in Documents mode works there.
 
 Install it for your user (no root; nothing to do with `uv` or pip):
@@ -396,10 +401,12 @@ dependency on purpose: the PyPI wheel bundles its own Qt and cannot load the sys
 plugin. Without PySide6 and Kirigami, `fastfoto` says what to install and exits with status 3.
 
 Tesseract, which searchable text needs, is a program and not a Python package. When it is not
-found the installer prints the command to run (`brew install tesseract` on Bazzite, Silverblue
-and wherever Homebrew is installed, `sudo dnf install tesseract tesseract-osd` on classic Fedora).
+found the installer prints the command to run (`brew install tesseract` wherever Homebrew is
+installed, `rpm-ostree install tesseract tesseract-osd` on an immutable system without it,
+`sudo dnf install tesseract tesseract-osd` on classic Fedora).
 `tools/install-desktop.sh --with-tesseract` runs the Homebrew command for you (on a terminal it
-asks first); it never uses `sudo`, and `--uninstall` leaves Homebrew packages alone.
+asks first); it never uses `sudo`, and `--uninstall` leaves Homebrew packages alone
+(`--with-tesseract` is ignored with `--uninstall`, and the installer says so).
 
 Not done yet: editing photos after the scan (rotate, fix the date, re-run the enhancement), the
 scanner's Start button, and processing while still scanning. A scan through the app on real

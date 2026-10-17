@@ -4,13 +4,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from fastfoto_linux.documents import DocumentResult, OcrStatus
+from fastfoto_linux.documents.ocr_tools import OCR_UNAVAILABLE_TEXT
 from fastfoto_linux.gui.report import count_noun
 
 _OCR_PROBLEMS = (OcrStatus.FAILED, OcrStatus.TIMED_OUT)
 _SEARCHABLE_LINES = {
     OcrStatus.DONE: "Searchable text: yes",
     OcrStatus.SKIPPED: "Searchable text: no (turned off)",
-    OcrStatus.UNAVAILABLE: "Searchable text: no (OCRmyPDF is not installed)",
 }
 
 
@@ -55,6 +55,8 @@ class DocumentItem:
         if self.ocr_warning:
             reason = self.ocr_detail or self.ocr.value
             return f"Searchable text could not be added ({reason}); the plain PDF was saved instead"
+        if self.ocr is OcrStatus.UNAVAILABLE:  # the detail names what is missing
+            return f"Searchable text: no ({self.ocr_detail or OCR_UNAVAILABLE_TEXT})"
         return _SEARCHABLE_LINES[self.ocr]
 
 

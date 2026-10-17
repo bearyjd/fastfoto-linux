@@ -21,12 +21,25 @@ def test_the_hints_say_what_to_install_or_that_the_native_install_is_needed() ->
     assert FLATPAK_OCR_HINT == "Searchable text needs the native install"
 
 
-def test_missing_ocr_on_an_immutable_system_says_to_use_homebrew(
+def test_missing_ocr_on_an_immutable_system_without_brew_says_rpm_ostree_or_homebrew(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     marker = tmp_path / "ostree-booted"
     marker.touch()
     monkeypatch.setattr(ocr_tools, "OSTREE_MARKER", marker)
+    missing = tools(found=None, flatpak=False)
+    assert missing.ocr_hint == "Install Tesseract: " + ocr_tools.OSTREE_NO_BREW_HINT
+
+
+def test_missing_ocr_where_brew_runs_says_to_use_homebrew(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    folder = tmp_path / "bin"
+    folder.mkdir()
+    (folder / "brew").write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    (folder / "brew").chmod(0o755)
+    monkeypatch.setenv("PATH", str(folder))
+    monkeypatch.setattr(ocr_tools, "BREW", "brew")
     missing = tools(found=None, flatpak=False)
     assert missing.ocr_hint == "Install Tesseract: brew install tesseract"
 

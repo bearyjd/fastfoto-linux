@@ -6,7 +6,7 @@ The first pull request (core and `ffscan doc process`) records what it decided u
 
 ## Goal
 Scan paper documents (letters, forms, receipts) through the FF-680W feeder into **one multi-page PDF per
-batch**, with blank pages dropped and **searchable text** when OCRmyPDF is installed — from the `ffscan`
+batch**, with blank pages dropped and **searchable text** when OCR is available (OCRmyPDF and Tesseract) — from the `ffscan`
 CLI and the desktop app. This replaces the document scanning done in the Windows VM today.
 
 ## User stories
@@ -63,7 +63,13 @@ ffscan doc process PAGE.png ... --out DIR [--mkdir] [same output options]
 7. **OCR**: `ocrmypdf --output-type pdf --rotate-pages -l LANGS --rasterizer pypdfium in.pdf out.pdf` on a
    staging file, with a time limit, cancellable. `--output-type pdf` avoids a Ghostscript re-encode of
    the images, and `--rasterizer pypdfium` keeps Ghostscript (the host's 10.06 is in OCRmyPDF's
-   known-defect range) out of the run altogether. If OCR fails
+   known-defect range) out of the run altogether. That is `--rasterizer pypdfium` only for OCRmyPDF 17 or
+   newer: older versions do not know the option and would exit with status 2 ("unrecognized arguments"),
+   so for them it is left out (they use Ghostscript). The version is read from the installed
+   metadata for the app's own module, and from `ocrmypdf --version` (asked once, 10 s limit) for a
+   program; a version that cannot be told gets the command without the option. A status 2 is worded
+   "the installed OCRmyPDF (version X) did not accept the options it was given, or could not read the
+   PDF": the exit code cannot tell the two apart and the output is never read. If OCR fails
    or times out, publish the plain PDF, warn, exit 1. Never log recognised text.
 8. **Publish** once with the existing safe writer (folder lock, fsync, no overwrite).
 
@@ -453,12 +459,18 @@ Flatpak does not install it yet), so the native install has it whatever the dist
 is run as `python -P -m ocrmypdf` of the app's own interpreter when that can import it (`-P`, safe-path
 mode, so that the folder `ffscan` is run in is never searched for modules), else the
 `ocrmypdf` on PATH, else the one in Homebrew's folder. Tesseract is a program: on PATH, else in
-`/home/linuxbrew/.linuxbrew/bin`, which the PATH of a menu launcher lacks; `ocrmypdf` is started with
-that folder and the interpreter's folder in front of PATH. OCR is available only with both.
+`/home/linuxbrew/.linuxbrew/bin`, which the PATH of a menu launcher lacks. `ocrmypdf` is started with
+the PATH it was started with, then the interpreter's folder, then Homebrew's: the order of the
+search, so that Homebrew's folder never shadows the system's own programs, and an unset PATH is
+the default path. Homebrew's folder is used (by the search and by the run) only when it is owned by
+root or by the user and is not writable by its group or by others; otherwise it is left out and
+the reason goes to the `--debug` log. OCR is available only with both programs, and every
+message that says it is not names what is missing: Tesseract, OCRmyPDF or both.
 
 Tesseract comes from Homebrew (`brew install tesseract`, `brew install tesseract-lang` for other
 languages; it includes `osd`, the orientation data that `--rotate-pages` needs) on an rpm-ostree
-system (`/run/ostree-booted` exists) or where `brew` is present, and from
+system or wherever `brew` is present, from `rpm-ostree install tesseract tesseract-osd` (then
+reboot) on an immutable system (`/run/ostree-booted` exists) where `brew` is not, and from
 `sudo dnf install tesseract tesseract-osd` on classic Fedora. `ocrmypdf` is not installed from
 Homebrew: its formula pulls in Ghostscript and its own Python. Without the orientation data
 OCRmyPDF's rotation step can fail the whole run, which here falls back to the plain PDF. Read from

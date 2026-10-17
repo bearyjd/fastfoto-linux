@@ -60,21 +60,23 @@ def test_the_rasterizer_is_pdfium_so_that_ghostscript_is_never_used(
     assert argv[argv.index("--output-type") + 1] == "pdf"  # as before: no PDF/A, no Ghostscript
 
 
-def test_ocrmypdf_runs_with_the_brew_folder_and_the_interpreters_folder_on_path(
+def test_ocrmypdf_runs_with_the_path_it_was_given_then_the_interpreters_folder_then_brews(
     fake_on_path: Path, staging: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """The order of detection, so that Homebrew's folder never shadows /usr/bin."""
     brew_bin = tmp_path / "linuxbrew" / "bin"
     brew_bin.mkdir(parents=True)
+    brew_bin.chmod(0o755)
     monkeypatch.setattr(ocr_tools, "BREW_BIN", brew_bin)
     monkeypatch.setenv("PATH", f"{fake_on_path.parent}{os.pathsep}/usr/bin")
     record = tmp_path / "record.json"
     run_fake(fake_on_path, monkeypatch, staging_parent=staging, record_to=str(record))
     folders = fake.read_record(record)["path"].split(os.pathsep)
     assert folders == [
-        str(brew_bin),
-        str(Path(sys.executable).parent),
         str(fake_on_path.parent),
         "/usr/bin",
+        str(Path(sys.executable).parent),
+        str(brew_bin),
     ]
 
 

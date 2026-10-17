@@ -2,7 +2,9 @@
 
 ``ocrmypdf`` is run as a module of the app's own interpreter when it can import it, else as the
 program found by ``ocr_tools``; either way with Homebrew's folder on its PATH, where Tesseract
-may be (``ocr_tools.ocr_environment``). Its rasterizer is pdfium, so Ghostscript is never used.
+may be (``ocr_tools.ocr_environment``). From version 17 on, whose ``--rasterizer`` option it is
+given, its rasterizer is pdfium, so the known-defective Ghostscript is not used; an older one
+does not know the option, so it is not passed (``ocr_version``).
 
 The PDF is staged in a private folder (mode 0700) of the system's temporary directory, never in
 the output folder; it is removed on every path except a SIGKILL of ``ffscan`` itself, which can
@@ -29,12 +31,13 @@ from pathlib import Path
 from fastfoto_linux.documents.errors import OcrCancelledError
 from fastfoto_linux.documents.ocr_codes import TOOL, describe_exit
 from fastfoto_linux.documents.ocr_tools import find_ocrmypdf, ocr_environment  # noqa: F401 - re-exported
+from fastfoto_linux.documents.ocr_version import accepts_rasterizer, ocrmypdf_version
 
 logger = logging.getLogger(__name__)
 
 LANGS_PATTERN = r"[a-z_]+(\+[a-z_]+)*"
 DEFAULT_LANGS = "eng"
-RASTERIZER = "pypdfium"  # the known-defective Ghostscript 10.06 is never used
+RASTERIZER = "pypdfium"  # for the versions that take it, so Ghostscript 10.06 is not used
 GRACE_S = 5.0  # SIGTERM to SIGKILL
 POLL_S = 0.05
 STAGING_PREFIX = ".ffscan-ocr-"
@@ -51,7 +54,7 @@ class OcrMode(StrEnum):
 class OcrStatus(StrEnum):
     DONE = "done"
     SKIPPED = "skipped"  # --ocr off
-    UNAVAILABLE = "unavailable"  # --ocr auto and ocrmypdf or Tesseract is not installed
+    UNAVAILABLE = "unavailable"  # --ocr auto and ocrmypdf, Tesseract or both is not installed
     FAILED = "failed"
     TIMED_OUT = "timed out"
 
@@ -74,10 +77,14 @@ def validate_langs(text: str) -> str:
     return text
 
 
-def _command(executable: str, langs: str, source: Path, target: Path) -> list[str]:
+def _command(
+    executable: str, langs: str, source: Path, target: Path, *, rasterizer: bool
+) -> list[str]:
     """The command line; ``executable`` is the running interpreter when ocrmypdf is its module,
-    run in safe-path mode (-P) so that the current folder is not searched for modules."""
+    run in safe-path mode (-P) so that the current folder is not searched for modules.
+    ``rasterizer`` is whether this version of ocrmypdf takes ``--rasterizer``."""
     runner = [executable, "-P", "-m", TOOL] if executable == sys.executable else [executable]
+    options = ["--rasterizer", RASTERIZER] if rasterizer else []
     return [
         *runner,
         "--output-type",
@@ -85,8 +92,7 @@ def _command(executable: str, langs: str, source: Path, target: Path) -> list[st
         "--rotate-pages",
         "-l",
         langs,
-        "--rasterizer",
-        RASTERIZER,
+        *options,
         str(source),
         str(target),
     ]
@@ -152,6 +158,7 @@ def _run(  # noqa: PLR0913
     plain_pdf: bytes,
     *,
     executable: str,
+    version: str | None,
     langs: str,
     page_count: int,
     folder: Path,
@@ -163,7 +170,7 @@ def _run(  # noqa: PLR0913
     source.write_bytes(plain_pdf)
     devnull = subprocess.DEVNULL
     process = subprocess.Popen(  # an argument list, never a shell
-        _command(executable, langs, source, target),
+        _command(executable, langs, source, target, rasterizer=accepts_rasterizer(version)),
         stdin=devnull,
         stdout=devnull,
         stderr=devnull,
@@ -174,7 +181,7 @@ def _run(  # noqa: PLR0913
     if status is None:
         return OcrOutcome(OcrStatus.TIMED_OUT, f"ocrmypdf did not finish within {timeout_s:g} s")
     if status != 0:
-        return OcrOutcome(OcrStatus.FAILED, describe_exit(status, langs))
+        return OcrOutcome(OcrStatus.FAILED, describe_exit(status, langs, version))
     result = _checked(target, page_count)
     if isinstance(result, str):
         return OcrOutcome(OcrStatus.FAILED, result)
@@ -192,8 +199,8 @@ def run_ocr(  # noqa: PLR0913
     grace_s: float = GRACE_S,
     cancel: threading.Event | None = None,
 ) -> OcrOutcome:
-    """Run ``ocrmypdf --output-type pdf --rotate-pages -l LANGS --rasterizer pypdfium`` on a
-    staging copy of the PDF.
+    """Run ``ocrmypdf --output-type pdf --rotate-pages -l LANGS`` (and, for version 17 and up,
+    ``--rasterizer pypdfium``) on a staging copy of the PDF.
 
     The copy lives in a new private folder (mode 0700) inside ``staging_parent``, which is the
     system temporary directory unless a caller names another one (the output folder is not a
@@ -204,11 +211,13 @@ def run_ocr(  # noqa: PLR0913
     Recognised text is never read or logged.
     """
     validate_langs(langs)
+    version = ocrmypdf_version(executable)  # asked once per program
     try:
         with tempfile.TemporaryDirectory(prefix=STAGING_PREFIX, dir=staging_parent) as folder:
             return _run(
                 plain_pdf,
                 executable=executable,
+                version=version,
                 langs=langs,
                 page_count=page_count,
                 folder=Path(folder),

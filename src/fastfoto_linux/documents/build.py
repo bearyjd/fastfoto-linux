@@ -41,6 +41,7 @@ from fastfoto_linux.documents.ocr import (
     run_ocr,
     validate_langs,
 )
+from fastfoto_linux.documents.ocr_tools import ocr_missing_text
 from fastfoto_linux.documents.pdf import assemble_pdf
 from fastfoto_linux.documents.publish import publish_pdf, require_output_folder
 from fastfoto_linux.documents.trim import trim_page
@@ -121,7 +122,7 @@ def _ocr_executable(mode: OcrMode) -> str | None:
         return None
     found = find_ocrmypdf()
     if found is None and mode is OcrMode.ON:
-        raise OcrMissingError("searchable text needs ocrmypdf, which is not installed")
+        raise OcrMissingError(f"searchable text needs OCR, but {ocr_missing_text()}")
     return found
 
 
@@ -165,7 +166,7 @@ def _searchable(  # noqa: PLR0913 - what OCR needs, and the one hook, in one pla
     if settings.ocr is OcrMode.OFF:
         return OcrOutcome(OcrStatus.SKIPPED)
     if executable is None:
-        return OcrOutcome(OcrStatus.UNAVAILABLE, "ocrmypdf is not installed")
+        return OcrOutcome(OcrStatus.UNAVAILABLE, ocr_missing_text())
     if on_ocr is not None:
         on_ocr()
     timeout = settings.ocr_timeout_s

@@ -4,16 +4,21 @@ Dust, paper texture and faint show-through from the other side are not marks; an
 could take for writing is, however big (a signature is one large mark). Every length is in
 millimetres and turned into pixels with the page's resolution.
 
-The blank rule also leaves out a fold crease: a faint line. A line is a mark that is straight
-(``STRAIGHT_SHARE`` of its pixels within ``STRAIGHT_TOLERANCE_MM`` of its principal axis, so a
-slanted one counts), thin (``STROKE_MAX_MM`` wide on average) and at least ``ELONGATION_MIN``
-times longer than wide; it is faint when no part of it is darker than ``FAINT_DARKEST`` and a mark
-by itself. Writing is never straight for long, however thin the pen or faint the pencil. The
-letter folded in thirds that was scanned on both sides has creases on its blank back. A dark speck
-on a crease is dust and does not count; dark ink touching one (a letter, a stem, a "7") does.
-Limits: a faint straight single stroke (an "l", an "I", a "-", a "!", a ruled line) is a line too
-and may be ignored, as may the stems of a faint "i" or "ii"; creases that cross are one big mark
-and keep the page.
+The blank rule also leaves out a fold crease: a faint line with nothing beside it. A line is a
+mark that is straight (``STRAIGHT_SHARE`` of its pixels within ``STRAIGHT_TOLERANCE_MM`` of its
+principal axis, so a slanted one counts), thin (``STROKE_MAX_MM`` wide on average) and at least
+``ELONGATION_MIN`` times longer than wide; it is faint when no part of it is darker than
+``FAINT_DARKEST`` and a mark by itself. Writing is never straight for long, however thin the pen or
+faint the pencil. Nothing beside it: no other mark has a pixel more than ``INNER_MM`` and at most
+``OUTER_MM`` off its axis, within its length. Pale type that the scanner has blurred leaves only
+the stems of its letters, each a faint straight stroke but with other stems beside it; the pieces
+of one crease lie end to end, and dust is too small to be a mark. The letter folded in thirds that
+was scanned on both sides has creases on its blank back. A dark speck on a crease is dust and does
+not count; dark ink touching one (a letter, a stem, a "7") does.
+Limits: a lone faint straight stroke (an "l", an "I", a "-", a "!", the stem of an "i") and dashed
+or ruled lines are lines too and may be ignored, as is text so pale and small that only a few
+isolated stems register; a crease with a mark beside it keeps the page, and so do creases that
+cross.
 """
 
 from dataclasses import dataclass
@@ -131,10 +136,10 @@ def _along_across(
     return dx * cos + dy * sin, dy * cos - dx * sin
 
 
-def _tolerance(scale: _Scale) -> float:
-    """``STRAIGHT_TOLERANCE_MM`` in working pixels, with the growth of keeping the darkest pixel
-    of each block (half of it on each side of a line)."""
-    return (STRAIGHT_TOLERANCE_MM * scale.dpi / MM_PER_INCH + (scale.factor - 1) / 2) / scale.factor
+def _reach(mm: float, scale: _Scale) -> float:
+    """``mm`` off a line's axis in working pixels, with the growth of keeping the darkest pixel of
+    each block (half of it on each side of a line)."""
+    return (mm * scale.dpi / MM_PER_INCH + (scale.factor - 1) / 2) / scale.factor
 
 
 def _extent(labels: np.ndarray, axes: np.ndarray, size: int) -> np.ndarray:
@@ -163,7 +168,7 @@ def _line_like(body: np.ndarray, whole: np.ndarray, size: int, scale: _Scale) ->
     axes = _axes(ids, xs, ys, size)
     _, across = _along_across(ids, xs, ys, axes)
     area = np.bincount(ids, minlength=size)
-    near = np.bincount(ids[np.abs(across) <= _tolerance(scale)], minlength=size)
+    near = np.bincount(ids[np.abs(across) <= _reach(STRAIGHT_TOLERANCE_MM, scale)], minlength=size)
     grown = scale.factor - 1
     thick = area / _extent(body, axes, size) * scale.factor - grown
     long = _extent(whole, axes, size) * scale.factor - grown
@@ -211,7 +216,7 @@ def _strip(line: np.ndarray, scale: _Scale, *, needs_length: bool) -> np.ndarray
     span = (along.max() - along.min() + 1) * scale.factor - (scale.factor - 1)
     if needs_length and span < mm_to_px(MARK_MIN_MM, scale.dpi):
         return np.zeros(line.shape, dtype=bool)
-    half = min(_tolerance(scale), np.abs(across).max() + 0.5)
+    half = min(_reach(STRAIGHT_TOLERANCE_MM, scale), np.abs(across).max() + 0.5)
     rows, columns = np.indices(line.shape)
     cx, cy, cos, sin = axes[:, 0]
     return np.abs((rows - cy) * cos - (columns - cx) * sin) <= half
@@ -266,6 +271,44 @@ def _faint_lines(
     return lines[1:]
 
 
+def _has_neighbour(
+    labels: np.ndarray, marked: np.ndarray, box: np.ndarray, label: int, scale: _Scale
+) -> bool:
+    """Whether a mark lies beside component ``label``: another marked component with a pixel more
+    than ``INNER_MM`` and at most ``OUTER_MM`` off its axis, within its length along the axis.
+
+    Pieces of one crease lie end to end, outside each other's length, and dust is not marked.
+    """
+    inner, outer = _reach(INNER_MM, scale), _reach(OUTER_MM, scale)
+    pad = int(np.ceil(outer)) + 1
+    x, y, width, height, _ = box.tolist()
+    window = labels[max(0, y - pad) : y + height + pad, max(0, x - pad) : x + width + pad]
+    ys, xs = np.nonzero(window == label)
+    axes = _axes(np.zeros(len(ys), dtype=np.intp), xs, ys, 1)
+    along, _ = _along_across(np.zeros(len(ys), dtype=np.intp), xs, ys, axes)
+    other_ys, other_xs = np.nonzero(marked[window] & (window != label))
+    beside, off = _along_across(np.zeros(len(other_ys), dtype=np.intp), other_xs, other_ys, axes)
+    reach = (np.abs(off) > inner) & (np.abs(off) <= outer)
+    return bool(np.any(reach & (beside >= along.min()) & (beside <= along.max())))
+
+
+def _ignored_lines(
+    labels: np.ndarray, grey: np.ndarray, boxes: np.ndarray, wanted: np.ndarray, scale: _Scale
+) -> np.ndarray:
+    """Which components (rows of ``boxes``) are ignored: the faint lines with no mark beside them.
+
+    Writing has other marks beside every stroke; a crease has none. The neighbours are the
+    components of ``wanted``, faint lines included, so the stems of pale type are each other's.
+    Only a line can turn back into a mark here, never the other way round.
+    """
+    lines = _faint_lines(labels, grey, boxes, wanted, scale)
+    marked = np.concatenate([[False], wanted])
+    for index in np.nonzero(lines)[0]:
+        if _has_neighbour(labels, marked, boxes[index], int(index) + 1, scale):
+            lines[index] = False
+    return lines
+
+
 def find_marks(
     page: LoadedPage,
     *,
@@ -284,8 +327,9 @@ def find_marks(
     With ``ignore_faint_lines`` a fold crease is not a mark either: a straight (``STRAIGHT_SHARE``
     of its pixels within ``STRAIGHT_TOLERANCE_MM`` of its axis), thin (``STROKE_MAX_MM``) and
     elongated (``ELONGATION_MIN``) stroke, with no part darker than ``FAINT_DARKEST`` that is a
-    mark by itself (a dark speck on it is dust, dark ink on it is ink). Other marks are as without
-    it.
+    mark by itself (a dark speck on it is dust, dark ink on it is ink) and no other mark beside it
+    (more than ``INNER_MM`` and at most ``OUTER_MM`` off its axis, within its length). Other marks
+    are as without it.
     """
     require_size(page.pixels.shape[1], page.pixels.shape[0], page.dpi)
     factor = max(1, int(page.dpi // WORK_DPI))
@@ -306,7 +350,7 @@ def find_marks(
     scale = _Scale(factor, page.dpi, area)
     wanted = _is_mark_sized(boxes, scale)
     if ignore_faint_lines:
-        wanted &= ~_faint_lines(labels, grey[rows, columns], boxes, wanted, scale)
+        wanted &= ~_ignored_lines(labels, grey[rows, columns], boxes, wanted, scale)
     marks = [
         Mark(
             (x + margin) * factor,

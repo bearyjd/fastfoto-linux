@@ -49,7 +49,7 @@ def test_the_limits_of_the_crease_rule_are_listed_exactly(name: str) -> None:
     )
     assert "dashed or ruled lines" in text
     assert "text so pale and small that only a few isolated stems register" in text
-    assert "(darkest 190, 6 to 8 pt)" in text
+    assert "darkest 190, 6 to 8 pt" in text
     assert "a crease with a mark beside it keeps the page" in text
     assert "creases that cross are one big mark and keep the page" in text
     assert "a speck under a millimetre next to a crease segment under 2 mm long" in text

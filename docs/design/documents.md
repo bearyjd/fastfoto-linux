@@ -207,8 +207,8 @@ What the first pull request settled where the specification left room.
   (local contrast) to count; lighter pencil is indistinguishable from show-through. A page is
   blank when it has **no** mark, so one short line, a **lone page number** (decided: kept, it
   cannot be told from content), a punch hole or a scanner streak keeps the page; the cost of that
-  caution is a few blank backs kept. The one thing the rule lets go is a faint straight thin line
-  (next point), so a faint straight single stroke can be lost.
+  caution is a few blank backs kept. The one thing the rule lets go is a faint straight thin line with
+  nothing beside it (next point), so a lone faint straight stroke can be lost.
 - **Fold creases.** The blank back of a letter folded in thirds was kept: its two rows of creases
   are marks. The blank rule (not trimming: `find_marks` has a flag, `ignore_faint_lines`, that
   only `is_blank` sets) ignores faint fold creases, the marks that are faint lines. A line is
@@ -229,7 +229,21 @@ What the first pull request settled where the specification left room.
   and dark ink touching one keeps the page when it would be a mark on its own: its dark parts, and
   whatever of the component lies off the strip that the line (away from the dark parts) follows,
   are judged with the same mask and the same rule. A hairline stem or a "7" that is a mark alone
-  is one on a crease; a stroke on its own has no line to follow and is all ink. Two real creased
+  is one on a crease; a stroke on its own has no line to follow and is all ink.
+  A faint line is ignored only when it has nothing beside it. Light type that the scanner has
+  blurred clears the contrast mask only along the stems of its letters, and each stem alone is a
+  faint straight line: a page of them was called blank. Writing has other marks beside every stroke
+  and a crease has none: a faint line with nothing beside it is a crease. Any other mark with a
+  pixel more than 0.8 mm and at most 4.0 mm off the line's axis (`INNER_MM` and `OUTER_MM`),
+  alongside it (the pixel's position along the axis inside the line's own length), makes the line a
+  mark. The inner limit and the length keep out the neighbours a crease does have: the pieces of one
+  crease lie end to end, near the axis and outside each other's length. The neighbours are all the
+  mark-sized components, faint lines included, so the stems of pale type are each other's; a
+  neighbour must itself be mark-sized, and thin fragments beside the slanted artefact are dust, not
+  neighbours. The any-spot variant, which took any dark spot beside the line, was tried and kept a
+  real blank back, whose long artefact has thin fragments 1.9 to 3.8 mm beside it (1.0 to 1.2 mm
+  long, 0.17 thick). The rule only ever turns an ignored line back into a mark: it can keep a page
+  that the straight-line rule dropped and never drops one that rule kept. Two real creased
   backs gave the numbers: creases 0.17 to 0.51 mm thick, darkest 152 to 204, in segments 2 to
   23 mm long in two rows at a third and two thirds of the height; one faint tall artefact
   7.6 x 153 mm (about 2.8 degrees off vertical, darkest 176) along the slanted edge of the deskew
@@ -241,11 +255,13 @@ What the first pull request settled where the specification left room.
   absorbs a bow of about 0.3 mm over 153 mm; a line bowed by 0.5 mm is not straight and counts.
   The tests use pencil-like strokes darkest 110 to 150; that is a test value, not a measurement
   of real pencil. Known limits, all of them on the side of keeping a page except the first two:
-  a faint straight single stroke ("l", "I", "-", "!", a ruled line) is a line and may be
-  ignored, and so are the stems of a faint "i", "j" or "ii" (separate marks, each a stroke; joined
-  in cursive they are not straight); creases that cross are one big mark and keep the page; a
-  speck under a millimetre next to a crease segment under 2 mm long can keep the page, at
-  300 dpi and finer (a stub that short shows nothing of the crease's course, and real segments
+  a lone faint straight stroke ("l", "I", "1", "-", "!", the stem of an "i" or "j") and dashed or
+  ruled lines (pieces end to end, or rules more than 4.0 mm apart) are lines and may be ignored;
+  text so pale and small that only a few isolated stems register (darkest 190, 6 to 8 pt, where
+  the plain detector finds three marks or fewer) may be ignored; a crease with a mark beside it
+  keeps the page, so do two creases less than 4.0 mm apart; creases that cross are one big
+  mark and keep the page; a speck under a millimetre next to a crease segment under 2 mm long
+  can keep the page, at 300 dpi and finer (a stub that short shows nothing of the crease's course, and real segments
   are 2 to 23 mm); ink lying along a
   crease counts only where it leaves it, so a stroke that is a mark only thanks to the part inside
   the crease can be missed; a speck on a crease counts when the scan is soft enough to grow it

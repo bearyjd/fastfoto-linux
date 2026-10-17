@@ -15,9 +15,10 @@ def is_blank(page: LoadedPage, *, trimmed_bottom: int = 0) -> bool:
 
     One confident mark keeps the page, so a signature, a short line, or a page number alone is
     not blank. The one thing that is not a mark is a faint fold crease: a line, that is a mark
-    that is straight, thin and elongated, with no dark part that would be a mark by itself (see
-    ``find_marks``). Faint writing is never straight for long and keeps the page; dark ink that
-    touches a crease does too. When in doubt the answer is False.
+    that is straight, thin and elongated, with no dark part that would be a mark by itself and no
+    other mark beside it (see ``find_marks``). Faint writing is never straight for long and has
+    other strokes beside it, so it keeps the page; dark ink that touches a crease does too. When
+    in doubt the answer is False.
     """
     return not find_marks(
         page, margin_mm=BLANK_MARGIN_MM, trimmed_bottom=trimmed_bottom, ignore_faint_lines=True

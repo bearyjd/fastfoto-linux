@@ -110,7 +110,7 @@ def add_output_options(parser: argparse.ArgumentParser) -> None:
         default=FEED_FACE_UP,
         help=(
             "how photos were loaded (top edge first): face-up scans the back first (default); "
-            "face-down scans the front first"
+            "face-down scans the front first (these names used to mean the opposite)"
         ),
     )
     _add_enhancement_options(parser)

@@ -144,7 +144,7 @@ _SYNTAX_CHECKS: tuple[tuple[str, _Check], ...] = (
     ("album", _check_album_text),
     ("date", _check_date),
     ("notes", _check_notes),
-    ("loaded", lambda form: _choice("loaded", form.loaded, FEED_CHOICES)),
+    ("loaded", lambda form: _choice("loading direction", form.loaded, FEED_CHOICES)),
     ("backs", lambda form: _choice("backs setting", form.backs, BACK_CHOICES)),
     ("dpi", lambda form: _choice("resolution", form.dpi, SUPPORTED_DPI)),
 )

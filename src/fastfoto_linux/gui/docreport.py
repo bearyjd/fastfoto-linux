@@ -1,6 +1,7 @@
 """The words of Documents mode: progress, results, failures, the offer to process kept pages."""
 
 import errno
+import re
 from pathlib import Path
 from types import MappingProxyType
 
@@ -33,6 +34,8 @@ _RAW_REASONS = {
     DocumentRawReason.PAGES_DROPPED: "blank pages were left out",
     DocumentRawReason.NOT_DELETED: "they could not be deleted",
 }
+_PLAIN_WORD = re.compile(r"[a-z]+(?=\s|$)")  # not "page-1.png:", "scan.png" or "page:"
+_TOOL_NAMES = frozenset({"ocrmypdf", "tesseract", "scanimage"})
 _NOT_STARTED = (DocumentSettingsError, OcrMissingError)  # refused before anything was scanned
 _DISK_FULL = "The disk is full"
 _NOT_ALLOWED = "The folder cannot be written to (permission denied)"
@@ -98,9 +101,14 @@ def _raw_note(raw_dir: Path | None, reason: DocumentRawReason | None) -> str:
 
 
 def _capitalised(words: str) -> str:
-    """``words`` starting a sentence: a lower-case first word gets its capital, a file name none."""
-    first = words.split(" ", 1)[0]
-    return words[:1].upper() + words[1:] if first.isalpha() else words
+    """``words`` starting a sentence: a plain lower-case first word gets its capital.
+
+    A file name ("page-0002.png: ..."), a tool name ("ocrmypdf ...") or a quote stays as it is.
+    """
+    first = _PLAIN_WORD.match(words)
+    if first is None or first.group() in _TOOL_NAMES:
+        return words
+    return words[:1].upper() + words[1:]
 
 
 def document_error_banner(
@@ -117,9 +125,9 @@ def document_error_banner(
     if isinstance(error, _NOT_STARTED) and raw_dir is None:
         return Banner("error", f"The scan did not start: {sentence(str(error))}")
     if isinstance(error, DocumentError):
-        return Banner("error", f"No PDF was made. {_capitalised(sentence(str(error)))}{note}")
+        return Banner("error", f"No PDF was made. {sentence(_capitalised(str(error)))}{note}")
     if isinstance(error, OSError) and raw_dir is not None:
-        words = _capitalised(sentence(os_error_words(error)))
+        words = sentence(_capitalised(os_error_words(error)))
         return Banner("error", f"No PDF was made. {words}{note}")
     text = EMPTY_FEEDER_TEXT if isinstance(error, NoDocumentsError) else error_text(error)
     return Banner("error", f"The scan failed. {sentence(text)}{note}")

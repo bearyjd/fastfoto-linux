@@ -17,7 +17,6 @@ from fastfoto_linux.gui.docform import DocumentForm
 from fastfoto_linux.gui.doctools import DocumentSetup, DocumentTools
 from fastfoto_linux.gui.form import (
     BACK_CHOICES,
-    FEED_CHOICES,
     ScanForm,
     absolute_folder,
     validate_filesystem,
@@ -376,10 +375,6 @@ class Bridge(QObject):
     @Property("QVariantList", constant=True)
     def dpiChoices(self) -> list[int]:
         return list(SUPPORTED_DPI)
-
-    @Property("QVariantList", constant=True)
-    def feedChoices(self) -> list[str]:
-        return list(FEED_CHOICES)
 
     @Property("QVariantList", constant=True)
     def backChoices(self) -> list[str]:

@@ -64,6 +64,7 @@ class DocumentSettings:
     langs: str = DEFAULT_LANGS
     fallback_dpi: int | None = None
     ocr_timeout_s: float | None = None  # None: a limit that grows with the page count
+    duplex: bool = True  # pages are sheets' sides in order, (1, 2), (3, 4) ...; False: all fronts
 
 
 @dataclass(frozen=True)

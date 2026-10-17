@@ -83,6 +83,13 @@ def add_fallback_dpi_option(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def add_pairing_option(parser: argparse.ArgumentParser) -> None:
+    """``--simplex`` of ``doc process`` (stub: red)."""
+    parser.add_argument_group("pairing").add_argument(
+        "--simplex", action="store_true", help="every page is a front"
+    )
+
+
 def add_document_scan_options(parser: argparse.ArgumentParser) -> None:
     """Options that only matter when pages are scanned from the feeder."""
     scanning = parser.add_argument_group("scanning")

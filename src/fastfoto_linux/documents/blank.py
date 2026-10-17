@@ -2,6 +2,7 @@
 
 from fastfoto_linux.documents.loader import LoadedPage
 from fastfoto_linux.documents.marks import find_marks
+from fastfoto_linux.documents.trim import Trimmed
 
 BLANK_MARGIN_MM = 5.0  # scanner shadows and edge marks live here; the margin is ignored
 
@@ -24,3 +25,8 @@ def is_blank(page: LoadedPage, *, trimmed_bottom: int = 0) -> bool:
     return not find_marks(
         page, margin_mm=BLANK_MARGIN_MM, trimmed_bottom=trimmed_bottom, ignore_faint_lines=True
     )
+
+
+def is_blank_beside(page: Trimmed, partner: Trimmed | None) -> bool:
+    """Stub (red): ``is_blank``, whatever the partner."""
+    return is_blank(page.page, trimmed_bottom=page.tail_rows)

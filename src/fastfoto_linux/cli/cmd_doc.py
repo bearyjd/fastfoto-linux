@@ -13,6 +13,7 @@ from fastfoto_linux.cli.doc_options import (
     add_document_options,
     add_document_scan_options,
     add_fallback_dpi_option,
+    add_pairing_option,
     build_settings,
 )
 from fastfoto_linux.cli.doc_summary import (
@@ -81,6 +82,7 @@ def add_parser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]"
     process.add_argument("pages", nargs="+", type=Path, metavar="PAGE.png", help="raw page files")
     add_document_options(process)
     add_fallback_dpi_option(process)
+    add_pairing_option(process)
     process.set_defaults(handler=run_process)
 
 

@@ -5,8 +5,8 @@ like the other side's lie at arbitrary offsets inside the search window."""
 import pytest
 
 from fastfoto_linux.documents.holes import OFFSET_SPREAD_MM
-from tests.doc_synth import Scene
-from tests.doc_synth_holes import Hole, dash, disc, holes_painter, sheet
+from tests.doc_synth import LETTER_MM, Scene
+from tests.doc_synth_holes import Hole, dash, disc, holes_painter, letter_sheet, sheet
 from tests.documents.holes_helpers import DPIS, PAPER_WIDTH_MM, blanks, mirrored
 
 KEPT = (False, False)
@@ -95,3 +95,16 @@ def test_the_offset_is_from_centre_to_centre_whatever_the_sizes(dpi: int) -> Non
     back = [like(front[0], 4.5, 4.5), mirrored([front[1]])[0]]
     sides = sheet(dpi, [holes_painter(front)], [holes_painter(back)], shift_mm=(0.6, 0.3))
     assert blanks(*sides) == BLANK
+
+
+@pytest.mark.parametrize(("tilt", "blank"), [(0.1, True), (0.4, False)], ids=str)
+def test_a_three_hole_punch_on_letter_paper_needs_the_sides_within_about_a_sixth_of_a_degree(
+    tilt: float, blank: bool
+) -> None:
+    """Holes 180 mm apart: a turn of the back spreads their offsets by 180 mm times its tangent."""
+    holes = [disc(8.0, y, 6.0) for y in (50.0, 139.0, 228.0)]
+    back = [hole.mirrored(LETTER_MM[0]) for hole in holes]
+    front, back_side = letter_sheet(
+        200, [holes_painter(holes)], [holes_painter(back)], shift_mm=(0.8, -0.5), tilt_deg=tilt
+    )
+    assert blanks(front, back_side) == (blank, blank)

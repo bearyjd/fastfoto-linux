@@ -114,6 +114,8 @@ def test_the_limits_of_the_hole_rule_are_listed(name: str) -> None:
     ) in text
     assert "Printed or inked marks are never holes" in text
     assert "A 1-bit page has no greys (a hole is as black as print)" in text
+    assert "holes 180 mm apart (a three-hole punch on Letter paper)" in text
+    assert "within about 0.15 degrees of each other" in text
     assert (
         "Pairing is by page order, so `doc process` given pages that do not start with a front "
         "pairs them wrongly"
@@ -171,6 +173,7 @@ def test_the_module_text_names_the_rule_and_its_limits() -> None:
     assert "Print is never a hole" in text
     assert "share one registration" in text
     assert "A 1-bit page has no greys" in text
+    assert "holes 180 mm apart (a three-hole punch on Letter paper)" in text
     assert "the pairing is by page order, so pages that do not start with a front" in text
     assert "One shape explains one mark" in text
     assert "not clipped by the box or by the blank margin" in text

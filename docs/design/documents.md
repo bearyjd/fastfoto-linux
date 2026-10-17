@@ -488,7 +488,20 @@ What the first pull request settled where the specification left room.
   An odd last page has no partner. A sheet is worked on at a time (two pages in memory at most);
   The two pages of a sheet are loaded together to be judged by each other (a cancel is honoured before each is decoded), then `on_page` and the cancel check run for each page in turn, just before it is judged and encoded. Without pairing, or without a
   partner, there are no holes and a page is judged as it always was.
-- **Limits of the hole rule:** pencil and grey marks rely on shape, tint and registration: the same symmetric mark at the mirrored spots of both sides, within 25 mm of an edge, on an otherwise blank back is taken for a hole when it is grey and neutral, and the back is dropped (a lone symmetric pencil mark such as an "o" or a "-" at the same spot of both sides, on a back with nothing else). Printed or inked marks are never holes: page numbers, notes in pen and stamps keep their page, whatever lies opposite (the digits of "5" and "6", "15" and "16" overlap, and that no longer matters). A 1-bit page has no greys (a hole is as black as print), so on one nothing is a hole. Pairing is by page order, so `doc process` given pages that do not start with a front pairs them wrongly: a back then meets another front, and is kept unless that front has a shape at the mirrored spot too (the safe side; a stapled stack has one, and a back it shows the holes of is dropped all the same, rightly).
+- **Limits of the hole rule:** pencil and grey marks rely on shape, tint and registration: the same
+  symmetric mark at the mirrored spots of both sides, within 25 mm of an edge, on an otherwise blank
+  back is taken for a hole when it is grey and neutral, and the back is dropped (a lone symmetric
+  pencil mark such as an "o" or a "-" at the same spot of both sides, on a back with nothing else).
+  Printed or inked marks are never holes: page numbers, notes in pen and stamps keep their page,
+  whatever lies opposite (the digits of "5" and "6", "15" and "16" overlap, and that no longer
+  matters). A 1-bit page has no greys (a hole is as black as print), so on one nothing is a hole. A
+  rotation between the sides spreads the offsets of holes in proportion to the distance between
+  them, so holes 180 mm apart (a three-hole punch on Letter paper) are holes only while the sides
+  are within about 0.15 degrees of each other; staple holes close together are not affected. Beyond
+  that the page is kept (the safe side). Pairing is by page order, so `doc process` given pages that
+  do not start with a front pairs them wrongly: a back then meets another front, and is kept unless
+  that front has a shape at the mirrored spot too (the safe side; a stapled stack has one, and a
+  back it shows the holes of is dropped all the same, rightly).
 - **Black and white.** A pixel is black when it is darker than 96 (the same level as a mark), or
   when it is 25 levels darker than the mean of an 8 mm window and than the 8 mm closing of the
   page (strokes thinner than the window removed). The mean alone follows uneven lighting but

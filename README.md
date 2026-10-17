@@ -276,12 +276,15 @@ uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr o
   symmetric mark at the mirrored spots of both sides, within 25 mm of an edge, on an otherwise blank
   back is taken for a hole when it is grey and neutral, and the back is dropped. Printed or inked
   marks are never holes. A 1-bit page has no greys (a hole is as black as print), so on one nothing
-  is a hole. Pairing is by page order, so `doc process` given pages that do not start with a front
-  pairs them wrongly: a back then meets another front, and is kept unless that front has a shape at
-  the mirrored spot too (the safe side; a stapled stack has one, and a back it shows the holes of is
-  dropped all the same, rightly). Pale marks (not darker than 160), holes larger than 8 mm or
-  further than 25 mm from every edge, and small marks joined to a dark line longer than 8 mm keep
-  the page.
+  is a hole. A rotation between the sides spreads the offsets of holes in proportion to the distance
+  between them, so holes 180 mm apart (a three-hole punch on Letter paper) are holes only while the
+  sides are within about 0.15 degrees of each other; staple holes close together are not affected.
+  Beyond that the page is kept (the safe side). Pairing is by page order, so `doc process` given
+  pages that do not start with a front pairs them wrongly: a back then meets another front, and is
+  kept unless that front has a shape at the mirrored spot too (the safe side; a stapled stack has
+  one, and a back it shows the holes of is dropped all the same, rightly). Pale marks (not darker
+  than 160), holes larger than 8 mm or further than 25 mm from every edge, and small marks joined to
+  a dark line longer than 8 mm keep the page.
 - Searchable text needs `ocrmypdf` and, for its page rotation, Tesseract's orientation data:
   `sudo dnf install ocrmypdf tesseract-osd`. `--ocr auto` (default) uses it
   when present and otherwise writes the plain PDF and says so; `--ocr on` refuses to start

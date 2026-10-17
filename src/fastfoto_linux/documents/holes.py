@@ -40,10 +40,14 @@ alike land at arbitrary offsets inside the window. The window is ``SHIFT_MM``, a
 as far out as its overlap allows, so a bigger hole is found further: measured, up to 2.5 mm for a
 staple hole of 1.8 mm and up to 3.5 mm for a punched hole of 6 mm.
 
-Limits: the same symmetric mark at the mirrored spots of both sides, in pencil or grey, near an edge
-of an otherwise blank back, is taken for a hole; and the pairing is by page order, so pages that do
-not start with a front are paired wrongly (a back then meets another front, and is kept unless that
-front has a shape at the mirrored spot too, as a stapled stack has).
+Limits: a rotation between the sides spreads the offsets of holes in proportion to the distance
+between them, so holes 180 mm apart (a three-hole punch on Letter paper) are holes only while the
+sides are within about 0.15 degrees of each other, and staple holes close together are not affected
+(beyond that the page is kept, the safe side); the same symmetric mark at the mirrored spots of both
+sides, in pencil or grey, near an edge of an otherwise blank back, is taken for a hole; and the
+pairing is by page order, so pages that do not start with a front are paired wrongly (a back then
+meets another front, and is kept unless that front has a shape at the mirrored spot too, as a
+stapled stack has).
 """
 
 from collections.abc import Sequence

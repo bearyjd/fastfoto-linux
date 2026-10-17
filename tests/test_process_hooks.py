@@ -15,7 +15,7 @@ class PhotoCallbackError(Exception):
 
 
 def batch(tmp_path: Path, sheets: int = 3) -> tuple[list[Path], Path]:
-    """``(pages, output root)`` for ``sheets`` plain face-down sheets."""
+    """``(pages, output root)`` for ``sheets`` plain face-up sheets."""
     raw, out = workspace(tmp_path)
     return write_sheets(raw, [plain_sheet(seed) for seed in range(sheets)]), out
 

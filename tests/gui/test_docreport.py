@@ -97,6 +97,19 @@ def test_kept_raw_pages_are_said_to_be_kept_and_why(tmp_path: Path) -> None:
     assert banner.text.endswith(f" Raw pages kept in {RAW} (blank pages were left out).")
 
 
+def test_pages_kept_after_a_first_failure_are_not_blamed_on_a_success(tmp_path: Path) -> None:
+    """ "Process them now" worked after an error: the banner must not still say it went wrong."""
+    made = clean_document(tmp_path)
+    result = DocumentSessionResult(
+        document=made.document, pages_scanned=3, raw_dir=RAW, raw_reason=DocumentRawReason.ERROR
+    )
+    banner = document_result_banner(State.DONE, result)
+    assert banner is not None
+    assert banner.kind == "positive"
+    assert "went wrong" not in banner.text
+    assert banner.text.endswith(f" Raw pages kept in {RAW}.")
+
+
 def test_a_pdf_without_its_searchable_text_is_a_warning_in_the_cli_words(tmp_path: Path) -> None:
     made = clean_document(tmp_path, ocr=OcrStatus.FAILED, detail="ocrmypdf exited with 6")
     result = DocumentSessionResult(
@@ -164,7 +177,7 @@ def test_all_pages_blank_says_no_pdf_was_made_and_where_the_pages_are() -> None:
     error = AllPagesBlankError("all 3 pages look blank, so no PDF was written")
     banner = document_error_banner(error, RAW, DocumentRawReason.ERROR)
     assert banner.text == (
-        "No PDF was made. all 3 pages look blank, so no PDF was written."
+        "No PDF was made. All 3 pages look blank, so no PDF was written."
         f" Raw pages kept in {RAW} (something went wrong)."
     )
 
@@ -172,6 +185,27 @@ def test_all_pages_blank_says_no_pdf_was_made_and_where_the_pages_are() -> None:
 def test_an_unusable_page_is_a_no_pdf_message_too() -> None:
     banner = document_error_banner(UnsupportedPageError("page-0002.png is not a PNG"))
     assert banner.text.startswith("No PDF was made. page-0002.png is not a PNG.")
+
+
+@pytest.mark.parametrize(
+    ("message", "said"),
+    [
+        ("all 3 pages look blank", "All 3 pages look blank."),
+        ("no pages to process", "No pages to process."),
+        ("stopped", "Stopped."),
+        ("page-0002.png: cannot be read", "page-0002.png: cannot be read."),
+        ("page: cannot be read", "page: cannot be read."),
+        ("scan.png is not a PNG", "scan.png is not a PNG."),
+        ("ocrmypdf exited with 6", "ocrmypdf exited with 6."),
+        ("'e1' is not a list of OCR languages", "'e1' is not a list of OCR languages."),
+        ("Already a sentence", "Already a sentence."),
+    ],
+)
+def test_the_reason_after_no_pdf_was_made_starts_with_a_capital_unless_it_is_a_name(
+    message: str, said: str
+) -> None:
+    banner = document_error_banner(UnsupportedPageError(message))
+    assert banner.text == f"No PDF was made. {said}"
 
 
 def test_other_errors_are_named_for_what_they_are() -> None:
@@ -242,20 +276,29 @@ def kept_after(error: Exception) -> DocumentSessionResult:
 
 
 @pytest.mark.parametrize(
-    "error",
+    ("error", "said"),
     [
-        DocumentSettingsError("the output folder /out is not an existing folder"),
-        OutputFolderMissingError("the output folder /out is not an existing folder"),
-        OcrMissingError("searchable text needs ocrmypdf, which is not installed"),
+        (
+            DocumentSettingsError("the output folder /out is not an existing folder"),
+            "The output folder /out is not an existing folder",
+        ),
+        (
+            OutputFolderMissingError("the output folder /out is not an existing folder"),
+            "The output folder /out is not an existing folder",
+        ),
+        (
+            OcrMissingError("searchable text needs ocrmypdf, which is not installed"),
+            "Searchable text needs ocrmypdf, which is not installed",
+        ),
     ],
 )
 def test_a_refusal_after_pages_were_kept_is_not_a_scan_that_did_not_start(
-    error: Exception,
+    error: Exception, said: str
 ) -> None:
     banner = document_error_banner(error, RAW, DocumentRawReason.CANCELLED)
     assert banner.kind == "error"
     assert banner.text == (
-        f"No PDF was made. {error}. Raw pages kept in {RAW} (the scan was cancelled)."
+        f"No PDF was made. {said}. Raw pages kept in {RAW} (the scan was cancelled)."
     )
 
 

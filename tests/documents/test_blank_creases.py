@@ -197,7 +197,7 @@ def test_the_constants_sit_between_the_numbers_of_the_real_pages() -> None:
     assert 120 < FAINT_DARKEST <= 152  # text is 120 or darker, creases are 152 or lighter
     assert 0.51 < STROKE_MAX_MM <= 1.0  # the thickest crease; a letter's stroke is wider than a mm
     assert STROKE_MAX_MM / 2 <= STRAIGHT_TOLERANCE_MM  # the widest line lies within the axis' reach
-    assert STRAIGHT_TOLERANCE_MM <= 0.5  # a bow of half a millimetre is a curve
+    assert STRAIGHT_TOLERANCE_MM <= 0.5  # a bow of 0.8 mm over 153 mm must not pass
     assert 0.8 <= STRAIGHT_SHARE < 1.0  # a few stray pixels do not make a line crooked
     assert 1.5 <= ELONGATION_MIN <= 2 / 0.51  # the squattest crease: 2 mm long, 0.51 thick
 

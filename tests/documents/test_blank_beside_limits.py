@@ -32,6 +32,14 @@ LEFT_MM, RIGHT_MM, ROW_MM = 30.0, 45.0, 60.0  # the first bar of a pair
 ARTEFACT_RUN_MM = 153.0
 SLANT = math.tan(math.radians(2.8))
 FRAGMENT_MM = 0.7  # shorter than a mark (a millimetre): dust
+REAL_FRAGMENT_TONE = 195  # the real fragments: darkest 194 to 197, 1.0 to 1.2 mm long, 0.17 thick
+FEW_STEMS = 7  # the most isolated stems any pale page showed
+TICK_FOOT_MM = (30.0, 60.0)
+TICK_LENGTH_MM = 12.0
+TICK_ANGLE = math.radians(50)
+HOOK_ANGLE = math.radians(45)
+URL_FOOTER = "www.example.com | 555-0100 | info@example.com"
+PAGE_FOOTER = "Page 1 of 3   Confidential   generated 2026-10-17"
 LONE_STROKES = ["l", "I", "!", "i", "j"]
 LONE_SETTING = (10, 170, 0.114)  # points, darkest, blur in mm
 
@@ -110,23 +118,46 @@ def test_the_foot_of_a_line_is_not_a_neighbour_of_it(dpi: int) -> None:
 # ---- what is not a neighbour -----------------------------------------------------------------
 
 
-def fragments(scene: Scene, length_mm: float) -> Scene:
+def fragments(scene: Scene, length_mm: float, tone: int = 176) -> Scene:
     """Specks ``length_mm`` long and 0.17 mm thick, 2 to 4 mm to either side of the artefact."""
     for number, offset in enumerate([2.0, 2.8, 3.4, 3.8, -2.0, -2.8, -3.4, -3.8]):
         top = 60.0 + 17.0 * number
         left = 6.0 + (top - 50.0) * SLANT + offset
-        scene = with_line(scene, (left, top), (left, top + length_mm), tone=176, thickness_mm=0.17)
+        scene = with_line(scene, (left, top), (left, top + length_mm), tone=tone, thickness_mm=0.17)
     return scene
 
 
-@pytest.mark.parametrize(("dpi", "length_mm"), [(200, 0.7), (300, 0.7), (600, 0.7), (200, 1.1)])
+@pytest.mark.parametrize(
+    ("dpi", "length_mm", "tone"),
+    [(200, 0.7, 176), (300, 0.7, 176), (600, 0.7, 176), (200, 1.1, 176), (300, 0.8, 195)],
+)
 def test_thin_fragments_beside_the_slanted_artefact_are_not_neighbours(
-    dpi: int, length_mm: float
+    dpi: int, length_mm: float, tone: int
 ) -> None:
     """The neighbours must be marks themselves: dust beside a line does not make it writing."""
-    scene = fragments(with_slanted_artefact(sheet(dpi, TALL_MM)), length_mm)
+    scene = fragments(with_slanted_artefact(sheet(dpi, TALL_MM)), length_mm, tone)
     assert len(marks_of(scene)) == 1  # the artefact; the fragments are no marks
     assert verdicts(scene) == BLANK
+
+
+@pytest.mark.parametrize(
+    ("dpi", "length_mm", "tone"),
+    [
+        (300, 1.0, REAL_FRAGMENT_TONE),
+        (300, 1.2, REAL_FRAGMENT_TONE),
+        (300, 1.2, 176),
+        (600, 1.2, 176),
+    ],
+)
+def test_fragments_at_the_mark_size_edge_beside_the_artefact_keep_the_page(
+    dpi: int, length_mm: float, tone: int
+) -> None:
+    """Conservative side: the real fragments (1.0 to 1.2 mm long, 0.17 thick, darkest 194 to 197,
+    1.9 to 3.8 mm off the line) are no marks on the real 300 dpi page, but synthetic ones of that
+    size are marks here, each beside the artefact, and keep the page."""
+    scene = fragments(with_slanted_artefact(sheet(dpi, TALL_MM)), length_mm, tone)
+    assert len(marks_of(scene)) > 1
+    assert verdicts(scene) == KEPT
 
 
 @pytest.mark.parametrize("dpi", DPIS)
@@ -217,26 +248,80 @@ def test_a_lone_faint_l_or_i_or_bang_may_be_ignored(dpi: int, glyph: str) -> Non
 
 
 @pytest.mark.parametrize(
-    ("text", "dpi", "points", "blur_mm"),
+    ("text", "dpi", "points", "darkest", "blur_mm"),
     [
-        ("www.example.com | 555-0100 | info@example.com", 200, 8, 0.114),
-        ("Page 1 of 3   Confidential   generated 2026-10-17", 300, 6, 0.09),
+        (URL_FOOTER, 200, 8, 190, 0.114),
+        (PAGE_FOOTER, 300, 6, 190, 0.09),
+        (URL_FOOTER, 200, 10, 193, 0.114),
+        (PAGE_FOOTER, 300, 12, 196, 0.15),
     ],
 )
-def test_text_so_pale_and_small_that_a_few_stems_register_may_be_ignored(
-    text: str, dpi: int, points: int, blur_mm: float
+def test_text_so_pale_that_a_few_isolated_stems_register_may_be_ignored(
+    text: str, dpi: int, points: int, darkest: int, blur_mm: float
 ) -> None:
-    """Known limit: 6 to 8 pt at 190, where the plain detector finds 3 marks or fewer."""
+    """Known limit: type this pale (darkest about 190 to 196) leaves a few stems far apart, at
+    any size (6 to 12 pt here); the plain detector finds no more than ``FEW_STEMS`` marks."""
     page = pale_text_page(
         dpi,
         [(8.0, 10.0, text)],
         points=points,
-        darkest=190,
+        darkest=darkest,
         blur_mm=blur_mm,
-        size_mm=(110.0, 25.0),
+        size_mm=(130.0, 25.0),
     )
-    assert 1 <= len(find_marks(page, margin_mm=BLANK_MARGIN_MM)) <= 3
+    assert 1 <= len(find_marks(page, margin_mm=BLANK_MARGIN_MM)) <= FEW_STEMS
     assert not find_marks(page, margin_mm=BLANK_MARGIN_MM, ignore_faint_lines=True)
+
+
+@pytest.mark.parametrize(
+    ("text", "points"), [(URL_FOOTER, 12), (PAGE_FOOTER, 10), (PAGE_FOOTER, 14)]
+)
+def test_pale_text_that_registers_more_than_a_few_stems_keeps_the_page(
+    text: str, points: int
+) -> None:
+    page = pale_text_page(
+        200, [(8.0, 10.0, text)], points=points, darkest=190, blur_mm=0.114, size_mm=(130.0, 25.0)
+    )
+    assert len(find_marks(page, margin_mm=BLANK_MARGIN_MM)) > FEW_STEMS
+    assert find_marks(page, margin_mm=BLANK_MARGIN_MM, ignore_faint_lines=True)
+
+
+@pytest.mark.parametrize("dpi", DPIS)
+@pytest.mark.parametrize(("gap_mm", "expected"), [(3.5, KEPT), (4.5, BLANK), (7.0, BLANK)])
+def test_the_stems_of_a_tally_count_only_when_within_the_outer_reach(
+    dpi: int, gap_mm: float, expected: dict[str, bool]
+) -> None:
+    """Four faint stems 12 mm long: each lies beside the next when they are under ``OUTER_MM``
+    apart, else it is alone (a limit: the tally is lost)."""
+    scene = sheet(dpi)
+    for number in range(4):
+        scene = with_stem(scene, 30.0 + gap_mm * number, 40.0, 52.0, tone=150, stroke_mm=0.3)
+    assert len(marks_of(scene)) == 4
+    assert verdicts(scene) == expected
+
+
+def tick(dpi: int, hook_mm: float) -> Scene:
+    """A faint check mark: a hook ``hook_mm`` long going down to the right, then a 12 mm stroke
+    going up to the right."""
+    foot_x, foot_y = TICK_FOOT_MM
+    bend = (foot_x + hook_mm * math.cos(HOOK_ANGLE), foot_y + hook_mm * math.sin(HOOK_ANGLE))
+    tip = (
+        bend[0] + TICK_LENGTH_MM * math.cos(TICK_ANGLE),
+        bend[1] - TICK_LENGTH_MM * math.sin(TICK_ANGLE),
+    )
+    scene = with_line(sheet(dpi), TICK_FOOT_MM, bend, tone=BAR_TONE, thickness_mm=BAR_MM)
+    return with_line(scene, bend, tip, tone=BAR_TONE, thickness_mm=BAR_MM)
+
+
+@pytest.mark.parametrize("dpi", DPIS)
+@pytest.mark.parametrize(("hook_mm", "expected"), [(1.0, BLANK), (3.0, KEPT)])
+def test_a_bare_tick_with_a_short_hook_is_a_lone_stroke(
+    dpi: int, hook_mm: float, expected: dict[str, bool]
+) -> None:
+    """Known limit: a tick whose hook is about 2 mm or shorter is one faint straight stroke with
+    no other mark beside it. (Between 1.6 and 2 mm the verdict depends on the resolution.)"""
+    assert len(marks_of(tick(dpi, hook_mm))) == 1
+    assert verdicts(tick(dpi, hook_mm)) == expected
 
 
 # ---- the rule only ever turns an ignored line back into a mark -------------------------------

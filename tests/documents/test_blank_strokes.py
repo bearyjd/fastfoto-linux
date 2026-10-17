@@ -74,7 +74,7 @@ def test_a_faint_thin_pen_flat_cursive_word_keeps_the_page(
 
 @pytest.mark.parametrize("dpi", DPIS)
 @pytest.mark.parametrize("pen_mm", [0.3, 0.5])
-@pytest.mark.parametrize("amplitude_mm", [1.0, 2.5])
+@pytest.mark.parametrize("amplitude_mm", [0.5, 1.0, 2.5])
 def test_a_faint_flat_signature_wave_keeps_the_page(
     dpi: int, pen_mm: float, amplitude_mm: float
 ) -> None:
@@ -169,8 +169,11 @@ def test_a_line_bowed_by_a_third_of_a_millimetre_over_153_mm_is_still_straight(
 
 
 @pytest.mark.parametrize("dpi", [200, 300])
-def test_a_faint_line_bowed_by_3_mm_over_153_mm_is_not_straight(dpi: int) -> None:
-    scene = with_bowed_line(sheet(dpi, TALL_MM), 30.0, 40.0, 153.0, 3.0, tone=176, stroke_mm=0.4)
+@pytest.mark.parametrize("bow_mm", [1.0, 3.0])
+def test_a_faint_line_bowed_by_a_millimetre_or_more_over_153_mm_is_not_straight(
+    dpi: int, bow_mm: float
+) -> None:
+    scene = with_bowed_line(sheet(dpi, TALL_MM), 30.0, 40.0, 153.0, bow_mm, tone=176, stroke_mm=0.4)
     assert verdicts(scene) == KEPT
 
 

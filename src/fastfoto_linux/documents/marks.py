@@ -21,6 +21,11 @@ PAGE_CONTRAST = 80  # grey levels darker than the page's usual paper tone (big f
 VERY_DARK = 96  # a pixel this dark is a mark whatever is around it
 MARK_MIN_MM = 1.0  # the longer side of a mark is at least this: a letter, not a speck
 MARK_MIN_AREA_MM2 = 0.3
+# A fold crease is a thin, faint line, and a blank back must not be kept for it. Real creases:
+# 0.17-0.51 mm thick, darkest pixel 152-204. Real text: darkest pixel 0-120.
+LINE_MAX_MM = 0.6  # a mark this thin or thinner is line-like (the thickest crease: 0.51)
+LINE_ASPECT = 8  # a mark this many times longer than wide is line-like (a deskew artefact: 20)
+FAINT_DARKEST = 140  # a mark no darker than this is faint (creases 152 and up, text 120 and down)
 _TONES = 256
 _HISTOGRAM_SMOOTHING = 5
 
@@ -66,7 +71,11 @@ def _dark_mask(grey: np.ndarray, work_dpi: float) -> np.ndarray:
 
 
 def find_marks(
-    page: LoadedPage, *, margin_mm: float = 0.0, trimmed_bottom: int = 0
+    page: LoadedPage,
+    *,
+    margin_mm: float = 0.0,
+    trimmed_bottom: int = 0,
+    ignore_faint_lines: bool = False,
 ) -> tuple[Mark, ...]:
     """The marks on ``page`` that lie inside a margin of ``margin_mm`` on every side.
 

@@ -42,7 +42,15 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
       - run: uv sync --locked --python ${{ matrix.python }}
-      - run: uv run --no-sync pytest --cov --cov-report=term-missing
+      # One worker per CPU of the runner (pytest-xdist). Each worker is told to use one thread,
+      # as OpenCV and NumPy would otherwise start a thread per CPU in every worker and the
+      # workers would spend their time waiting for each other.
+      - name: Tests, in parallel, with 80% coverage
+        env:
+          OMP_NUM_THREADS: "1"
+          OPENBLAS_NUM_THREADS: "1"
+          OPENCV_FOR_THREADS_NUM: "1"
+        run: uv run --no-sync pytest -n auto --cov --cov-report=term-missing
       - name: The desktop app's plain-Python modules are covered at 85% (the Qt layer is not run here)
         run: uv run --no-sync coverage report --include='*/fastfoto_linux/gui/*' --fail-under=85
       - name: Wheel ships the face model and its licence

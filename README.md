@@ -379,9 +379,10 @@ or `Install Tesseract: brew install tesseract` on systems with Homebrew (Bazzite
 and run brew install tesseract` on an immutable system without it. If OCRmyPDF is the part that
 is missing (a checkout without the OCR extra), the box says `Install OCRmyPDF: run the installer again,
 or pip install 'fastfoto-linux[ocr]' for a development install` instead, and when both are missing it
-gives both, Tesseract's first; the command line says the same in its message. In the Flatpak the OCR is built in, so the box is on; if it is off there the installation is
-damaged, and the box says `The OCR that comes with this Flatpak is missing, so the installation is broken: reinstall the Flatpak`
-(it never suggests `brew`, `rpm-ostree` or `dnf`, which do not reach into the sandbox).
+gives both, Tesseract's first; the command line says the same in its message. In the Flatpak the OCR
+is built in, so the box is on; if it is off there the installation is damaged, and the box says
+`The OCR that comes with this Flatpak is missing, so the installation is broken: reinstall the
+Flatpak` (it never suggests `brew`, `rpm-ostree` or `dnf`, which do not reach into the sandbox).
 
 Install it for your user (no root; nothing to do with `uv` or pip):
 

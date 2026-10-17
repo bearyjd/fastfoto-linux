@@ -226,10 +226,13 @@ def handle_signals(
 
 def _run(run_loop: Callable[[], int]) -> int:
     from fastfoto_linux.gui.qt.bridge import Bridge  # noqa: PLC0415
+    from fastfoto_linux.gui.qt.messages import install_message_filter  # noqa: PLC0415
 
     bridge = Bridge()
+    undo_filter = install_message_filter()  # before the QML engine loads KDE's style
     engine, warnings = create_engine(bridge)
     if not engine.rootObjects():
+        undo_filter()
         print(f"fastfoto: the window could not be loaded: {'; '.join(warnings)}", file=sys.stderr)
         bridge.shutdown()  # closed before it is deleted: its threads may still be reporting
         destroy_now(engine)
@@ -253,3 +256,4 @@ def _run(run_loop: Callable[[], int]) -> int:
             # Last: until now a late signal (a second SIGTERM, say) is caught by our handler. With
             # the default one back it would kill the app in the middle of its teardown.
             undo_signals()
+            undo_filter()

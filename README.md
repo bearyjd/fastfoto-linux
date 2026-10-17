@@ -388,6 +388,12 @@ Not done yet: editing photos after the scan (rotate, fix the date, re-run the en
 scanner's Start button, and processing while still scanning. A scan through the app on real
 hardware is still to be tried.
 
+Started from a terminal, `fastfoto` hides two lines that KDE's own code prints and that do no harm:
+`QML Shortcut: ... Only binding to one of multiple key bindings` from KDE's menu items (the context
+menu of every text field; its Copy shortcut has three key bindings), and `kf.kio.widgets.kdirmodel:
+No node found for item that was just removed` for the hidden `.ffscan-raw-...` folder of a scan,
+which is renamed to `.raw/<time>` on purpose. Every other message is still printed.
+
 ### Flatpak
 
 The Flatpak brings its own Qt and Kirigami, so it needs no distribution packages, and carries

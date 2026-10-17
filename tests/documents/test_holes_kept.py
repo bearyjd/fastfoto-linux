@@ -144,6 +144,16 @@ def test_the_shape_opposite_is_the_same_size_within_one_and_a_half_times(
 
 
 @pytest.mark.parametrize("dpi", DPIS)
+def test_two_marks_beside_each_other_are_not_both_explained_by_the_one_opposite(dpi: int) -> None:
+    """Two dashes 2.4 mm apart each lie within the 2 mm shift of the one dash opposite, between
+    them; one shape explains one mark, so the side with two dashes keeps its page."""
+    two = [dash(12.0, 6.0, 1.8), dash(14.4, 6.0, 1.8)]
+    one = [dash(13.2, 6.0, 1.8)]
+    front, back = sheet(dpi, [holes_painter(two)], [holes_painter(mirrored(one))])
+    assert blanks(front, back) == (False, True)
+
+
+@pytest.mark.parametrize("dpi", DPIS)
 def test_a_pale_mark_at_the_mirrored_spot_is_not_a_hole(dpi: int) -> None:
     """A hole shows the dark backing; a mark only 55 levels darker than the paper is ink."""
     front, back = sheet(dpi, [holes_painter(STAPLES, 185)], [holes_painter(mirrored(STAPLES), 185)])

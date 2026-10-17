@@ -14,7 +14,6 @@ from pathlib import Path
 from fastfoto_linux.documents import (
     DocumentCancelledError,
     DocumentResult,
-    DocumentSettingsError,
     build_document,
     check_settings,
 )
@@ -78,7 +77,8 @@ def run_document_session(  # noqa: PLR0913 - the callbacks are the interface; sc
     The settings are checked first, before the raw folder is made or the scanner is touched
     (a scan of a stack of paper is not started for a PDF that cannot be made): a
     ``DocumentSettingsError`` for a name with no usable characters, OCR languages that are no
-    Tesseract codes or an output folder that is not an existing folder, an ``OcrMissingError``
+    Tesseract codes or an output folder that is not an existing folder (the one error
+    ``OutputFolderMissingError``, which ``build_document`` raises too), an ``OcrMissingError``
     when searchable text is required (``OcrMode.ON``) and ``ocrmypdf`` is not installed. Both
     are ``DocumentError`` with a message fit to show as it is.
 
@@ -97,7 +97,7 @@ def run_document_session(  # noqa: PLR0913 - the callbacks are the interface; sc
         cancel=cancel,
         build=build_document if build is None else build,
     )
-    _refuse_unusable(request)
+    check_settings(request.settings)
     raw = create_raw_dir(request.raw_root, keep=request.raw_policy is RawPolicy.KEEP, private=True)
     try:
         outcome = _work(request, raw, hooks)
@@ -105,14 +105,6 @@ def run_document_session(  # noqa: PLR0913 - the callbacks are the interface; sc
         keep_after_abort(raw, request.raw_root, abort, settle_raw_dir)
         raise
     return announce_done(_settle(request, raw, outcome), hooks)
-
-
-def _refuse_unusable(request: DocumentScanRequest) -> None:
-    """Raise if the PDF could not be made, before the raw folder, the scanner or its check."""
-    check_settings(request.settings)
-    output_root = request.settings.output_root
-    if not output_root.is_dir():
-        raise DocumentSettingsError(f"the output folder {output_root} is not an existing folder")
 
 
 def _work(request: DocumentScanRequest, raw: Path, hooks: _Hooks) -> _Outcome:

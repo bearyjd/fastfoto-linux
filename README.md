@@ -86,8 +86,9 @@ uv run ffscan process page-*.png --out ~/Scans --album "Family Trips" --feed fac
 
 Letters, forms and receipts to one multi-page PDF, with blank pages dropped and, when OCRmyPDF is
 installed, searchable text. `ffscan doc scan` takes the pages from the document feeder in one go;
-`ffscan doc process` makes the same PDF from PNGs you already have. A Documents mode in the
-desktop app comes next. The design is in [`docs/design/documents.md`](docs/design/documents.md).
+`ffscan doc process` makes the same PDF from PNGs you already have. The desktop app has a
+Documents mode too (see [Desktop app](#desktop-app-preview)). The design is in
+[`docs/design/documents.md`](docs/design/documents.md).
 
 ```sh
 uv run ffscan doc scan --out ~/Documents/Scans --name "Tax Return" --colour grey --dpi 300
@@ -266,6 +267,23 @@ enhanced copies, with each back beside its front; a sheet whose photo could not 
 as a "Not processed" page with the reason). **Cancel** stops the scan; the pages scanned
 so far are kept and **Process them now** turns them into photos later. Closing the window during
 a scan asks to cancel first, and the settings you used are remembered for next time.
+
+A **Photos | Documents** switch at the top of the form chooses what the feeder holds. **Documents**
+makes one PDF of the stack, like `ffscan doc scan`: a name, Colour / Grey / Black and white,
+200 / 300 / 600 dpi (300 is the default), **Both sides (drop blank pages)** (off scans one side),
+**Keep blank pages**, and **Searchable text** with its language (`eng`, or `eng+deu`). The output
+folder is the same as in Photos mode; every other setting is remembered separately for each mode.
+The window says what it is doing ("Checking the scanner…", "Scanning page 3", "Making the PDF
+(page 2 of 5)", "Adding searchable text…") and **Cancel** works at every one of those steps. The
+results list shows each PDF with its page count, the blank pages left out (by number), whether it
+has searchable text (or why not), and an **Open** button. If the scan stops part-way, or you cancel,
+no PDF is made on its own from part of the stack: the pages are kept and **Process them now** makes
+the PDF from just those pages with the same settings (it is offered again after a full disk or a
+folder that cannot be written to, once that is fixed). Each form says how to load the feeder, as
+the label on the scanner does. **Searchable text** needs OCRmyPDF; without it the box is off
+and says `Install OCRmyPDF: sudo dnf install ocrmypdf tesseract-osd`. The Flatpak has no OCR yet
+and says that searchable text needs the native install; everything else in Documents mode works
+there.
 
 Install it for your user (no root; nothing to do with `uv` or pip):
 

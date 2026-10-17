@@ -47,14 +47,14 @@ def square(x_mm: float, y_mm: float, side_mm: float) -> Hole:
 @pytest.mark.parametrize("dpi", FAST_DPIS)
 @pytest.mark.parametrize("size", [HOLE_MAX_MM + 1.0, 10.0, 12.0], ids=str)
 @pytest.mark.parametrize("shape", [disc, square], ids=["disc", "square"])
-@pytest.mark.parametrize("corner", [(2.0, 2.0), (4.0, 4.0)], ids=str)
+@pytest.mark.parametrize("corner", [(0.5, 0.5), (1.0, 1.0)], ids=str)
 def test_a_disc_or_square_over_the_punched_size_in_a_corner_is_never_a_hole(
     dpi: int, size: float, shape: Callable[[float, float, float], Hole], corner: tuple[float, float]
 ) -> None:
     """A grey blot of 9 to 12 mm at the same corner of both sides keeps the back: a punched hole
-    is no longer than ``HOLE_MAX_MM``, whatever the mark opposite. The 5 mm blank margin clips the
-    part of the blot that is counted to under ``HOLE_MAX_MM``, so only the size of its whole shape
-    (``_hole_sized``) keeps the page."""
+    is no longer than ``HOLE_MAX_MM``, whatever the mark opposite. The blot lies 0.5 to 1 mm from
+    the paper's edges, so the 5 mm blank margin clips the part that is counted to about
+    ``HOLE_MAX_MM`` or less; only the size of its whole shape (``_hole_sized``) keeps the page."""
     assert blanks(*pair(dpi, [shape(*corner, size)])) == KEPT
 
 

@@ -514,11 +514,13 @@ What the first pull request settled where the specification left room.
   1.8 mm at 7.3 to 7.8 pt, but the dark shape of a light digit is smaller than its glyph, so the
   claim starts at 8 pt: probed with 2400 sheets (tones 89 to 150, three fonts, 200 and 300 dpi), 14
   backs were dropped at 7.5 pt (0.6 %) and 32 at 7 pt (1.3 %), none at 8 pt and up. The digits of a
-  page number at 8 pt and more are over the staple size and are not discs. The size is judged on
-  both sides: the shape opposite must be a hole's size too. Re-run on the same 200 pairs (Sans and
-  Serif, 10 and 12 pt, tones 40 to 150, 200 dpi) no back is dropped, and none of the 7200 sheets of
-  a grid of tones 89 to 150, three fonts, 8 to 12 pt, 200 and 300 dpi loses its back (225 did
-  before). What is left is smaller grey marks (the limits, below).
+  page number in Arabic digits at 8 pt and more in a proportional Sans or Serif font are over the
+  staple size and are not discs; grey monospace digits at 8 to 9 pt can be dropped (the limits,
+  below). The size is judged on both sides: the shape opposite must be a hole's size too. Re-run on
+  the same 200 pairs (Sans and Serif, 10 and 12 pt, tones 40 to 150, 200 dpi) no back is dropped,
+  and none of the 7200 sheets of a grid of tones 89 to 150, three fonts, 8 to 12 pt, 200 and 300 dpi
+  loses its back (225 did before). What is left is smaller grey marks, glyphs only x-height tall and
+  monospace digits (the limits, below).
 - **Pairing.** Pages are paired in order, 1+2, 3+4 and so on, as the two sides of sheets
   (`DocumentSettings.duplex`, default true). `doc scan` pairs the pages it scans unless
   `--simplex`, and `doc process` pairs the pages it is given unless `--simplex`, because raw pages

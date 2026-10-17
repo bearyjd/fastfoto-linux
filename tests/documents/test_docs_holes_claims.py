@@ -231,6 +231,12 @@ def test_the_design_note_keeps_a_page_number_only_in_proportional_digits() -> No
         "keeps its page in any grey"
     ) in text
     assert "a page number set at 8 pt or more keeps its page in any grey" not in text
+    assert (
+        "The digits of a page number in Arabic digits at 8 pt and more in a proportional Sans or "
+        "Serif font are over the staple size and are not discs; grey monospace digits at 8 to 9 pt "
+        "can be dropped (the limits, below)"
+    ) in text
+    assert "The digits of a page number at 8 pt and more are over the staple size" not in text
 
 
 def test_the_design_note_no_longer_says_a_punch_hole_always_keeps_the_page() -> None:

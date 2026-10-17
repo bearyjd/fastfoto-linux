@@ -15,8 +15,10 @@ or a stroke of ink, not a speck) and in the backing's hue: a cluster whose mean 
 over ``SHADOW_BLUE_MAX`` is faded blue ink or bluish pencil, not shadow (the gate is one-sided:
 neutral grey passes it). A cluster shorter than ``DUST_MM`` whose pixels are all within
 ``DUST_TOLERANCE`` of the backing colour, whatever the hue, is dust. A light vertical line up to
-0.3 mm wide down the band, the scanner's own streak (see ``streak``), is backing too and joins the
-parts of the band it splits; a dark streak is not, and keeps the strip.
+0.3 mm wide down the band, the scanner's own streak (see ``streak``: lighter in every channel and
+of the backing's tint), is backing too and joins the parts of the band it splits, and a mark that
+crosses it stays whole; a dark streak is not, and keeps the strip. A blank slip of the backing's
+colour that touches a streak goes with the band, one with anything on it does not.
 """
 
 import math
@@ -31,7 +33,7 @@ from fastfoto_linux.documents.band import (
     backing_distance,
     backing_mask,
 )
-from fastfoto_linux.documents.streak import streak_pixels
+from fastfoto_linux.documents.streak import with_streak
 from fastfoto_linux.documents.units import MM_PER_INCH, mm_to_px
 from fastfoto_linux.imaging import RGB_NDIM
 from fastfoto_linux.pipeline.crop import BACKGROUND_PRIOR_TOLERANCE
@@ -104,7 +106,8 @@ def backing_pixels(
     first row, next to the cut, is the band's own backing and joins as a side does; the pad does
     not join anything: a separate island of the backing's colour is not the band, however close
     to it. A light streak down the band (see ``streak``, which needs ``dpi``) is backing too, and
-    joins the parts of the band it splits. A grey page has no hue, and a pale slip or a pastel
+    joins the parts of the band it splits; where a mark crosses it, the pixels that the blur makes
+    look like backing are not. A grey page has no hue, and a pale slip or a pastel
     margin looks just like the backing wherever it lies, so on a grey page nothing is backing.
     """
     if strip.ndim != RGB_NDIM:
@@ -113,7 +116,7 @@ def backing_pixels(
     if band:
         if dpi is None:
             raise ValueError("dpi is needed to look for a streak in the strip of a band cut")
-        backing = backing | streak_pixels(strip, dpi)
+        backing = with_streak(backing, strip, dpi)
     return joined_to_sides(backing, first_row=band)
 
 

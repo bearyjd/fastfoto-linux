@@ -172,9 +172,11 @@ uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr o
   band rule. A fleck on the scanner's glass or backing prints as a faint light vertical line
   down the band; in the strip of a band cut a light vertical line up to 0.3 mm wide (a pixel
   or two) is taken for the scanner's, and counts as backing, when it is at least 4 levels
-  brighter than the backing beside it, in at least 90% of the rows that have backing on both
-  sides of it, over at least 3 mm of such rows. It joins the parts of the band it splits. If you
-  see one, clean the scanner (glass and backing).
+  brighter, in every channel, than the backing beside it and its blue minus red is within 12 of
+  the backing's (a pink, yellow, cream or grey line is not one), in at least 90% of the rows
+  that have backing on both sides of it, over at least 3 mm of such rows. It joins the parts of
+  the band it splits, and a mark that crosses it stays whole. If you see one, clean the scanner
+  (glass and backing).
   Limits:
   - a dark streak keeps the strip (ink darkens, so only a lighter line is forgiven); so does a
     light line 0.7 mm wide or more, a light streak over under 90% of the band's rows, one that
@@ -182,6 +184,9 @@ uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr o
     a streak with its blurred edge may be a little wider than 0.3 mm (up to about 0.4 to 0.5 mm,
     by resolution), a line of pure white is pad and was never a problem, and a side strip has no
     streak rule;
+  - the streak rule is off below 170 dpi, where two pixels are wider than 0.3 mm, and a streak
+    keeps the strip; a blank slip of the backing's colour that touches a streak goes with the
+    band, as a scrap that touches the band does, but a slip with anything on it keeps the strip;
   - side slivers of up to 2 mm are left (slanted, under the 3 mm of the strip rule);
   - a bar at least half the page wide within 20 of the backing colour, flush with the paper's end
     and with no shadow below it, is cut with the band, like a sidebar of that colour at a side,

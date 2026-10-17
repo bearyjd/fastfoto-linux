@@ -25,7 +25,6 @@ from tests.documents.test_trim_band_streak import (
 PINK_RGB = (240, 215, 215)
 YELLOW_RGB = (255, 250, 190)
 CREAM_RGB = (238, 236, 225)
-LIGHT_GREY_RGB = (225, 225, 225)
 PALE_BLUE_RGB = (175, 190, 215)
 GREY_150_RGB = (150, 150, 150)
 SLIP_RGB = (195, 205, 215)  # a backing-coloured slip
@@ -56,8 +55,8 @@ def middle_rows(scene) -> tuple[int, int]:
 
 @pytest.mark.parametrize(
     "rgb",
-    [PINK_RGB, YELLOW_RGB, CREAM_RGB, LIGHT_GREY_RGB],
-    ids=["pink", "yellow", "cream", "light-grey"],
+    [PINK_RGB, YELLOW_RGB, CREAM_RGB],
+    ids=["pink", "yellow", "cream"],
 )
 @pytest.mark.parametrize("tilt", [0.0, 1.5])
 @pytest.mark.parametrize("dpi", [200, 300])

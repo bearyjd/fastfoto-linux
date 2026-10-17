@@ -52,9 +52,11 @@ backing band is the reliable sign of where the paper ends.
   check; a mark that is darker, not blue or beyond that tolerance, ink bluer than the shadow, and
   dust of ink size in the pad, keep the page, as in the tail. A light vertical line up to 0.3 mm
   wide counts as backing too (``streak``): a fleck on the scanner's glass or backing, at least 4
-  levels brighter than the backing beside it, in at least 90% of the rows that have backing on
-  both sides of it, over at least 3 mm of such rows; with its blurred edge it joins the parts of
-  the band it splits, whatever the pad and the shadow do at their sides.
+  levels brighter, in every channel, than the backing beside it, its blue minus red within 12 of
+  the backing's, in at least 90% of the rows that have backing on both sides of it, over at least
+  3 mm of such rows; with its blurred edge it joins the parts of the band it splits, whatever the
+  pad and the shadow do at their sides, and a mark that crosses it stays whole. Below 170 dpi the
+  rule is off.
 * After a band cut the new edge is the paper's, so the blank-page margin is measured in full
   from the new edge (``Trimmed.tail_rows``): the kept edge line is margin, not a mark.
 
@@ -82,6 +84,8 @@ has no hue to tell the backing by). Limits, stated exactly:
   90% of the rows, one that leans across the band (3 degrees moves it 0.6 mm) and, at the top, a
   band under 3 mm tall keep the strip. A streak 1 pixel wide never was a problem (the blur brings
   it within 20 of the backing), a line of pure white is pad, and a side strip has no streak rule.
+  A blank slip of the backing's colour that touches a streak goes with the band, as one that
+  touches the band does; a slip with anything on it keeps the strip.
 * A scrap of the backing's colour that touches the band is taken for the band.
 * A scrap of the backing's colour that touches a side of the page in the first 3 mm of the white
   tail, which are part of the strip, is joined to the side by backing alone and goes with the

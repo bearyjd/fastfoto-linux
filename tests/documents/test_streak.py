@@ -151,11 +151,11 @@ def test_a_dark_line_is_not_a_streak(tone: int) -> None:
 
 
 def test_a_line_is_lighter_than_the_brighter_of_its_two_sides() -> None:
-    """The right side is backing that is 10 levels brighter; the line is 3 over it, 13 over the
-    left."""
+    """The right side is backing that is 10 levels brighter; the line is 20 over the left in
+    every channel but only 3 over the right in green (and 7 on average)."""
+    line = plus(20, 13, 20)
+    assert found(streak_pixels(with_line(strip(), COLUMN, COLUMN + 1, line), DPI))
     image = with_line(strip(), COLUMN + OFFSET_PX, COLUMNS, plus(10, 10, 10))
-    line = np.array([230, 215, 226], np.float32)
-    assert line.mean() - plus(10, 10, 10).mean() < STREAK_LIGHTER
     assert not found(streak_pixels(with_line(image, COLUMN, COLUMN + 1, line), DPI))
 
 

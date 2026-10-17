@@ -260,13 +260,19 @@ What the first pull request settled where the specification left room.
      and used to keep the strip, and where it splits the band the far part may reach neither a
      side of the strip (a wedge of pad is there) nor its first row (shadow tone is there). A
      pixel can be a streak's when it is not backing, backing lies 0.3 mm to its left and to its
-     right (whole pixels, rounded up, at least 2), and it is 4 levels brighter (mean of the
-     channels) than the brighter of those two neighbours. A column is a streak when that holds in
+     right (whole pixels, rounded up), it is 4 levels brighter in every channel than both of
+     those two neighbours, and its blue minus red is within 12 of the backing's (17: the
+     scanner's streak keeps the tint of the backing it lies on, a pink, yellow, cream or grey
+     line does not). A column is a streak when that holds in
      90% of the rows that have backing on both sides of it, over at least 3 mm of such rows, and
      a run of streak columns wider than that offset is none. The streak and its blurred edge, one
      pixel each side in the same rows, count as backing before it is judged whether the backing
      joins a side, in the strict and in the shadow's wide mask alike, and only in the strip of a
-     band cut. At least 30 mm of page stay after the bottom cut, and after the top cut
+     band cut. Where a mark crosses the streak, in the rows where the neighbours of a streak
+     column are not both backing and that column is backing by colour (the blur of the mark with
+     the streak), the run of streak columns and the pixel each side of it are not backing, so
+     that the mark stays whole instead of being cut into dust-sized pieces by the streak. Below
+     170 dpi (two pixels are wider than 0.3 mm) the rule is off. At least 30 mm of page stay after the bottom cut, and after the top cut
      as well. Where there is no band cut, because there is no band or the cut is not safe, the
      tail rule above runs as before. Colour pages only: grey and 1-bit pages are not cut by the
      band rule (a grey page has no hue to tell the backing by).
@@ -298,6 +304,11 @@ What the first pull request settled where the specification left room.
     cut, 2 mm is not). A streak 1 px wide never was a problem: the blur brings it within 20 of
     the backing. A line of pure white is pad and was exempt before. A streak in a side strip is
     not forgiven.
+    Below 170 dpi the streak rule is off and a streak keeps the strip. A blank slip of the
+    backing's colour that touches a streak is joined to the band by it and goes with the band
+    (as a scrap that touches the band does); a slip with anything on it keeps the strip. A
+    streak of the backing's tint is forgiven even when it is only 10 levels brighter in every
+    channel: after the blur its lead is still over 4.
     A streak means dirt on the scanner: clean the scanner (glass and backing);
   - a scrap of the backing's colour that touches the band is taken for the band;
   - a scrap of the backing's colour that touches a side of the page in the first 3 mm of the

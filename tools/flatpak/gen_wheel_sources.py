@@ -1,11 +1,13 @@
 """Write the Flatpak modules that install the Python wheels offline.
 
 ``runtime`` turns ``uv.lock`` into ``packaging/flatpak/python-deps.json``: the wheels the app runs
-on (numpy, opencv-python-headless, pillow), one per package, for CPython 3.13 on manylinux
-x86_64. ``build`` does the same for the build backend pinned in ``packaging/requirements-build.txt``
-(that one needs the network, to find the files on PyPI). flatpak-builder downloads each wheel and
-checks its sha256; pip then installs them with ``--no-index --require-hashes``, so the build never
-reaches the network and nothing unpinned can get in.
+on (numpy, opencv-python-headless, pillow, and OCRmyPDF from the ``ocr`` extra, with theirs), one
+per package, for CPython 3.13 on manylinux x86_64. A dependency that has an environment marker is
+followed when the marker holds in that environment and left out when it does not. ``build`` does
+the same for the build backend pinned in ``packaging/requirements-build.txt`` (that one needs the
+network, to find the files on PyPI). flatpak-builder downloads each wheel and checks its sha256;
+pip then installs them with ``--no-index --require-hashes``, so the build never reaches the
+network and nothing unpinned can get in.
 
     python3 tools/flatpak/gen_wheel_sources.py runtime            # rewrite python-deps.json
     python3 tools/flatpak/gen_wheel_sources.py runtime --check    # exit 1 when it is out of date
@@ -26,7 +28,9 @@ ROOT = Path(__file__).resolve().parents[2]
 FLATPAK_DIR = ROOT / "packaging" / "flatpak"
 RUNTIME_OUTPUT = FLATPAK_DIR / "python-deps.json"
 BUILD_OUTPUT = FLATPAK_DIR / "python-build-deps.json"
-RUNTIME_REQUIREMENTS = "requirements-desktop.txt"
+# The file pip installs from: the desktop's pins and the ``ocr`` extra's, hashed, from uv.lock.
+RUNTIME_REQUIREMENTS = "requirements-ocr.txt"
+RUNTIME_EXTRAS = ("ocr",)  # the optional dependencies of the project that the Flatpak brings
 BUILD_REQUIREMENTS = "requirements-build.txt"
 BUILD_TARGET = "${FLATPAK_DEST}/build-backend"
 PYPI_RELEASE = "https://pypi.org/pypi/{name}/{version}/json"
@@ -36,6 +40,15 @@ PYPI_TIMEOUT_SECONDS = 30
 # (change it together with `runtime-version` in the manifest).
 RUNTIME_GLIBC = (2, 42)
 PROJECT_SOURCES = ({"editable": "."}, {"virtual": "."})
+# What the Flatpak's Python is, for the environment markers of the dependencies.
+FLATPAK_ENVIRONMENT = {
+    "implementation_name": "cpython",
+    "os_name": "posix",
+    "platform_machine": "x86_64",
+    "platform_python_implementation": "CPython",
+    "platform_system": "Linux",
+    "sys_platform": "linux",
+}
 
 _WHEEL = re.compile(
     r"(?P<name>[^-]+)-(?P<version>[^-]+)(?:-\d[^-]*)?"
@@ -49,6 +62,7 @@ _LEGACY_MANYLINUX = {  # the old names, and the glibc each stands for
 }
 _STABLE_ABI_PYTHON = re.compile(r"cp3(?:[7-9]|1[0-3])")  # abi3 wheels that run on CPython 3.13
 _PURE_PYTHON_TAGS = frozenset({"py3", "py2.py3", "py313"})
+_MARKER_TEST = re.compile(r"(?P<variable>[a-z_]+) (?P<operator>==|!=) '(?P<value>[^']*)'")
 _PIN = re.compile(r"(?P<name>[A-Za-z0-9][A-Za-z0-9._-]*)==(?P<version>\S+)(?P<rest>.*)")
 _HASH = re.compile(r"--hash=sha256:([0-9a-f]{64})")
 
@@ -93,8 +107,10 @@ def _rank(filename: str) -> tuple[int, int] | None:
     python, abi, platform = parts["python"], parts["abi"], parts["platform"]
     if python in _PURE_PYTHON_TAGS and abi == "none" and platform == "any":
         return (0, 0)
-    interpreter_ok = python == abi == "cp313" or (
-        abi == "abi3" and _STABLE_ABI_PYTHON.fullmatch(python) is not None
+    interpreter_ok = (
+        python == abi == "cp313"
+        or (abi == "abi3" and _STABLE_ABI_PYTHON.fullmatch(python) is not None)
+        or (python in _PURE_PYTHON_TAGS and abi == "none")  # a ctypes binding, like pypdfium2
     )
     return _glibc(platform) if interpreter_ok else None
 
@@ -119,29 +135,64 @@ def _locked_wheels(package: Mapping[str, Any]) -> list[Wheel]:
     return found
 
 
+def _marker_holds(marker: str) -> bool | None:
+    """Whether an environment marker holds in the Flatpak, or None when it cannot be told.
+
+    Only what uv.lock uses is understood: tests of the form ``variable == 'text'`` or
+    ``variable != 'text'`` on the variables of ``FLATPAK_ENVIRONMENT``, joined with ``and`` and
+    ``or`` (``and`` binds tighter), without brackets. Anything else is None, never a guess.
+    """
+    alternatives = []
+    for alternative in marker.split(" or "):
+        results = []
+        for test in alternative.split(" and "):
+            parts = _MARKER_TEST.fullmatch(test.strip())
+            if parts is None or parts["variable"] not in FLATPAK_ENVIRONMENT:
+                return None
+            equal = FLATPAK_ENVIRONMENT[parts["variable"]] == parts["value"]
+            results.append(equal if parts["operator"] == "==" else not equal)
+        alternatives.append(all(results))
+    return any(alternatives)
+
+
+def _wanted_dependencies(package: Mapping[str, Any], extras: Sequence[str]) -> list[Any]:
+    optional = package.get("optional-dependencies", {})
+    return [*package.get("dependencies", []), *(d for e in extras for d in optional.get(e, []))]
+
+
 def _runtime_closure(lock: Mapping[str, Any]) -> list[Mapping[str, Any]]:
-    """The project's dependencies, and theirs, without its dev group (name order)."""
+    """The project's dependencies, those of its ``RUNTIME_EXTRAS``, and theirs (with the extras a
+    dependency asks for, like ``pikepdf[pdfa]``), without its dev group (name order). A dependency
+    whose marker does not hold in the Flatpak is left out."""
     packages = {package["name"]: package for package in lock["package"]}
     roots = [p for p in packages.values() if p.get("source") in PROJECT_SOURCES]
     if len(roots) != 1:
         raise WheelSelectionError(f"expected one project package in the lock, found {len(roots)}")
     wanted: dict[str, Mapping[str, Any]] = {}
-    pending = [roots[0]]
+    pending = [(roots[0], RUNTIME_EXTRAS)]
+    visited: set[tuple[str, tuple[str, ...]]] = set()
     while pending:
-        parent = pending.pop()
-        for dependency in parent.get("dependencies", []):
+        parent, extras = pending.pop()
+        for dependency in _wanted_dependencies(parent, extras):
             name = dependency["name"]
             if "marker" in dependency:
-                raise WheelSelectionError(
-                    f"{parent['name']} needs {name} only when {dependency['marker']!r}: "
-                    "environment markers are not supported, because the Flatpak installs one "
-                    "fixed set of wheels. Pick the wheels by hand or extend gen_wheel_sources.py."
-                )
+                holds = _marker_holds(dependency["marker"])
+                if holds is None:
+                    raise WheelSelectionError(
+                        f"{parent['name']} needs {name} only when {dependency['marker']!r}: "
+                        "this environment marker is not understood (only == and != tests on "
+                        f"{', '.join(sorted(FLATPAK_ENVIRONMENT))}, joined by and/or). "
+                        "Pick the wheels by hand or extend gen_wheel_sources.py."
+                    )
+                if not holds:
+                    continue
             if name not in packages:
                 raise WheelSelectionError(f"{name} is a dependency but is not in the lock")
-            if name not in wanted:
-                wanted[name] = packages[name]
-                pending.append(packages[name])
+            wanted[name] = packages[name]
+            step = (name, tuple(sorted(dependency.get("extra", ()))))
+            if step not in visited:
+                visited.add(step)
+                pending.append((packages[name], step[1]))
     return [wanted[name] for name in sorted(wanted)]
 
 

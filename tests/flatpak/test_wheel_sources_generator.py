@@ -397,6 +397,22 @@ def test_the_optional_dependencies_of_the_ocr_extra_are_part_of_the_closure() ->
     assert names == ["deep", "lib", "ocr-tool"]  # not the extras the Flatpak does not offer
 
 
+def test_the_extras_a_dependency_asks_for_are_followed_like_pikepdf_pdfa() -> None:
+    plain = "-1.0-py3-none-any.whl"
+    lock = lock_of(
+        package("lib", wheels=(wheel_entry("lib" + plain),)),
+        package("pdfa-tool", wheels=(wheel_entry("pdfa-tool" + plain),)),
+        package("unused", wheels=(wheel_entry("unused" + plain),)),
+    )
+    lock["package"][0]["optional-dependencies"] = {"ocr": [{"name": "lib", "extra": ["pdfa"]}]}
+    lock["package"][1]["optional-dependencies"] = {
+        "pdfa": [{"name": "pdfa-tool"}],
+        "other": [{"name": "unused"}],
+    }
+    names = [wheel.name for wheel in generator().runtime_wheels(lock)]
+    assert names == ["lib", "pdfa-tool"]
+
+
 def test_a_wheel_for_every_python_3_only_the_platform_matters() -> None:
     name = "lib-1.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"  # pypdfium2's shape
     [chosen] = generator().runtime_wheels(lock_of(package("lib", wheels=(wheel_entry(name),))))

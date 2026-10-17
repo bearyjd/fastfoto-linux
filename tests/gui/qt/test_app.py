@@ -74,6 +74,29 @@ def test_main_runs_the_event_loop_and_remembers_the_form(
     settle()
 
 
+def test_the_known_kde_lines_are_hidden_while_the_app_runs_and_shown_again_after(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, kirigami: None, qapp: Any, messages: list[str]
+) -> None:
+    from PySide6.QtCore import QLoggingCategory, qCWarning
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+    monkeypatch.setattr(worker_module, "default_discover", lambda: ScanTarget(device=DEVICE))
+    category = QLoggingCategory("kf.kio.widgets.kdirmodel")
+    temp = 'No node found for item that was just removed: QUrl("file:///photos/.ffscan-raw-ab12cd")'
+    other = 'No node found for item that was just removed: QUrl("file:///photos/Holiday")'
+
+    def run_loop() -> int:
+        qCWarning(category, temp)
+        qCWarning(category, other)
+        return 0
+
+    assert app.main(run_loop=run_loop) == 0
+    assert messages == [other]
+    qCWarning(category, temp)  # the app has put the previous handler back
+    assert messages == [other, temp]
+    settle()
+
+
 # -- Quitting while a scan runs: logout, `kill`, Ctrl+C in a terminal (item 7) ------------------
 
 

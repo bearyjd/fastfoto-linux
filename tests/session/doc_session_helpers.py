@@ -21,7 +21,9 @@ def make_doc_request(  # noqa: PLR0913
     **settings: Any,
 ) -> DocumentScanRequest:
     """A request for a duplex batch into ``out`` without searchable text unless overridden."""
-    document = DocumentSettings(output_root=out, colour=colour, **{"ocr": OcrMode.OFF, **settings})
+    document = DocumentSettings(
+        output_root=out, colour=colour, duplex=duplex, **{"ocr": OcrMode.OFF, **settings}
+    )
     return DocumentScanRequest(
         target=ScanTarget(device=DEVICE),
         settings=document,

@@ -7,8 +7,10 @@ Order of work, and why:
    a scan session checks too before it scans) and every page file (header and a full decode, so
    a truncated PNG is found now and not after ten pages of work). Nothing is written when a
    page is unusable, because a PDF with a page silently missing is worse than no PDF.
-2. Pages are then processed one at a time and only their encoded bytes are kept; a cancel is
-   honoured before each page, in the checks as well as in the processing.
+2. Pages are then processed a sheet at a time (two pages of a duplex document, one otherwise: a
+   hole through the paper is told from a mark by the sheet's other side) and only their encoded
+   bytes are kept; a cancel is honoured before each page, in the checks as well as in the
+   processing.
 3. The OCR runs on the finished plain PDF *before* the output folder is locked (it can take
    minutes; the lock is for numbering and writing only), and a failed or timed-out OCR falls
    back to publishing the plain PDF.
@@ -21,7 +23,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 
-from fastfoto_linux.documents.blank import is_blank
+from fastfoto_linux.documents.blank import is_blank_beside
 from fastfoto_linux.documents.encode import EncodedPage, encode_page
 from fastfoto_linux.documents.errors import (
     AllPagesBlankError,
@@ -44,7 +46,7 @@ from fastfoto_linux.documents.ocr import (
 from fastfoto_linux.documents.ocr_tools import ocr_missing_text
 from fastfoto_linux.documents.pdf import assemble_pdf
 from fastfoto_linux.documents.publish import publish_pdf, require_output_folder
-from fastfoto_linux.documents.trim import trim_page
+from fastfoto_linux.documents.trim import Trimmed, trim_page
 from fastfoto_linux.output.errors import InvalidPrefixError
 from fastfoto_linux.output.naming import sanitise_prefix
 
@@ -53,6 +55,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_NAME = "Document"
 OCR_BASE_S = 120.0  # the OCR time limit: this plus ...
 OCR_PER_PAGE_S = 60.0  # ... this for every page
+SIDES_PER_SHEET = 2
 
 
 @dataclass(frozen=True)
@@ -65,6 +68,7 @@ class DocumentSettings:
     langs: str = DEFAULT_LANGS
     fallback_dpi: int | None = None
     ocr_timeout_s: float | None = None  # None: a limit that grows with the page count
+    duplex: bool = True  # pages are sheets' sides in order, (1, 2), (3, 4) ...; False: all fronts
 
 
 @dataclass(frozen=True)
@@ -132,26 +136,70 @@ def _stop_if_cancelled(cancel: threading.Event | None, before: str) -> None:
         raise DocumentCancelledError(f"stopped before {before}")
 
 
+def _load_sheet(
+    pages: Sequence[Path],
+    numbers: range,
+    settings: DocumentSettings,
+    cancel: threading.Event | None,
+) -> list[Trimmed]:
+    """Load and trim the pages with these (1-based) ``numbers``: a sheet, or one page. A cancel
+    is honoured before each page is decoded."""
+    sheet: list[Trimmed] = []
+    for number in numbers:
+        _stop_if_cancelled(cancel, f"page {number} of {len(pages)} was read")
+        sheet.append(trim_page(load_page(pages[number - 1], fallback_dpi=settings.fallback_dpi)))
+    return sheet
+
+
+def _encode_sheet(
+    pages: Sequence[Path],
+    numbers: range,
+    settings: DocumentSettings,
+    cancel: threading.Event | None,
+    on_page: Callable[[int, int], None] | None,
+) -> tuple[list[EncodedPage], list[int]]:
+    """Encode the pages of one sheet that stay in the PDF, and number the ones dropped as blank.
+
+    The sheet's pages are loaded together, because each is judged beside the other, but
+    ``on_page`` and the cancel check go page by page: each comes just before its page is judged
+    and encoded, so a page's progress is not reported before the page before it is encoded.
+    The sheet's pixels are gone when this returns, so a document never holds more than a sheet."""
+    sheet = _load_sheet(pages, numbers, settings, cancel)
+    kept: list[EncodedPage] = []
+    dropped: list[int] = []
+    for index, (number, trimmed) in enumerate(zip(numbers, sheet, strict=True)):
+        _stop_if_cancelled(cancel, f"page {number} of {len(pages)} was processed")
+        if on_page is not None:
+            on_page(number, len(pages))
+        partner = sheet[1 - index] if len(sheet) > 1 else None
+        if not settings.keep_blank and is_blank_beside(trimmed, partner):
+            logger.info("page %d (%s) is blank and left out", number, pages[number - 1].name)
+            dropped.append(number)
+        else:
+            kept.append(encode_page(trimmed.page, settings.colour))
+    return kept, dropped
+
+
 def _encode_pages(
     pages: Sequence[Path],
     settings: DocumentSettings,
     cancel: threading.Event | None,
     on_page: Callable[[int, int], None] | None,
 ) -> tuple[list[EncodedPage], tuple[int, ...]]:
-    """Encode the pages that stay in the PDF, and number the ones dropped as blank."""
+    """Encode the pages that stay in the PDF, and number the ones dropped as blank.
+
+    A duplex document is worked on a sheet at a time (two pages, so at most two are in memory),
+    because a hole through the paper is told from a mark by the sheet's other side. An odd last
+    page has no other side.
+    """
     kept: list[EncodedPage] = []
     dropped: list[int] = []
-    for number, path in enumerate(pages, start=1):
-        _stop_if_cancelled(cancel, f"page {number} of {len(pages)} was processed")
-        if on_page is not None:
-            on_page(number, len(pages))
-        trimmed = trim_page(load_page(path, fallback_dpi=settings.fallback_dpi))
-        page = trimmed.page
-        if not settings.keep_blank and is_blank(page, trimmed_bottom=trimmed.tail_rows):
-            logger.info("page %d (%s) is blank and left out", number, path.name)
-            dropped.append(number)
-            continue
-        kept.append(encode_page(page, settings.colour))
+    step = SIDES_PER_SHEET if settings.duplex else 1
+    for first in range(1, len(pages) + 1, step):
+        numbers = range(first, min(first + step, len(pages) + 1))
+        sheet_kept, sheet_dropped = _encode_sheet(pages, numbers, settings, cancel, on_page)
+        kept.extend(sheet_kept)
+        dropped.extend(sheet_dropped)
     return kept, tuple(dropped)
 
 
@@ -199,7 +247,10 @@ def build_document(  # noqa: PLR0913 - the hooks are the interface
     """Make one PDF in ``settings.output_root`` from page files, in the order given.
 
     Every page file is checked first (nothing is written if one is unusable), then the pages
-    are processed one at a time so only encoded bytes are kept. Input files are never touched.
+    are processed a sheet at a time so only encoded bytes are kept. With ``settings.duplex`` the
+    pages are the two sides of sheets in order, (1, 2), (3, 4) ..., and a mark on a page that is
+    a hole through the paper, also on its sheet's other side, is not a mark (see ``holes``).
+    Input files are never touched.
     A failed or timed-out OCR still publishes the plain PDF (``result.ok`` is then False).
     When ``cancel`` is set DocumentCancelledError (OcrCancelledError during OCR) is raised and
     nothing is published. Settings that cannot make a PDF are refused first (``check_settings``).

@@ -241,6 +241,64 @@ uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr o
   creases that cross are one big mark and keep the page; a speck under a millimetre next to a
   crease segment under 2 mm long can keep the page (at 300 dpi and finer). Trimming is not
   affected.
+- A hole through the paper does not keep a page. A staple, a punch or a clip leaves dark marks that
+  show on both sides of the sheet, and a back with nothing else on it was kept for them. On a duplex
+  document a counted mark is a hole when its whole shape is the size of a staple hole or of a
+  punched hole, it lies within 25 mm of an edge of the page, and the other side of the same sheet
+  has a dark shape of the same size at the mirrored spot. A staple hole is at most 1.8 mm long
+  (`STAPLE_MAX_MM`; real ones are 0.6 to 1.35 mm). A punched hole is a round disc 4 to 8 mm long
+  (`PUNCH_MIN_MM`, `HOLE_MAX_MM`; punched holes are about 6 mm) whose box has a short side at least
+  0.8 of its long one (`PUNCH_ASPECT_MIN`) and is at least 0.6 filled (`PUNCH_FILL_MIN`; a disc
+  fills 0.78). Anything in between, and a long thin or hollow mark over 1.8 mm (a "0", an "o" of
+  print), is never a hole, on either side. The back of a sheet is its front flipped left to right,
+  so x becomes the frame width less x and y stays, taken in the scanner's frame with each side's
+  trim offsets added back. The shapes are the pixels darker than 160 on the darkest colour channel.
+  A mark's shape is the whole dark shape that meets its box, cropped to its own bounding box, not
+  clipped by the box or by the 5 mm blank margin (a hole that straddles the margin is cut by it),
+  and a shape that is not a hole's size and shape is not a hole (one longer than 8 mm, say): a small
+  mark joined to a long dark line is content. They match when each side of the other shape's box is
+  within 1.5 times that of the mark's and, shifted by up to 2.0 mm in either direction, they overlap
+  by at least 0.5 (intersection over union). One shape explains one mark: two marks side by side do
+  not both match the one opposite. A hole shows the grey backing and print is black, so a hole's
+  darkest pixel is no darker than 60 on both sides (`HOLE_DARKEST_MIN`: print is darkest 0 to 12,
+  real holes 89 to 106), the darkest pixels of the two sides are within 30 of each other
+  (`HOLE_TONE_MATCH`: real holes 15), and the mean blue less red of its shape is within 12 of 0
+  (`HOLE_TINT`: real holes 4), so black print, pen, stamps and ink of a colour are not holes. A page
+  number in Arabic digits set at 8 pt or more in a proportional Sans or Serif font has digits 2 to 3
+  mm tall (tested at 8 to 12 pt), over a staple hole, and not round discs, so in no grey is it a
+  hole. When a page has two or more holes they share one
+  registration: their offsets from the mirrored spot agree within 0.5 mm (`OFFSET_SPREAD_MM`: real
+  holes 0.1), because marks that only look alike land at arbitrary offsets inside the window. The
+  window is 2.0 mm (`SHIFT_MM`), and a hole is found as far out as its overlap allows, so a bigger
+  hole is found further: as measured, up to 2.5 mm for a staple hole of 1.8 mm and up to 3.5 mm for
+  a punched hole of 6 mm. A page is blank when it has no counted mark, or when every counted mark is
+  a hole; any other mark keeps the page as before.
+- Pages are paired in order, 1+2, 3+4 and so on, as the two sides of sheets. `doc scan` pairs the
+  pages it scans unless `--simplex`, and `doc process` pairs the pages it is given unless
+  `--simplex`, because raw pages from a duplex scan come in pairs: give it pages that start with a
+  front. The desktop app pairs when "Both sides" is on. An odd last page has no partner. Pages are
+  worked on a sheet at a time, so at most two are in memory. Without pairing, or without a
+  partner, there are no holes and a page is judged as it always was.
+- Limits of the hole rule: pencil and grey marks rely on size, shape, tint and registration, so the
+  same symmetric mark at the mirrored spots of both sides, within 25 mm of an edge, on an otherwise
+  blank back is taken for a hole when it is grey and neutral, and the back is dropped. That includes
+  smaller grey marks: a grey "." or "-" or "o" of pencil or of grey print (a whole shape of at most
+  1.8 mm, as the digits of a numeral set under 8 pt can be) at the mirrored spot of a grey mark on
+  the other side. It also includes grey glyphs only x-height tall, lowercase roman folios such as
+  "x", "v" and "o", up to about 9 pt in Sans or 11 pt in Serif, at the mirrored spot of a similar
+  grey glyph on a grey front (as measured, "ix" on the front and "x" on the back), and grey
+  monospace digits at 8 to 9 pt. Each of these drops only the lone folio of an otherwise blank back.
+  Black print and ink are never holes. A 1-bit page has no greys (a hole is as black as print), so
+  on one nothing is a hole. A rotation between the sides spreads the offsets of holes in proportion
+  to the distance between them, so holes 216 mm apart (a three-hole punch on Letter paper) are holes
+  only while the sides are within about 0.15 degrees of each other; staple holes close together are
+  not affected. Beyond that the page is kept (the safe side). Pairing is by page order, so `doc
+  process` given pages that do not start with a front pairs them wrongly: a back then meets another
+  front, and is kept unless that front has a shape at the mirrored spot too (the safe side; a
+  stapled stack has one, and a back it shows the holes of is dropped all the same, rightly). Pale
+  marks (not darker than 160), marks between a staple hole and a punched one in size (1.8 to 4 mm),
+  long thin or hollow marks, holes larger than 8 mm or further than 25 mm from every edge, and small
+  marks joined to a dark line longer than 8 mm keep the page.
 - Searchable text: `ocrmypdf` comes with the app (the installer puts it in the app's own
   environment; from a checkout, `uv sync --extra ocr`), so only Tesseract, the program it drives,
   is left to install. Wherever Homebrew is installed (Bazzite ships it), run

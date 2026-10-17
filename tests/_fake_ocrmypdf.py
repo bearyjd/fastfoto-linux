@@ -12,7 +12,7 @@ SIGKILL, as the out-of-memory killer would make it) or ``hang`` (sleep up to 60 
 ``ignore_sigterm`` makes it
 survive SIGTERM, ``child`` starts a grandchild that sleeps, ``chatter`` is text written to stdout
 and stderr (stands for recognised text), ``flood`` is a number of bytes written to both (more than a
-pipe holds), ``record_to`` is a file that receives argv, its own pid, the
+pipe holds), ``record_to`` is a file that receives argv, its own PATH, its own pid, the
 grandchild's and the folder it was given (``staging_dir``) with that folder's permission bits
 (``staging_mode``).
 """
@@ -55,6 +55,7 @@ _SCRIPT = textwrap.dedent(
         folder = os.path.dirname(os.path.abspath(source))
         record = {{
             "argv": argv, "pid": os.getpid(), "child": child.pid if child else None,
+            "path": os.environ.get("PATH", ""),
             "staging_dir": folder, "staging_mode": os.stat(folder).st_mode & 0o777,
         }}
         open(spec["record_to"], "w").write(json.dumps(record))
@@ -97,13 +98,23 @@ _SCRIPT = textwrap.dedent(
 
 
 def install(directory: Path) -> Path:
-    """Write the fake ``ocrmypdf`` into ``directory`` and make it executable."""
+    """Write the fake ``ocrmypdf`` into ``directory`` and make it executable, with a fake
+    ``tesseract`` beside it (OCR is only available where both are)."""
     script = directory / "ocrmypdf"
     script.write_text(
         _SCRIPT.format(python=sys.executable, spec_env=SPEC_ENV, marker=MARKER), encoding="utf-8"
     )
     script.chmod(script.stat().st_mode | stat.S_IXUSR)
+    install_tesseract(directory)
     return script
+
+
+def install_tesseract(directory: Path) -> Path:
+    """Write a fake ``tesseract`` (it does nothing) into ``directory``."""
+    program = directory / "tesseract"
+    program.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    program.chmod(program.stat().st_mode | stat.S_IXUSR)
+    return program
 
 
 def spec_env(**spec: Any) -> dict[str, str]:

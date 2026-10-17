@@ -7,10 +7,11 @@ from pathlib import Path
 import pytest
 
 from fastfoto_linux.cli import main
+from fastfoto_linux.documents import ocr_tools
 from tests import _fake_ocrmypdf as fake
 from tests.documents.helpers import reader, text_scene, write_pages
 
-HINT = "sudo dnf install ocrmypdf"
+HINT = "sudo dnf install tesseract tesseract-osd"
 
 
 @pytest.fixture
@@ -75,6 +76,7 @@ def test_ocr_that_works_says_yes_and_publishes_the_searchable_pdf(
     assert (out / "Document_0001.pdf").read_bytes().endswith(fake.MARKER)
     argv = fake.read_record(record)["argv"]
     assert argv[:5] == ["--output-type", "pdf", "--rotate-pages", "-l", "eng+deu"]
+    assert argv[5:7] == ["--rasterizer", "pypdfium"]
     assert len(reader((out / "Document_0001.pdf").read_bytes()).pages) == 2
 
 
@@ -131,3 +133,42 @@ def test_ctrl_c_during_ocr_is_exit_130_with_nothing_published_and_nothing_left_r
     assert fake.wait_until_gone(seen["child"])
     assert [p.name for p in out.iterdir() if p.name != ".fastfoto-linux.lock"] == []
     assert all(p.exists() for p in pages)
+
+
+def ocrmypdf_without_tesseract(folder: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The app's own ocrmypdf is there; Tesseract, a program, is not."""
+    fake.put_on_path(folder, monkeypatch)
+    (folder / "tesseract").unlink()
+
+
+def test_without_tesseract_the_default_writes_the_plain_pdf_with_the_dnf_hint(
+    pages, out, tmp_path, capsys, monkeypatch
+) -> None:
+    ocrmypdf_without_tesseract(tmp_path / "bin", monkeypatch)
+    assert doc(out, pages) == 0
+    lines = capsys.readouterr().out.splitlines()
+    assert [line for line in lines if HINT in line] != []
+    assert fake.MARKER not in (out / "Document_0001.pdf").read_bytes()
+
+
+def test_without_tesseract_on_an_immutable_system_the_hint_is_brew(
+    pages, out, tmp_path, capsys, monkeypatch
+) -> None:
+    ocrmypdf_without_tesseract(tmp_path / "bin", monkeypatch)
+    marker = tmp_path / "ostree-booted"
+    marker.touch()
+    monkeypatch.setattr(ocr_tools, "OSTREE_MARKER", marker)
+    assert doc(out, pages) == 0
+    text = capsys.readouterr().out
+    assert "brew install tesseract" in text
+    assert "dnf" not in text
+
+
+def test_required_ocr_without_tesseract_is_exit_3_with_the_hint_and_no_traceback(
+    pages, out, tmp_path, capsys, monkeypatch
+) -> None:
+    ocrmypdf_without_tesseract(tmp_path / "bin", monkeypatch)
+    assert doc(out, pages, "--ocr", "on") == 3
+    err = capsys.readouterr().err
+    assert HINT in err
+    assert "Traceback" not in err

@@ -1,5 +1,10 @@
 """What the Documents form needs to know about OCRmyPDF and the sandbox."""
 
+from pathlib import Path
+
+import pytest
+
+from fastfoto_linux.documents import ocr_tools
 from fastfoto_linux.gui.doctools import (
     FLATPAK_OCR_HINT,
     NATIVE_OCR_HINT,
@@ -12,8 +17,18 @@ def tools(*, found: str | None, flatpak: bool) -> DocumentTools:
 
 
 def test_the_hints_say_what_to_install_or_that_the_native_install_is_needed() -> None:
-    assert NATIVE_OCR_HINT == "Install OCRmyPDF: sudo dnf install ocrmypdf tesseract-osd"
+    assert NATIVE_OCR_HINT == "Install Tesseract: sudo dnf install tesseract tesseract-osd"
     assert FLATPAK_OCR_HINT == "Searchable text needs the native install"
+
+
+def test_missing_ocr_on_an_immutable_system_says_to_use_homebrew(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    marker = tmp_path / "ostree-booted"
+    marker.touch()
+    monkeypatch.setattr(ocr_tools, "OSTREE_MARKER", marker)
+    missing = tools(found=None, flatpak=False)
+    assert missing.ocr_hint == "Install Tesseract: brew install tesseract"
 
 
 def test_ocr_that_is_found_is_available_and_needs_no_hint() -> None:

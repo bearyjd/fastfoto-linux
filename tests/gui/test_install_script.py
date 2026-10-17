@@ -1,6 +1,7 @@
 """tools/install-desktop.sh, run with a throwaway HOME and stand-ins for python, pip and make."""
 
 import os
+import pty
 import re
 import shutil
 import stat
@@ -8,6 +9,12 @@ import subprocess
 from pathlib import Path
 
 import pytest
+
+from fastfoto_linux.documents.ocr_tools import (
+    BREW_INSTALL_HINT,
+    BREW_LANG_HINT,
+    DNF_INSTALL_HINT,
+)
 
 ROOT = Path(__file__).resolve().parents[2]
 APP_ID = "io.github.bearyjd.FastFotoLinux"
@@ -92,6 +99,9 @@ def env(tmp_path: Path, home: Path) -> dict[str, str]:
         "PATH": f"{stubs}:{os.environ['PATH']}",
         "HOME": str(home),
         "FASTFOTO_PYTHON": str(stubs / "python3"),
+        # Never the machine's own Homebrew or rpm-ostree: see ocr_env for the OCR tests
+        "FASTFOTO_BREW_BIN": str(tmp_path / "no-brew"),
+        "FASTFOTO_OSTREE_MARKER": str(tmp_path / "no-ostree-booted"),
     }
 
 
@@ -234,11 +244,13 @@ def test_help_describes_the_options(checkout: Path, env: dict[str, str]) -> None
     assert done.returncode == 0
     assert "--uninstall" in done.stdout
     assert "--dry-run" in done.stdout
+    assert "--with-tesseract" in done.stdout
 
 
 # -- Review round 1: what the installer puts where, and how safely (item 8 and 12) ----------------
 
 REQUIREMENTS = "packaging/requirements-desktop.txt"
+OCR_REQUIREMENTS = "packaging/requirements-ocr.txt"
 
 
 def lib_dir(home: Path) -> Path:
@@ -290,12 +302,13 @@ def test_the_build_backend_and_dependencies_are_hashed_wheels_and_the_checkout_b
     checkout: Path, env: dict[str, str], home: Path
 ) -> None:
     assert run(checkout, env).returncode == 0
-    build, runtime, package = pip_lines(home)
-    for line in (build, runtime):
+    build, runtime, ocr, package = pip_lines(home)
+    for line in (build, runtime, ocr):
         assert "--require-hashes" in line
         assert "--only-binary=:all:" in line
     assert f"-r {checkout}/packaging/requirements-build.txt" in build
     assert f"-r {checkout}/{REQUIREMENTS}" in runtime
+    assert f"-r {checkout}/{OCR_REQUIREMENTS}" in ocr  # the ocr extra: ocrmypdf and its wheels
     assert "--no-build-isolation" in package
     assert "--no-deps" in package
     assert "--force-reinstall" in package
@@ -572,3 +585,241 @@ def test_the_launcher_survives_a_round_trip_through_glib(
     argv = GLib.shell_parse_argv(exec_line)[1]
     venv = nasty / ".local" / "share" / "fastfoto-linux" / "venv"
     assert argv == [f"{venv}/bin/fastfoto"]
+
+
+# -- OCR: ocrmypdf comes with the app, Tesseract (a program) comes from Homebrew or dnf ----------
+
+BASE_TOOLS = (
+    *("awk", "bash", "cat", "chmod", "cp", "dirname", "grep", "install", "ln"),
+    *("mkdir", "mktemp", "mv", "readlink", "rm", "rmdir", "sed"),
+)
+BREW_ARGUMENTS = "install tesseract"
+
+
+@pytest.fixture
+def ocr_env(tmp_path: Path, env: dict[str, str]) -> dict[str, str]:
+    """PATH holds only the stand-ins and the tools the script uses, so that no tesseract, brew or
+    sudo of the machine can be found or run; there is no Homebrew folder and no rpm-ostree."""
+    tools = tmp_path / "base-tools"
+    tools.mkdir()
+    for name in BASE_TOOLS:
+        found = shutil.which(name)
+        assert found, f"{name} is needed to run the installer"
+        (tools / name).symlink_to(found)
+    stubs = env["PATH"].split(":")[0]
+    write_executable(
+        Path(stubs) / "sudo", f'#!/bin/sh\necho "$@" >> "{tmp_path}/sudo.log"\nexit 1\n'
+    )
+    return {**env, "PATH": f"{stubs}:{tools}"}
+
+
+def brew_log(tmp_path: Path) -> Path:
+    return tmp_path / "brew.log"
+
+
+def add_brew(tmp_path: Path, env: dict[str, str], *, fail: bool = False) -> None:
+    """A stand-in Homebrew in its own folder; it only notes its arguments."""
+    folder = tmp_path / "linuxbrew" / "bin"
+    folder.mkdir(parents=True)
+    status = 1 if fail else 0
+    write_executable(
+        folder / "brew", f'#!/bin/sh\necho "$@" >> "{brew_log(tmp_path)}"\nexit {status}\n'
+    )
+    env["FASTFOTO_BREW_BIN"] = str(folder)
+
+
+def add_tesseract(tmp_path: Path, env: dict[str, str]) -> None:
+    write_executable(Path(env["PATH"].split(":")[0]) / "tesseract", "#!/bin/sh\nexit 0\n")
+
+
+def run_on_tty(checkout: Path, env: dict[str, str], answer: str, *args: str) -> tuple[int, str]:
+    """The installer with a terminal for input and output; ``answer`` is typed to it."""
+    master, slave = pty.openpty()
+    script = str(checkout / "tools" / "install-desktop.sh")
+    process = subprocess.Popen(
+        ["bash", script, *args], env=env, stdin=slave, stdout=slave, stderr=slave
+    )
+    os.close(slave)
+    os.write(master, answer.encode())
+    output = b""
+    while True:
+        try:
+            chunk = os.read(master, 4096)
+        except OSError:  # the other end is closed
+            break
+        if not chunk:
+            break
+        output += chunk
+    os.close(master)
+    return process.wait(timeout=60), output.decode(errors="replace")
+
+
+def test_the_ocr_wheels_are_a_dry_run_step_of_their_own(
+    checkout: Path, ocr_env: dict[str, str]
+) -> None:
+    done = run(checkout, ocr_env, "--dry-run")
+    assert done.returncode == 0, done.stderr
+    lines = [line for line in done.stdout.splitlines() if OCR_REQUIREMENTS in line]
+    assert len(lines) == 1
+    assert lines[0].startswith("would install")
+
+
+def test_without_tesseract_or_brew_a_dry_run_says_the_dnf_command(
+    checkout: Path, ocr_env: dict[str, str], tmp_path: Path
+) -> None:
+    done = run(checkout, ocr_env, "--dry-run")
+    assert done.returncode == 0, done.stderr
+    assert all(line.startswith("would ") for line in done.stdout.splitlines())
+    assert f"would tell how to get Tesseract: {DNF_INSTALL_HINT}" in done.stdout
+    assert BREW_INSTALL_HINT not in done.stdout
+
+
+def test_on_an_immutable_system_without_brew_the_hint_is_still_brew(
+    checkout: Path, ocr_env: dict[str, str], tmp_path: Path
+) -> None:
+    marker = tmp_path / "ostree-booted"
+    marker.touch()
+    done = run(checkout, {**ocr_env, "FASTFOTO_OSTREE_MARKER": str(marker)}, "--dry-run")
+    assert f"would tell how to get Tesseract: {BREW_INSTALL_HINT}" in done.stdout
+    assert "dnf" not in done.stdout
+
+
+def test_with_brew_and_no_tesseract_a_dry_run_offers_the_option_and_changes_nothing(
+    checkout: Path, ocr_env: dict[str, str], tmp_path: Path, home: Path
+) -> None:
+    add_brew(tmp_path, ocr_env)
+    done = run(checkout, ocr_env, "--dry-run")
+    assert done.returncode == 0, done.stderr
+    assert all(line.startswith("would ") for line in done.stdout.splitlines())
+    assert f"would tell how to get Tesseract: {BREW_INSTALL_HINT}" in done.stdout
+    assert "--with-tesseract" in done.stdout
+    assert not brew_log(tmp_path).exists()
+    assert tree(home) == []
+
+
+def test_a_dry_run_with_the_option_shows_the_brew_command_and_does_not_run_it(
+    checkout: Path, ocr_env: dict[str, str], tmp_path: Path
+) -> None:
+    add_brew(tmp_path, ocr_env)
+    done = run(checkout, ocr_env, "--dry-run", "--with-tesseract")
+    assert done.returncode == 0, done.stderr
+    assert all(line.startswith("would ") for line in done.stdout.splitlines())
+    assert f"would install Tesseract with Homebrew: {BREW_INSTALL_HINT}" in done.stdout
+    assert not brew_log(tmp_path).exists()
+
+
+def test_a_dry_run_with_tesseract_present_leaves_it_alone(
+    checkout: Path, ocr_env: dict[str, str], tmp_path: Path
+) -> None:
+    add_brew(tmp_path, ocr_env)
+    add_tesseract(tmp_path, ocr_env)
+    done = run(checkout, ocr_env, "--dry-run", "--with-tesseract")
+    assert "would leave Tesseract alone" in done.stdout
+    assert BREW_INSTALL_HINT not in done.stdout
+    assert not brew_log(tmp_path).exists()
+
+
+def test_a_tesseract_in_the_brew_folder_counts_as_present(
+    checkout: Path, ocr_env: dict[str, str], tmp_path: Path
+) -> None:
+    add_brew(tmp_path, ocr_env)
+    write_executable(Path(ocr_env["FASTFOTO_BREW_BIN"]) / "tesseract", "#!/bin/sh\nexit 0\n")
+    done = run(checkout, ocr_env, "--dry-run")
+    assert "would leave Tesseract alone" in done.stdout
+
+
+def test_the_option_runs_brew_install_tesseract_and_never_sudo(
+    checkout: Path, ocr_env: dict[str, str], tmp_path: Path
+) -> None:
+    add_brew(tmp_path, ocr_env)
+    done = run(checkout, ocr_env, "--with-tesseract")
+    assert done.returncode == 0, done.stderr
+    assert brew_log(tmp_path).read_text().splitlines() == [BREW_ARGUMENTS]
+    assert BREW_LANG_HINT in done.stdout  # for the other languages
+    assert not (tmp_path / "sudo.log").exists()
+
+
+def test_without_the_option_nothing_is_installed_and_the_hint_is_printed(
+    checkout: Path, ocr_env: dict[str, str], tmp_path: Path
+) -> None:
+    add_brew(tmp_path, ocr_env)
+    done = run(checkout, ocr_env)
+    assert done.returncode == 0, done.stderr
+    assert not brew_log(tmp_path).exists()
+    assert BREW_INSTALL_HINT in done.stdout
+    assert "--with-tesseract" in done.stdout
+
+
+def test_without_brew_the_hint_is_printed_and_the_option_is_explained(
+    checkout: Path, ocr_env: dict[str, str], tmp_path: Path
+) -> None:
+    done = run(checkout, ocr_env, "--with-tesseract")
+    assert done.returncode == 0, done.stderr
+    assert DNF_INSTALL_HINT in done.stdout + done.stderr
+    assert "Homebrew" in done.stderr
+    assert not (tmp_path / "sudo.log").exists()
+
+
+def test_tesseract_that_is_present_is_not_installed_again(
+    checkout: Path, ocr_env: dict[str, str], tmp_path: Path
+) -> None:
+    add_brew(tmp_path, ocr_env)
+    add_tesseract(tmp_path, ocr_env)
+    done = run(checkout, ocr_env, "--with-tesseract")
+    assert done.returncode == 0, done.stderr
+    assert not brew_log(tmp_path).exists()
+    assert "Tesseract" not in done.stdout
+
+
+def test_a_failing_brew_is_a_warning_not_a_failed_install(
+    checkout: Path, ocr_env: dict[str, str], tmp_path: Path, home: Path
+) -> None:
+    add_brew(tmp_path, ocr_env, fail=True)
+    done = run(checkout, ocr_env, "--with-tesseract")
+    assert done.returncode == 0, done.stderr
+    assert "Tesseract could not be installed" in done.stderr
+    assert (home / ".local" / "bin" / "ffscan").is_symlink()
+
+
+def test_on_a_terminal_yes_installs_tesseract_with_brew(
+    checkout: Path, ocr_env: dict[str, str], tmp_path: Path
+) -> None:
+    add_brew(tmp_path, ocr_env)
+    status, output = run_on_tty(checkout, ocr_env, "y\n")
+    assert status == 0, output
+    assert brew_log(tmp_path).read_text().splitlines() == [BREW_ARGUMENTS]
+
+
+@pytest.mark.parametrize("answer", ["n\n", "\n", "no\n"])
+def test_on_a_terminal_anything_but_yes_installs_nothing(
+    checkout: Path, ocr_env: dict[str, str], tmp_path: Path, answer: str
+) -> None:
+    add_brew(tmp_path, ocr_env)
+    status, output = run_on_tty(checkout, ocr_env, answer)
+    assert status == 0, output
+    assert not brew_log(tmp_path).exists()
+    assert BREW_INSTALL_HINT in output
+
+
+def test_a_dry_run_on_a_terminal_asks_nothing(
+    checkout: Path, ocr_env: dict[str, str], tmp_path: Path
+) -> None:
+    add_brew(tmp_path, ocr_env)
+    status, output = run_on_tty(checkout, ocr_env, "y\n", "--dry-run")
+    assert status == 0, output
+    assert not brew_log(tmp_path).exists()
+    assert "?" not in output
+
+
+def test_uninstall_never_touches_brew_or_tesseract(
+    checkout: Path, ocr_env: dict[str, str], tmp_path: Path
+) -> None:
+    add_brew(tmp_path, ocr_env)
+    assert run(checkout, ocr_env, "--with-tesseract").returncode == 0
+    brew_log(tmp_path).unlink()
+    for extra in ((), ("--dry-run",), ("--with-tesseract",)):
+        done = run(checkout, ocr_env, "--uninstall", *extra)
+        assert done.returncode == 0, done.stderr
+        assert "Tesseract" not in done.stdout + done.stderr
+    assert not brew_log(tmp_path).exists()
+    assert not (tmp_path / "sudo.log").exists()

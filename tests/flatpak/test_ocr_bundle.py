@@ -101,3 +101,14 @@ def test_ocrmypdf_and_its_native_wheels_are_installed_from_the_hashed_ocr_requir
 def test_no_ghostscript_is_needed_because_ocrmypdf_rasterizes_with_pdfium() -> None:
     manifest_text = (FLATPAK_DIR / "io.github.bearyjd.FastFotoLinux.yml").read_text()
     assert "ghostscript" not in manifest_text.lower()
+
+
+def test_the_licence_texts_of_leptonica_and_the_data_are_installed_with_the_bundle() -> None:
+    # BSD-2-Clause asks for its text in a binary distribution; flatpak-builder finds LICENSE or
+    # COPYING by itself (Tesseract's), but not Leptonica's differently named file.
+    assert "leptonica-license.txt" in module("leptonica")["license-files"]
+    data = module("tessdata")
+    assert "LICENSE" in data["license-files"]
+    [licence] = [s for s in data["sources"] if s["url"].endswith("/LICENSE")]
+    assert "/tessdata_fast/" in licence["url"]
+    assert re.fullmatch(r"[0-9a-f]{64}", licence["sha256"])

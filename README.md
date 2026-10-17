@@ -452,7 +452,8 @@ from the same hashed wheels as the native install (`packaging/requirements-ocr.t
 languages are not bundled: `--lang deu` says that only English comes with the Flatpak. The bundle
 carries these components under their own licences, all compatible with this project's GPL-3.0:
 Tesseract (Apache-2.0), Leptonica (BSD-2-Clause) and the tessdata_fast data (Apache-2.0); OCRmyPDF
-(MPL-2.0) and its wheels keep theirs. The app finds Tesseract in `/app/bin`, the data through
+(MPL-2.0) and its wheels keep theirs; the texts of the three built components' licences are in
+the bundle under `/app/share/licenses`. The app finds Tesseract in `/app/bin`, the data through
 `TESSDATA_PREFIX=/app/share/tessdata`, and never looks for Homebrew in the sandbox.
 
 The CI job `flatpak` builds the same bundle, uploads it as an artifact, installs it, and runs

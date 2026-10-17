@@ -5,13 +5,15 @@ mirrored spot of the other side. Real holes are grey (darkest 89 to 106) and pri
 import pytest
 
 from fastfoto_linux.documents.holes import HOLE_DARKEST_MIN
-from tests.doc_synth import INK_TONE, Scene, paper_scene
-from tests.doc_synth_holes import SMALL_MM, STAPLES, disc, holes_painter, sheet
+from tests.doc_synth import INK_TONE, LETTER_MM, Scene, paper_scene
+from tests.doc_synth_holes import SMALL_MM, STAPLES, disc, holes_painter, letter_sheet, sheet
 from tests.documents.holes_helpers import FAST_DPIS, blanks, mirrored
 from tests.documents.holes_print import (
     BUNDLED,
     FONTS,
+    PRINT_TONE,
     body_text,
+    has_font,
     page_numbers,
     pen_note,
     width_mm,
@@ -26,11 +28,18 @@ NUMBER_SIZES = [  # every font at 200 dpi, and the bundled one at 300
 
 
 def numbered(  # noqa: PLR0913
-    front: int, back: int, *, dpi: int, font: str, points: float, where: str = "centre"
+    front: int,
+    back: int,
+    *,
+    dpi: int,
+    font: str,
+    points: float,
+    where: str = "centre",
+    tone: int = PRINT_TONE,
 ) -> tuple[Scene, Scene]:
     """A sheet whose front has text and a page number and whose back has only its number."""
     on_front, on_back = page_numbers(
-        str(front), str(back), points=points, dpi=dpi, font=font, where=where
+        str(front), str(back), points=points, dpi=dpi, font=font, where=where, tone=tone
     )
     return sheet(dpi, [body_text(front, font=font), on_front], [on_back], seed=front)
 
@@ -63,6 +72,62 @@ def test_no_back_of_a_numbered_document_is_dropped_for_its_number(start: int) ->
         if blanks(*sides)[1]:
             dropped.append(front + 1)
     assert dropped == []
+
+
+# Grey page numbers (a grey print, a grey toner): (tone, points, font, dpi). Each of these was
+# taken for a hole beside the front's number before a hole had a size: digits of 8 to 12 pt are
+# 2 to 3 mm tall, over a staple hole, and not a round disc.
+GREY_NUMBERS = [
+    pytest.param(
+        *case,
+        marks=pytest.mark.skipif(not has_font(case[2]), reason=f"no {case[2]} font"),
+        id="-".join(map(str, case)),
+    )
+    for case in (
+        (89, 8, BUNDLED, 200),
+        (89, 10, "sans", 200),
+        (89, 12, BUNDLED, 300),
+        (102, 8, "sans", 200),
+        (102, 10, BUNDLED, 300),
+        (102, 12, "sans", 300),
+        (128, 8, BUNDLED, 300),
+        (128, 10, BUNDLED, 200),
+        (128, 12, "sans", 300),
+        (150, 10, BUNDLED, 300),
+        (150, 12, BUNDLED, 300),
+        (150, 12, "sans", 300),
+        (150, 8, "serif", 200),
+        (102, 12, "serif", 200),
+    )
+]
+
+
+@pytest.mark.parametrize(("tone", "points", "font", "dpi"), GREY_NUMBERS)
+def test_a_back_with_only_a_grey_page_number_is_kept_beside_the_fronts_grey_number(
+    tone: int, points: int, font: str, dpi: int
+) -> None:
+    """The grey of the backing seen through a hole (darkest 89 to 106), 5 and 6 at the centre of
+    the foot, 89 and 90 at the outer corners: the digits overlap by more than half, and are
+    still print."""
+    dropped = []
+    for front, where in ((5, "centre"), (89, "outer")):
+        sides = numbered(
+            front, front + 1, dpi=dpi, font=font, points=points, where=where, tone=tone
+        )
+        if blanks(*sides)[1]:
+            dropped.append(front + 1)
+    assert dropped == []
+
+
+def test_a_grey_number_at_the_foot_of_a_letter_page_is_kept() -> None:
+    """The size of a real page: 5 and 6 in the grey of a hole (darkest 89) at the centre of the
+    foot, the back with nothing else."""
+    on_front, on_back = page_numbers(
+        "5", "6", points=10, dpi=200, font=BUNDLED, where="centre", tone=89, paper_mm=LETTER_MM
+    )
+    text = body_text(5, paper_mm=LETTER_MM, margin_mm=20.0, bottom_mm=30.0)
+    front, back = letter_sheet(200, [text, on_front], [on_back], seed=5)
+    assert blanks(front, back)[1] is False
 
 
 # One glyph of a pen note near an edge of the back, against dense text on the front. Each was

@@ -62,7 +62,11 @@ from fastfoto_linux.documents.trim import Trimmed
 from fastfoto_linux.documents.units import MM_PER_INCH, mm_to_px
 from fastfoto_linux.imaging import RGB_NDIM
 
-HOLE_MAX_MM = 8.0  # a hole is no longer than this: punched holes about 6 mm, staple holes 1 to 2
+STAPLE_MAX_MM = 1.8  # a staple hole's whole shape is no longer than this (real: 1.35 at most)
+PUNCH_MIN_MM = 4.0  # a punched hole is a round disc at least this long (punches are about 6 mm)
+HOLE_MAX_MM = 8.0  # ... and no longer than this; nothing longer is a hole
+PUNCH_ASPECT_MIN = 0.8  # a punched hole's box is nearly square: the short side over the long
+PUNCH_FILL_MIN = 0.6  # ... and the hole fills this much of its box (a disc fills 0.78, a ring less)
 EDGE_ZONE_MM = 25.0  # staples, clips and punches sit this near an edge of the page, or nearer
 SHIFT_MM = 2.0  # the mirrored spot is searched this far to each side
 MATCH_IOU = 0.5  # the two shapes overlap by at least this share of their union

@@ -46,7 +46,7 @@ def test_a_two_millimetre_mark_near_an_edge_with_no_mirror_keeps_the_back(dpi: i
 @pytest.mark.parametrize("dpi", DPIS)
 def test_a_mark_of_the_same_size_but_another_shape_opposite_is_not_a_hole(dpi: int) -> None:
     """The mirrored spot holds a dash lying across the mark: the same size, hardly any overlap."""
-    flat, upright = dash(12.0, 6.0, 2.0, 0.7), dash(12.65, 5.35, 0.7, 2.0)
+    flat, upright = dash(12.0, 6.0, 1.7, 0.7), dash(12.5, 5.5, 0.7, 1.7)
     front, back = sheet(dpi, [holes_painter([flat])], [holes_painter(mirrored([upright]))])
     assert blanks(front, back) == KEPT
 
@@ -57,7 +57,7 @@ def test_a_slanted_hole_that_is_not_flipped_on_the_other_side_is_not_a_hole(
     dpi: int, slope: int
 ) -> None:
     """Flipped, "/" is "\\": the same stroke at the mirrored spot lies across the mark."""
-    hole = [slanted(12.0, 6.0, 2.4, slope)]
+    hole = [replace(slanted(12.0, 6.0, 1.2, slope), stroke_mm=0.5)]
     unflipped = [replace(other, slope=-other.slope) for other in mirrored(hole)]
     front, back = sheet(dpi, [holes_painter(hole)], [holes_painter(unflipped)])
     assert blanks(front, back) == KEPT
@@ -100,8 +100,8 @@ def test_a_mark_is_a_hole_up_to_eight_millimetres_and_not_over(
 
 @pytest.mark.parametrize("dpi", DPIS)
 def test_a_hole_thirty_millimetres_from_every_edge_keeps_both_pages(dpi: int) -> None:
-    mark = [disc(30.0, 30.0, 3.0)]
-    assert min(30.0, 30.0, PAPER_WIDTH_MM - 33.0, PAPER_HEIGHT_MM - 33.0) > EDGE_ZONE_MM
+    mark = [disc(30.0, 30.0, 1.6)]
+    assert min(30.0, 30.0, PAPER_WIDTH_MM - 31.6, PAPER_HEIGHT_MM - 31.6) > EDGE_ZONE_MM
     front, back = sheet(dpi, [holes_painter(mark)], [holes_painter(mirrored(mark))])
     assert blanks(front, back) == KEPT
 
@@ -113,7 +113,7 @@ def test_a_hole_thirty_millimetres_from_every_edge_keeps_both_pages(dpi: int) ->
 def test_a_mark_is_a_hole_within_twenty_five_millimetres_of_an_edge_and_not_further(
     dpi: int, gap: float, blank: bool
 ) -> None:
-    mark = [disc(gap, 40.0, 3.0)]
+    mark = [disc(gap, 40.0, 1.6)]
     front, back = sheet(dpi, [holes_painter(mark)], [holes_painter(mirrored(mark))])
     assert blanks(front, back) == (blank, blank)
 
@@ -132,14 +132,14 @@ def test_the_other_side_may_lie_two_millimetres_off_and_not_further(
 
 
 @pytest.mark.parametrize("dpi", DPIS)
-@pytest.mark.parametrize(("other", "blank"), [(2.8, True), (3.2, False)], ids=str)
+@pytest.mark.parametrize(("other", "blank"), [(1.5, True), (1.8, False)], ids=str)
 def test_the_shape_opposite_is_the_same_size_within_one_and_a_half_times(
     dpi: int, other: float, blank: bool
 ) -> None:
-    """A 2 mm dash and a longer one that overlap by more than half (2.0 / 3.2 is 0.625), so only
+    """A 1.1 mm dash and a longer one that overlap by more than half (1.1 / 1.8 is 0.61), so only
     the size tells them apart."""
-    short = [dash(12.0, 6.0, 2.0)]
-    longer = [dash(12.0 - (other - 2.0) / 2, 6.0, other)]
+    short = [dash(12.0, 6.0, 1.1)]
+    longer = [dash(12.0 - (other - 1.1) / 2, 6.0, other)]
     front, back = sheet(dpi, [holes_painter(short)], [holes_painter(mirrored(longer))])
     assert blanks(front, back) == (blank, blank)
 

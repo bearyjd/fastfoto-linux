@@ -30,6 +30,6 @@ def test_a_stroke_beside_a_hole_on_the_back_alone_makes_it_content(tone: int, ga
 def test_a_one_pixel_diagonal_hole_is_one_shape(dpi: int, slope: int, stroke_mm: float) -> None:
     """Its pixels touch only by their corners (8-connected): in 4-connected pieces nothing on the
     front would match the back's."""
-    hole = [replace(slanted(12.0, 8.0, 3.0, slope), stroke_mm=stroke_mm)]
+    hole = [replace(slanted(12.0, 8.0, 1.5, slope), stroke_mm=stroke_mm)]
     front, back = sheet(dpi, [holes_painter(hole)], [holes_painter(mirrored(hole))], seed=4)
     assert blanks(front, back) == (True, True)

@@ -43,12 +43,14 @@ def font_file(name: str) -> Path | None:
     return next((path for path in found if path.is_file()), None)
 
 
-def _has(name: str) -> bool:
+def has_font(name: str) -> bool:
     return name == BUNDLED or font_file(name) is not None
 
 
 FONTS = [
-    pytest.param(name, marks=pytest.mark.skipif(not _has(name), reason=f"no {name} font"), id=name)
+    pytest.param(
+        name, marks=pytest.mark.skipif(not has_font(name), reason=f"no {name} font"), id=name
+    )
     for name in (BUNDLED, *SYSTEM_FONTS)
 ]
 
@@ -139,12 +141,13 @@ def page_numbers(  # noqa: PLR0913
     dpi: int,
     font: str,
     where: str,
+    tone: int = PRINT_TONE,
     paper_mm: tuple[float, float] = SMALL_MM,
     foot_mm: float = 8.0,
 ) -> tuple[Painter, Painter]:
     """The page numbers of a sheet, each at the same spot of its side's paper once the back is
     flipped: at the centre of the foot, or at the outer corner (right on the front, left on the
-    back)."""
+    back), in black print or in the grey of ``tone``."""
     width, height = paper_mm
 
     def at(text: str, *, left: bool) -> Painter:
@@ -154,7 +157,7 @@ def page_numbers(  # noqa: PLR0913
             if where == "centre"
             else (foot_mm if left else width - foot_mm - size)
         )
-        return printed(text, x, height - foot_mm, points, font=font)
+        return printed(text, x, height - foot_mm, points, font=font, tone=tone)
 
     return at(front, left=False), at(back, left=True)
 

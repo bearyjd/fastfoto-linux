@@ -42,8 +42,9 @@ DIGIT_PITCH_MM = 2.6
 
 @dataclass(frozen=True)
 class Hole:
-    """A dark spot (a dash, an ellipse if ``round``, or a stroke across its box if ``slope`` is
-    +1 for "/" and -1 for "\\") with its top left corner in mm from the paper's top left corner."""
+    """A dark spot (a dash, an ellipse if ``round`` and a ring of ``ring_mm`` if that is set, or a
+    stroke across its box if ``slope`` is +1 for "/" and -1 for "\\") with its top left corner in
+    mm from the paper's top left corner."""
 
     x_mm: float
     y_mm: float
@@ -52,6 +53,7 @@ class Hole:
     round: bool = False
     slope: int = 0
     stroke_mm: float = 0.7  # the width of a slanted stroke
+    ring_mm: float = 0.0  # the thickness of a ring (an "o", a "0"); 0 is a filled spot
 
     def mirrored(self, paper_width_mm: float) -> "Hole":
         """The same hole as the other side of the paper shows it: flipped left to right."""
@@ -71,6 +73,11 @@ def dash(x_mm: float, y_mm: float, length_mm: float, thickness_mm: float = 0.7) 
 
 def disc(x_mm: float, y_mm: float, diameter_mm: float) -> Hole:
     return Hole(x_mm, y_mm, diameter_mm, diameter_mm, round=True)
+
+
+def ring(x_mm: float, y_mm: float, diameter_mm: float, thickness_mm: float) -> Hole:
+    """An "o": a round outline of ``thickness_mm`` that is hollow inside."""
+    return Hole(x_mm, y_mm, diameter_mm, diameter_mm, round=True, ring_mm=thickness_mm)
 
 
 def slanted(x_mm: float, y_mm: float, length_mm: float, slope: int = 1) -> Hole:
@@ -96,7 +103,10 @@ def with_holes(scene: Scene, holes: Sequence[Hole], tone: Tone = HOLE_TONE) -> S
             if hole.round:
                 centre = ((left + right) // 2, (top + bottom) // 2)
                 axes = ((right - left) // 2, (bottom - top) // 2)
-                cv2.ellipse(canvas, centre, axes, 0, 0, 360, 1, -1)
+                thickness = px(hole.ring_mm, scene.dpi) if hole.ring_mm else -1
+                if thickness > 0:  # the outline is drawn half in, half out of the ellipse
+                    axes = (axes[0] - thickness // 2, axes[1] - thickness // 2)
+                cv2.ellipse(canvas, centre, axes, 0, 0, 360, 1, thickness)
             else:
                 ends = ((left, bottom - 1), (right - 1, top))  # "/"
                 if hole.slope < 0:

@@ -1,6 +1,8 @@
 """A mark that is a hole through the paper, shown at the mirrored spot of the other side, is not a
 mark: staple holes and punched holes do not keep an otherwise blank page."""
 
+from dataclasses import replace
+
 import pytest
 
 from fastfoto_linux.documents.blank import is_blank_beside
@@ -107,6 +109,6 @@ def test_holes_on_a_sheet_narrower_than_the_frame_are_matched_in_the_frame(
 @pytest.mark.parametrize("slope", [1, -1], ids=["slash", "backslash"])
 def test_a_slanted_hole_is_the_other_way_round_on_the_other_side(dpi: int, slope: int) -> None:
     """The hole of a clip slanted like "/" on the front shows as "\\" on the back."""
-    hole = [slanted(12.0, 6.0, 2.4, slope)]
+    hole = [replace(slanted(12.0, 6.0, 1.2, slope), stroke_mm=0.5)]
     front, back = sheet(dpi, [holes_painter(hole)], [holes_painter(mirrored(hole))])
     assert blanks(front, back) == (True, True)

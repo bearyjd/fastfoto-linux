@@ -21,7 +21,7 @@ FRAME_MM = (100.0, 120.0)
 FRONT_CUT = (4.0, 9.0, 3.0, 2.0)
 BACK_CUT = (11.0, 2.0, 8.0, 0.0)
 HOLE = dash(20.0, 20.0, 1.8)  # in the frame, 20 mm from its left and its top edges
-ROUND = disc(20.0, 30.0, 3.0)
+ROUND = disc(20.0, 30.0, 1.5)
 
 
 def cut_side(

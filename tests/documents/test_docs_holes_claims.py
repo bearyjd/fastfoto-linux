@@ -23,7 +23,11 @@ def squeezed(text: str | None) -> str:
 
 
 def test_the_constants_are_the_ones_the_rule_was_measured_with() -> None:
+    assert holes.STAPLE_MAX_MM == 1.8
+    assert holes.PUNCH_MIN_MM == 4.0
     assert holes.HOLE_MAX_MM == 8.0
+    assert holes.PUNCH_ASPECT_MIN == 0.8
+    assert holes.PUNCH_FILL_MIN == 0.6
     assert holes.EDGE_ZONE_MM == 25.0
     assert holes.SHIFT_MM == 2.0
     assert holes.MATCH_IOU == 0.5
@@ -39,7 +43,8 @@ def test_the_constants_are_the_ones_the_rule_was_measured_with() -> None:
 def test_the_hole_rule_is_described_with_its_constants(name: str) -> None:
     text = text_of(name)
     assert "A hole through the paper does not keep a page" in text
-    assert f"its longer side is at most {holes.HOLE_MAX_MM:g} mm" in text
+    assert "a counted mark is a hole when its whole shape is the size of a staple hole" in text
+    assert "or of a punched hole" in text
     assert f"within {holes.EDGE_ZONE_MM:g} mm of an edge of the page" in text
     assert "the other side of the same sheet has a dark shape of the same size" in text
     assert "at the mirrored spot" in text
@@ -55,6 +60,23 @@ def test_the_hole_rule_is_described_with_its_constants(name: str) -> None:
     assert (
         "A page is blank when it has no counted mark, or when every counted mark is a hole" in text
     )
+
+
+@pytest.mark.parametrize("name", list(DOCUMENTS))
+def test_a_hole_is_a_staple_hole_or_a_round_punched_disc(name: str) -> None:
+    text = text_of(name)
+    assert (
+        f"A staple hole is at most {holes.STAPLE_MAX_MM:g} mm long (`STAPLE_MAX_MM`; "
+        "real ones are 0.6 to 1.35 mm)"
+    ) in text
+    assert (
+        f"A punched hole is a round disc {holes.PUNCH_MIN_MM:g} to {holes.HOLE_MAX_MM:g} mm long "
+        "(`PUNCH_MIN_MM`, `HOLE_MAX_MM`; punched holes are about 6 mm)"
+    ) in text
+    assert f"short side at least {holes.PUNCH_ASPECT_MIN:g} of its long one" in text
+    assert "(`PUNCH_ASPECT_MIN`)" in text
+    assert f"at least {holes.PUNCH_FILL_MIN:g} filled (`PUNCH_FILL_MIN`; a disc fills 0.78)" in text
+    assert 'Anything in between, and a long thin or hollow mark (a "0", an "o"), is never' in text
 
 
 @pytest.mark.parametrize("name", list(DOCUMENTS))
@@ -78,7 +100,13 @@ def test_a_hole_is_grey_and_neutral_and_the_same_on_both_sides(name: str) -> Non
     )
     assert f"mean blue less red of its shape is within {holes.HOLE_TINT} of 0" in text
     assert "(`HOLE_TINT`: real holes 4)" in text
-    assert "so printed or inked marks are never holes, whatever lies opposite" in text
+    assert "so black print, pen, stamps and ink of a colour are not holes" in text
+    assert (
+        "A page number set from about 7.5 pt up has digits over 1.8 mm tall (2 to 3 mm at 8 to 12 "
+        "pt), over a staple hole, and not round discs, so in no grey is it a hole"
+    ) in text
+    assert "whatever lies opposite" not in text
+    assert "no longer matters" not in text
 
 
 @pytest.mark.parametrize("name", list(DOCUMENTS))
@@ -107,14 +135,20 @@ def test_the_offset_tolerance_is_given_as_measured_for_small_and_large_holes(nam
 def test_the_limits_of_the_hole_rule_are_listed(name: str) -> None:
     text = text_of(name)
     zone = f"within {holes.EDGE_ZONE_MM:g} mm of an edge"
-    assert "pencil and grey marks rely on shape, tint and registration" in text
+    assert "pencil and grey marks rely on size, shape, tint and registration" in text
     assert (
         f"the same symmetric mark at the mirrored spots of both sides, {zone}, "
         "on an otherwise blank back is taken for a hole"
     ) in text
-    assert "Printed or inked marks are never holes" in text
+    assert (
+        'That includes smaller grey marks: a grey "." or "-" of pencil or of grey print (a whole '
+        "shape of at most 1.8 mm, as the digits of a numeral set under about 7.5 pt are)"
+    ) in text
+    assert "at the mirrored spot of a grey mark on the other side" in text
+    assert "Black print and ink are never holes" in text
     assert "A 1-bit page has no greys (a hole is as black as print)" in text
-    assert "holes 180 mm apart (a three-hole punch on Letter paper)" in text
+    assert "holes 216 mm apart (a three-hole punch on Letter paper)" in text
+    assert "holes 180 mm" not in text
     assert "within about 0.15 degrees of each other" in text
     assert (
         "Pairing is by page order, so `doc process` given pages that do not start with a front "
@@ -159,6 +193,16 @@ def test_the_design_note_gives_the_numbers_the_tone_tint_and_registration_were_s
     assert "darkest 0 to 12 (5th, 50th and 95th percentile 0, 0 to 2 and 9 to 12)" in text
 
 
+def test_the_design_note_gives_the_numbers_the_size_classes_were_set_from() -> None:
+    text = text_of("design note")
+    assert "17 matched real staple holes across 5 scans" in text
+    assert "whole shape 0.59 to 1.35 mm long and 0.42 to 0.93 mm short" in text
+    assert "aspect 0.57 to 1.0, fill 0.29 to 0.78, darkest 86 to 108" in text
+    assert "digits of a page number at 8 to 12 pt are 2.0 to 3.0 mm tall" in text
+    assert "`STAPLE_MAX_MM` 1.8 is a third above the largest real hole" in text
+    assert "0.543 against 0.5" in text
+
+
 def test_the_design_note_no_longer_says_a_punch_hole_always_keeps_the_page() -> None:
     assert "a punch hole or a scanner streak keeps the page" not in text_of("design note")
 
@@ -168,12 +212,19 @@ def test_the_module_text_names_the_rule_and_its_limits() -> None:
     names = ("HOLE_MAX_MM", "EDGE_ZONE_MM", "HOLE_TONE", "SIZE_RATIO", "SHIFT_MM", "MATCH_IOU")
     for name in (*names, "HOLE_DARKEST_MIN", "HOLE_TONE_MATCH", "HOLE_TINT", "OFFSET_SPREAD_MM"):
         assert f"``{name}``" in text
+    for name in ("STAPLE_MAX_MM", "PUNCH_MIN_MM", "PUNCH_ASPECT_MIN", "PUNCH_FILL_MIN"):
+        assert f"``{name}``" in text
+    assert "Anything in between, and a long thin or hollow mark, is never a hole" in text
+    assert "A page number set from about 7.5 pt up" in text
+    assert "whatever lies opposite" not in text
+    assert "no longer matters" not in text
+    assert "smaller grey marks" in text
     assert "The back of a sheet is its front flipped left to right and the top stays on top" in text
     assert "the same symmetric mark at the mirrored spots of both sides" in text
     assert "Print is never a hole" in text
     assert "share one registration" in text
     assert "A 1-bit page has no greys" in text
-    assert "holes 180 mm apart (a three-hole punch on Letter paper)" in text
+    assert "holes 216 mm apart (a three-hole punch on Letter paper)" in text
     assert "the pairing is by page order, so pages that do not start with a front" in text
     assert "One shape explains one mark" in text
     assert "not clipped by the box or by the blank margin" in text
@@ -183,7 +234,8 @@ def test_the_module_text_names_the_rule_and_its_limits() -> None:
 
 def test_the_blank_rule_text_gives_the_numbers() -> None:
     text = squeezed(blank.is_blank_beside.__doc__)
-    assert f"({holes.HOLE_MAX_MM:g} mm)" in text
+    assert f"``holes.STAPLE_MAX_MM`` ({holes.STAPLE_MAX_MM:g} mm)" in text
+    assert f"({holes.PUNCH_MIN_MM:g} to {holes.HOLE_MAX_MM:g} mm)" in text
     assert f"({holes.EDGE_ZONE_MM:g} mm)" in text
     assert f"({holes.SHIFT_MM:.1f} mm)" in text
     assert f"({holes.MATCH_IOU:g})" in text

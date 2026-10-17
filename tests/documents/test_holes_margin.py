@@ -13,11 +13,11 @@ from fastfoto_linux.documents.holes import HOLE_MAX_MM, HOLE_TONE
 from fastfoto_linux.documents.marks import find_marks
 from fastfoto_linux.documents.trim import Trimmed
 from tests.doc_synth_holes import Hole, dash, disc, holes_painter, sheet
-from tests.documents.holes_helpers import DPIS, blanks, mirrored, trimmed_sides
+from tests.documents.holes_helpers import DPIS, FAST_DPIS, blanks, mirrored, trimmed_sides
 
 # Staple holes whose dark shapes start 4.5 to 4.7 mm from the top: the margin cuts 0.3 to 0.5 mm
 # off the top of each of them.
-STRADDLERS = (dash(12.0, 4.6, 1.9, 1.2), dash(15.0, 4.5, 1.6, 1.3), disc(18.0, 4.7, 1.8))
+STRADDLERS = (dash(12.0, 4.6, 1.8, 1.2), dash(15.0, 4.5, 1.6, 1.3), disc(18.0, 4.7, 1.6))
 # Punched holes 6 mm across, 2 mm from the left edge: the margin cuts 3 mm off each.
 EDGE_PUNCHES = (disc(2.0, 20.0, 6.0), disc(2.0, 55.0, 6.0), disc(2.0, 90.0, 6.0))
 # Straddling holes with the back off the front by up to 1.5 mm sideways and 0.3 mm up and down.
@@ -126,15 +126,25 @@ def test_a_straddling_hole_with_no_hole_opposite_keeps_the_page(dpi: int) -> Non
 
 @pytest.mark.parametrize("dpi", DPIS)
 @pytest.mark.parametrize(
-    ("length", "blank"), [(HOLE_MAX_MM - 1.0, True), (HOLE_MAX_MM + 1.0, False)], ids=str
+    ("diameter", "blank"), [(HOLE_MAX_MM - 1.0, True), (HOLE_MAX_MM + 1.0, False)], ids=str
 )
 def test_the_whole_shape_is_a_hole_up_to_eight_millimetres_and_not_over(
-    dpi: int, length: float, blank: bool
+    dpi: int, diameter: float, blank: bool
 ) -> None:
-    """A stem hangs from a line in the margin: the shape is the line and the stem together."""
-    shape = hung_from_a_line(length)
+    """A punched hole is cut by the top margin: the counted mark is its lower part, the shape is
+    the whole disc."""
+    shape = [disc(30.0, 2.0, diameter)]
     front, back = sheet(dpi, [holes_painter(shape)], [holes_painter(mirrored(shape))])
     assert blanks(front, back) == (blank, blank)
+
+
+@pytest.mark.parametrize("dpi", FAST_DPIS)
+@pytest.mark.parametrize("length", [HOLE_MAX_MM - 1.0, 3.0], ids=str)
+def test_a_stem_hung_from_a_line_is_not_a_hole_whatever_the_line(dpi: int, length: float) -> None:
+    """The line in the margin and its stem are one shape, as long as the line and not round."""
+    shape = hung_from_a_line(length)
+    front, back = sheet(dpi, [holes_painter(shape)], [holes_painter(mirrored(shape))])
+    assert blanks(front, back) == KEPT
 
 
 @pytest.mark.parametrize("dpi", DPIS)

@@ -101,8 +101,9 @@ def test_the_offset_is_from_centre_to_centre_whatever_the_sizes(dpi: int) -> Non
 def test_a_three_hole_punch_on_letter_paper_needs_the_sides_within_about_a_sixth_of_a_degree(
     tilt: float, blank: bool
 ) -> None:
-    """Holes 180 mm apart: a turn of the back spreads their offsets by 180 mm times its tangent."""
-    holes = [disc(8.0, y, 6.0) for y in (50.0, 139.0, 228.0)]
+    """The outer holes of a Letter punch are 216 mm apart (108 mm between holes): a turn of the
+    back spreads their offsets by 216 mm times its tangent."""
+    holes = [disc(8.0, y, 6.0) for y in (29.0, 137.0, 245.0)]
     back = [hole.mirrored(LETTER_MM[0]) for hole in holes]
     front, back_side = letter_sheet(
         200, [holes_painter(holes)], [holes_painter(back)], shift_mm=(0.8, -0.5), tilt_deg=tilt

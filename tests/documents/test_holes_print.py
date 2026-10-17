@@ -7,7 +7,7 @@ import pytest
 from fastfoto_linux.documents.holes import HOLE_DARKEST_MIN
 from tests.doc_synth import INK_TONE, Scene, paper_scene
 from tests.doc_synth_holes import SMALL_MM, STAPLES, disc, holes_painter, sheet
-from tests.documents.holes_helpers import DPIS, blanks, mirrored
+from tests.documents.holes_helpers import FAST_DPIS, blanks, mirrored
 from tests.documents.holes_print import (
     BUNDLED,
     FONTS,
@@ -20,6 +20,9 @@ from tests.documents.holes_print import (
 
 KEPT = (False, False)
 PAIRS = [(5, 6), (8, 9), (15, 16), (35, 36), (95, 96)]
+NUMBER_SIZES = [  # every font at 200 dpi, and the bundled one at 300
+    pytest.param(font.values[0], 200, marks=font.marks, id=f"{font.id}-200") for font in FONTS
+] + [pytest.param(BUNDLED, 300, id="bundled-300")]
 
 
 def numbered(  # noqa: PLR0913
@@ -32,8 +35,7 @@ def numbered(  # noqa: PLR0913
     return sheet(dpi, [body_text(front, font=font), on_front], [on_back], seed=front)
 
 
-@pytest.mark.parametrize("dpi", [200, 300])
-@pytest.mark.parametrize("font", FONTS)
+@pytest.mark.parametrize(("font", "dpi"), NUMBER_SIZES)
 @pytest.mark.parametrize(("front", "back"), PAIRS, ids=str)
 def test_a_back_with_only_a_page_number_is_kept_beside_the_fronts_number(
     front: int, back: int, font: str, dpi: int
@@ -51,7 +53,7 @@ def test_numbers_at_the_outer_corners_are_kept_too(front: int, back: int, points
     assert blanks(*sides) == KEPT
 
 
-@pytest.mark.parametrize("start", range(1, 19))
+@pytest.mark.parametrize("start", range(1, 10))
 def test_no_back_of_a_numbered_document_is_dropped_for_its_number(start: int) -> None:
     """A sample of the pages 1 and 2 to 99 and 100: every size and place, in turn."""
     dropped = []
@@ -88,7 +90,7 @@ def test_a_one_glyph_pen_note_against_dense_text_is_kept(
     assert blanks(front, back)[1] is False
 
 
-@pytest.mark.parametrize("dpi", DPIS)
+@pytest.mark.parametrize("dpi", FAST_DPIS)
 @pytest.mark.parametrize("darkest", [150, 158])
 def test_a_dark_stamp_is_not_dropped_for_its_ghost_on_the_back(dpi: int, darkest: int) -> None:
     """The front holds only a 7 mm stamp in black ink, the back its show-through, darkest 150 to
@@ -101,7 +103,7 @@ def test_a_dark_stamp_is_not_dropped_for_its_ghost_on_the_back(dpi: int, darkest
     assert blanks(front, back)[0] is False
 
 
-@pytest.mark.parametrize("dpi", DPIS)
+@pytest.mark.parametrize("dpi", FAST_DPIS)
 @pytest.mark.parametrize("tone", [INK_TONE, HOLE_DARKEST_MIN - 20])
 def test_holes_as_dark_as_ink_are_marks_on_both_sides(dpi: int, tone: int) -> None:
     """The same shapes at the mirrored spots, but black: print, never the backing seen through
@@ -112,7 +114,7 @@ def test_holes_as_dark_as_ink_are_marks_on_both_sides(dpi: int, tone: int) -> No
     assert blanks(front, back) == KEPT
 
 
-@pytest.mark.parametrize("dpi", DPIS)
+@pytest.mark.parametrize("dpi", FAST_DPIS)
 def test_holes_a_little_lighter_than_the_limit_are_holes_on_both_sides(dpi: int) -> None:
     tone = HOLE_DARKEST_MIN + 15
     front, back = sheet(

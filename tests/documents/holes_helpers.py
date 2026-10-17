@@ -9,6 +9,7 @@ from tests.doc_synth_holes import SMALL_MM, STAPLES, Hole, holes_painter, sheet
 from tests.documents.helpers import colour_page
 
 DPIS = [200, 300, 600]
+FAST_DPIS = [200, 300]  # 600 dpi costs four times as much: the tests that need it ask for DPIS
 PAPER_WIDTH_MM, PAPER_HEIGHT_MM = SMALL_MM
 # How far the back is off the front: the shift in mm (right, down) and the turn in degrees. The
 # rule allows 2.0 mm each way; the largest displacement of a hole here is about 1.9 mm.

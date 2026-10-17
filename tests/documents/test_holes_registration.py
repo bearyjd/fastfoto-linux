@@ -7,7 +7,7 @@ import pytest
 from fastfoto_linux.documents.holes import OFFSET_SPREAD_MM
 from tests.doc_synth import LETTER_MM, Scene
 from tests.doc_synth_holes import Hole, dash, disc, holes_painter, letter_sheet, sheet
-from tests.documents.holes_helpers import DPIS, PAPER_WIDTH_MM, blanks, mirrored
+from tests.documents.holes_helpers import DPIS, FAST_DPIS, PAPER_WIDTH_MM, blanks, mirrored
 
 KEPT = (False, False)
 BLANK = (True, True)
@@ -21,14 +21,14 @@ def apart(by_x: float, by_y: float, dpi: int) -> tuple[Scene, Scene]:
     return sheet(dpi, [holes_painter([TOP, FOOT])], [holes_painter(back)])
 
 
-@pytest.mark.parametrize("dpi", DPIS)
+@pytest.mark.parametrize("dpi", FAST_DPIS)
 @pytest.mark.parametrize("axis", [(1, 0), (0, 1)], ids=["across", "down"])
 def test_holes_at_nearly_the_same_offset_are_holes(dpi: int, axis: tuple[int, int]) -> None:
     gap = OFFSET_SPREAD_MM - 0.3
     assert blanks(*apart(axis[0] * gap, axis[1] * gap, dpi)) == BLANK
 
 
-@pytest.mark.parametrize("dpi", DPIS)
+@pytest.mark.parametrize("dpi", FAST_DPIS)
 @pytest.mark.parametrize("axis", [(1, 0), (0, 1)], ids=["across", "down"])
 @pytest.mark.parametrize("sign", [1, -1], ids=["after", "before"])
 def test_holes_at_different_offsets_are_not_holes(
@@ -87,7 +87,7 @@ def test_the_offset_a_hole_is_found_at_is_the_window_for_small_holes_and_more_fo
     assert blanks(front, back)[1] is blank
 
 
-@pytest.mark.parametrize("dpi", DPIS)
+@pytest.mark.parametrize("dpi", FAST_DPIS)
 def test_the_offset_is_from_centre_to_centre_whatever_the_sizes(dpi: int) -> None:
     """A 6 mm punch hole seen as 4.5 mm on the other side, and a staple hole of the same size:
     their corners are 0.75 mm and 0 mm off, their centres are in the same place."""

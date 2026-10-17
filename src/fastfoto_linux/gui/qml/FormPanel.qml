@@ -7,6 +7,8 @@ import org.kde.kirigami as Kirigami
 QQC2.ScrollView {
     id: panel
 
+    objectName: "photosForm"
+
     // The settings can be changed again once the scan is over.
     readonly property bool editable: !bridge.busy
 

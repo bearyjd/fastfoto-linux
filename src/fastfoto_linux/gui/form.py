@@ -165,6 +165,16 @@ def validate_syntax(form: ScanForm) -> dict[str, str]:
     return _run(_SYNTAX_CHECKS, form)
 
 
+DiskKey = tuple[str, str]
+DiskCheck = Callable[[ScanForm], None]
+"""Starts reading the disk for a form and returns at once; the answer goes to ``on_disk``."""
+
+
+def disk_key(form: ScanForm) -> DiskKey:
+    """What a read of the disk depends on: the output folder and the album."""
+    return (form.output_folder.strip(), form.album.strip())
+
+
 def validate_filesystem(form: ScanForm) -> dict[str, str]:
     """A message per field the disk disagrees with (a field whose text is bad is skipped)."""
     unreadable = validate_syntax(form).keys()
@@ -222,11 +232,11 @@ def update_field(form: ScanForm, name: str, value: object) -> ScanForm:
     if name in _BOOL_FIELDS:
         return replace(form, **{name: bool(value)})
     if name == "dpi":
-        return replace(form, dpi=_whole_number(name, value))
+        return replace(form, dpi=whole_number(name, value))
     return replace(form, **{name: str(value)})
 
 
-def _whole_number(name: str, value: object) -> int:
+def whole_number(name: str, value: object) -> int:
     if isinstance(value, float) and not value.is_integer():
         raise ValueError(f"{name} must be a whole number, got {value!r}")
     try:

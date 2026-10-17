@@ -71,11 +71,31 @@ def create_raw_dir(root: Path, *, keep: bool, private: bool = False) -> Path:
         kept = _kept_dir(root)
         if private:
             kept.mkdir(mode=PRIVATE_DIR_MODE, parents=True, exist_ok=True)
-            kept.chmod(PRIVATE_DIR_MODE)  # the mode of mkdir is not applied to a folder that exists
+            _make_private(kept)
         else:
             kept.mkdir(parents=True, exist_ok=True)
         return kept
     return Path(tempfile.mkdtemp(prefix=TEMP_PREFIX, dir=root))
+
+
+def _make_private(folder: Path) -> None:
+    """Set the owner-only mode on ``folder`` itself, never on what a link there points to.
+
+    ``mkdir`` leaves the mode of a folder that already exists alone, and ``chmod`` follows a
+    link, so a link planted as ``.raw/<stamp>`` would have the mode of its target changed (and
+    the pages written there). ``O_NOFOLLOW`` refuses a link, with no gap between the check and
+    the change.
+    """
+    try:
+        descriptor = os.open(folder, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    except OSError as error:
+        raise OSError(
+            error.errno, f"{folder} is not a folder of its own (a link?): {error.strerror}"
+        ) from error
+    try:
+        os.fchmod(descriptor, PRIVATE_DIR_MODE)
+    finally:
+        os.close(descriptor)
 
 
 def settle_raw_dir(raw: Path, root: Path, *, keep: bool, album: Path | None = None) -> Path | None:

@@ -6,7 +6,8 @@ import org.kde.kirigami as Kirigami
 Kirigami.Page {
     id: page
 
-    title: qsTr("Scan photos")
+    objectName: "scanPage"
+    title: bridge.mode === "documents" ? qsTr("Scan documents") : qsTr("Scan photos")
     padding: Kirigami.Units.largeSpacing
 
     function messageType(kind) {
@@ -86,9 +87,51 @@ Kirigami.Page {
             Layout.fillHeight: true
             spacing: Kirigami.Units.largeSpacing
 
-            FormPanel {
+            ColumnLayout {
                 Layout.preferredWidth: Kirigami.Units.gridUnit * 28
                 Layout.fillHeight: true
+                spacing: Kirigami.Units.smallSpacing
+
+                ModeSwitch {
+                    Layout.fillWidth: true
+                }
+
+                FormPanel {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    visible: bridge.mode === "photos"
+                }
+
+                DocumentFormPanel {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    visible: bridge.mode === "documents"
+                }
+
+                // How the scanner itself says to load it (the label on the feeder).
+                QQC2.Label {
+                    objectName: "photosLoadHint"
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    visible: bridge.mode === "photos"
+                    text: qsTr("Load photos face up, top edge first")
+                    textFormat: Text.PlainText
+                    wrapMode: Text.WordWrap
+                    color: Kirigami.Theme.disabledTextColor
+                    font: Kirigami.Theme.smallFont
+                }
+
+                QQC2.Label {
+                    objectName: "documentsLoadHint"
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    visible: bridge.mode === "documents"
+                    text: qsTr("Load pages face down, top edge first")
+                    textFormat: Text.PlainText
+                    wrapMode: Text.WordWrap
+                    color: Kirigami.Theme.disabledTextColor
+                    font: Kirigami.Theme.smallFont
+                }
             }
 
             Kirigami.Separator {
@@ -98,6 +141,13 @@ Kirigami.Page {
             ResultsView {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
+                visible: bridge.mode === "photos"
+            }
+
+            DocumentsView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                visible: bridge.mode === "documents"
             }
         }
 

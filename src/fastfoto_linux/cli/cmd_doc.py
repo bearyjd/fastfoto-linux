@@ -38,18 +38,16 @@ from fastfoto_linux.documents import (
     DocumentSettingsError,
     OcrMissingError,
     OcrMode,
+    OutputFolderMissingError,
     build_document,
     find_ocrmypdf,
 )
+from fastfoto_linux.documents.ocr import OCR_INSTALL_HINT
 from fastfoto_linux.scanner import ScannerError, resolve_target, run_scan
 from fastfoto_linux.session import (
     DocumentScanRequest,
     DocumentSessionResult,
     run_document_session,
-)
-
-OCR_INSTALL_HINT = (
-    "sudo dnf install ocrmypdf tesseract-osd"  # OSD data is what --rotate-pages needs
 )
 
 
@@ -100,7 +98,9 @@ def document_failure(error: Exception) -> Exception:
         return CliError(f"{error}; --keep-blank keeps blank pages", EXIT_PROCESSING_ERROR)
     if isinstance(error, OcrMissingError):  # it vanished between the check and the run
         return CliError(str(error), EXIT_TOOL_MISSING)
-    if isinstance(error, DocumentSettingsError):  # the options were checked, the folder changed
+    if isinstance(error, OutputFolderMissingError):  # it was there when the options were checked
+        return error  # a problem like any other (exit 1), as for ``doc process``
+    if isinstance(error, DocumentSettingsError):  # the options were checked
         return CliError(str(error), EXIT_USAGE)
     return error
 

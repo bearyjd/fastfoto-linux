@@ -50,7 +50,11 @@ backing band is the reliable sign of where the paper ends.
   ink or a slip in that tone is longer and keeps the page. A cluster under 0.5 mm whose pixels
   are all within 50 of the backing colour, of any hue, is dust. Every other pixel goes to the last
   check; a mark that is darker, not blue or beyond that tolerance, ink bluer than the shadow, and
-  dust of ink size in the pad, keep the page, as in the tail.
+  dust of ink size in the pad, keep the page, as in the tail. A light vertical line up to 0.3 mm
+  wide counts as backing too (``streak``): a fleck on the scanner's glass or backing, at least 4
+  levels brighter than the backing beside it, in at least 90% of the rows that have backing on
+  both sides of it, over at least 3 mm of such rows; with its blurred edge it joins the parts of
+  the band it splits, whatever the pad and the shadow do at their sides.
 * After a band cut the new edge is the paper's, so the blank-page margin is measured in full
   from the new edge (``Trimmed.tail_rows``): the kept edge line is margin, not a mark.
 
@@ -71,6 +75,13 @@ has no hue to tell the backing by). Limits, stated exactly:
   only when lighter than about 190, or about 184 right at the cut).
 * Specks under 0.5 mm within 50 of the backing colour in the strip are dust: 0.4 mm dots on a
   slip are cut with it.
+* A dark streak keeps the strip: ink darkens, so only a lighter line is forgiven (clean the
+  scanner, glass and backing). A light vertical line up to 0.3 mm wide down the whole band is taken
+  for the scanner's, a little wider with its blurred edge (a line painted 4 pixels wide at 200 dpi,
+  5 at 300 and 9 at 600 is still one); a light line of 0.7 mm or more, a light streak over under
+  90% of the rows, one that leans across the band (3 degrees moves it 0.6 mm) and, at the top, a
+  band under 3 mm tall keep the strip. A streak 1 pixel wide never was a problem (the blur brings
+  it within 20 of the backing), a line of pure white is pad, and a side strip has no streak rule.
 * A scrap of the backing's colour that touches the band is taken for the band.
 * A scrap of the backing's colour that touches a side of the page in the first 3 mm of the white
   tail, which are part of the strip, is joined to the side by backing alone and goes with the

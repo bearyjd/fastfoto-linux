@@ -12,6 +12,7 @@ content. Numbers only: nothing here is a real pixel.
 import math
 from dataclasses import replace
 
+import numpy as np
 import pytest
 
 from fastfoto_linux.documents.trim import trim_page
@@ -19,6 +20,7 @@ from tests.doc_synth import LETTER_MM, paper_scene, px, with_tinted_block
 from tests.doc_synth_band import SHADOW_RGB, banded_scene, with_jpeg
 from tests.documents.helpers import colour_page
 from tests.documents.test_trim_band_real import BAND_MM, assert_band_cut, frame, painted
+from tests.documents.test_trim_band_shadow import SHADOW_TONE, paint_at, wedge_edge
 from tests.documents.trim_helpers import DPI, RECEIPT_MM
 
 STREAK_RGB = (224, 233, 246)  # 22 to 27 over the backing on every channel, blue over red
@@ -47,10 +49,20 @@ def strip_top(scene) -> int:
     return scene.height - trim_page(colour_page(with_jpeg(scene))).bottom
 
 
+def backing_rows(scene, column: int) -> tuple[int, int]:
+    """First and last row (exclusive) of the shadow and the band at ``column``: from the paper's
+    end to the first white row, where the pad starts (it lies lower on the side the deskew
+    dropped)."""
+    first = scene.paper_end
+    white = scene.image[first:, column].min(axis=1) >= WHITE_MIN
+    return first, first + int(np.argmax(white))
+
+
 def streaked(scene, column: int, width: int, rgb, rows: tuple[int, int] | None = None):
-    """``scene`` with a vertical line of ``width`` pixels at ``column`` over ``rows`` (the whole
-    band by default). The pad stays: only the pixels that are not white take the colour."""
-    first, last = rows or band_rows(scene)
+    """``scene`` with a vertical line of ``width`` pixels at ``column`` over ``rows`` (all the
+    band's rows there by default). The pad stays: only the pixels that are not white take the
+    colour."""
+    first, last = rows or backing_rows(scene, column)
     image = scene.image.copy()
     block = image[first:last, column : column + width]
     block[block.min(axis=2) < WHITE_MIN] = rgb
@@ -158,7 +170,7 @@ def test_a_light_streak_over_part_of_the_band_rows_still_keeps_the_band(
     stops after three quarters of the band's rows in the strip."""
     scene = frame(dpi, tilt_deg=tilt)
     column = streak_column(scene)
-    first, last = strip_top(scene), band_rows(scene)[1]
+    first, last = strip_top(scene), backing_rows(scene, column)[1]
     rows = [row for row in range(first, last) if scene.image[row, column].min() < WHITE_MIN]
     stop = first + round(PARTIAL_SHARE * len(rows))
     scene = with_jpeg(streaked(scene, column, 3, STREAK_RGB, (first, stop)))
@@ -230,3 +242,47 @@ def test_a_streak_in_the_top_band_is_forgiven_only_when_the_band_is_3_mm_or_more
     assert trim_page(colour_page(with_jpeg(scene))).top > 0
     streak = streaked(scene, streak_column(scene), 3, STREAK_RGB, (0, px(top_mm, dpi)))
     assert (trim_page(colour_page(with_jpeg(streak))).top > 0) is (kind == "cut")
+
+
+WIDEST_PX = {200: 4, 300: 5, 600: 9}  # painted, before the blur: 0.5, 0.42 and 0.38 mm
+
+
+@pytest.mark.parametrize("extra_px", [0, 1], ids=["widest", "a-pixel-wider"])
+@pytest.mark.parametrize("tilt", [0.0, 1.5])
+@pytest.mark.parametrize("dpi", DPIS)
+def test_a_streak_may_be_a_little_over_0_3_mm_wide_and_a_pixel_more_keeps_the_band(
+    dpi: int, tilt: float, extra_px: int
+) -> None:
+    """Backing must lie 0.3 mm (rounded up to pixels) beside every pixel of the line, which with
+    the blurred edge allows a line painted a bit wider than that."""
+    scene = frame(dpi, tilt_deg=tilt)
+    width = WIDEST_PX[dpi] + extra_px
+    scene = with_jpeg(streaked(scene, streak_column(scene), width, STREAK_RGB))
+    assert trim_page(colour_page(scene)).band_bottom is (extra_px == 0)
+
+
+SPECK_MM = (0.34, 0.9)  # across and along the wedge's edge: under the 2 mm of the shadow's fringe
+FAR_PART_START = 0.7  # of the width: the streak lies here, the far part is the rest
+FAR_WEDGE_SHARE = 0.1
+
+
+@pytest.mark.parametrize("tilt", [0.0, 1.5])
+@pytest.mark.parametrize("dpi", [200, 300])
+def test_shadow_tone_at_the_wedge_of_a_part_that_only_the_streak_joins_is_still_forgiven(
+    dpi: int, tilt: float
+) -> None:
+    """The far part has pad along its first rows and at its side: only the streak joins it, in
+    the shadow's wide mask as in the strict one, so that the speck of shadow tone by the wedge's
+    edge, which is backing where it joins the band, goes with it."""
+    scene = frame(dpi, tilt_deg=tilt)
+    top, bottom = strip_top(scene), band_rows(scene)[1]
+    column = int(FAR_PART_START * scene.width)
+    scene = streaked(scene, column, 3, STREAK_RGB)
+    wedge = int(FAR_WEDGE_SHARE * scene.width)
+    scene = painted(scene, slice(top, bottom), slice(scene.width - wedge, scene.width), 255)
+    first_rows = slice(top, top + px(SHADOW_ROW_MM, dpi))
+    scene = painted(scene, first_rows, slice(column + 3, scene.width), 255)
+    row = (top + bottom) // 2
+    edge, _ = wedge_edge(scene, row)
+    scene = with_jpeg(paint_at(scene, row, edge - px(SPECK_MM[0], dpi), SPECK_MM, SHADOW_TONE))
+    assert_band_cut(scene, trim_page(colour_page(scene)))

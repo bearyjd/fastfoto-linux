@@ -13,11 +13,13 @@ import numpy as np
 import pytest
 
 from fastfoto_linux.documents.band import backing_distance
+from fastfoto_linux.documents.guard import backing_pixels
 from fastfoto_linux.documents.streak import (
     STREAK_LIGHTER,
     STREAK_MAX_MM,
     STREAK_MIN_MM,
     STREAK_SHARE,
+    _narrow_runs,
     streak_pixels,
 )
 from tests.doc_synth import BACKING_RGB
@@ -107,7 +109,6 @@ def test_a_line_must_be_a_few_levels_brighter_than_the_backing_beside_it(
 ) -> None:
     rgb = hue_shifted(brighter_by)
     assert backing_distance(rgb[None, None])[0, 0] > 20
-    assert STREAK_LIGHTER == 4.0
     assert found(streak_pixels(with_line(strip(), COLUMN, COLUMN + 2, rgb), DPI)) is is_streak
 
 
@@ -171,3 +172,34 @@ def test_the_width_is_never_under_two_pixels_whatever_the_resolution() -> None:
     image = with_line(strip(), COLUMN, COLUMN + 3, LIGHT)
     assert found(streak_pixels(image, 50))
     assert not found(streak_pixels(with_line(strip(), COLUMN, COLUMN + 4, LIGHT), 50))
+
+
+@pytest.mark.parametrize(
+    ("columns", "kept"),
+    [
+        ([0, 1, 1, 1, 0, 1, 1, 0], [0, 0, 0, 0, 0, 1, 1, 0]),
+        ([1, 1, 1, 0, 0, 0, 1, 1], [0, 0, 0, 0, 0, 0, 1, 1]),
+        ([0, 0, 1, 1, 1, 1, 1, 1], [0, 0, 0, 0, 0, 0, 0, 0]),
+    ],
+)
+def test_a_run_of_streak_columns_wider_than_the_offset_is_not_a_streak(
+    columns: list[int], kept: list[int]
+) -> None:
+    runs = np.asarray(columns, dtype=bool)
+    assert _narrow_runs(runs, 2).tolist() == np.asarray(kept, dtype=bool).tolist()
+    assert runs.tolist() == np.asarray(columns, dtype=bool).tolist()
+
+
+@pytest.mark.parametrize("columns", [1, OFFSET_PX - 1, OFFSET_PX, 2 * OFFSET_PX])
+def test_a_strip_with_no_room_for_backing_on_both_sides_has_no_streak(columns: int) -> None:
+    narrow = np.tile(BACKING, (ROWS, columns, 1))
+    mask = streak_pixels(narrow, DPI)
+    assert mask.shape == narrow.shape[:2]
+    assert not mask.any()
+
+
+def test_the_backing_of_a_band_strip_needs_the_resolution_for_the_streak() -> None:
+    with pytest.raises(ValueError, match="dpi"):
+        backing_pixels(strip(), band=True)
+    assert backing_pixels(with_line(strip(), COLUMN, COLUMN + 2, LIGHT), band=True, dpi=DPI).any()
+    assert backing_pixels(strip()).all()

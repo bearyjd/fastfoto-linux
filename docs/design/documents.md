@@ -253,8 +253,27 @@ What the first pull request settled where the specification left room.
      longer and keeps the page. A cluster under 0.5 mm whose pixels are all within 50 of the
      backing colour, of any hue, is dust. Every other pixel goes to the last check, so a mark
      that is darker, not blue or beyond that tolerance, ink bluer than the shadow, and dust of
-     ink size in the pad, keep the page, as in the tail. At least 30 mm of page stay after the
-     bottom cut, and after the top cut
+     ink size in the pad, keep the page, as in the tail. A light streak counts as backing too (see
+     `documents/streak.py`): a fleck on the scanner's glass or backing prints as a faint light
+     vertical line down the band, a pixel wide plus its blur, 12 to 15 levels brighter than the
+     backing (blue minus red 23 to 25) in every row of the band, so it is not backing by colour
+     and used to keep the strip, and where it splits the band the far part may reach neither a
+     side of the strip (a wedge of pad is there) nor its first row (shadow tone is there). A
+     pixel can be a streak's when it is not backing, backing lies 0.3 mm to its left and to its
+     right (whole pixels, rounded up), it is 4 levels brighter in every channel than both of
+     those two neighbours, and its blue minus red is within 12 of the backing's (17: the
+     scanner's streak keeps the tint of the backing it lies on, a pink, yellow, cream or grey
+     line does not). A column is a streak when that holds in
+     90% of the rows that have backing on both sides of it, over at least 3 mm of such rows, and
+     a run of streak columns wider than that offset is none. The streak and its blurred edge, one
+     pixel each side in the same rows, count as backing before it is judged whether the backing
+     joins a side, in the strict and in the shadow's wide mask alike, and only in the strip of a
+     band cut. Where a mark crosses the streak, in the rows where the neighbours of a streak
+     column are not both backing and that column is backing by colour (the blur of the mark with
+     the streak), the run of streak columns and the pixel each side of it are not backing, so
+     that the mark stays whole instead of being cut into dust-sized pieces by the streak. Below
+     170 dpi (two pixels are wider than 0.3 mm) the rule is off.
+     At least 30 mm of page stay after the bottom cut, and after the top cut
      as well. Where there is no band cut, because there is no band or the cut is not safe, the
      tail rule above runs as before. Colour pages only: grey and 1-bit pages are not cut by the
      band rule (a grey page has no hue to tell the backing by).
@@ -275,6 +294,23 @@ What the first pull request settled where the specification left room.
     184 right at the cut);
   - specks under 0.5 mm within 50 of the backing colour in the strip are dust, of any hue: 0.4 mm
     dots on a slip are cut with it;
+  - a dark streak keeps the strip: ink darkens, so only a lighter line is forgiven (a neutral
+    grey of 150 and of 100 are tested). A light vertical line up to 0.3 mm wide down the whole
+    band is taken for the scanner's; with its blurred edge it may be a little wider (a line
+    painted 4 pixels wide at 200 dpi, 5 at 300 and 9 at 600 is still one), and a light line of
+    0.7 mm or more (a paper-coloured strip 1 mm wide is tested) keeps the strip. So does a streak
+    over under 90% of the rows that have backing on both sides of it (75% is tested), one that
+    leans across the band (3 degrees moves it 0.6 mm; other slants are not tested and the result
+    does not change steadily with the slant), and at the top a band under 3 mm tall (3.5 mm is
+    cut, 2 mm is not). A streak 1 px wide never was a problem: the blur brings it within 20 of
+    the backing. A line of pure white is pad and was exempt before. A streak in a side strip is
+    not forgiven.
+    Below 170 dpi the streak rule is off and a streak keeps the strip. A blank slip of the
+    backing's colour that touches a streak is joined to the band by it and goes with the band
+    (as a scrap that touches the band does); a slip with anything on it keeps the strip. A
+    streak of the backing's tint is forgiven even when it is only 10 levels brighter in every
+    channel: after the blur its lead is still over 4.
+    A streak means dirt on the scanner: clean the scanner (glass and backing);
   - a scrap of the backing's colour that touches the band is taken for the band;
   - a scrap of the backing's colour that touches a side of the page in the first 3 mm of the
     white tail, which are part of the strip, is joined to the side by backing alone and goes with

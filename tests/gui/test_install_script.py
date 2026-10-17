@@ -592,7 +592,7 @@ def test_the_launcher_survives_a_round_trip_through_glib(
 
 BASE_TOOLS = (
     *("awk", "bash", "cat", "chmod", "cp", "dirname", "grep", "install", "ln"),
-    *("mkdir", "mktemp", "mv", "readlink", "rm", "rmdir", "sed"),
+    *("mkdir", "mktemp", "mv", "readlink", "rm", "rmdir", "sed", "stat"),
 )
 BREW_ARGUMENTS = "install tesseract"
 
@@ -622,6 +622,7 @@ def add_brew(tmp_path: Path, env: dict[str, str], *, fail: bool = False) -> None
     """A stand-in Homebrew in its own folder; it only notes its arguments."""
     folder = tmp_path / "linuxbrew" / "bin"
     folder.mkdir(parents=True)
+    folder.chmod(0o755)  # whatever the umask: a folder others can write to is not trusted
     status = 1 if fail else 0
     write_executable(
         folder / "brew", f'#!/bin/sh\necho "$@" >> "{brew_log(tmp_path)}"\nexit {status}\n'
@@ -856,3 +857,107 @@ def test_uninstalling_without_the_tesseract_option_says_nothing_about_it(
 ) -> None:
     done = run(checkout, ocr_env, "--uninstall")
     assert "--with-tesseract" not in done.stdout + done.stderr
+
+
+# -- Homebrew's folder is trusted only as the app trusts it: owned by root or by the user, and
+# -- not writable by its group or by others (documents/ocr_tools.py brew_folder_problem) ----------
+
+WRITABLE = "writable by its group or by others"
+FOREIGN = "not owned by root or by the user"
+
+
+def add_brew_with_tesseract(tmp_path: Path, env: dict[str, str], mode: int) -> Path:
+    """A Homebrew folder of the given mode with both a brew and a tesseract in it."""
+    add_brew(tmp_path, env)
+    folder = Path(env["FASTFOTO_BREW_BIN"])
+    write_executable(folder / "tesseract", "#!/bin/sh\nexit 0\n")
+    folder.chmod(mode)
+    return folder
+
+
+def stat_of_someone_else(env: dict[str, str]) -> None:
+    """``stat`` tells that a stranger owns every folder (a real one cannot be made without root)."""
+    write_executable(Path(env["PATH"].split(":")[0]) / "stat", '#!/bin/sh\necho "4242 755"\n')
+
+
+@pytest.mark.parametrize("mode", [0o777, 0o775, 0o757])
+def test_a_brew_folder_others_can_write_to_is_not_looked_in_so_tesseract_there_is_missing(
+    checkout: Path, ocr_env: dict[str, str], tmp_path: Path, mode: int
+) -> None:
+    folder = add_brew_with_tesseract(tmp_path, ocr_env, mode)
+    done = run(checkout, ocr_env, "--dry-run")
+    assert done.returncode == 0, done.stderr
+    assert "would leave Tesseract alone" not in done.stdout
+    assert f"would tell how to get Tesseract: {DNF_INSTALL_HINT}" in done.stdout
+    assert "again with --with-tesseract" not in done.stdout  # its brew is not there to run
+    assert str(folder) in done.stderr
+    assert WRITABLE in done.stderr
+
+
+@pytest.mark.parametrize("mode", [0o777, 0o775])
+def test_the_option_does_not_run_brew_from_a_folder_others_can_write_to_and_says_why(
+    checkout: Path, ocr_env: dict[str, str], tmp_path: Path, mode: int
+) -> None:
+    folder = add_brew_with_tesseract(tmp_path, ocr_env, mode)
+    (folder / "tesseract").unlink()
+    done = run(checkout, ocr_env, "--with-tesseract")
+    assert done.returncode == 0, done.stderr
+    assert not brew_log(tmp_path).exists()
+    assert str(folder) in done.stderr
+    assert WRITABLE in done.stderr
+    assert f"run: {DNF_INSTALL_HINT}" in done.stdout
+
+
+def test_a_dry_run_with_the_option_does_not_plan_brew_from_such_a_folder(
+    checkout: Path, ocr_env: dict[str, str], tmp_path: Path
+) -> None:
+    folder = add_brew_with_tesseract(tmp_path, ocr_env, 0o777)
+    (folder / "tesseract").unlink()
+    done = run(checkout, ocr_env, "--dry-run", "--with-tesseract")
+    assert done.returncode == 0, done.stderr
+    assert "would install Tesseract with Homebrew" not in done.stdout
+    assert all(line.startswith("would ") for line in done.stdout.splitlines())
+    assert not brew_log(tmp_path).exists()
+
+
+def test_on_a_terminal_brew_from_such_a_folder_is_not_offered(
+    checkout: Path, ocr_env: dict[str, str], tmp_path: Path
+) -> None:
+    folder = add_brew_with_tesseract(tmp_path, ocr_env, 0o777)
+    (folder / "tesseract").unlink()
+    status, output = run_on_tty(checkout, ocr_env, "y\n")
+    assert status == 0, output
+    assert "Install it now with Homebrew" not in output
+    assert not brew_log(tmp_path).exists()
+
+
+def test_a_brew_folder_of_someone_else_is_ignored_and_the_reason_is_said(
+    checkout: Path, ocr_env: dict[str, str], tmp_path: Path
+) -> None:
+    folder = add_brew_with_tesseract(tmp_path, ocr_env, 0o755)
+    (folder / "tesseract").unlink()
+    stat_of_someone_else(ocr_env)
+    done = run(checkout, ocr_env, "--with-tesseract")
+    assert done.returncode == 0, done.stderr
+    assert not brew_log(tmp_path).exists()
+    assert FOREIGN in done.stderr
+    assert str(folder) in done.stderr
+
+
+def test_a_brew_folder_owned_by_root_is_used_whoever_runs_the_installer(
+    checkout: Path, ocr_env: dict[str, str], tmp_path: Path
+) -> None:
+    add_brew_with_tesseract(tmp_path, ocr_env, 0o755)
+    write_executable(Path(ocr_env["PATH"].split(":")[0]) / "stat", '#!/bin/sh\necho "0 755"\n')
+    done = run(checkout, ocr_env, "--dry-run")
+    assert "would leave Tesseract alone" in done.stdout
+    assert done.stderr == ""
+
+
+def test_a_private_brew_folder_is_used_and_nothing_is_said_about_it(
+    checkout: Path, ocr_env: dict[str, str], tmp_path: Path
+) -> None:
+    add_brew_with_tesseract(tmp_path, ocr_env, 0o755)
+    done = run(checkout, ocr_env, "--dry-run")
+    assert "would leave Tesseract alone" in done.stdout
+    assert done.stderr == ""

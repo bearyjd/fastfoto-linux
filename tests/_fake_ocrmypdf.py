@@ -35,6 +35,8 @@ from typing import Any
 
 import pytest
 
+from fastfoto_linux.documents import ocr_tools
+
 SPEC_ENV = "FAKE_OCRMYPDF_SPEC"
 MARKER = b"\n%fake-ocr-text-layer\n"
 
@@ -166,6 +168,20 @@ def no_ocr_on_path(directory: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """PATH without any ``ocrmypdf``, even on a machine that has the real one."""
     directory.mkdir(parents=True, exist_ok=True)
     monkeypatch.setenv("PATH", str(directory))
+
+
+def ocr_machine(
+    directory: Path, monkeypatch: pytest.MonkeyPatch, *, ocrmypdf: bool, tesseract: bool
+) -> None:
+    """A machine where PATH is only ``directory`` and each OCR part is there or not: ocrmypdf as
+    the app's own module (the interpreter can import it), Tesseract as a program in
+    ``directory``."""
+    directory.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("PATH", str(directory))
+    module = "json" if ocrmypdf else "fastfoto_linux_no_such_module"
+    monkeypatch.setattr(ocr_tools, "OCR_MODULE", module)
+    if tesseract:
+        install_tesseract(directory)
 
 
 def read_record(path: Path) -> dict[str, Any]:

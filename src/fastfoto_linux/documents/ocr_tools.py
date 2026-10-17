@@ -154,3 +154,8 @@ def ocr_install_hint() -> str:
     if uses_homebrew():
         return BREW_INSTALL_HINT
     return OSTREE_NO_BREW_HINT if on_ostree() else DNF_INSTALL_HINT
+
+
+def ocr_fix_hint() -> str:
+    """What to do about the missing OCR part or parts (a stub until the fix is written)."""
+    raise NotImplementedError

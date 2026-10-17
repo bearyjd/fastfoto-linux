@@ -174,3 +174,37 @@ def test_required_ocr_without_tesseract_is_exit_3_with_the_hint_and_no_traceback
     assert HINT in err
     assert "ocrmypdf, which is not installed" not in err  # it is Tesseract that is missing
     assert "Traceback" not in err
+
+
+# -- the hint names what is missing: Tesseract, OCRmyPDF or both -------------------------------
+
+PIP = "pip install 'fastfoto-linux[ocr]'"
+MISSING = [  # ocrmypdf is there, tesseract is there, what the hint says, what it must not say
+    pytest.param((False, True, [PIP, "installer"], [HINT, "dnf"]), id="ocrmypdf"),
+    pytest.param((True, False, [HINT], [PIP]), id="tesseract"),
+    pytest.param((False, False, [HINT, PIP], []), id="both"),
+]
+
+
+@pytest.fixture(params=MISSING)
+def missing(request, tmp_path, monkeypatch) -> tuple[list[str], list[str]]:
+    """A machine with one or both OCR parts missing; what the hint must and must not say."""
+    ocrmypdf, tesseract, wanted, unwanted = request.param
+    fake.ocr_machine(tmp_path / "bin", monkeypatch, ocrmypdf=ocrmypdf, tesseract=tesseract)
+    return wanted, unwanted
+
+
+def test_the_summary_hint_names_the_part_that_is_missing(pages, out, capsys, missing) -> None:
+    wanted, unwanted = missing
+    assert doc(out, pages) == 0
+    [line] = [x for x in capsys.readouterr().out.splitlines() if x.startswith("searchable text:")]
+    assert all(text in line for text in wanted)
+    assert not any(text in line for text in unwanted)
+
+
+def test_required_ocr_refused_names_the_part_that_is_missing(pages, out, capsys, missing) -> None:
+    wanted, unwanted = missing
+    assert doc(out, pages, "--ocr", "on") == 3
+    err = capsys.readouterr().err
+    assert all(text in err for text in wanted)
+    assert not any(text in err for text in unwanted)

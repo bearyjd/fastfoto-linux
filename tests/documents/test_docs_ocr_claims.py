@@ -89,3 +89,8 @@ def test_the_design_note_gives_the_order_of_the_folders_and_when_brews_is_truste
     assert "the PATH it was started with, then the interpreter's folder, then Homebrew's" in DESIGN
     assert "owned by root or by the user" in DESIGN
     assert "not writable by its group or by others" in DESIGN
+
+
+def test_the_readme_says_what_to_do_when_ocrmypdf_is_the_missing_part() -> None:
+    assert "pip install 'fastfoto-linux[ocr]'" in README
+    assert "Install OCRmyPDF:" in README

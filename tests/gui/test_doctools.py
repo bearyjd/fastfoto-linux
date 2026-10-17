@@ -10,6 +10,9 @@ from fastfoto_linux.gui.doctools import (
     NATIVE_OCR_HINT,
     DocumentTools,
 )
+from tests import _fake_ocrmypdf as fake
+
+pytestmark = pytest.mark.usefixtures("ocrmypdf_comes_with_the_app")
 
 
 def tools(*, found: str | None, flatpak: bool) -> DocumentTools:
@@ -71,3 +74,42 @@ def test_the_defaults_look_at_the_real_machine_without_failing() -> None:
     real = DocumentTools()
     assert isinstance(real.ocr_available, bool)
     assert real.ocr_hint == ("" if real.ocr_available else real.ocr_hint)
+
+
+def test_missing_tesseract_alone_says_to_install_tesseract_and_not_ocrmypdf(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake.ocr_machine(tmp_path / "bin", monkeypatch, ocrmypdf=True, tesseract=False)
+    hint = tools(found=None, flatpak=False).ocr_hint
+    assert hint == NATIVE_OCR_HINT
+    assert "OCRmyPDF" not in hint
+
+
+def test_missing_ocrmypdf_alone_says_to_run_the_installer_or_pip_and_not_to_install_tesseract(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake.ocr_machine(tmp_path / "bin", monkeypatch, ocrmypdf=False, tesseract=True)
+    hint = tools(found=None, flatpak=False).ocr_hint
+    assert hint.startswith("Install OCRmyPDF: ")
+    assert "installer" in hint
+    assert "pip install 'fastfoto-linux[ocr]'" in hint
+    assert "Tesseract" not in hint
+    assert "dnf" not in hint
+
+
+def test_missing_ocrmypdf_and_tesseract_says_both_with_tesseract_first(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake.ocr_machine(tmp_path / "bin", monkeypatch, ocrmypdf=False, tesseract=False)
+    hint = tools(found=None, flatpak=False).ocr_hint
+    assert NATIVE_OCR_HINT in hint
+    assert "Install OCRmyPDF: " in hint
+    assert "pip install 'fastfoto-linux[ocr]'" in hint
+    assert hint.index(NATIVE_OCR_HINT) < hint.index("Install OCRmyPDF: ")
+
+
+def test_the_flatpak_hint_does_not_depend_on_which_part_is_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake.ocr_machine(tmp_path / "bin", monkeypatch, ocrmypdf=False, tesseract=False)
+    assert tools(found=None, flatpak=True).ocr_hint == FLATPAK_OCR_HINT

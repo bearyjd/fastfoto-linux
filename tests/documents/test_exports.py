@@ -24,7 +24,7 @@ def test_the_ocr_install_hints_live_with_the_ocr_code() -> None:
 
 
 def test_the_command_line_and_the_app_say_the_same_hint() -> None:
-    assert cmd_doc.ocr_install_hint is ocr_tools.ocr_install_hint
+    assert cmd_doc.ocr_fix_hint is ocr_tools.ocr_fix_hint
     assert HINT in doctools.NATIVE_OCR_HINT
 
 

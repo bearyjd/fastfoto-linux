@@ -376,7 +376,10 @@ the label on the scanner does. **Searchable text** needs Tesseract (OCRmyPDF com
 without it the box is off and says `Install Tesseract: sudo dnf install tesseract tesseract-osd`,
 or `Install Tesseract: brew install tesseract` on systems with Homebrew (Bazzite has it), or
 `Install Tesseract: rpm-ostree install tesseract tesseract-osd (then reboot), or install Homebrew
-and run brew install tesseract` on an immutable system without it. The Flatpak has no OCR yet (it will bundle it in a later release) and says that
+and run brew install tesseract` on an immutable system without it. If OCRmyPDF is the part that
+is missing (a checkout without the OCR extra), the box says `Install OCRmyPDF: run the installer again,
+or pip install 'fastfoto-linux[ocr]' for a development install` instead, and when both are missing it
+gives both, Tesseract's first; the command line says the same in its message. The Flatpak has no OCR yet (it will bundle it in a later release) and says that
 searchable text needs the native install; everything else in Documents mode works there.
 
 Install it for your user (no root; nothing to do with `uv` or pip):
@@ -405,7 +408,9 @@ found the installer prints the command to run (`brew install tesseract` wherever
 installed, `rpm-ostree install tesseract tesseract-osd` on an immutable system without it,
 `sudo dnf install tesseract tesseract-osd` on classic Fedora).
 `tools/install-desktop.sh --with-tesseract` runs the Homebrew command for you (on a terminal it
-asks first); it never uses `sudo`, and `--uninstall` leaves Homebrew packages alone
+asks first); it looks for `brew` and `tesseract` in Homebrew's folder only when that folder is owned
+by root or by you and nobody else can write to it (otherwise it says why it ignores the folder, and
+never runs `brew` from it); it never uses `sudo`, and `--uninstall` leaves Homebrew packages alone
 (`--with-tesseract` is ignored with `--uninstall`, and the installer says so).
 
 Not done yet: editing photos after the scan (rotate, fix the date, re-run the enhancement), the

@@ -81,7 +81,8 @@ two image kinds. Tests parse every PDF with a dev-only library (pypdf).
 A **Photos | Documents** switch at the top of the form. Documents shows: name, colour (Colour / Grey /
 Black and white), resolution, "Both sides (drop blank pages)", "Searchable text" (disabled with
 "Install Tesseract: `sudo dnf install tesseract tesseract-osd`", or `brew install tesseract` on a Homebrew
-system, when missing). Results list each PDF with its page count,
+system, when missing; "Install OCRmyPDF: run the installer again, or `pip install 'fastfoto-linux[ocr]'`
+when it is OCRmyPDF that is missing, or both, Tesseract's first). Results list each PDF with its page count,
 dropped pages and an Open button. Settings are remembered per mode.
 
 ## Flatpak

@@ -13,6 +13,8 @@
 # installer says how to get it (Homebrew on an immutable system such as Bazzite, dnf otherwise) and
 # runs `brew install tesseract` only when asked (--with-tesseract, or "y" on a terminal). It never
 # uses sudo, and --uninstall leaves Homebrew packages alone.
+# Homebrew's folder is used only when it is owned by root or by the user and nobody else can write to
+# it; otherwise it is ignored (with the reason), and brew is never run from it.
 set -euo pipefail
 umask 022 # files are readable by others whatever the user's umask is
 
@@ -33,7 +35,8 @@ Usage: install-desktop.sh [--uninstall] [--dry-run] [--with-tesseract] [--help]
 Environment: HOME and XDG_DATA_HOME (when it is an absolute path) say where things go;
 FASTFOTO_PYTHON is the Python used for the environment (default /usr/bin/python3, the one
 that has PySide6); FASTFOTO_BREW_BIN is Homebrew's bin folder, where brew and tesseract are
-looked for besides PATH (default /home/linuxbrew/.linuxbrew/bin).
+looked for besides PATH (default /home/linuxbrew/.linuxbrew/bin) but only when it is owned by
+root or by you and others cannot write to it.
 USAGE
 }
 
@@ -240,10 +243,35 @@ check_qt() {
   fi
 }
 
+# brew_folder_problem: why Homebrew's folder is not to be trusted, nothing when it is (or is not
+# there). The app's rule (documents/ocr_tools.py brew_folder_problem, the same words): owned by root
+# or by the user, and not writable by its group or by others. Anything else cannot be inspected.
+brew_folder_problem() {
+  local info owner mode
+  [[ -e "$BREW_BIN" ]] || return 0
+  [[ -d "$BREW_BIN" ]] || { echo "not a folder"; return 0; }
+  info=$(stat -L -c '%u %a' -- "$BREW_BIN" 2> /dev/null) || { echo "cannot be inspected"; return 0; }
+  owner=${info%% *}
+  mode=${info##* }
+  if ((owner != 0 && owner != UID)); then
+    echo "not owned by root or by the user (owner $owner)"
+  elif ((8#$mode & 8#022)); then
+    echo "writable by its group or by others"
+  fi
+}
+
+# warn_brew_folder: say, once, that Homebrew's folder is left out and why; silent when it is trusted.
+warn_brew_folder() {
+  local problem
+  problem=$(brew_folder_problem)
+  [[ -z "$problem" ]] || echo "warning: ignoring $BREW_BIN, so Tesseract and brew are not taken from it: $problem" >&2
+}
+
 # find_program NAME: the path of NAME on PATH, else in Homebrew's folder (a menu entry's PATH has no
-# Homebrew); nothing when it is nowhere.
+# Homebrew) when that folder is to be trusted; nothing when it is nowhere.
 find_program() {
-  command -v "$1" 2> /dev/null || { [[ -x "$BREW_BIN/$1" ]] && echo "$BREW_BIN/$1"; }
+  command -v "$1" 2> /dev/null && return 0
+  [[ -z "$(brew_folder_problem)" && -x "$BREW_BIN/$1" ]] && echo "$BREW_BIN/$1"
 }
 
 # The command that installs Tesseract here: Homebrew's where brew is, else rpm-ostree's (or Homebrew's,
@@ -288,6 +316,7 @@ ask_to_install() {
 
 tesseract_step() {
   local found brew hint
+  warn_brew_folder
   found=$(find_program tesseract || true)
   brew=$(find_program brew || true)
   hint=$(tesseract_hint)

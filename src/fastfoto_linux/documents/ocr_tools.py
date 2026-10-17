@@ -39,6 +39,9 @@ OSTREE_NO_BREW_HINT = (
     f"{RPM_OSTREE_INSTALL_HINT} (then reboot), or install Homebrew and run {BREW_INSTALL_HINT}"
 )
 OCRMYPDF_NAME = "OCRmyPDF"
+OCRMYPDF_FIX_HINT = (
+    "run the installer again, or pip install 'fastfoto-linux[ocr]' for a development install"
+)
 TESSERACT_NAME = "Tesseract"
 OCR_NEEDS = f"{OCRMYPDF_NAME} and {TESSERACT_NAME}"  # what searchable text needs
 OCR_UNAVAILABLE_TEXT = "OCR is not available"
@@ -113,16 +116,21 @@ def find_ocrmypdf() -> str | None:
     return found if found is not None and find_tesseract() is not None else None
 
 
-def ocr_missing_text() -> str:
-    """What stops OCR here, in the words every message uses: "Tesseract is not installed"."""
-    missing = [
+def ocr_missing_parts() -> tuple[str, ...]:
+    """The names of the OCR parts that are not here, OCRmyPDF first (none: both are)."""
+    return tuple(
         name
         for name, found in (
             (OCRMYPDF_NAME, locate_ocrmypdf()),
             (TESSERACT_NAME, find_tesseract()),
         )
         if found is None
-    ]
+    )
+
+
+def ocr_missing_text() -> str:
+    """What stops OCR here, in the words every message uses: "Tesseract is not installed"."""
+    missing = ocr_missing_parts()
     if not missing:
         return OCR_UNAVAILABLE_TEXT
     return f"{' and '.join(missing)} {'is' if len(missing) == 1 else 'are'} not installed"
@@ -156,6 +164,22 @@ def ocr_install_hint() -> str:
     return OSTREE_NO_BREW_HINT if on_ostree() else DNF_INSTALL_HINT
 
 
+def ocr_fixes() -> tuple[tuple[str, str], ...]:
+    """What to do about each missing OCR part, as (part, what to do), Tesseract's first. When
+    nothing is missing any more (it was installed while the question was asked), Tesseract's."""
+    missing = ocr_missing_parts()
+    fixes = []
+    if TESSERACT_NAME in missing or not missing:
+        fixes.append((TESSERACT_NAME, ocr_install_hint()))
+    if OCRMYPDF_NAME in missing:
+        fixes.append((OCRMYPDF_NAME, OCRMYPDF_FIX_HINT))
+    return tuple(fixes)
+
+
 def ocr_fix_hint() -> str:
-    """What to do about the missing OCR part or parts (a stub until the fix is written)."""
-    raise NotImplementedError
+    """What to do about the missing OCR part or parts, for a sentence: the one thing to do, or
+    each part's with its name when both are missing."""
+    fixes = ocr_fixes()
+    if len(fixes) == 1:
+        return fixes[0][1]
+    return "; ".join(f"{name}: {fix}" for name, fix in fixes)

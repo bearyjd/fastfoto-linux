@@ -4,14 +4,13 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from fastfoto_linux.documents import DocumentResult, find_ocrmypdf
-from fastfoto_linux.documents.ocr_tools import DNF_INSTALL_HINT, ocr_install_hint
+from fastfoto_linux.documents.ocr_tools import DNF_INSTALL_HINT, TESSERACT_NAME, ocr_fixes
 from fastfoto_linux.gui.docform import DocumentForm
 from fastfoto_linux.gui.state import Mode
 from fastfoto_linux.scanner.shim_trust import inside_flatpak
 from fastfoto_linux.session import DocumentSessionResult
 
-OCR_HINT_PREFIX = "Install Tesseract: "  # ocrmypdf comes with the app; Tesseract is a program
-NATIVE_OCR_HINT = OCR_HINT_PREFIX + DNF_INSTALL_HINT  # on a classic system; others see theirs
+NATIVE_OCR_HINT = f"Install {TESSERACT_NAME}: {DNF_INSTALL_HINT}"  # classic system, only it missing
 FLATPAK_OCR_HINT = "Searchable text needs the native install"
 
 
@@ -35,7 +34,9 @@ class DocumentTools:
         """What to do about missing searchable text, empty when it is available."""
         if self.ocr_available:
             return ""
-        return FLATPAK_OCR_HINT if self.in_flatpak() else OCR_HINT_PREFIX + ocr_install_hint()
+        if self.in_flatpak():
+            return FLATPAK_OCR_HINT
+        return "; ".join(f"Install {name}: {fix}" for name, fix in ocr_fixes())
 
 
 @dataclass(frozen=True)

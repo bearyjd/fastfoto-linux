@@ -114,21 +114,31 @@ def test_a_program_that_hangs_is_stopped_with_everything_it_started(
 
 
 @pytest.mark.parametrize(
-    "failure",
-    [{"version_text": "no idea"}, {"version_hang": True}],
+    ("failure", "gives_up_after_s"),
+    [({"version_text": "no idea"}, None), ({"version_hang": True}, 0.5)],
     ids=["no version printed", "no answer in time"],
 )
 def test_only_an_answer_is_remembered_a_failure_is_asked_again(
-    fake_on_path: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: dict[str, object]
+    fake_on_path: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    failure: dict[str, object],
+    gives_up_after_s: float | None,
 ) -> None:
-    monkeypatch.setattr(ocr_version, "VERSION_TIMEOUT_S", 0.5)
-    log = tmp_path / "version.log"
-    fake.configure(monkeypatch, version_log=str(log), **failure)
+    # No assertion here depends on a time limit being long enough: a program that never
+    # answers fails at any limit, so only that call gets a short one, and a program that
+    # answers keeps the module's own (10 s), however slowly a loaded machine starts it.
+    answer_limit_s = ocr_version.VERSION_TIMEOUT_S
+    if gives_up_after_s is not None:
+        monkeypatch.setattr(ocr_version, "VERSION_TIMEOUT_S", gives_up_after_s)
+    fake.configure(monkeypatch, **failure)
     assert ocrmypdf_version(str(fake_on_path)) is None
+    monkeypatch.setattr(ocr_version, "VERSION_TIMEOUT_S", answer_limit_s)
+    log = tmp_path / "version.log"
     fake.configure(monkeypatch, version="17.13.0", version_log=str(log))
     assert ocrmypdf_version(str(fake_on_path)) == "17.13.0"
     assert ocrmypdf_version(str(fake_on_path)) == "17.13.0"
-    assert log.read_text(encoding="utf-8").splitlines() == ["asked", "asked"]
+    assert log.read_text(encoding="utf-8").splitlines() == ["asked"]  # the answer is remembered
 
 
 # ---- what a version accepts -----------------------------------------------------------------

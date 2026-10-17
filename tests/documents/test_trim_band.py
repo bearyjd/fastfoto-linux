@@ -144,7 +144,12 @@ def test_ink_in_the_band_cancels_the_cut_and_the_page_is_left_whole(dpi: int) ->
 @pytest.mark.parametrize("dpi", DPIS)
 @pytest.mark.parametrize("band_mm", [1.0, 25.0], ids=["too-thin", "too-tall"])
 def test_a_band_under_3_mm_or_over_20_mm_is_not_cut(dpi: int, band_mm: float) -> None:
-    result = trim_page(colour_page(band_page(dpi, band_mm=band_mm)))
+    """The thin band has no pad slant below it: the pad's slant counts from its middle toward the
+    3 mm, so a real band is never thinner than half of it (round 1 counted from where it ended)."""
+    scene = band_page(dpi, band_mm=band_mm)
+    if band_mm < 3.0:
+        scene = replace(scene, image=scene.image[: -px(PAD_WEDGE_MM, dpi)])
+    result = trim_page(colour_page(scene))
     assert (result.bottom, result.band_bottom) == (0, False)  # as before: nothing is cut
 
 
@@ -272,18 +277,20 @@ def test_a_band_above_a_white_tail_is_found_the_tail_is_not_in_the_way(dpi: int)
 
 
 @pytest.mark.parametrize("dpi", [200, 300])
-@pytest.mark.parametrize(("size_px", "cut"), [(1, True), (3, False)], ids=["noise", "ink-size"])
+@pytest.mark.parametrize(
+    ("size_px", "tone", "cut"), [(1, 200, True), (3, 120, False)], ids=["noise", "ink-size"]
+)
 def test_dust_in_the_pad_stops_the_cut_only_when_it_is_of_ink_size(
-    dpi: int, size_px: int, cut: bool
+    dpi: int, size_px: int, tone: int, cut: bool
 ) -> None:
     """Round 1 exempted the rows of the pad's slant as a block, so any dust there went. The pad
     is exempt pixel by pixel now (white, or blended with the backing), as the white tail is:
-    dust of ink size (0.3 mm, in the last check) is kept, a single pixel is noise."""
+    dust of ink size (0.3 mm, in the last check) is kept, a faint pixel is noise."""
     scene = band_page(dpi)
     image = scene.image.copy()
     for number, row in enumerate(range(px(1.0, dpi), px(8.0, dpi), px(1.5, dpi))):
         column = px(20.0 + 15.0 * number, dpi)
-        image[-row - size_px : -row, column : column + size_px] = 120  # a speck
+        image[-row - size_px : -row, column : column + size_px] = tone  # a speck
     result = trim_page(colour_page(replace(scene, image=image)))
     assert result.band_bottom is cut
 

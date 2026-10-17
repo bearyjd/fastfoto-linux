@@ -39,20 +39,23 @@ to a side of the strip. On a grey page nothing but the tone tells backing, and a
 pastel paper has it wherever it lies, so a grey page has no backing: only blank white is exempt,
 and a cluster of backing grey keeps the strip. Where the backing beside a receipt runs on below the
 paper, the strip holds backing grey, so the tail there is kept. On a colour page, pixels where
-backing and white blend, at the edge of a blurred scan, are no content either. What is cut is
-therefore what is certainly empty, blank white or the scanner's backing, with the limits of that
-test: on a colour page a note of the backing's colour that touches the side of its strip cannot be
-told from backing, a stroke under 3 pixels wide within 2 pixels of both white and backing is taken
-for the blur of an edge, and a stroke 1 pixel wide is diluted to a third of its depth by the blur
-(on a slip only 5 levels below the tail's white it must be about 21 levels darker than the slip to
-count). A page that would be under 10 mm tall or wide after trimming (the least ``find_marks``
+backing and white blend, at the edge of a blurred scan, are no content either. The strip of a
+band cut, the tail included, is judged with the scanner's pad exempt pixel by pixel (white, and
+the pixels within 2 pixels of both white and backing; see ``band``). What is cut is therefore what
+is certainly empty, blank white or the scanner's backing, with the limits of that test: on a colour
+page a note of the backing's colour that touches the side of its strip cannot be told from backing,
+a stroke under 3 pixels wide within 2 pixels of both white and backing is taken for the blur of an
+edge, and a stroke 1 pixel wide is diluted to a third of its depth by the blur (on a slip only 5
+levels below the tail's white it must be about 21 levels darker than the slip to count).
+A page that would be under 10 mm tall or wide after trimming (the least ``find_marks``
 accepts) is kept whole.
 
 The top is trimmed only by the band rule of ``band``: the scanner's full-width backing band at the
-bottom (with the pad below it) and at the top is cut, below the edge line and with at most 1 mm of
-it left at the bottom, on colour pages only. At least 30 mm of page stay after each cut and the
-last check applies to each; the white-tail rule runs where there is no band cut. After a band cut
-the new edge is the paper's, so ``Trimmed.tail_rows`` is 0 and the blank-page margin is whole.
+bottom (found above the white tail, and cut with the pad and the tail below it) and at the top is
+cut, below the edge line and with at most 1 mm of it left at the bottom, on colour pages only. At
+least 30 mm of page stay after each cut and the last check applies to the whole strip, the tail
+included; the white-tail rule runs where there is no band cut. After a band cut the new edge is the
+paper's, so ``Trimmed.tail_rows`` is 0 and the blank-page margin is whole.
 """
 
 import logging
@@ -62,7 +65,7 @@ from dataclasses import dataclass, replace
 import cv2
 import numpy as np
 
-from fastfoto_linux.documents.band import BOTTOM_EDGE, TOP_EDGE, EdgeRule, band_cut
+from fastfoto_linux.documents.band import BOTTOM_EDGE, TOP_EDGE, WHITE_MIN, EdgeRule, band_cut
 from fastfoto_linux.documents.loader import MIN_PAGE_MM, WHITE, LoadedPage
 from fastfoto_linux.documents.marks import find_marks
 from fastfoto_linux.documents.modes import ColourMode
@@ -259,16 +262,18 @@ def _joined_to_sides(tone: np.ndarray) -> np.ndarray:
     return joined[labels]
 
 
-def _backing_pixels(strip: np.ndarray) -> np.ndarray:
+def _backing_pixels(strip: np.ndarray, bridge: np.ndarray | None = None) -> np.ndarray:
     """Which pixels of ``strip`` are the scanner's backing and so need no keeping.
 
-    On a colour page: backing-coloured and joined to a side of the strip. A grey page has no hue,
-    and a pale slip or a pastel margin looks just like the backing wherever it lies, so on a grey
-    page nothing is backing.
+    On a colour page: backing-coloured and joined to a side of the strip, directly or (for the
+    band cut) through the ``bridge`` pixels, the pad. A grey page has no hue, and a pale slip or a
+    pastel margin looks just like the backing wherever it lies, so on a grey page nothing is
+    backing.
     """
     if strip.ndim != RGB_NDIM:
         return np.zeros(strip.shape, dtype=bool)
-    return _joined_to_sides(_is_backing(strip))
+    backing = _is_backing(strip)
+    return _joined_to_sides(backing if bridge is None else backing | bridge) & backing
 
 
 def _blended(white: np.ndarray, backing: np.ndarray) -> np.ndarray:
@@ -280,19 +285,31 @@ def _blended(white: np.ndarray, backing: np.ndarray) -> np.ndarray:
     return near_white & near_backing
 
 
-def _holds_content(strip: np.ndarray, white: float, dpi: int) -> bool:
+def _pad_pixels(strip: np.ndarray) -> np.ndarray:
+    """The scanner's pad in the unblurred ``strip``: white, and the pixels within ``FRINGE_PX`` of
+    both white and backing, where the pad's edge (anti-aliasing, the codec's ringing, a wedge
+    thinner than the blur) passes into the backing. Judged pixel by pixel, not row by row."""
+    white = strip.min(axis=2) >= WHITE_MIN
+    return white | _blended(white, _is_backing(strip))
+
+
+def _holds_content(strip: np.ndarray, white: float, dpi: int, *, pad: bool = False) -> bool:
     """Does ``strip``, which a trim would remove, hold an ink-sized cluster that is neither
     blank white (less than ``INK_DEVIATION`` darker than ``white``) nor backing?
 
     Judged on a copy blurred over ``GUARD_BLUR_PX``, so that noise does not make clusters of
-    its own and a dot of two or three pixels grows into one.
+    its own and a dot of two or three pixels grows into one. With ``pad`` (a colour strip of the
+    band cut) the pad's pixels are exempt one by one and the backing may join a side through it.
     """
     smooth = cv2.boxFilter(strip, cv2.CV_32F, (GUARD_BLUR_PX, GUARD_BLUR_PX))
     marked = _grey_of(smooth) <= white - INK_DEVIATION
     if not marked.any():
         return False
-    backing = _backing_pixels(smooth)
+    exempt = _pad_pixels(strip) if pad else None
+    backing = _backing_pixels(smooth, exempt)
     unexplained = marked & ~backing & ~_blended(~marked, backing)
+    if exempt is not None:
+        unexplained &= ~exempt
     return bool(_ink_clusters(unexplained, dpi).size)
 
 
@@ -326,26 +343,26 @@ def _bottom_cut(page: LoadedPage) -> int:
 
 
 def _band_cut(page: LoadedPage, rule: EdgeRule, other: int = 0) -> int:
-    """Rows to cut at the edge ``rule`` is for when the scanner's backing band lies there; 0 when
-    there is none or the cut is not safe, which leaves the tail rule to decide.
+    """Rows to cut at the edge ``rule`` is for when the scanner's backing band lies there (at the
+    bottom with the white tail below it); 0 when there is none or the cut is not safe, which
+    leaves the tail rule to decide.
 
-    Not safe: ``other`` rows are cut at the opposite edge and 30 mm of page must stay; the last
-    check finds something but white and backing in the strip (the rows the pad's slant still
-    touches are left out, being slivers under the blur of that check: the band judges them).
+    The band is looked for above the white tail. Not safe: ``other`` rows are cut at the opposite
+    edge and 30 mm of page must stay; the last check finds something but pad (white, and where it
+    blends with the backing) and backing in the whole strip, the tail included.
     """
     if page.kind is not ColourMode.COLOUR:
         return 0
-    band = band_cut(page.pixels, page.dpi, rule)
     height = page.pixels.shape[0]
-    if band is None or height - band.cut - other < mm_to_px(MIN_PAPER_MM, page.dpi):
+    tail = _tail_start(page.pixels, page.dpi) if rule.bottom else None
+    body = height if tail is None else tail
+    cut = band_cut(page.pixels[:body], page.dpi, rule)
+    if cut is None or body - cut - other < mm_to_px(MIN_PAPER_MM, page.dpi):
         return 0
-    strip = (
-        page.pixels[height - band.cut : height - band.pad]
-        if rule.bottom
-        else page.pixels[band.pad : band.cut]
-    )
+    total = height - body + cut
+    strip = page.pixels[height - total :] if rule.bottom else page.pixels[:total]
     white = _tail_white(page.pixels, page.dpi)
-    return 0 if strip.size and _holds_content(strip, white, page.dpi) else band.cut
+    return 0 if _holds_content(strip, white, page.dpi, pad=True) else total
 
 
 def _trimmed(page: LoadedPage) -> Trimmed:

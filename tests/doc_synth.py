@@ -390,6 +390,7 @@ def scanner_page(  # noqa: PLR0913
     paper_mm: float = 60.0,
     band_mm: float = 10.0,
     shadow_mm: float = 0.8,
+    shadow_rgb: tuple[int, int, int] = SHADOW_RGB,
     edge_line: bool = True,
     paper_tone: int = 255,
     tilt_deg: float = 0.0,
@@ -420,7 +421,7 @@ def scanner_page(  # noqa: PLR0913
         image[paper_end - line : paper_end] = dark
     scanned = np.concatenate(
         [
-            _noisy(rng, SHADOW_RGB, shadow, width),
+            _noisy(rng, shadow_rgb, shadow, width),
             _noisy(rng, BACKING_RGB, height - paper_end - shadow, width),
         ]
     ).astype(np.float32)

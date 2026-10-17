@@ -1,32 +1,44 @@
 """The scanner's backing band below and above the paper: where the paper ends on real pages.
 
-From the bottom edge of a deskewed page upward the scanner delivers a slanted pad of pure white
-(the area outside the scanned region; a row passes from nearly all pad to none within about 10
-mm), then a full-width backing band of 6 to 15 mm in the backing colour of ``pipeline.crop``,
-darker next to the paper (a shadow, up to 36 from the backing colour), then an optional edge line
-of about 1 mm (24 to 64% of its pixels are dark), then the paper, which is often pure 255 like the
-pad and so cannot be told from it by its brightness. At the top there are 1 to 2 mm of the same
-backing (the first row partly pad), the edge line, the paper. The full-width backing band is the
-reliable sign of where the paper ends.
+A raw frame is full length: the paper, its band, then a white tail of about 98 mm. The scanner
+straightens the paper by rotating the frame (1 to 3 degrees), so the pad of pure white, which is
+everything outside the rotated scan, is a slanted lower edge and the pad also forms wedges up the
+sides (14 mm wide at 3 degrees); the page is a JPEG, which rings around the pad's edge. From the
+bottom edge of the scan upward: the slanted pad (a row passes from nearly all pad to none within
+about 10 mm), a full-width backing band of 6 to 15 mm in the backing colour of ``pipeline.crop``,
+darker next to the paper (a shadow, up to 1 mm), an optional edge line of about 1 mm, then the
+paper, which is often pure 255 like the pad and so cannot be told from it by its brightness. At
+the top there are at most 2 mm of the same backing, the edge line, the paper. The full-width
+backing band is the reliable sign of where the paper ends.
 
-* A band row is one in which at least 95% of all the pixels, the whole width, are backing or its
-  shadow. It is measured over the whole width, never over what is not white: a narrow receipt on
-  the backing, or a row of blank white paper, is not a band row.
-* The band is a run of band rows that starts within 20 mm of the bottom edge (the pad and its
-  slant) or within 0.5 mm of the top edge, with nothing but pad and backing between the run and
-  the edge. It is a band of 3 to 20 mm at the bottom and of 1 to 4 mm at the top; a longer run (a
-  backing-coloured header or form margin) is not a band and nothing is cut.
+* The frame has a tail, so the band is looked for above the white tail: ``trim`` gives this
+  module the page down to where the tail starts, and the tail goes with the band.
+* Rows are judged by what is not white (white is every channel at 240 or more: the pad, the paper
+  at 250 to 255, the ringing next to the pad's edge): a band row has non-white pixels on at least
+  50% of its width and backing on at least 95% of those, so the wedges of pad in a row do not hide
+  the backing. Pixels that are neither white nor backing but within 2 px of white are the pad's
+  blurred edge and count for neither. A row with more than 10 mm of white that touches neither
+  side of the row (a white slip, a narrow item) is not a band row; a gap of a few pixels does
+  not split a run of white.
+* The band is the first run of band rows going up from the bottom of that page, with only pad rows
+  (under 50% non-white) below it, starting within 20 mm of its edge: a band of 3 to 20 mm at the
+  bottom and of 1 to 4 mm at the top (within 0.5 mm of the top edge). The least counts from the
+  middle of the pad's slant, the most from where the slant ends. A longer run (a backing-coloured
+  header or form margin) is not a band and nothing is cut. The run ends at the first row that
+  is not a band row and never extends into the white rows above it, because the paper can be
+  pure 255.
 * The cut is made at the band's border with the paper, never through the edge line: the edge line
   is not backing, so it ends the run and is kept whole. At the bottom at most 1 mm of the band
   stays, at the top none. The shadow is darker than what the last check in ``trim`` calls backing
   (at most 20 from the backing colour), so the cut never takes a row of the last 4 mm of the band
-  in which that is not backing in 95% of the pixels: a darker shadow stays with the paper.
-* At least 30 mm of page stay after each cut, and the last check in ``trim`` applies to each
-  cut, except to the rows the pad's slant still reaches, counted from the frame's edge up to the
-  first row with no pad in it: it tapers to slivers under 3 px that the blur of the check turns
-  into tones that are neither white nor backing. White further in is not pad. Those rows are
-  judged here instead: 99% of every row between the edge and the band is pad or backing (the
-  blend of the two, under 2 px from both, included).
+  in which that is not backing in 95% of the non-white pixels: a darker shadow stays with the
+  paper.
+* At least 30 mm of page stay after each cut, and the last check in ``trim`` applies to the whole
+  strip that is cut (at the bottom the tail too, so ink anywhere in it keeps the page). There
+  pad pixels are exempt one by one: white, and the pixels within 2 px of both white and backing,
+  where the pad's edge passes into the backing. The backing joins a side of the strip through the
+  pad, so that pad at both ends of a row does not cut it off. Every other pixel goes to the last
+  check; dust of ink size in the pad keeps the page, as in the tail.
 * After a band cut the new edge is the paper's, so the blank-page margin is measured in full
   from the new edge (``Trimmed.tail_rows``): the kept edge line is margin, not a mark.
 
@@ -44,13 +56,13 @@ import numpy as np
 from fastfoto_linux.documents.units import mm_to_px
 from fastfoto_linux.pipeline.crop import BACKGROUND_PRIOR_RGB, BACKGROUND_PRIOR_TOLERANCE
 
-BAND_SHARE = 0.95  # a band row is at least this share backing, across the whole width
+BAND_SHARE = 0.95  # a band row is at least this share backing, of its non-white pixels
+COLOURED_SHARE = 0.5  # and has non-white pixels on at least this share of its width (else: pad)
 SHADOW_TOLERANCE = 36  # a shadow pixel is at most this far from the backing colour (RGB)
-PAD_WHITE_MIN = 250  # the pad is pure 255; every channel at least this counts as white
-PAD_EMPTY_SHARE = 0.99  # the rows between the edge and the band are pad and backing to this share
-FRINGE_PX = 2  # where the pad and the backing blend, a pixel lies this close to both
-PAD_ROW_SHARE = 0.001  # a row with this share of pad pixels is still in the pad's slant
-PAD_MARGIN_PX = 3  # rows beyond the pad that the blur of the last check still takes it from
+WHITE_MIN = 240  # white: every channel at least this (pad 255, paper 250 to 255, codec ringing)
+HOLE_MM = 10.0  # a band row has no more white than this that touches neither of its sides
+FRINGE_PX = 2  # where the pad and the backing blend, a pixel lies this close to white
+TAPER_SHARE = 0.02  # the pad's slant is over when the share of white is this near its lowest
 SHADOW_ZONE_MM = 4.0  # the shadow lies in this much of the band next to the paper
 WINDOW_SLACK_MM = 1.0  # rows looked at beyond the longest band (the paper, to see its end)
 
@@ -62,18 +74,10 @@ class EdgeRule:
     """Where to look for a band and how big it may be (all in millimetres)."""
 
     bottom: bool
-    reach_mm: float  # the band starts at most this far from the edge of the frame
+    reach_mm: float  # the band starts at most this far from the edge of the page it is given
     min_mm: float
     max_mm: float
     keep_mm: float  # of the band stays next to the paper
-
-
-@dataclass(frozen=True)
-class Band:
-    """A band found at an edge, in rows counted from the edge of the frame."""
-
-    cut: int  # rows to remove: the pad, the band, and its shadow up to what the rule keeps
-    pad: int  # of those, the rows still touched by the pad's slant: the last check skips them
 
 
 BOTTOM_EDGE = EdgeRule(bottom=True, reach_mm=20.0, min_mm=3.0, max_mm=20.0, keep_mm=1.0)
@@ -95,51 +99,86 @@ def _edge_first(pixels: np.ndarray, rule: EdgeRule, dpi: int) -> np.ndarray:
     return pixels[::-1][:rows] if rule.bottom else pixels[:rows]
 
 
-def _empty_rows(loose: np.ndarray, white: np.ndarray) -> np.ndarray:
-    """Which rows are pad and backing to ``PAD_EMPTY_SHARE``, the pixels where the two blend
-    (the anti-aliased boundary, under 2 px from both) included."""
+def _blur_of_pad(loose: np.ndarray, white: np.ndarray) -> np.ndarray:
+    """Pixels that are neither white nor backing but lie within ``FRINGE_PX`` of white: the
+    anti-aliased and ringing edge of the pad. They count for neither side of a row's share."""
     kernel = np.ones((2 * FRINGE_PX + 1, 2 * FRINGE_PX + 1), np.uint8)
     near_white = cv2.dilate(white.astype(np.uint8), kernel).astype(bool)
-    near_loose = cv2.dilate(loose.astype(np.uint8), kernel).astype(bool)
-    return (loose | white | (near_white & near_loose)).mean(axis=1) >= PAD_EMPTY_SHARE
+    return near_white & ~white & ~loose
 
 
-def _run(band: np.ndarray, empty: np.ndarray, rule: EdgeRule, dpi: int) -> tuple[int, int] | None:
+def _interior_white(white: np.ndarray) -> np.ndarray:
+    """Per row: the white pixels that are not in the run of white at either end of the row. A gap
+    of a few pixels in a run (a speck, the codec's ringing) does not split it."""
+    kernel = np.ones((1, 2 * FRINGE_PX + 1), np.uint8)
+    closed = cv2.morphologyEx(white.astype(np.uint8), cv2.MORPH_CLOSE, kernel).astype(bool)
+    whole = closed.all(axis=1)
+    width = closed.shape[1]
+    lead = np.where(whole, width, closed.argmin(axis=1))
+    trail = np.where(whole, width, closed[:, ::-1].argmin(axis=1))
+    return np.maximum(closed.sum(axis=1) - lead - trail, 0)
+
+
+def _band_rows(backing: np.ndarray, white: np.ndarray, dpi: int) -> tuple[np.ndarray, np.ndarray]:
+    """Which rows are band rows, and which are pad rows (under ``COLOURED_SHARE`` of the width
+    is non-white). A band row has non-white pixels on at least that share, ``BAND_SHARE`` of them
+    ``backing``, and no white slip in the middle of the row."""
+    coloured = ~white & ~_blur_of_pad(backing, white)
+    count = coloured.sum(axis=1)
+    mostly = count >= COLOURED_SHARE * white.shape[1]
+    band = (
+        mostly
+        & ((backing & coloured).sum(axis=1) >= BAND_SHARE * count)
+        & (_interior_white(white) <= mm_to_px(HOLE_MM, dpi))
+    )
+    return band, ~mostly
+
+
+def _settled(white: np.ndarray, start: int, end: int) -> int:
+    """The first row of the run ``start:end`` after the pad's slanted edge: where the share of
+    white stops falling (it stays at the side wedges' share, if any). The slant is not band."""
+    share = white[start:end].mean(axis=1)
+    return start + int(np.argmax(share <= share.min() + TAPER_SHARE))
+
+
+def _run(
+    band: np.ndarray, pad: np.ndarray, white: np.ndarray, rule: EdgeRule, dpi: int
+) -> tuple[int, int] | None:
     """The first and one past the last row of the band in ``band`` (band rows, edge first), or
-    None unless it starts within reach over empty rows and is neither too short nor too long."""
+    None unless it starts within reach over pad rows, is at least ``min_mm`` long from the middle
+    of the pad's slant, and is at most ``max_mm`` long from where the slant ends."""
     hits = np.flatnonzero(band)
-    if not hits.size or hits[0] > mm_to_px(rule.reach_mm, dpi) or not empty[: hits[0]].all():
+    if not hits.size or hits[0] > mm_to_px(rule.reach_mm, dpi) or not pad[: hits[0]].all():
         return None
     start = int(hits[0])
     gaps = np.flatnonzero(~band[start:])
     if not gaps.size:
         return None
     end = start + int(gaps[0])
-    long_enough = mm_to_px(rule.min_mm, dpi) <= end - start <= mm_to_px(rule.max_mm, dpi)
-    return (start, end) if long_enough else None
+    thick = mm_to_px(rule.min_mm, dpi) <= end - start
+    short = end - _settled(white, start, end) <= mm_to_px(rule.max_mm, dpi)
+    fits = thick and short
+    return (start, end) if fits else None
 
 
-def band_cut(pixels: np.ndarray, dpi: int, rule: EdgeRule) -> Band | None:
-    """The band at the edge ``rule`` is for, or None when the page has none there.
+def band_cut(pixels: np.ndarray, dpi: int, rule: EdgeRule) -> int | None:
+    """Rows to cut from the edge ``rule`` is for, or None when the page has no band there.
 
-    ``pixels`` is a colour page. The cut never goes into the edge line, and not into the shadow
-    next to the paper where it is darker than backing: the rows of the last 4 mm of the band in
-    which under 95% of the pixels are backing (within the tolerance of ``trim``) stay.
+    ``pixels`` is a colour page (at the bottom: down to where the white tail starts). The cut
+    never goes into the edge line, and not into the shadow next to the paper where it is darker
+    than backing: the rows of the last 4 mm of the band in which under 95% of the non-white
+    pixels are backing (within the tolerance of ``trim``) stay.
     """
     window = _edge_first(pixels, rule, dpi)
-    loose = backing_mask(window, SHADOW_TOLERANCE)
-    white = window.min(axis=2) >= PAD_WHITE_MIN
-    found = _run(loose.mean(axis=1) >= BAND_SHARE, _empty_rows(loose, white), rule, dpi)
+    white = window.min(axis=2) >= WHITE_MIN
+    band, pad = _band_rows(backing_mask(window, SHADOW_TOLERANCE), white, dpi)
+    found = _run(band, pad, white, rule, dpi)
     if found is None:
         return None
     start, end = found
     zone = max(start, end - mm_to_px(SHADOW_ZONE_MM, dpi))
-    dark = np.flatnonzero(backing_mask(window[zone:end]).mean(axis=1) < BAND_SHARE)
+    tight, _ = _band_rows(backing_mask(window[zone:end]), white[zone:end], dpi)
+    dark = np.flatnonzero(~tight)
     clean = end if not dark.size else zone + int(dark[0])
     keep = mm_to_px(rule.keep_mm, dpi) if rule.keep_mm else 0
-    cut = max(0, min(end - keep, clean))
-    clear = np.flatnonzero(white[:end].mean(axis=1) < PAD_ROW_SHARE)  # rows with no pad left
-    if not clear.size:
-        return None
-    pad = int(clear[0]) + PAD_MARGIN_PX if clear[0] else 0  # the pad that touches the frame's edge
-    return Band(cut, min(pad, cut))
+    return max(0, min(end - keep, clean)) or None

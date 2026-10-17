@@ -16,6 +16,7 @@ from fastfoto_linux.documents.band import BOTTOM_EDGE, band_cut
 from fastfoto_linux.documents.trim import trim_page
 from tests.doc_synth import (
     BACKING_RGB,
+    SHADOW_RGB,
     Scene,
     px,
     scanner_page,
@@ -28,6 +29,7 @@ KEEP_MM = 1.0
 LEFTOVER_MM = 2.5  # of backing that may stay: the 1 mm kept, the shadow, the blur of the codec
 BAND_MM = 10.8  # the shadow and the band of ``scanner_page``
 PALE_BACKING = (190, 200, 210)  # 18 from the backing colour, and 40 levels under the paper
+DARK_SHADOW_RGB = (182, 188, 196)  # 39 from the backing: outside the tolerance of 36
 FOOTER_RGB = (185, 195, 205)  # a blue-grey 26 from the backing: past 20, inside the band's 36
 TILTS = (0.0, 0.5, -0.5, 1.5, 3.0, -3.0)
 CASES = (
@@ -82,9 +84,22 @@ def test_a_band_of_6_to_15_mm_is_cut_with_or_without_an_edge_line(
     assert_band_cut(scene, trim_page(colour_page(scene)))
 
 
-@pytest.mark.parametrize("shadow_mm", [0.0, 1.0])
-def test_a_shadow_of_up_to_a_millimetre_does_not_stop_the_cut(shadow_mm: float) -> None:
-    scene = real_page(300, shadow_mm=shadow_mm, tilt_deg=-1.5)
+@pytest.mark.parametrize(
+    ("shadow_mm", "shadow_rgb"),
+    [(0.0, SHADOW_RGB), (1.0, SHADOW_RGB), (1.0, DARK_SHADOW_RGB)],
+    ids=["none", "27-from-backing", "39-from-backing"],
+)
+def test_a_shadow_of_up_to_a_millimetre_does_not_stop_the_cut(shadow_mm: float, shadow_rgb) -> None:
+    """The darkest shadow is outside the band's tolerance of 36: the cut stops below it."""
+    scene = real_page(300, shadow_mm=shadow_mm, shadow_rgb=shadow_rgb, tilt_deg=-1.5)
+    assert_band_cut(scene, trim_page(colour_page(scene)))
+
+
+@pytest.mark.parametrize(("band_mm", "tilt"), [(6.0, 3.0), (15.0, -3.0), (6.0, -3.0)])
+def test_a_band_of_6_mm_at_3_degrees_and_one_of_15_mm_are_both_found(
+    band_mm: float, tilt: float
+) -> None:
+    scene = real_page(300, band_mm=band_mm, tilt_deg=tilt)
     assert_band_cut(scene, trim_page(colour_page(scene)))
 
 
@@ -118,12 +133,13 @@ def test_white_that_is_not_pad_stays_with_the_cut_and_must_be_blank() -> None:
 
 
 @pytest.mark.parametrize("dpi", [200, 300])
-def test_a_speck_of_one_pixel_in_the_pad_is_noise_and_one_of_ink_size_is_not(dpi: int) -> None:
+def test_a_faint_pixel_in_the_pad_is_noise_and_a_speck_of_ink_size_is_not(dpi: int) -> None:
     scene = frame(dpi, tilt_deg=1.5)
     row = scene.height - px(5.0, dpi)
-    noise = with_jpeg(painted(scene, slice(row, row + 1), slice(900, 901), 120))
+    noise = with_jpeg(painted(scene, slice(row, row + 1), slice(900, 901), 200))
     assert_band_cut(noise, trim_page(colour_page(noise)))
-    dust = with_jpeg(painted(scene, slice(row, row + 3), slice(900, 903), 120))
+    size = px(0.6, dpi)
+    dust = with_jpeg(painted(scene, slice(row, row + size), slice(900, 900 + size), 60))
     assert not trim_page(colour_page(dust)).band_bottom
 
 
@@ -193,7 +209,8 @@ def test_text_on_the_last_line_of_the_paper_is_kept(dpi: int) -> None:
 
 @pytest.mark.parametrize("band_mm", [1.0, 25.0], ids=["too-thin", "too-tall"])
 def test_a_band_under_3_mm_or_over_20_mm_is_not_cut_as_a_band(band_mm: float) -> None:
-    scene = real_page(300, band_mm=band_mm, shadow_mm=0.0, edge_line=False, tilt_deg=1.5)
+    tilt = 0.0 if band_mm < 3.0 else 1.5  # a thin band has no slant: that counts toward 3 mm
+    scene = real_page(300, band_mm=band_mm, shadow_mm=0.0, edge_line=False, tilt_deg=tilt)
     result = trim_page(colour_page(scene))
     assert not result.band_bottom
     assert scene.height - result.bottom >= scene.paper_end

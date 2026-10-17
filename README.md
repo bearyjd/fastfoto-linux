@@ -141,18 +141,26 @@ uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr o
   below the tail's white it must be about 21 levels darker than the slip to count. A page
   that would be under 10 mm tall or wide after trimming is kept whole instead of stopping the
   run.
-- The scanner's backing band is cut too, on colour pages. A deskewed page ends in a slanted pad of
-  pure white, then a full-width backing band of 6 to 15 mm (darker next to the paper), an
-  optional dark edge line of about 1 mm, then the paper, which is often pure 255 like the pad;
-  at the top there are 1 to 2 mm of the same backing. A band row is one in which 95% of all the
-  pixels are the backing colour or its shadow (within 36 of it); the band is a run of them at the
-  edge, a band of 3 to 20 mm at the bottom and of 1 to 4 mm at the top, and a longer run is not a
-  band. The cut is made at the band's border with the paper, never through the edge line, and at
-  most 1 mm of the band stays at the bottom (none at the top). The last check and 30 mm of page
-  apply to the cut, and grey and 1-bit pages are not cut by the band rule. Limits: side slivers
-  of up to 2 mm are left (slanted, under the 3 mm of the strip rule), and a full-width bar in the
-  backing colour at the top or bottom edge is cut with the band, like a sidebar of that colour at
-  a side.
+- The scanner's backing band is cut too, on colour pages. A raw frame is full length, with about
+  98 mm of white tail below the paper, so the band is looked for above the white tail and the
+  tail goes with it. The scanner straightens the paper by rotating the frame, so the pad of pure
+  white (everything outside the rotated scan) is a slanted lower edge and the pad also forms
+  wedges up the sides; then come a full-width backing band of 6 to 15 mm (darker next to the
+  paper), an optional dark edge line of about 1 mm, and the paper, which is often pure 255 like
+  the pad. Rows are judged by what is not white (white is every channel at 240 or more): a band row
+  has non-white pixels on at least 50% of its width and backing on at least 95% of those (the
+  backing colour or its shadow, within 36 of it), so the wedges do not hide it; a row with more
+  than 10 mm of white that touches neither side of the row is not a band row. The band is the first run of band rows going up from the
+  bottom of the page above the tail, a band of 3 to 20 mm at the bottom and of 1 to 4 mm at the
+  top, and a longer run is not a band. The run ends at the first row that is not a band row and
+  never extends into the white rows above it. The cut is made at the band's border with the
+  paper, never through the edge line, and at most 1 mm of the band stays at the bottom (none at
+  the top). The last check judges the whole strip that is cut, the tail included, where pad pixels
+  are exempt one by one (white, and the pixels where the pad blends with the backing) and every
+  other pixel counts; 30 mm of page stay, and grey and 1-bit pages are not cut by the band rule.
+  Limits: side slivers of up to 2 mm are left (slanted, under the 3 mm of the strip rule), and a
+  full-width bar in the backing colour at the top or bottom edge is cut with the band, like a
+  sidebar of that colour at a side.
 - A page is blank only when it has no mark at all inside its 5 mm margin: dust, paper texture
   and faint show-through from the other side do not count, while a single short line, a
   signature, a lone page number or pencil at least about 45 grey levels darker than the paper

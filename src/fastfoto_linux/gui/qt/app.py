@@ -225,6 +225,16 @@ def handle_signals(
 
 
 def _run(run_loop: Callable[[], int]) -> int:
+    from fastfoto_linux.gui.qt.messages import install_message_filter  # noqa: PLC0415
+
+    undo_filter = install_message_filter()  # before the QML engine loads KDE's style
+    try:
+        return _run_with_engine(run_loop)
+    finally:
+        undo_filter()  # on every way out: done, window not loaded, or an error
+
+
+def _run_with_engine(run_loop: Callable[[], int]) -> int:
     from fastfoto_linux.gui.qt.bridge import Bridge  # noqa: PLC0415
 
     bridge = Bridge()

@@ -33,6 +33,8 @@ CLAIMS = (
     "never extends into the white rows above it",
     "more than 10 mm of white that touches neither side of the row",
     "pad pixels are exempt one by one",
+    # round 3: the last check of a band cut uses the band's own tolerance
+    "judged by the band's own tolerance",
 )
 STALE = (
     "The top is never trimmed",

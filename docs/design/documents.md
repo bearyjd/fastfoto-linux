@@ -299,7 +299,7 @@ What the first pull request settled where the specification left room.
   blank back stays blank, while a line 6 mm above the new edge keeps the page. Pencil must be about 45 levels darker than the paper
   (local contrast) to count; lighter pencil is indistinguishable from show-through. A page is
   blank when it has **no** mark, so one short line, a **lone page number** (decided: kept, it
-  cannot be told from content), a punch hole or a scanner streak keeps the page; the cost of that
+  cannot be told from content), a punch hole with no mirror on the other side (below) or a scanner streak keeps the page; the cost of that
   caution is a few blank backs kept. The one thing the rule lets go is a faint straight thin line with
   nothing beside it (next point), so a lone faint straight stroke can be lost.
 - **Fold creases.** The blank back of a letter folded in thirds was kept: its two rows of creases
@@ -378,6 +378,49 @@ What the first pull request settled where the specification left room.
   300 dpi and finer (a stub that short shows nothing of the crease's course, and real segments are
   2 to 23 mm); a speck on a crease counts when the scan is soft enough to grow it past a
   millimetre; fragments of 1.0 mm or more beside the artefact keep the page at 300 dpi.
+- **Holes through the paper.** A back with nothing on it was kept for the holes of a staple, which
+  show as small dark marks (real ones: neutral, darkest about 90 to 97, 1.5 mm long, 11 to 15 mm
+  from one edge and 5 mm from the top, with the same marks mirrored on the front). A hole through
+  the paper does not keep a page. On a duplex document a counted mark (as `is_blank` counts it) is
+  a hole when its longer side is at most 8 mm (`HOLE_MAX_MM`: punched holes are about 6 mm, staple
+  holes 1 to 2 mm), it lies within 25 mm of an edge of the page (`EDGE_ZONE_MM`), and the other
+  side of the same sheet has a dark shape of the same size at the mirrored spot. The back of a
+  sheet is its front flipped left to right, so x becomes the frame width less x and y stays, taken
+  in the scanner's frame with each side's trim offsets added back (`Trimmed.left`, `right`, `top`;
+  the frame width is the trimmed width plus both). Two sides of a different resolution, or of
+  frames more than `SHIFT_MM` apart in width, are not a sheet. The shapes are the pixels darker
+  than 160 on the darkest colour channel (`HOLE_TONE`; a hole shows the dark backing, ink that is
+  only 55 levels darker than the paper is not one). They match when each side of the other shape's
+  box is within 1.5 times that of the mark's (`SIZE_RATIO`) and, shifted by up to 2.0 mm in either
+  direction (`SHIFT_MM`; the sides line up to about 1.2 mm on real pages), they overlap by at
+  least 0.5 (intersection over union), `MATCH_IOU`. The other side's shape is the whole connected
+  dark shape, not what lies in the mark's box: a 6 mm disc over a big dark block would otherwise
+  overlap by 0.78. One shape explains one mark (greedy, best overlap first, the marks in reading
+  order), so the "1" of "11" is not explained by the one "1" of "10". A page is blank when it has
+  no counted mark, or when every counted mark is a hole; any other mark keeps the page as before.
+  The overlap of all shifts is one `cv2.matchTemplate` (sums of products), not a loop: at 600 dpi
+  a loop is 9000 shifts per mark. Only a page whose every mark is small and near an edge gets
+  that far, so a text page costs nothing extra. On real pages the rule dropped the two backs that
+  were kept for staple holes (overlap 0.84 to 0.88, and 0.59 to 0.87 for three marks near a
+  corner), kept every text page, and explained one real hole on a text page of 1128 marks.
+- **Pairing.** Pages are paired in order, 1+2, 3+4 and so on, as the two sides of sheets
+  (`DocumentSettings.duplex`, default true). `doc scan` pairs the pages it scans unless
+  `--simplex`, and `doc process` pairs the pages it is given unless `--simplex`, because raw pages
+  from a duplex scan come in pairs: give it pages that start with a front. The desktop app pairs
+  when "Both sides" is on. A scan request whose `duplex` and settings disagree is refused (as for
+  photos), and the command printed after a scanner failure says `--simplex` for a one-sided scan.
+  An odd last page has no partner. A sheet is worked on at a time (two pages in memory at most);
+  `on_page` and the cancel check run before each page as before. Without pairing, or without a
+  partner, there are no holes and a page is judged as it always was.
+- **Limits of the hole rule:** the same symmetric mark printed at the mirrored spots of both
+  sides, within 25 mm of an edge, on an otherwise blank back is taken for a hole, and the back is
+  dropped (a lone symmetric mark such as an "o" or a "-" at the same spot of both sides, on a back
+  with nothing else). Pairing is by page order, so `doc process` given pages that do not start
+  with a front pairs them wrongly: a back then meets another front, and is kept unless that front
+  has a shape at the mirrored spot too (the safe side; a stapled stack has one, and a back it
+  shows the holes of is dropped all the same, rightly). Page numbers at the mirrored bottom centre
+  of both sides ("1" and "2", "10" and "11") keep both pages: the digits differ, and a repeated
+  digit is explained once.
 - **Black and white.** A pixel is black when it is darker than 96 (the same level as a mark), or
   when it is 25 levels darker than the mean of an 8 mm window and than the 8 mm closing of the
   page (strokes thinner than the window removed). The mean alone follows uneven lighting but

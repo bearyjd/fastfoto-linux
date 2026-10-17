@@ -225,6 +225,31 @@ uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr o
   creases that cross are one big mark and keep the page; a speck under a millimetre next to a
   crease segment under 2 mm long can keep the page (at 300 dpi and finer). Trimming is not
   affected.
+- A hole through the paper does not keep a page. A staple, a punch or a clip leaves dark marks
+  that show on both sides of the sheet, and a back with nothing else on it was kept for them. On a
+  duplex document a counted mark is a hole when its longer side is at most 8 mm (punched holes are
+  about 6 mm, staple holes 1 to 2 mm), it lies within 25 mm of an edge of the page, and the other
+  side of the same sheet has a dark shape of the same size at the mirrored spot. The back of a
+  sheet is its front flipped left to right, so x becomes the frame width less x and y stays, taken
+  in the scanner's frame with each side's trim offsets added back. The shapes are the pixels
+  darker than 160 on the darkest colour channel. They match when each side of the other shape's
+  box is within 1.5 times that of the mark's and, shifted by up to 2.0 mm in either direction,
+  they overlap by at least 0.5 (intersection over union). One shape explains one mark: two marks
+  side by side do not both match the one opposite. A page is blank when it has no counted mark, or
+  when every counted mark is a hole; any other mark keeps the page as before.
+- Pages are paired in order, 1+2, 3+4 and so on, as the two sides of sheets. `doc scan` pairs the
+  pages it scans unless `--simplex`, and `doc process` pairs the pages it is given unless
+  `--simplex`, because raw pages from a duplex scan come in pairs: give it pages that start with a
+  front. The desktop app pairs when "Both sides" is on. An odd last page has no partner. Pages are
+  worked on a sheet at a time, so at most two are in memory. Without pairing, or without a
+  partner, there are no holes and a page is judged as it always was.
+- Limits of the hole rule: the same symmetric mark printed at the mirrored spots of both sides,
+  within 25 mm of an edge, on an otherwise blank back is taken for a hole, and the back is
+  dropped. Pairing is by page order, so `doc process` given pages that do not start with a front
+  pairs them wrongly: a back then meets another front, and is kept unless that front has a shape
+  at the mirrored spot too (the safe side; a stapled stack has one, and a back it shows the holes
+  of is dropped all the same, rightly). Pale marks (not darker than 160) and holes larger than
+  8 mm or further than 25 mm from every edge keep the page.
 - Searchable text needs `ocrmypdf` and, for its page rotation, Tesseract's orientation data:
   `sudo dnf install ocrmypdf tesseract-osd`. `--ocr auto` (default) uses it
   when present and otherwise writes the plain PDF and says so; `--ocr on` refuses to start

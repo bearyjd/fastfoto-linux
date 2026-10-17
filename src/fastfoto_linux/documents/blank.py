@@ -1,5 +1,6 @@
 """Decide whether a page is blank (a duplex back with nothing on it)."""
 
+from fastfoto_linux.documents.holes import all_are_holes
 from fastfoto_linux.documents.loader import LoadedPage
 from fastfoto_linux.documents.marks import find_marks
 from fastfoto_linux.documents.trim import Trimmed
@@ -28,5 +29,19 @@ def is_blank(page: LoadedPage, *, trimmed_bottom: int = 0) -> bool:
 
 
 def is_blank_beside(page: Trimmed, partner: Trimmed | None) -> bool:
-    """Stub (red): ``is_blank``, whatever the partner."""
-    return is_blank(page.page, trimmed_bottom=page.tail_rows)
+    """``is_blank`` for a page whose sheet's other side is ``partner`` (None: it has none).
+
+    A page is also blank when every mark on it is a hole through the paper that ``partner``
+    shows too: at most ``holes.HOLE_MAX_MM`` (8 mm) long, within ``holes.EDGE_ZONE_MM`` (25 mm)
+    of an edge, and matched on the other side at the mirrored spot within ``holes.SHIFT_MM``
+    (2.0 mm) by a shape of the same size that overlaps it by ``holes.MATCH_IOU`` (0.5) or more
+    (see ``holes``). Without a partner nothing is a hole, and the answer is that of ``is_blank``.
+    A mark that is not a hole keeps the page, as ever; when in doubt the answer is False.
+    """
+    marks = find_marks(
+        page.page,
+        margin_mm=BLANK_MARGIN_MM,
+        trimmed_bottom=page.tail_rows,
+        ignore_faint_lines=True,
+    )
+    return not marks or (partner is not None and all_are_holes(marks, page, partner))

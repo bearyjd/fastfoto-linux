@@ -77,7 +77,8 @@ def add_parser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]"
         help="make a PDF from pages scanned earlier",
         description="Trim, drop blank pages, and write raw scanner pages (PNG) as one PDF. "
         "Pages are taken in natural filename order (page-2 before page-10) and counted from 1 in "
-        "that order. The page files are never changed or deleted.",
+        "that order. Unless --simplex they are paired as the two sides of sheets, 1+2, 3+4 and so "
+        "on, so they must start with a front. The page files are never changed or deleted.",
     )
     process.add_argument("pages", nargs="+", type=Path, metavar="PAGE.png", help="raw page files")
     add_document_options(process)
@@ -136,7 +137,7 @@ def run_scan_command(args: argparse.Namespace) -> int:
             target=target,
             settings=settings,
             dpi=args.dpi,
-            duplex=not args.simplex,
+            duplex=settings.duplex,
             raw_policy=raw_policy(args),
             raw_parent=root,
         )
@@ -190,6 +191,7 @@ def process_command(pages: Sequence[Path], request: DocumentScanRequest, root: P
         (settings.ocr is not OcrMode.AUTO, ["--ocr", settings.ocr.value]),
         (settings.langs != DEFAULT_LANGS, ["--lang", settings.langs]),
         (settings.keep_blank, ["--keep-blank"]),
+        (not settings.duplex, ["--simplex"]),
     )
     return shlex.join(
         [

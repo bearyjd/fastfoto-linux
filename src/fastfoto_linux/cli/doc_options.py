@@ -84,9 +84,13 @@ def add_fallback_dpi_option(parser: argparse.ArgumentParser) -> None:
 
 
 def add_pairing_option(parser: argparse.ArgumentParser) -> None:
-    """``--simplex`` of ``doc process`` (stub: red)."""
+    """``--simplex`` of ``doc process``: the pages are not the two sides of sheets."""
     parser.add_argument_group("pairing").add_argument(
-        "--simplex", action="store_true", help="every page is a front"
+        "--simplex",
+        action="store_true",
+        help="every page is a front. Without it the pages are paired in order, 1+2, 3+4 and so "
+        "on, as a duplex scan gives them, so that holes through the paper (staples, punches) "
+        "do not keep a blank back; an odd last page has no partner",
     )
 
 
@@ -118,4 +122,5 @@ def build_settings(args: argparse.Namespace) -> DocumentSettings:
         ocr=OcrMode(args.ocr),
         langs=args.lang,
         fallback_dpi=args.dpi,
+        duplex=not args.simplex,
     )

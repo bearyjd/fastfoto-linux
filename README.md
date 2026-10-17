@@ -264,8 +264,9 @@ uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr o
   real holes 89 to 106), the darkest pixels of the two sides are within 30 of each other
   (`HOLE_TONE_MATCH`: real holes 15), and the mean blue less red of its shape is within 12 of 0
   (`HOLE_TINT`: real holes 4), so black print, pen, stamps and ink of a colour are not holes. A page
-  number set at 8 pt or more has digits 2 to 3 mm tall (tested at 8 to 12 pt), over a staple hole,
-  and not round discs, so in no grey is it a hole. When a page has two or more holes they share one
+  number in Arabic digits set at 8 pt or more in a proportional Sans or Serif font has digits 2 to 3
+  mm tall (tested at 8 to 12 pt), over a staple hole, and not round discs, so in no grey is it a
+  hole. When a page has two or more holes they share one
   registration: their offsets from the mirrored spot agree within 0.5 mm (`OFFSET_SPREAD_MM`: real
   holes 0.1), because marks that only look alike land at arbitrary offsets inside the window. The
   window is 2.0 mm (`SHIFT_MM`), and a hole is found as far out as its overlap allows, so a bigger
@@ -283,17 +284,21 @@ uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr o
   blank back is taken for a hole when it is grey and neutral, and the back is dropped. That includes
   smaller grey marks: a grey "." or "-" or "o" of pencil or of grey print (a whole shape of at most
   1.8 mm, as the digits of a numeral set under 8 pt can be) at the mirrored spot of a grey mark on
-  the other side. Black print and ink are never holes. A 1-bit page has no greys (a hole is as black
-  as print), so on one nothing is a hole. A rotation between the sides spreads the offsets of holes
-  in proportion to the distance between them, so holes 216 mm apart (a three-hole punch on Letter
-  paper) are holes only while the sides are within about 0.15 degrees of each other; staple holes
-  close together are not affected. Beyond that the page is kept (the safe side). Pairing is by page
-  order, so `doc process` given pages that do not start with a front pairs them wrongly: a back then
-  meets another front, and is kept unless that front has a shape at the mirrored spot too (the safe
-  side; a stapled stack has one, and a back it shows the holes of is dropped all the same, rightly).
-  Pale marks (not darker than 160), marks between a staple hole and a punched one in size (1.8 to 4
-  mm), long thin or hollow marks, holes larger than 8 mm or further than 25 mm from every edge, and
-  small marks joined to a dark line longer than 8 mm keep the page.
+  the other side. It also includes grey glyphs only x-height tall, lowercase roman folios such as
+  "x", "v" and "o", up to about 9 pt in Sans or 11 pt in Serif, at the mirrored spot of a similar
+  grey glyph on a grey front (as measured, "ix" on the front and "x" on the back), and grey
+  monospace digits at 8 to 9 pt. Each of these drops only the lone folio of an otherwise blank back.
+  Black print and ink are never holes. A 1-bit page has no greys (a hole is as black as print), so
+  on one nothing is a hole. A rotation between the sides spreads the offsets of holes in proportion
+  to the distance between them, so holes 216 mm apart (a three-hole punch on Letter paper) are holes
+  only while the sides are within about 0.15 degrees of each other; staple holes close together are
+  not affected. Beyond that the page is kept (the safe side). Pairing is by page order, so `doc
+  process` given pages that do not start with a front pairs them wrongly: a back then meets another
+  front, and is kept unless that front has a shape at the mirrored spot too (the safe side; a
+  stapled stack has one, and a back it shows the holes of is dropped all the same, rightly). Pale
+  marks (not darker than 160), marks between a staple hole and a punched one in size (1.8 to 4 mm),
+  long thin or hollow marks, holes larger than 8 mm or further than 25 mm from every edge, and small
+  marks joined to a dark line longer than 8 mm keep the page.
 - Searchable text: `ocrmypdf` comes with the app (the installer puts it in the app's own
   environment; from a checkout, `uv sync --extra ocr`), so only Tesseract, the program it drives,
   is left to install. Wherever Homebrew is installed (Bazzite ships it), run

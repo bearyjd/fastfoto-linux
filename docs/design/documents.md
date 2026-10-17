@@ -460,7 +460,9 @@ What the first pull request settled where the specification left room.
   (`HOLE_DARKEST_MIN`: print is darkest 0 to 12, real holes 89 to 106), the darkest pixels of the
   two sides are within 30 of each other (`HOLE_TONE_MATCH`: real holes 15), and the mean blue less
   red of its shape is within 12 of 0 (`HOLE_TINT`: real holes 4), so black print, pen, stamps and
-  ink of a colour are not holes. A page number set at 8 pt or more has digits 2 to 3 mm tall (tested at 8 to 12 pt), over a staple hole, and not round discs, so in no grey is it a hole.
+  ink of a colour are not holes. A page number in Arabic digits set at 8 pt or more in a
+  proportional Sans or Serif font has digits 2 to 3 mm tall (tested at 8 to 12 pt), over a staple
+  hole, and not round discs, so in no grey is it a hole.
   When a page has two or more holes they share one registration: their offsets from the mirrored
   spot agree within 0.5 mm (`OFFSET_SPREAD_MM`: real holes 0.1), because marks that only look alike
   land at arbitrary offsets inside the window. The window is 2.0 mm (`SHIFT_MM`), and a hole is
@@ -532,15 +534,20 @@ What the first pull request settled where the specification left room.
   smaller grey marks: a grey "." or "-" or "o" of pencil or of grey print (a whole shape of at most
   1.8 mm, as the digits of a numeral set under 8 pt can be) at the mirrored spot of a grey mark on
   the other side (a lone symmetric pencil dot or dash at the same spot of both sides, on a back with
-  nothing else). Black print and ink are never holes, and a page number set at 8 pt or more keeps
-  its page in any grey. A 1-bit page has no greys (a hole is as black as print), so on one nothing
-  is a hole. A rotation between the sides spreads the offsets of holes in proportion to the distance
-  between them, so holes 216 mm apart (a three-hole punch on Letter paper) are holes only while the
-  sides are within about 0.15 degrees of each other; staple holes close together are not affected.
-  Beyond that the page is kept (the safe side). Pairing is by page order, so `doc process` given
-  pages that do not start with a front pairs them wrongly: a back then meets another front, and is
-  kept unless that front has a shape at the mirrored spot too (the safe side; a stapled stack has
-  one, and a back it shows the holes of is dropped all the same, rightly).
+  nothing else). It also includes grey glyphs only x-height tall, lowercase roman folios such as
+  "x", "v" and "o", up to about 9 pt in Sans or 11 pt in Serif, at the mirrored spot of a similar
+  grey glyph on a grey front (as measured, "ix" on the front and "x" on the back), and grey
+  monospace digits at 8 to 9 pt. Each of these drops only the lone folio of an otherwise blank back.
+  Black print and ink are never holes, and a page number in Arabic digits set at 8 pt or more in a
+  proportional Sans or Serif font keeps its page in any grey. A 1-bit page has no greys (a hole is
+  as black as print), so on one nothing is a hole. A rotation between the sides spreads the offsets
+  of holes in proportion to the distance between them, so holes 216 mm apart (a three-hole punch on
+  Letter paper) are holes only while the sides are within about 0.15 degrees of each other; staple
+  holes close together are not affected. Beyond that the page is kept (the safe side). Pairing is by
+  page order, so `doc process` given pages that do not start with a front pairs them wrongly: a back
+  then meets another front, and is kept unless that front has a shape at the mirrored spot too (the
+  safe side; a stapled stack has one, and a back it shows the holes of is dropped all the same,
+  rightly).
 - **Black and white.** A pixel is black when it is darker than 96 (the same level as a mark), or
   when it is 25 levels darker than the mean of an 8 mm window and than the 8 mm closing of the
   page (strokes thinner than the window removed). The mean alone follows uneven lighting but

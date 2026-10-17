@@ -14,6 +14,22 @@ DOCUMENTS = {
 }
 
 
+PAGE_NUMBER_CLAIM = (
+    "A page number in Arabic digits set at 8 pt or more in a proportional Sans or Serif font has "
+    "digits 2 to 3 mm tall (tested at 8 to 12 pt), over a staple hole, and not round discs, so in "
+    "no grey is it a hole"
+)
+# What the verification measured to drop the lone folio of a blank back, beyond the digits of a
+# numeral under 8 pt: glyphs only x-height tall, and monospace digits.
+SMALL_GLYPH_LIMIT = (
+    'grey glyphs only x-height tall, lowercase roman folios such as "x", "v" and "o", up to '
+    "about 9 pt in Sans or 11 pt in Serif, at the mirrored spot of a similar grey glyph on a grey "
+    'front (as measured, "ix" on the front and "x" on the back), and grey monospace digits at '
+    "8 to 9 pt"
+)
+LONE_FOLIO_LIMIT = "drops only the lone folio of an otherwise blank back"
+
+
 def text_of(name: str) -> str:
     return " ".join(DOCUMENTS[name].split())
 
@@ -104,10 +120,8 @@ def test_a_hole_is_grey_and_neutral_and_the_same_on_both_sides(name: str) -> Non
     assert f"mean blue less red of its shape is within {holes.HOLE_TINT} of 0" in text
     assert "(`HOLE_TINT`: real holes 4)" in text
     assert "so black print, pen, stamps and ink of a colour are not holes" in text
-    assert (
-        "A page number set at 8 pt or more has digits 2 to 3 mm tall (tested at 8 to 12 pt), "
-        "over a staple hole, and not round discs, so in no grey is it a hole"
-    ) in text
+    assert PAGE_NUMBER_CLAIM in text
+    assert "A page number set at 8 pt or more" not in text
     assert "whatever lies opposite" not in text
     assert "no longer matters" not in text
 
@@ -148,6 +162,8 @@ def test_the_limits_of_the_hole_rule_are_listed(name: str) -> None:
         "(a whole shape of at most 1.8 mm, as the digits of a numeral set under 8 pt can be)"
     ) in text
     assert "at the mirrored spot of a grey mark on the other side" in text
+    assert SMALL_GLYPH_LIMIT in text
+    assert LONE_FOLIO_LIMIT in text
     assert "Black print and ink are never holes" in text
     assert "A 1-bit page has no greys (a hole is as black as print)" in text
     assert "holes 216 mm apart (a three-hole punch on Letter paper)" in text
@@ -208,6 +224,15 @@ def test_the_design_note_gives_the_numbers_the_size_classes_were_set_from() -> N
     assert "none at 8 pt and up" in text
 
 
+def test_the_design_note_keeps_a_page_number_only_in_proportional_digits() -> None:
+    text = text_of("design note")
+    assert (
+        "a page number in Arabic digits set at 8 pt or more in a proportional Sans or Serif font "
+        "keeps its page in any grey"
+    ) in text
+    assert "a page number set at 8 pt or more keeps its page in any grey" not in text
+
+
 def test_the_design_note_no_longer_says_a_punch_hole_always_keeps_the_page() -> None:
     assert "a punch hole or a scanner streak keeps the page" not in text_of("design note")
 
@@ -223,10 +248,13 @@ def test_the_module_text_names_the_rule_and_its_limits() -> None:
         'Anything in between, and a long thin or hollow mark over 1.8 mm (a "0", an "o" of print), '
         "is never a hole"
     ) in text
-    assert "A page number set at 8 pt or more" in text
+    assert PAGE_NUMBER_CLAIM in text
+    assert "A page number set at 8 pt or more" not in text
     assert "whatever lies opposite" not in text
     assert "no longer matters" not in text
     assert "smaller grey marks" in text
+    assert SMALL_GLYPH_LIMIT in text
+    assert LONE_FOLIO_LIMIT in text
     assert "The back of a sheet is its front flipped left to right and the top stays on top" in text
     assert "the same symmetric mark at the mirrored spots of both sides" in text
     assert "Black print is never a hole" in text

@@ -21,9 +21,9 @@ coloured (print: darkest 0 to 12). So the darkest pixel of a hole is no darker t
 each other (a dark stamp is not its own pale ghost), and the mean blue less red of its shape is
 within ``HOLE_TINT`` of 0 (blue and red ink are not holes), so black print, pen, stamps and ink of a
 colour are not holes. Print in a grey as light as the backing is told by its size and shape. A page
-number set at 8 pt or more has digits 2 to 3 mm tall (tested at 8 to 12 pt), over a staple hole, and
-not round discs, so in no grey is it a hole. A 1-bit page has no greys (a hole is as black as
-print), so on one nothing is a hole.
+number in Arabic digits set at 8 pt or more in a proportional Sans or Serif font has digits 2 to 3
+mm tall (tested at 8 to 12 pt), over a staple hole, and not round discs, so in no grey is it a hole.
+A 1-bit page has no greys (a hole is as black as print), so on one nothing is a hole.
 
 The back of a sheet is its front flipped left to right and the top stays on top, so a spot that is
 ``x`` from the left of the scanner's frame on one side is ``frame width - x`` on the other, at the
@@ -50,12 +50,16 @@ Limits: pencil and grey marks rely on size, shape, tint and registration only: t
 mark at the mirrored spots of both sides, near an edge of an otherwise blank back, is taken for a
 hole, and that includes smaller grey marks, a grey "." or "-" or "o" of pencil or of grey print (a
 whole shape of at most 1.8 mm, as the digits of a numeral set under 8 pt can be) at the mirrored
-spot of a grey mark on the other side; a rotation between the sides spreads the offsets of holes in
-proportion to the distance between them, so holes 216 mm apart (a three-hole punch on Letter paper)
-are holes only while the sides are within about 0.15 degrees of each other, and staple holes close
-together are not affected (beyond that the page is kept, the safe side); and the pairing is by page
-order, so pages that do not start with a front are paired wrongly (a back then meets another front,
-and is kept unless that front has a shape at the mirrored spot too, as a stapled stack has).
+spot of a grey mark on the other side, and grey glyphs only x-height tall, lowercase roman folios
+such as "x", "v" and "o", up to about 9 pt in Sans or 11 pt in Serif, at the mirrored spot of a
+similar grey glyph on a grey front (as measured, "ix" on the front and "x" on the back), and grey
+monospace digits at 8 to 9 pt, each of which drops only the lone folio of an otherwise blank back; a
+rotation between the sides spreads the offsets of holes in proportion to the distance between them,
+so holes 216 mm apart (a three-hole punch on Letter paper) are holes only while the sides are within
+about 0.15 degrees of each other, and staple holes close together are not affected (beyond that the
+page is kept, the safe side); and the pairing is by page order, so pages that do not start with a
+front are paired wrongly (a back then meets another front, and is kept unless that front has a shape
+at the mirrored spot too, as a stapled stack has).
 """
 
 from collections.abc import Sequence

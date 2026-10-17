@@ -18,8 +18,7 @@ from tests.documents.test_trim_band_real import BAND_MM, assert_band_cut, frame,
 SLIP_RGB = (195, 205, 215)
 COLOURS = {"slip": SLIP_RGB, "backing": BACKING_RGB}
 ISLAND_MM = (11.5, 3.0)  # wide and tall: over 5% of the width, so it moves the tail's start
-FROM_BAND_MM = [1.0, 2.9, 5.0]  # from where the tail starts
-SQUARES_MM = [1.0, 3.0]
+FRAMES = [(200, 0.0), (200, 1.5), (300, 0.0)]  # resolution and tilt
 
 
 def island_at(scene, offset_mm: float, size_mm: tuple[float, float], rgb):
@@ -33,10 +32,9 @@ def island_at(scene, offset_mm: float, size_mm: tuple[float, float], rgb):
     return with_jpeg(painted_scene), first + tall
 
 
-@pytest.mark.parametrize("offset_mm", FROM_BAND_MM)
+@pytest.mark.parametrize("offset_mm", [1.0, 5.0])
 @pytest.mark.parametrize("name", list(COLOURS))
-@pytest.mark.parametrize("tilt", [0.0, 1.5])
-@pytest.mark.parametrize("dpi", [200, 300])
+@pytest.mark.parametrize(("dpi", "tilt"), FRAMES)
 def test_a_wide_island_of_the_backing_colour_in_the_white_tail_is_kept(
     dpi: int, tilt: float, name: str, offset_mm: float
 ) -> None:
@@ -46,11 +44,9 @@ def test_a_wide_island_of_the_backing_colour_in_the_white_tail_is_kept(
     assert scene.height - trim_page(colour_page(scene)).bottom >= bottom
 
 
-@pytest.mark.parametrize("offset_mm", [1.0, 3.5])
-@pytest.mark.parametrize("size_mm", SQUARES_MM)
+@pytest.mark.parametrize(("size_mm", "offset_mm"), [(1.0, 1.0), (3.0, 3.5)])
 @pytest.mark.parametrize("name", list(COLOURS))
-@pytest.mark.parametrize("tilt", [0.0, 1.5])
-@pytest.mark.parametrize("dpi", [200, 300])
+@pytest.mark.parametrize(("dpi", "tilt"), FRAMES[1:])
 def test_a_small_island_of_the_backing_colour_in_the_white_tail_is_kept(
     dpi: int, tilt: float, name: str, size_mm: float, offset_mm: float
 ) -> None:

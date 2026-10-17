@@ -8,6 +8,7 @@ the paper stays axis-aligned and is often pure 255 like the pad, and the page is
 """
 
 from dataclasses import replace
+from functools import lru_cache
 
 import cv2
 import numpy as np
@@ -19,6 +20,7 @@ from tests.doc_synth import BACKING_RGB, Scene, px, with_text
 from tests.doc_synth_band import SHADOW_RGB, scanner_page, with_jpeg
 from tests.documents.helpers import bw_page, colour_page, grey_page
 
+FRAME_CACHE = 8  # frames kept for the tests that follow (a 300 dpi frame is 15 MB)
 KEEP_MM = 1.0
 LEFTOVER_MM = 2.5  # of backing that may stay: the 1 mm kept, the shadow, the blur of the codec
 BAND_MM = 10.8  # the shadow and the band of ``scanner_page``
@@ -33,10 +35,15 @@ CASES = (
 )
 
 
+@lru_cache(maxsize=FRAME_CACHE)
 def frame(dpi: int, **kwargs) -> Scene:
-    """A frame before the codec; 600 dpi pages are small in millimetres so that tests stay fast."""
+    """A frame before the codec; 600 dpi pages are small in millimetres so that tests stay fast.
+    Drawing a frame is a third of a test, and parametrized tests ask for the same one in turn: the
+    last few are kept, shared, and so read-only (``painted`` and ``with_jpeg`` copy)."""
     small = {"width_mm": 60.0, "paper_mm": 40.0} if dpi >= 600 else {}
-    return scanner_page(dpi=dpi, **{**small, **kwargs})
+    scene = scanner_page(dpi=dpi, **{**small, **kwargs})
+    scene.image.flags.writeable = False
+    return scene
 
 
 def real_page(dpi: int, **kwargs) -> Scene:

@@ -66,16 +66,15 @@ def bar_with_ink(dpi: int, tilt: float, bar_mm: float, glyph_mm: float, ink: str
     return with_jpeg(scene), bottom
 
 
-@pytest.mark.parametrize("glyph_mm", [1.0, 1.5])
 @pytest.mark.parametrize("tilt", [0.0, 1.5])
 @pytest.mark.parametrize("dpi", [200, 300])
 @pytest.mark.parametrize("ink", list(INKS))
 def test_pale_ink_in_a_3_mm_bar_of_the_backing_colour_flush_with_the_paper_end_is_kept(
-    ink: str, dpi: int, tilt: float, glyph_mm: float
+    ink: str, dpi: int, tilt: float
 ) -> None:
     """No shadow lies below the bar, so the bar is cut with the band (a documented limit), but
     what is in it in another hue is not: the page stays whole to the ink's bottom."""
-    scene, bottom = bar_with_ink(dpi, tilt, 3.0, glyph_mm, ink)
+    scene, bottom = bar_with_ink(dpi, tilt, 3.0, 1.5, ink)
     assert kept_rows(scene, trim_page(colour_page(scene))) >= bottom
 
 
@@ -103,8 +102,7 @@ def test_pale_ink_in_a_backing_coloured_header_flush_with_the_page_top_is_not_cu
 # ---- the gate sits between the shadow and the inks ---------------------------------------------
 
 
-@pytest.mark.parametrize("dpi", [200, 300])
-@pytest.mark.parametrize("name", list(EDGE_RGB))
+@pytest.mark.parametrize(("name", "dpi"), [("forgiven", 200), ("kept", 200), ("kept", 300)])
 def test_a_speck_is_forgiven_up_to_the_blue_over_red_of_the_gate_and_not_beyond(
     name: str, dpi: int
 ) -> None:

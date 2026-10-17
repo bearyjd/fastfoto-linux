@@ -1,8 +1,8 @@
-"""Fold creases do not keep a blank page; writing does, however faint, unless it is a thin line.
+"""Fold creases do not keep a blank page; writing does, however faint, unless it is a line.
 
-The rule: a faint line is not a mark. A line is a thin stroke (0.8 mm thick on average) that is
-0.6 mm thick or less, or 8 times longer than wide; it is faint when no part of it darker than 140
-is a mark by itself. Everything else counts.
+The rule: a faint line is not a mark. A line is straight (nine tenths of it within 0.4 mm of its
+axis, so a slanted one counts), thin (0.8 mm wide on average) and at least 2.5 times longer than
+wide; it is faint when no part of it darker than 140 is a mark by itself. Everything else counts.
 """
 
 import numpy as np
@@ -10,9 +10,10 @@ import pytest
 
 from fastfoto_linux.documents.blank import BLANK_MARGIN_MM
 from fastfoto_linux.documents.marks import (
+    ELONGATION_MIN,
     FAINT_DARKEST,
-    LINE_ASPECT,
-    LINE_MAX_MM,
+    STRAIGHT_SHARE,
+    STRAIGHT_TOLERANCE_MM,
     STROKE_MAX_MM,
     find_marks,
 )
@@ -194,9 +195,11 @@ def test_a_big_faint_block_still_keeps_the_page() -> None:
 
 def test_the_constants_sit_between_the_numbers_of_the_real_pages() -> None:
     assert 120 < FAINT_DARKEST <= 152  # text is 120 or darker, creases are 152 or lighter
-    assert 0.51 < LINE_MAX_MM < 1.0  # the thickest crease; a letter's stroke is wider than a mm
-    assert LINE_MAX_MM < STROKE_MAX_MM  # a thin mark is a thin stroke
-    assert 5 <= LINE_ASPECT < 20  # a pencil "l" is about 7; the artefact is about 20
+    assert 0.51 < STROKE_MAX_MM <= 1.0  # the thickest crease; a letter's stroke is wider than a mm
+    assert STROKE_MAX_MM / 2 <= STRAIGHT_TOLERANCE_MM  # the widest line lies within the axis' reach
+    assert STRAIGHT_TOLERANCE_MM <= 0.5  # a bow of half a millimetre is a curve
+    assert 0.8 <= STRAIGHT_SHARE < 1.0  # a few stray pixels do not make a line crooked
+    assert 1.5 <= ELONGATION_MIN <= 2 / 0.51  # the squattest crease: 2 mm long, 0.51 thick
 
 
 # ---- the known limits, kept on the side of keeping the page ---------------------------------

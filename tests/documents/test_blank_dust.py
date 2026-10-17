@@ -89,6 +89,33 @@ def test_dust_on_creases_leaves_the_page_blank(dpi: int, broken: bool, seed: int
     assert verdicts(scene) == BLANK
 
 
+# ---- known limit: a crease segment too short to show its course -----------------------------
+
+SHORTEST_REAL_SEGMENT_MM = 2.0  # real creases come in segments of 2 to 23 mm
+STUB_MM = 1.0
+
+
+@pytest.mark.parametrize("dpi", DPIS)
+@pytest.mark.parametrize("top", list(SPECK_TOPS_MM))
+def test_a_speck_at_the_end_of_the_shortest_real_segment_leaves_the_page_blank(
+    dpi: int, top: str
+) -> None:
+    x_mm = 20.0 + SHORTEST_REAL_SEGMENT_MM - SPECK_MM / 2
+    speck = with_solid_block(
+        creased(dpi, SHORTEST_REAL_SEGMENT_MM), x_mm, SPECK_TOPS_MM[top], SPECK_MM, SPECK_TONE
+    )
+    assert verdicts(speck) == BLANK
+
+
+@pytest.mark.parametrize("dpi", DPIS)
+def test_a_speck_next_to_a_crease_segment_under_2_mm_long_keeps_the_page(dpi: int) -> None:
+    """Known limit: a stub of a millimetre shows nothing of the crease's course, so the speck
+    cannot be told from ink touching it."""
+    assert marks_of(with_speck(creased(dpi, STUB_MM), STUB_MM, SPECK_TOPS_MM["across"], SPECK_MM))
+    scene = with_speck(creased(dpi, STUB_MM), STUB_MM, SPECK_TOPS_MM["across"], SPECK_MM)
+    assert verdicts(scene) == KEPT
+
+
 # ---- writing on a crease is kept -------------------------------------------------------------
 
 

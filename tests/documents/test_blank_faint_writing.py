@@ -1,9 +1,9 @@
-"""Faint writing is not a crease: a line is a thin stroke, however faint and however long.
+"""Faint writing is not a crease: a line is straight and thin, however faint and however long.
 
 A flat cursive word and a pale highlighter band are as faint as a crease and many times longer
-than wide, but the word's strokes add up to a mean thickness over 1 mm and the band is 6 mm or
-more; a crease is 0.2 to 0.5 mm. Known limit: a faint flat signature wave is a thin stroke (about
-0.6 mm thick on average) and may be ignored.
+than wide, but the word is made of loops, never straight, and the band is 6 mm or more thick; a
+crease is 0.2 to 0.5 mm thick and straight. (A signature wave, thin pens and a roman "ii" are in
+``test_blank_strokes``.)
 """
 
 import pytest
@@ -36,8 +36,6 @@ BANDS = [
 # paper at 240): the detector's page contrast. That is why the tall bands are not paler.
 WAVE_AMPLITUDES_MM = [1.0, 2.5]
 WORD_TONES = [150, 170]
-MEAN_THICKNESS_OF_THE_WORD_MM = 1.2  # measured on the fixture at 300 dpi
-MEAN_THICKNESS_OF_THE_WAVE_MM = 0.62
 
 
 def word(dpi: int, tone: int) -> Scene:
@@ -106,21 +104,6 @@ def test_a_pale_highlighter_band_keeps_the_page(
 ) -> None:
     """Colour only: a grey page turns the yellow nearly white, so there is nothing to find."""
     assert not is_blank(colour_page(band(dpi, (width, height), blue)))
-
-
-# ---- the limit: a faint thin flat wave -------------------------------------------------------
-
-
-@pytest.mark.parametrize("dpi", DPIS)
-@pytest.mark.parametrize("amplitude_mm", WAVE_AMPLITUDES_MM)
-def test_a_faint_flat_signature_wave_may_be_ignored(dpi: int, amplitude_mm: float) -> None:
-    """Known limit: a stroke 0.5 mm wide swinging a millimetre or two, 75 mm long, is a thin
-    faint line like a crease, whatever it is."""
-    assert verdicts(wave(dpi, amplitude_mm)) == BLANK
-
-
-def test_the_stroke_limit_sits_between_the_wave_and_the_word() -> None:
-    assert MEAN_THICKNESS_OF_THE_WAVE_MM < STROKE_MAX_MM < MEAN_THICKNESS_OF_THE_WORD_MM
 
 
 # ---- the edge of the stroke limit ------------------------------------------------------------

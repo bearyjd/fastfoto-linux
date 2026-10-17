@@ -1,8 +1,9 @@
 """Faint writing, dust on creases and soft creases for the blank-page tests.
 
-Pencil, a flat cursive word and a signature wave are the faint things that must not be taken for
-a fold crease (or, for the wave, may be); dust is put ON the creases, where it joins them into
-one mark; ``softened`` turns any scene into a scan that is not crisp. Every function returns a
+Pencil, a thin-pen flat cursive word, a signature wave, hairline stems and a "7" are the faint
+things that must not be taken for a fold crease (a stem or a roman "ii" on its own may be); dust is
+put ON the creases, where it joins them into one mark; ``softened`` turns any scene into a scan
+that is not crisp. Every function returns a
 new scene and leaves the one it is given unchanged.
 """
 
@@ -50,6 +51,7 @@ def with_cursive_word(  # noqa: PLR0913
     tone: int,
     cycles: int = 10,
     grain_tone: int | None = None,
+    stroke_mm: float = CURSIVE_STROKE_MM,
 ) -> Scene:
     """A flat cursive word of ``cycles`` loops (about 25 x 2.6 mm for ten) in one grey level.
 
@@ -65,20 +67,25 @@ def with_cursive_word(  # noqa: PLR0913
         x_mm_now = CURSIVE_PITCH_MM * angle / (2 * math.pi) - CURSIVE_LOOP_MM * math.sin(angle)
         y_mm_now = CURSIVE_HEIGHT_MM / 2 * (1 - math.cos(angle))
         points.append((left + x_mm_now * scale, px(y_mm, scene.dpi) + y_mm_now * scale))
-    word = _stroke(scene, points, tone, CURSIVE_STROKE_MM)
+    word = _stroke(scene, points, tone, stroke_mm)
     if grain_tone is None:
         return word
     for start in range(0, len(points) - GRAIN_SAMPLES, GRAIN_PERIOD_SAMPLES):
-        word = _stroke(
-            word, points[start : start + GRAIN_SAMPLES + 1], grain_tone, CURSIVE_STROKE_MM
-        )
+        word = _stroke(word, points[start : start + GRAIN_SAMPLES + 1], grain_tone, stroke_mm)
     return word
 
 
 def with_wave(  # noqa: PLR0913
-    scene: Scene, x_mm: float, y_mm: float, *, tone: int, length_mm: float, amplitude_mm: float
+    scene: Scene,
+    x_mm: float,
+    y_mm: float,
+    *,
+    tone: int,
+    length_mm: float,
+    amplitude_mm: float,
+    stroke_mm: float = WAVE_STROKE_MM,
 ) -> Scene:
-    """A flat signature wave: a thin stroke 0.5 mm wide swinging up and down ``amplitude_mm``
+    """A flat signature wave: a thin stroke (0.5 mm wide) swinging up and down ``amplitude_mm``
     about the line through (``x_mm``, ``y_mm``)."""
     left = scene.paper_x[0] + px(x_mm, scene.dpi)
     scale = scene.dpi / MM_PER_INCH
@@ -88,7 +95,64 @@ def with_wave(  # noqa: PLR0913
         along = length_mm * step / count
         swing = amplitude_mm * math.sin(2 * math.pi * along / WAVE_PERIOD_MM)
         points.append((left + along * scale, px(y_mm, scene.dpi) + swing * scale))
-    return _stroke(scene, points, tone, WAVE_STROKE_MM)
+    return _stroke(scene, points, tone, stroke_mm)
+
+
+def _paper_points(scene: Scene, points_mm: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    """Points measured from the paper's top left, in image pixels."""
+    return [(scene.paper_x[0] + px(x, scene.dpi), px(y, scene.dpi)) for x, y in points_mm]
+
+
+def with_stem(  # noqa: PLR0913
+    scene: Scene, x_mm: float, y0_mm: float, y1_mm: float, *, tone: int, stroke_mm: float
+) -> Scene:
+    """A hairline stem: one vertical stroke from ``y0_mm`` to ``y1_mm`` (an "l", a "1")."""
+    points = _paper_points(scene, [(x_mm, y0_mm), (x_mm, y1_mm)])
+    return _stroke(scene, points, tone, stroke_mm)
+
+
+def with_seven(  # noqa: PLR0913
+    scene: Scene, x_mm: float, y_mm: float, size_mm: float, *, tone: int, stroke_mm: float
+) -> Scene:
+    """A "7": a bar ``size_mm`` wide from (``x_mm``, ``y_mm``) and a diagonal 1.4 times as long."""
+    corner = (x_mm + size_mm, y_mm)
+    foot = (x_mm + size_mm * 0.3, y_mm + size_mm * 1.4)
+    points = _paper_points(scene, [(x_mm, y_mm), corner, foot])
+    return _stroke(scene, points, tone, stroke_mm)
+
+
+def with_roman_two(
+    scene: Scene, x_mm: float, y_mm: float, *, tone: int, joined: bool = False
+) -> Scene:
+    """A roman page number "ii" in a faint thin pen: two stems 2.6 mm tall and 1.2 mm apart, which
+    are ``joined`` by a stroke along the foot when written in cursive."""
+    stroke = CURSIVE_STROKE_MM
+    top, foot, right = y_mm, y_mm + CURSIVE_HEIGHT_MM, x_mm + 1.2
+    left = with_stem(scene, x_mm, top, foot, tone=tone, stroke_mm=stroke)
+    both = with_stem(left, right, top, foot, tone=tone, stroke_mm=stroke)
+    if not joined:
+        return both
+    link = _paper_points(both, [(x_mm, foot), (right, foot)])
+    return _stroke(both, link, tone, stroke)
+
+
+def with_bowed_line(  # noqa: PLR0913
+    scene: Scene,
+    x_mm: float,
+    top_mm: float,
+    length_mm: float,
+    bow_mm: float,
+    *,
+    tone: int,
+    stroke_mm: float,
+) -> Scene:
+    """A line ``length_mm`` tall whose middle is ``bow_mm`` off the chord between its ends."""
+    steps = 60
+    points = [
+        (x_mm + bow_mm * (1 - (2 * step / steps - 1) ** 2), top_mm + length_mm * step / steps)
+        for step in range(steps + 1)
+    ]
+    return _stroke(scene, _paper_points(scene, points), tone, stroke_mm)
 
 
 def with_dust_on_creases(

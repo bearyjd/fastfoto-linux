@@ -10,60 +10,16 @@ from fastfoto_linux.documents import ocr_tools
 from fastfoto_linux.documents.ocr_tools import (
     BREW_INSTALL_HINT,
     DNF_INSTALL_HINT,
+    OSTREE_NO_BREW_HINT,
     find_ocrmypdf,
     find_tesseract,
     locate_ocrmypdf,
     ocr_environment,
     ocr_install_hint,
+    ocr_missing_text,
     uses_homebrew,
 )
-
-
-def program(folder: Path, name: str) -> str:
-    """A program that does nothing, in ``folder``; returns its path."""
-    folder.mkdir(parents=True, exist_ok=True)
-    path = folder / name
-    path.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-    path.chmod(0o755)
-    return str(path)
-
-
-@pytest.fixture
-def on_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """The only folder on PATH."""
-    folder = tmp_path / "on-path"
-    folder.mkdir()
-    monkeypatch.setenv("PATH", str(folder))
-    return folder
-
-
-@pytest.fixture
-def brew_bin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    """A Homebrew bin folder, which is not on PATH."""
-    folder = tmp_path / "linuxbrew" / "bin"
-    folder.mkdir(parents=True)
-    monkeypatch.setattr(ocr_tools, "BREW_BIN", folder)
-    return folder
-
-
-@pytest.fixture
-def brew_by_name(monkeypatch: pytest.MonkeyPatch) -> None:
-    """``brew`` is looked for by its real name (tests/conftest.py gives it one nobody has)."""
-    monkeypatch.setattr(ocr_tools, "BREW", "brew")
-
-
-@pytest.fixture
-def ostree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    marker = tmp_path / "ostree-booted"
-    marker.touch()
-    monkeypatch.setattr(ocr_tools, "OSTREE_MARKER", marker)
-
-
-@pytest.fixture
-def importable(monkeypatch: pytest.MonkeyPatch) -> None:
-    """The running interpreter can import the module that stands for ocrmypdf."""
-    monkeypatch.setattr(ocr_tools, "OCR_MODULE", "json")
-
+from tests.documents.ocr_helpers import program
 
 # ---- ocrmypdf: the interpreter's own module, then PATH, then Homebrew's folder --------------
 
@@ -146,12 +102,13 @@ def test_tesseract_alone_is_not_ocr(on_path: Path) -> None:
 # ---- the environment ocrmypdf runs in --------------------------------------------------------
 
 
-def test_path_leads_with_the_brew_folder_then_the_interpreters_folder(
+def test_path_is_the_inherited_path_then_the_interpreters_folder_then_the_brew_folder(
     brew_bin: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """The order of detection (PATH, then Homebrew), so that Homebrew never shadows /usr/bin."""
     monkeypatch.setenv("PATH", "/usr/bin:/bin")
     folders = ocr_environment()["PATH"].split(os.pathsep)
-    assert folders == [str(brew_bin), str(Path(sys.executable).parent), "/usr/bin", "/bin"]
+    assert folders == ["/usr/bin", "/bin", str(Path(sys.executable).parent), str(brew_bin)]
 
 
 def test_a_brew_folder_that_does_not_exist_is_left_out_of_path(
@@ -159,7 +116,7 @@ def test_a_brew_folder_that_does_not_exist_is_left_out_of_path(
 ) -> None:
     monkeypatch.setenv("PATH", "/usr/bin")
     folders = ocr_environment()["PATH"].split(os.pathsep)
-    assert folders == [str(Path(sys.executable).parent), "/usr/bin"]
+    assert folders == ["/usr/bin", str(Path(sys.executable).parent)]
 
 
 def test_the_environment_is_a_copy_with_everything_else_kept(
@@ -174,12 +131,24 @@ def test_the_environment_is_a_copy_with_everything_else_kept(
     assert dict(os.environ) == before
 
 
-def test_an_environment_without_path_still_gets_the_folders(
+def test_an_environment_without_path_gets_the_default_path_and_the_folders(
     brew_bin: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.delenv("PATH")
     folders = ocr_environment()["PATH"].split(os.pathsep)
-    assert folders == [str(brew_bin), str(Path(sys.executable).parent)]
+    assert folders == [
+        *os.defpath.split(os.pathsep),
+        str(Path(sys.executable).parent),
+        str(brew_bin),
+    ]
+
+
+def test_an_empty_path_does_not_become_the_current_folder(
+    brew_bin: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("PATH", "")
+    folders = ocr_environment()["PATH"].split(os.pathsep)
+    assert folders == [str(Path(sys.executable).parent), str(brew_bin)]
 
 
 # ---- what to install, per kind of system -------------------------------------------------------
@@ -196,8 +165,22 @@ def test_a_classic_system_installs_tesseract_with_dnf(on_path: Path) -> None:
     assert ocr_install_hint() == DNF_INSTALL_HINT
 
 
-def test_an_immutable_system_installs_tesseract_with_brew(on_path: Path, ostree: None) -> None:
-    assert uses_homebrew()
+def test_an_immutable_system_without_brew_installs_with_rpm_ostree_or_homebrew(
+    on_path: Path, ostree: None
+) -> None:
+    """Brew cannot run where it is not installed: the hint names the package layer first."""
+    assert not uses_homebrew()
+    assert ocr_install_hint() == OSTREE_NO_BREW_HINT
+    assert OSTREE_NO_BREW_HINT == (
+        "rpm-ostree install tesseract tesseract-osd (then reboot), "
+        "or install Homebrew and run brew install tesseract"
+    )
+
+
+def test_an_immutable_system_with_brew_installs_tesseract_with_brew(
+    on_path: Path, ostree: None, brew_bin: Path, brew_by_name: None
+) -> None:
+    program(brew_bin, "brew")
     assert ocr_install_hint() == BREW_INSTALL_HINT
 
 
@@ -213,3 +196,28 @@ def test_a_system_with_brew_installs_tesseract_with_brew(
 def test_brew_on_path_counts(on_path: Path, brew_by_name: None) -> None:
     program(on_path, "brew")
     assert ocr_install_hint() == BREW_INSTALL_HINT
+
+
+# ---- what is missing, in the words every message uses --------------------------------------
+
+
+def test_nothing_installed_names_both(on_path: Path) -> None:
+    assert ocr_missing_text() == "OCRmyPDF and Tesseract are not installed"
+
+
+def test_ocrmypdf_without_tesseract_names_tesseract(on_path: Path) -> None:
+    program(on_path, "ocrmypdf")
+    assert ocr_missing_text() == "Tesseract is not installed"
+
+
+def test_the_module_without_tesseract_names_tesseract(on_path: Path, importable: None) -> None:
+    assert ocr_missing_text() == "Tesseract is not installed"
+
+
+def test_tesseract_without_ocrmypdf_names_ocrmypdf(on_path: Path) -> None:
+    program(on_path, "tesseract")
+    assert ocr_missing_text() == "OCRmyPDF is not installed"
+
+
+def test_the_words_are_the_documented_ones() -> None:
+    assert ocr_tools.OCR_NEEDS == "OCRmyPDF and Tesseract"

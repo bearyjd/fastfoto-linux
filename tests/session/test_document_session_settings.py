@@ -20,7 +20,7 @@ BAD_SETTINGS = [  # (the settings, the error they are refused with, a word of it
     pytest.param(({"name": "///"}, DocumentSettingsError, "name"), id="name"),
     pytest.param(({"name": ""}, DocumentSettingsError, "name"), id="empty-name"),
     pytest.param(({"langs": "eng;rm"}, DocumentSettingsError, "language"), id="langs"),
-    pytest.param(({"ocr": OcrMode.ON}, OcrMissingError, "ocrmypdf"), id="ocr-on-without-the-tool"),
+    pytest.param(({"ocr": OcrMode.ON}, OcrMissingError, "OCRmyPDF"), id="ocr-on-without-the-tool"),
 ]
 
 

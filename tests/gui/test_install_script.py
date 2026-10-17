@@ -14,6 +14,7 @@ from fastfoto_linux.documents.ocr_tools import (
     BREW_INSTALL_HINT,
     BREW_LANG_HINT,
     DNF_INSTALL_HINT,
+    OSTREE_NO_BREW_HINT,
 )
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -674,14 +675,26 @@ def test_without_tesseract_or_brew_a_dry_run_says_the_dnf_command(
     assert BREW_INSTALL_HINT not in done.stdout
 
 
-def test_on_an_immutable_system_without_brew_the_hint_is_still_brew(
+def test_on_an_immutable_system_without_brew_the_hint_is_rpm_ostree_or_homebrew(
     checkout: Path, ocr_env: dict[str, str], tmp_path: Path
 ) -> None:
     marker = tmp_path / "ostree-booted"
     marker.touch()
     done = run(checkout, {**ocr_env, "FASTFOTO_OSTREE_MARKER": str(marker)}, "--dry-run")
-    assert f"would tell how to get Tesseract: {BREW_INSTALL_HINT}" in done.stdout
+    assert f"would tell how to get Tesseract: {OSTREE_NO_BREW_HINT}" in done.stdout
     assert "dnf" not in done.stdout
+    assert "again with --with-tesseract" not in done.stdout  # there is no brew to run it with
+
+
+def test_on_an_immutable_system_with_brew_the_hint_is_brew(
+    checkout: Path, ocr_env: dict[str, str], tmp_path: Path
+) -> None:
+    marker = tmp_path / "ostree-booted"
+    marker.touch()
+    add_brew(tmp_path, ocr_env)
+    done = run(checkout, {**ocr_env, "FASTFOTO_OSTREE_MARKER": str(marker)}, "--dry-run")
+    assert f"would tell how to get Tesseract: {BREW_INSTALL_HINT}" in done.stdout
+    assert "rpm-ostree" not in done.stdout
 
 
 def test_with_brew_and_no_tesseract_a_dry_run_offers_the_option_and_changes_nothing(
@@ -823,3 +836,23 @@ def test_uninstall_never_touches_brew_or_tesseract(
         assert "Tesseract" not in done.stdout + done.stderr
     assert not brew_log(tmp_path).exists()
     assert not (tmp_path / "sudo.log").exists()
+
+
+@pytest.mark.parametrize("extra", [[], ["--dry-run"]])
+def test_the_tesseract_option_is_said_to_be_ignored_when_uninstalling(
+    checkout: Path, ocr_env: dict[str, str], tmp_path: Path, extra: list[str]
+) -> None:
+    add_brew(tmp_path, ocr_env)
+    done = run(checkout, ocr_env, "--uninstall", "--with-tesseract", *extra)
+    assert done.returncode == 0, done.stderr
+    assert "--with-tesseract" in done.stderr
+    assert "ignored" in done.stderr
+    assert "--with-tesseract" not in done.stdout  # a dry run's stdout is only "would ..." lines
+    assert not brew_log(tmp_path).exists()
+
+
+def test_uninstalling_without_the_tesseract_option_says_nothing_about_it(
+    checkout: Path, ocr_env: dict[str, str]
+) -> None:
+    done = run(checkout, ocr_env, "--uninstall")
+    assert "--with-tesseract" not in done.stdout + done.stderr

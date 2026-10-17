@@ -15,6 +15,12 @@ and stderr (stands for recognised text), ``flood`` is a number of bytes written 
 pipe holds), ``record_to`` is a file that receives argv, its own PATH, its own pid, the
 grandchild's and the folder it was given (``staging_dir``) with that folder's permission bits
 (``staging_mode``).
+
+``--version`` is answered before anything else (the spec's ``version``, 17.13.0 unless it says
+otherwise; ``version_text`` is what is printed instead, ``version_hang`` makes it sleep and
+``version_log`` is a file that gets one line for every such call). Like a real ocrmypdf older than
+17 it rejects ``--rasterizer`` with argparse's exit status 2, and ``reject`` is a list of other
+flags it rejects the same way.
 """
 
 import json
@@ -37,8 +43,28 @@ _SCRIPT = textwrap.dedent(
     #!{python}
     import json, os, signal, subprocess, sys, time
 
-    spec = json.loads(os.environ["{spec_env}"])
+    spec = json.loads(os.environ.get("{spec_env}", "{{}}"))
     argv = sys.argv[1:]
+    version = spec.get("version", "17.13.0")
+
+    if argv == ["--version"]:
+        if spec.get("version_log"):
+            open(spec["version_log"], "a").write("asked\\n")
+        if spec.get("version_hang"):
+            time.sleep(60)
+        print(spec.get("version_text", version))
+        sys.exit(0)
+
+    def reject(flag):
+        sys.stderr.write("ocrmypdf: error: unrecognized arguments: " + flag + "\\n")
+        sys.exit(2)
+
+    if "--rasterizer" in argv and int(version.split(".")[0]) < 17:
+        reject("--rasterizer")
+    for flag in spec.get("reject", []):
+        if flag in argv:
+            reject(flag)
+
     source, target = argv[-2], argv[-1]
     mode = spec.get("mode", "copy")
 

@@ -26,6 +26,13 @@ BREW_LANG_HINT = "brew install tesseract-lang"  # every other language
 DNF_INSTALL_HINT = (
     "sudo dnf install tesseract tesseract-osd"  # OSD data is what --rotate-pages needs
 )
+RPM_OSTREE_INSTALL_HINT = "rpm-ostree install tesseract tesseract-osd"
+OSTREE_NO_BREW_HINT = (
+    f"{RPM_OSTREE_INSTALL_HINT} (then reboot), or install Homebrew and run {BREW_INSTALL_HINT}"
+)
+OCRMYPDF_NAME = "OCRmyPDF"
+TESSERACT_NAME = "Tesseract"
+OCR_NEEDS = f"{OCRMYPDF_NAME} and {TESSERACT_NAME}"  # what searchable text needs
 
 
 def _module_importable() -> bool:
@@ -80,3 +87,14 @@ def uses_homebrew() -> bool:
 def ocr_install_hint() -> str:
     """The command that installs Tesseract on this system."""
     return BREW_INSTALL_HINT if uses_homebrew() else DNF_INSTALL_HINT
+
+
+def brew_folder_problem(mode: int, owner: int, uid: int) -> str | None:
+    """Why a folder with permission bits ``mode`` owned by ``owner`` is not to be trusted when
+    ``uid`` runs the program, or None when it is."""
+    raise NotImplementedError
+
+
+def ocr_missing_text() -> str:
+    """What stops OCR here, in the words every message uses: "Tesseract is not installed"."""
+    raise NotImplementedError

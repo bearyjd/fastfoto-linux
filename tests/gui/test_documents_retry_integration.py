@@ -136,7 +136,7 @@ def test_ocrmypdf_that_vanished_since_the_scan_still_gives_a_plain_pdf(
     assert controller.state is State.DONE
     (item,) = controller.documents
     assert item.ocr is OcrStatus.UNAVAILABLE
-    assert item.searchable_text == "Searchable text: no (OCRmyPDF is not installed)"
+    assert item.searchable_text == "Searchable text: no (OCRmyPDF and Tesseract are not installed)"
     assert controller.banner is not None
     assert controller.banner.kind == "warning"
     assert "searchable text was not added" in controller.banner.text

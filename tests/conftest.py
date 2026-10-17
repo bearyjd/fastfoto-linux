@@ -4,12 +4,13 @@
 ``hardware`` tests need a connected FF-680W. Both are skipped in CI — see ``tests/_skips.py``.
 """
 
+import importlib.metadata
 import os
 from pathlib import Path
 
 import pytest
 
-from fastfoto_linux.documents import ocr_tools
+from fastfoto_linux.documents import ocr_tools, ocr_version
 from fastfoto_linux.scanner import libusb, precheck, shim_trust
 from tests._skips import scans_dir_from_env, skip_reason
 
@@ -59,11 +60,18 @@ def classic_machine_without_ocr(monkeypatch: pytest.MonkeyPatch) -> None:
     rpm-ostree system, Homebrew (in /home/linuxbrew or on PATH) and an ``ocrmypdf`` in the test
     environment would each change the answer. Every test starts on a classic system that has none
     of them; a test that needs one sets ``BREW_BIN``, ``OSTREE_MARKER``, ``BREW`` or ``OCR_MODULE``
-    itself."""
+    itself. The version of the app's own ocrmypdf is unknown (``metadata_version``), and the
+    versions asked of a program are not remembered from one test to the next."""
     monkeypatch.setattr(ocr_tools, "BREW", "fastfoto-linux-no-such-brew")
     monkeypatch.setattr(ocr_tools, "BREW_BIN", Path("/nonexistent/linuxbrew/bin"))
     monkeypatch.setattr(ocr_tools, "OSTREE_MARKER", Path("/nonexistent/ostree-booted"))
     monkeypatch.setattr(ocr_tools, "OCR_MODULE", "fastfoto_linux_no_such_module")
+
+    def not_installed(name: str) -> str:
+        raise importlib.metadata.PackageNotFoundError(name)
+
+    monkeypatch.setattr(ocr_version, "metadata_version", not_installed)
+    ocr_version.program_version.cache_clear()
 
 
 @pytest.fixture(autouse=True)

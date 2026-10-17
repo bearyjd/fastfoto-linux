@@ -147,22 +147,25 @@ uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr o
 - A page is blank only when it has no mark at all inside its 5 mm margin: dust, paper texture
   and faint show-through from the other side do not count, while a single short line, a
   signature, a lone page number or pencil at least about 45 grey levels darker than the paper
-  keep the page (a faint thin line is the exception: see the next point). Pencil fainter than
+  keep the page (a faint straight line is the exception: see the next point). Pencil fainter than
   that cannot be told from show-through and does not.
   `--keep-blank` keeps every page. The summary lists the dropped pages by number. If every page looks blank nothing is
   written and the exit code is 1.
 - The blank rule ignores faint fold creases. A letter folded in thirds has two rows of them on
   its blank back, and a deskewed scan can leave a faint line along the page edge. A mark does
-  not count toward "not blank" when it is a faint line. A line is a thin stroke (0.8 mm thick on
-  average: its area over its long side) that is 0.6 mm thick or less, or at least 8 times longer
-  than wide. It is faint when no part of it darker than 140 (of 255, on the darkest colour
-  channel) is a mark by itself, which takes a dark part at least a millimetre long: a dark speck
-  on a crease is dust, and a dark letter touching one counts. Real creases measured 0.17 to
-  0.51 mm thick and 152 to 204 at their darkest; text measured 120 or darker. Everything that is
-  not a thin faint line counts however faint: a dark ruled line, a page number, round letters, a
-  flat cursive word, a pale highlighter band. Limits: a faint thin single stroke ("l", "I", "-",
-  "!", a ruled line) and a faint flat signature wave are lines too and may be ignored, and
-  creases that cross are one big mark and keep the page. Trimming is not affected.
+  not count toward "not blank" when it is a faint line. A line is straight (at least 90% of its
+  pixels lie within 0.4 mm of its axis, so a slanted one counts), thin (0.8 mm wide on average:
+  its area over its length) and at least 2.5 times longer than wide. It is faint when no part of
+  it darker than 140 (of 255, on the darkest colour channel) is a mark by itself, which takes a
+  dark part at least a millimetre long: a dark speck on a crease is dust, and dark ink touching
+  one counts. Real creases measured 0.17 to 0.51 mm thick and 152 to 204 at their darkest; text
+  measured 120 or darker. Everything that is not a faint straight line counts however
+  faint: a dark ruled line, a page number, round letters, cursive in the thinnest pen, a
+  signature wave, a curved line, a pale highlighter band. Limits: a faint straight single stroke
+  ("l", "I", "-", "!", a ruled line) is a line too and may be ignored, and so are the stems of a
+  faint "i", "j" or "ii"; creases that cross are one big mark and keep the page; a speck under a
+  millimetre next to a crease segment under 2 mm long keeps the page; ink lying along a crease
+  counts only where it leaves it. Trimming is not affected.
 - Searchable text needs `ocrmypdf` and, for its page rotation, Tesseract's orientation data:
   `sudo dnf install ocrmypdf tesseract-osd`. `--ocr auto` (default) uses it
   when present and otherwise writes the plain PDF and says so; `--ocr on` refuses to start

@@ -207,34 +207,48 @@ What the first pull request settled where the specification left room.
   (local contrast) to count; lighter pencil is indistinguishable from show-through. A page is
   blank when it has **no** mark, so one short line, a **lone page number** (decided: kept, it
   cannot be told from content), a punch hole or a scanner streak keeps the page; the cost of that
-  caution is a few blank backs kept. The one thing the rule lets go is a faint thin line (next
-  point), so a faint thin single stroke or a faint flat signature wave can be lost.
+  caution is a few blank backs kept. The one thing the rule lets go is a faint straight thin line
+  (next point), so a faint straight single stroke can be lost.
 - **Fold creases.** The blank back of a letter folded in thirds was kept: its two rows of creases
   are marks. The blank rule (not trimming: `find_marks` has a flag, `ignore_faint_lines`, that
-  only `is_blank` sets) ignores faint fold creases, the marks that are faint lines. A line is a
-  thin stroke: its mean thickness, the component's area over its long side, is at most 0.8 mm
-  (`STROKE_MAX_MM`), and it is 0.6 mm thick or less (`LINE_MAX_MM`, the short side of its box)
-  or at least 8 times longer than wide (`LINE_ASPECT`), judged in source pixels like the length. The
-  mean thickness is what lets faint writing through: the strokes of a flat cursive word add up to
-  1.2 mm, a pale highlighter band is 6 mm or more, and both are 8 times longer than wide. A line
-  is faint when no part of it darker than 140 on the darkest-channel grey (`FAINT_DARKEST`) is a
-  mark by itself, judged with the same size and area rule as any mark (a millimetre long, a third
-  of a square millimetre). A line is judged without its dark specks, the dark parts
+  only `is_blank` sets) ignores faint fold creases, the marks that are faint lines. A line is
+  straight, thin and elongated, judged on the principal axis of its pixels (so a slanted one is
+  as good as an upright one) in source pixels, less the growth of keeping the darkest pixel of each
+  block. Straight: at least 90% of its pixels (`STRAIGHT_SHARE`) lie within 0.4 mm of its axis
+  (`STRAIGHT_TOLERANCE_MM`, half of the widest line). Thin: its mean width, the area over its
+  length along the axis, is at most 0.8 mm (`STROKE_MAX_MM`). Elongated: it is at least 2.5 times
+  longer than wide (`ELONGATION_MIN`). Writing is not straight for long: a loop or a wave is not
+  within 0.4 mm of any axis, however thin the pen or faint the pencil, which the earlier thickness
+  proxy (area over long side) could not tell at 200 dpi from a crease. A pale highlighter band is
+  not thin, and a pencil comma or a dot is not elongated. A line is faint
+  when no part of it darker than 140 on the darkest-channel grey (`FAINT_DARKEST`) is a mark by
+  itself, judged with the same size and area rule as any mark (`MARK_MIN_MM`, a millimetre long,
+  and a third of a square millimetre). A line is judged without its dark specks, the dark parts
   at least 0.5 mm wide (`SPECK_MIN_MM`; thinner ones are the grain of the line itself), each grown
-  by `DUST_HALO_MM` for its blur, so a speck under a millimetre on a crease is dust and a dark
-  letter touching one keeps the page, each as it would alone. Two real creased backs gave
-  the numbers: creases 0.17 to 0.51 mm thick, darkest 152 to 204, in segments 2 to 23 mm long in
-  two rows at a third and two thirds of the height; one faint tall artefact 7.6 x 153 mm (ratio
-  20, darkest 176) along the slanted edge of the deskew pad; text darkest 0 to 12 on every mark,
-  never above 120. So 140 sits 12 below the darkest crease and 20 above the lightest text, 0.6
-  is just over the thickest crease, and 8 is far under the artefact. The mean thickness of the
-  artefact on the test fixture is 0.5 mm, and that of a flat signature wave 0.6 mm. The tests use
-  pencil-like strokes darkest 110 to 150; that is a test value, not a measurement of real pencil.
-  Known limits, all of them on the side of keeping a page except the first two: a faint thin
-  single stroke ("l", "I", "-", "!", a ruled line) and a faint flat signature wave are lines and
-  may be ignored; creases that cross are one big mark and keep the page; a slanted crease whose box is
-  neither thin nor long is kept; a speck on a crease counts when the scan is soft enough to grow
-  it past a millimetre.
+  by `DUST_HALO_MM` (0.3 mm) for its blur, so a speck under a millimetre on a crease is dust,
+  and dark ink touching one keeps the page when it would be a mark on its own: its dark parts, and
+  whatever of the component lies off the strip that the line (away from the dark parts) follows,
+  are judged with the same mask and the same rule. A hairline stem or a "7" that is a mark alone
+  is one on a crease; a stroke on its own has no line to follow and is all ink. Two real creased
+  backs gave the numbers: creases 0.17 to 0.51 mm thick, darkest 152 to 204, in segments 2 to
+  23 mm long in two rows at a third and two thirds of the height; one faint tall artefact
+  7.6 x 153 mm (about 2.8 degrees off vertical, darkest 176) along the slanted edge of the deskew
+  pad; text darkest 0 to 12 on every mark, never above 120. So 140 sits 12 below the darkest
+  crease and 20 above the lightest text, and 0.8 mm is just over the thickest crease. On the test
+  fixtures at 200, 300 and 600 dpi, crisp, soft and tinted, every crease and the artefact have all
+  their pixels within 0.25 mm of their axis (the tolerance is 0.4 mm) and are at least 3.6 times
+  longer than wide; the squattest real one, 2 mm long and 0.51 thick, is 3.9. The tolerance
+  absorbs a bow of about 0.3 mm over 153 mm; a line bowed by 0.5 mm is not straight and counts.
+  The tests use pencil-like strokes darkest 110 to 150; that is a test value, not a measurement
+  of real pencil. Known limits, all of them on the side of keeping a page except the first two:
+  a faint straight single stroke ("l", "I", "-", "!", a ruled line) is a line and may be
+  ignored, and so are the stems of a faint "i", "j" or "ii" (separate marks, each a stroke; joined
+  in cursive they are not straight); creases that cross are one big mark and keep the page; a
+  speck under a millimetre next to a crease segment under 2 mm long keeps the page (a stub that
+  short shows nothing of the crease's course, and real segments are 2 to 23 mm); ink lying along a
+  crease counts only where it leaves it, so a stroke that is a mark only thanks to the part inside
+  the crease can be missed; a speck on a crease counts when the scan is soft enough to grow it
+  past a millimetre.
 - **Black and white.** A pixel is black when it is darker than 96 (the same level as a mark), or
   when it is 25 levels darker than the mean of an 8 mm window and than the 8 mm closing of the
   page (strokes thinner than the window removed). The mean alone follows uneven lighting but

@@ -428,7 +428,8 @@ def test_a_scanner_that_stopped_part_way_offers_the_finished_pages(page: Page) -
     controller.on_finished(stopped_document(raw, ScanError("the paper jammed"), pages=2))
     assert controller.state is State.FAILED
     assert controller.can_process_kept
-    assert "No PDF is made from part of a stack" in controller.kept_text
+    assert "A PDF made now has only the pages scanned so far" in controller.kept_text
+    assert "No PDF is made from part of a stack" not in controller.kept_text
     assert controller.banner is not None
     assert controller.banner.kind == "error"
     assert controller.banner.text.startswith("The scan failed. the paper jammed.")

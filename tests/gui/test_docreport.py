@@ -1,5 +1,6 @@
 """The words of Documents mode: progress, results, failures, the offer to process kept pages."""
 
+import errno
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,7 @@ from fastfoto_linux.documents import (
     OcrStatus,
     UnsupportedPageError,
 )
+from fastfoto_linux.documents.errors import OutputFolderMissingError
 from fastfoto_linux.gui.docreport import (
     document_error_banner,
     document_kept_text,
@@ -21,7 +23,12 @@ from fastfoto_linux.gui.docreport import (
 from fastfoto_linux.gui.state import State
 from fastfoto_linux.scanner import NoDocumentsError, ScanError
 from fastfoto_linux.session import DocumentRawReason, DocumentSessionResult
-from tests.gui.doc_helpers import cancelled_document, clean_document, stopped_document
+from tests.gui.doc_helpers import (
+    cancelled_document,
+    clean_document,
+    pages_in,
+    stopped_document,
+)
 
 RAW = Path("/raw/.raw/stamp")
 
@@ -207,8 +214,123 @@ def test_the_offer_for_a_cancel_counts_the_pages() -> None:
     )
 
 
-def test_the_offer_for_a_scanner_that_stopped_says_why_there_is_no_pdf() -> None:
+def test_the_offer_for_a_scanner_that_stopped_says_the_pdf_has_only_the_pages_so_far() -> None:
     text = document_kept_text(stopped_document(RAW, ScanError("jam"), pages=2))
     assert text == (
-        f"The scanner stopped after 2 pages — kept in {RAW}. No PDF is made from part of a stack."
+        f"The scanner stopped after 2 pages — kept in {RAW}. "
+        "A PDF made now has only the pages scanned so far."
+    )
+
+
+# -- failures after the pages were scanned: the way back stays ---------------------------------
+
+TEMP_FILE = "/out/.Document_0001.pdf.4944506a.tmp"
+DISK_FULL = OSError(errno.ENOSPC, "No space left on device", TEMP_FILE)
+NOT_ALLOWED = PermissionError(errno.EACCES, "Permission denied", TEMP_FILE)
+READ_ONLY = OSError(errno.EROFS, "Read-only file system", TEMP_FILE)
+
+
+def kept_after(error: Exception) -> DocumentSessionResult:
+    """What a run leaves when the pages were scanned and then no PDF could be made."""
+    return DocumentSessionResult(
+        error=error,
+        pages_scanned=3,
+        raw_dir=RAW,
+        raw_reason=DocumentRawReason.ERROR,
+        kept_pages=pages_in(RAW, 3),
+    )
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        DocumentSettingsError("the output folder /out is not an existing folder"),
+        OutputFolderMissingError("the output folder /out is not an existing folder"),
+        OcrMissingError("searchable text needs ocrmypdf, which is not installed"),
+    ],
+)
+def test_a_refusal_after_pages_were_kept_is_not_a_scan_that_did_not_start(
+    error: Exception,
+) -> None:
+    banner = document_error_banner(error, RAW, DocumentRawReason.CANCELLED)
+    assert banner.kind == "error"
+    assert banner.text == (
+        f"No PDF was made. {error}. Raw pages kept in {RAW} (the scan was cancelled)."
+    )
+
+
+@pytest.mark.parametrize(
+    ("error", "words"),
+    [
+        (DISK_FULL, "The disk is full"),
+        (OSError(errno.EDQUOT, "Disk quota exceeded", TEMP_FILE), "The disk is full"),
+        (NOT_ALLOWED, "The folder cannot be written to (permission denied)"),
+        (
+            OSError(errno.EPERM, "Operation not permitted", TEMP_FILE),
+            "The folder cannot be written to (permission denied)",
+        ),
+        (READ_ONLY, "The folder is read-only"),
+        (OSError(errno.EIO, "Input/output error", TEMP_FILE), "Input/output error"),
+    ],
+)
+def test_a_pdf_that_could_not_be_saved_says_so_in_plain_words_without_the_temp_file(
+    error: OSError, words: str
+) -> None:
+    banner = document_error_banner(error, RAW, DocumentRawReason.ERROR)
+    assert banner.text == (
+        f"No PDF was made. {words}. Raw pages kept in {RAW} (something went wrong)."
+    )
+    assert ".tmp" not in banner.text
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        DISK_FULL,
+        NOT_ALLOWED,
+        READ_ONLY,
+        OSError(errno.EDQUOT, "Disk quota exceeded", TEMP_FILE),
+        OutputFolderMissingError("the output folder /out is not an existing folder"),
+        OcrMissingError("searchable text needs ocrmypdf, which is not installed"),
+    ],
+)
+def test_pages_kept_after_a_problem_the_user_can_fix_are_offered(error: Exception) -> None:
+    assert offers_kept(kept_after(error)) is True
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        AllPagesBlankError("all 3 pages look blank, so no PDF was written"),
+        UnsupportedPageError("page-0002.png is not a PNG"),
+        OSError(errno.EIO, "Input/output error", TEMP_FILE),
+        RuntimeError("a bug"),
+    ],
+)
+def test_pages_kept_after_a_problem_a_retry_would_repeat_are_not_offered(
+    error: Exception,
+) -> None:
+    assert offers_kept(kept_after(error)) is False
+
+
+def test_the_offer_after_a_problem_with_saving_says_to_fix_it_first() -> None:
+    assert document_kept_text(kept_after(DISK_FULL)) == (
+        f"3 pages are kept in {RAW}. Fix the problem, then make the PDF."
+    )
+    one = DocumentSessionResult(
+        error=DISK_FULL, raw_dir=RAW, kept_pages=pages_in(RAW, 1), pages_scanned=1
+    )
+    assert (
+        document_kept_text(one) == f"1 page is kept in {RAW}. Fix the problem, then make the PDF."
+    )
+
+
+def test_a_pdf_made_without_the_text_the_tool_was_missing_for_is_a_warning(tmp_path: Path) -> None:
+    made = clean_document(tmp_path, ocr=OcrStatus.UNAVAILABLE, detail="ocrmypdf is not installed")
+    banner = document_result_banner(State.DONE, made)
+    assert banner is not None
+    assert banner.kind == "warning"
+    assert banner.text == (
+        f"Document_0001.pdf saved to {tmp_path}, "
+        "but searchable text was not added (OCRmyPDF is not installed)."
     )

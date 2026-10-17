@@ -265,8 +265,8 @@ def test_kept_pages_need_a_scan_to_take_the_settings_from(out: Path) -> None:
         worker.process_kept(cancelled_document(out / ".raw" / "stamp"))
 
 
-def test_a_failure_of_the_build_itself_is_reported_as_an_error(out: Path) -> None:
-    crash = OSError(28, "No space left on device")
+def test_a_failure_of_the_build_nobody_foresaw_is_reported_as_an_error(out: Path) -> None:
+    crash = RuntimeError("the PDF builder crashed")
     session = ScriptedDocumentSession(out, hold=True)
     sink = DocRecordingSink()
     worker = worker_for(sink, session, FakeBuild(out, fail=crash))

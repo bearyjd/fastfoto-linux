@@ -1,10 +1,12 @@
 """What the README and the design note say about the Documents mode of the app is what it does."""
 
+import errno
 import re
 from pathlib import Path
 
 from fastfoto_linux.gui.controller import PROCESS_KEPT_TEXT
 from fastfoto_linux.gui.docform import DOCUMENT_COLOURS, DocumentForm
+from fastfoto_linux.gui.docreport import document_error_banner
 from fastfoto_linux.gui.doctools import FLATPAK_OCR_HINT, NATIVE_OCR_HINT
 from fastfoto_linux.session import DOCUMENT_DPI
 
@@ -51,3 +53,10 @@ def test_the_design_note_has_the_decisions_of_the_desktop_app() -> None:
 
 def test_the_readme_no_longer_says_the_documents_mode_is_to_come() -> None:
     assert "comes next" not in README
+
+
+def test_the_design_note_words_the_raw_folder_error_as_the_app_does() -> None:
+    banner = document_error_banner(OSError(errno.EACCES, "Permission denied", "/out/.raw"))
+    assert banner.text.startswith("The scan failed.")
+    decisions = " ".join(DESIGN.split("## Decisions in the desktop app (D3)")[-1].split())
+    assert 'an `OSError` for the raw folder as "The scan failed.' in decisions

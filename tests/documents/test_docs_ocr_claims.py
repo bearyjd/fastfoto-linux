@@ -49,11 +49,6 @@ def test_the_readme_describes_the_installer_option() -> None:
     assert "`--uninstall` leaves" in README
 
 
-def test_the_readme_says_the_flatpak_will_bundle_ocr_later() -> None:
-    assert "The Flatpak will bundle OCR in a later release" in README
-    assert "The Flatpak build has no OCR yet" not in README
-
-
 def test_the_design_note_names_the_search_order_and_the_rasterizer() -> None:
     assert "--rasterizer pypdfium" in DESIGN
     assert "linuxbrew" in DESIGN

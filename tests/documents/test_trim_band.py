@@ -239,7 +239,7 @@ def test_a_narrow_item_on_the_backing_has_the_band_below_it_cut_and_nothing_besi
 
 @pytest.mark.parametrize("dpi", [200, 300])
 def test_a_slip_14_mm_wide_on_the_backing_is_not_a_band_row(dpi: int) -> None:
-    """Its rows are 93% backing: 5% of the width is the most a band row may hold."""
+    """Its rows hold 14 mm of white away from both sides: 10 mm is the most a band row may."""
     scene = band_page(dpi, paper_mm=60.0)
     image = scene.image.copy()
     image[: scene.paper_end, : px(100.0, dpi)] = BACKING_RGB
@@ -259,23 +259,33 @@ def test_a_mark_in_the_pad_means_it_is_not_pad_and_nothing_is_cut(dpi: int) -> N
 
 
 @pytest.mark.parametrize("dpi", [200, 300])
-def test_a_band_more_than_20_mm_from_the_bottom_edge_is_not_looked_for(dpi: int) -> None:
+def test_a_band_above_a_white_tail_is_found_the_tail_is_not_in_the_way(dpi: int) -> None:
+    """Round 1 looked for the band within 20 mm of the frame's edge, so a frame with a white
+    tail below the band (every raw frame has one) kept its band. The search starts above the
+    tail now, and the tail goes with the band."""
     scene = band_page(dpi)
     white = np.full((px(30.0, dpi), scene.width, 3), 255, np.uint8)
     deep = replace(scene, image=np.concatenate([scene.image, white]))
     result = trim_page(colour_page(deep))
-    assert not result.band_bottom  # the white tail rule decides, as before
+    assert result.band_bottom
+    assert abs(deep.height - result.bottom - (deep.paper_end + px(KEEP_MM, dpi))) <= 1
 
 
 @pytest.mark.parametrize("dpi", [200, 300])
-def test_dust_in_the_pad_does_not_stop_the_cut(dpi: int) -> None:
+@pytest.mark.parametrize(("size_px", "cut"), [(1, True), (3, False)], ids=["noise", "ink-size"])
+def test_dust_in_the_pad_stops_the_cut_only_when_it_is_of_ink_size(
+    dpi: int, size_px: int, cut: bool
+) -> None:
+    """Round 1 exempted the rows of the pad's slant as a block, so any dust there went. The pad
+    is exempt pixel by pixel now (white, or blended with the backing), as the white tail is:
+    dust of ink size (0.3 mm, in the last check) is kept, a single pixel is noise."""
     scene = band_page(dpi)
     image = scene.image.copy()
     for number, row in enumerate(range(px(1.0, dpi), px(8.0, dpi), px(1.5, dpi))):
         column = px(20.0 + 15.0 * number, dpi)
-        image[-row - 3 : -row, column : column + 3] = 120  # a speck of three pixels
+        image[-row - size_px : -row, column : column + size_px] = 120  # a speck
     result = trim_page(colour_page(replace(scene, image=image)))
-    assert result.band_bottom
+    assert result.band_bottom is cut
 
 
 @pytest.mark.parametrize("dpi", [200, 300])
@@ -335,10 +345,13 @@ def test_a_band_at_the_frame_edge_with_no_pad_is_cut(dpi: int) -> None:
 
 
 @pytest.mark.parametrize("dpi", [200, 300])
-def test_a_band_with_white_in_every_row_is_not_trusted(dpi: int) -> None:
-    """A white line down the whole band: no row without white to tell the pad from the rest."""
+def test_a_white_line_down_the_whole_band_is_blank_white_and_goes_with_it(dpi: int) -> None:
+    """Round 1 asked for one row without white to tell the pad from the rest. The pad is judged
+    pixel by pixel now: white is exempt wherever it is, and the last check looks at the rest."""
     bare = band_page(dpi)
     image = bare.image[: -px(PAD_WEDGE_MM, dpi)].copy()
     image[bare.paper_end :, px(60.0, dpi) : px(60.0, dpi) + 3] = 255
     result = trim_page(colour_page(replace(bare, image=image)))
-    assert (result.bottom, result.band_bottom) == (0, False)
+    kept = image.shape[0] - result.bottom
+    assert result.band_bottom
+    assert bare.paper_end <= kept <= bare.paper_end + px(KEEP_MM + 1.5, dpi)

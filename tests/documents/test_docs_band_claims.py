@@ -24,10 +24,22 @@ CLAIMS = (
     "a full-width bar in the backing colour at the top or bottom edge is cut",
     "grey and 1-bit pages are not cut by the band rule",
     "the blank-page margin is measured in full from the new edge",
+    # round 2: the geometry of a real frame
+    "the band is looked for above the white tail",
+    "the pad also forms wedges up the sides",
+    "a band row has non-white pixels on at least 50% of its width",
+    "backing on at least 95% of those",
+    "white is every channel at 240 or more",
+    "never extends into the white rows above it",
+    "more than 10 mm of white that touches neither side of the row",
+    "pad pixels are exempt one by one",
 )
 STALE = (
     "The top is never trimmed",
     "top is never trimmed",
+    "95% of all the pixels",  # round 1: the share was of the whole width
+    "never over what is not white",
+    "starts within 20 mm of the bottom edge",  # round 1: of the frame, tail included
 )
 
 

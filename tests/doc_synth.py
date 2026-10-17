@@ -6,6 +6,8 @@ asks for (100 dpi keeps a Letter page under a megapixel). Functions return new s
 change the one they are given.
 """
 
+import io
+import math
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -343,3 +345,86 @@ def banded_scene(  # noqa: PLR0913
     parts.append(_noisy(rng, BACKING_RGB, px(band_mm, dpi), width))
     parts.append(_pad_wedge(rng, dpi, width))
     return Scene(np.concatenate(parts), dpi, None, paper_end, (0, width), max(0, paper_top))
+
+
+# ---- a whole frame as the real scanner sends it: deskewed, a long white tail, JPEG --------------
+
+FRAME_TAIL_MM = 98.0  # white tail of a full frame: 393 mm at 300 dpi under Letter paper
+LEVER_MM = 280.0  # from the rotation's pivot to the band: a Letter page long, so 3 degrees move
+# the band's rows 14.6 mm sideways (the side wedge of pad)
+JPEG_QUALITY = 90
+
+
+def with_jpeg(scene: Scene) -> Scene:
+    """The scene as the scanner sends it: JPEG, quality 90, no chroma subsampling (4:4:4).
+    Applied last, after any mark has been drawn, so that every pixel went through the codec."""
+    buffer = io.BytesIO()
+    Image.fromarray(scene.image).save(buffer, "JPEG", quality=JPEG_QUALITY, subsampling=0)
+    buffer.seek(0)
+    return replace(scene, image=np.asarray(Image.open(buffer).convert("RGB")).copy())
+
+
+def _region_alpha(  # noqa: PLR0913, PLR0917
+    first_row: int, height: int, width: int, tilt_deg: float, pivot_y: float, end_y: float
+) -> np.ndarray:
+    """How much of each pixel, from ``first_row`` down, the scanned rectangle covers (0 to 1).
+
+    The rectangle has its sides on columns 0 and ``width`` and its lower edge on row ``end_y``
+    before it is rotated by ``tilt_deg`` about (width / 2, ``pivot_y``): the deskew. Outside it
+    the frame is pad: a slanted lower edge, and wedges up the sides.
+    """
+    theta = math.radians(tilt_deg)
+    sin, cos = math.sin(theta), math.cos(theta)
+    dx = np.arange(width, dtype=np.float32)[None, :] + 0.5 - width / 2
+    dy = np.arange(first_row, height, dtype=np.float32)[:, None] + 0.5 - pivot_y
+    along = width / 2 + dx * cos + dy * sin  # position across the unrotated rectangle
+    down = pivot_y - dx * sin + dy * cos  # and down it
+    inside = np.minimum(np.minimum(along, width - along), end_y - down)
+    return np.clip(inside + 0.5, 0.0, 1.0)
+
+
+def scanner_page(  # noqa: PLR0913
+    *,
+    dpi: int = 100,
+    width_mm: float = LETTER_MM[0],
+    paper_mm: float = 60.0,
+    band_mm: float = 10.0,
+    shadow_mm: float = 0.8,
+    edge_line: bool = True,
+    paper_tone: int = 255,
+    tilt_deg: float = 0.0,
+    tail_mm: float = FRAME_TAIL_MM,
+    lever_mm: float = LEVER_MM,
+    seed: int = 0,
+) -> Scene:
+    """A full-length frame: the paper axis-aligned (255 like the pad, or ``paper_tone``), an edge
+    line, ``shadow_mm`` of darker backing, ``band_mm`` of backing, all below the paper only, then
+    ``tail_mm`` of white. The scanned rectangle is rotated by ``tilt_deg`` (the deskew), so the
+    pad is everything outside it: a slanted lower edge ``width * tan(tilt)`` high and a wedge up
+    one side as wide as ``lever_mm * sin(tilt)`` where the band is. Not JPEG: see ``with_jpeg``.
+
+    ``paper_end`` is the first row after the paper including its bottom edge line.
+    """
+    rng = np.random.default_rng(seed)
+    width = px(width_mm, dpi)
+    line = px(EDGE_LINE_MM, dpi) if edge_line else 0
+    paper_end = px(paper_mm, dpi) + line
+    shadow, band = px(shadow_mm, dpi), px(band_mm, dpi)
+    scan_end = paper_end + shadow + band
+    drop = math.ceil(width / 2 * math.tan(math.radians(abs(tilt_deg))))  # the lowest corner
+    height = scan_end + drop + px(tail_mm, dpi)
+    image = np.empty((height, width, 3), np.uint8)
+    image[:] = paper_tone
+    if line:
+        dark = _edge_line(rng, line, width, EDGE_LINE_SHARE["bottom"], paper_tone)
+        image[paper_end - line : paper_end] = dark
+    scanned = np.concatenate(
+        [
+            _noisy(rng, SHADOW_RGB, shadow, width),
+            _noisy(rng, BACKING_RGB, height - paper_end - shadow, width),
+        ]
+    ).astype(np.float32)
+    pivot_y = scan_end - px(lever_mm, dpi)
+    alpha = _region_alpha(paper_end, height, width, tilt_deg, pivot_y, scan_end)[..., None]
+    image[paper_end:] = np.round(alpha * scanned + (1.0 - alpha) * 255.0).astype(np.uint8)
+    return Scene(image, dpi, None, paper_end, (0, width))

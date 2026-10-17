@@ -150,10 +150,10 @@ QQC2.ScrollView {
             ]
             textRole: "text"
             valueRole: "value"
-            currentIndex: Math.max(0, indexOfValue(bridge.form.feed))
+            currentIndex: Math.max(0, indexOfValue(bridge.form.loaded))
             enabled: panel.editable
             Accessible.name: qsTr("Loaded")
-            onActivated: bridge.setField("feed", currentValue)
+            onActivated: bridge.setField("loaded", currentValue)
         }
 
         QQC2.ComboBox {

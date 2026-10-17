@@ -34,7 +34,7 @@ class ScanForm:
     album: str = ""
     date: str = ""
     notes: str = ""
-    feed: str = FEED_FACE_DOWN
+    loaded: str = FEED_FACE_DOWN
     backs: str = BackPolicy.AUTO.value
     restore: bool = True
     orient: bool = True
@@ -144,7 +144,7 @@ _SYNTAX_CHECKS: tuple[tuple[str, _Check], ...] = (
     ("album", _check_album_text),
     ("date", _check_date),
     ("notes", _check_notes),
-    ("feed", lambda form: _choice("feed", form.feed, FEED_CHOICES)),
+    ("loaded", lambda form: _choice("loaded", form.loaded, FEED_CHOICES)),
     ("backs", lambda form: _choice("backs setting", form.backs, BACK_CHOICES)),
     ("dpi", lambda form: _choice("resolution", form.dpi, SUPPORTED_DPI)),
 )
@@ -259,7 +259,7 @@ def to_settings(form: ScanForm) -> ProcessSettings:
         notes=form.notes or None,
         duplex=True,
         back_policy=BackPolicy(form.backs),
-        expect_front_first=form.feed == FEED_FACE_UP,
+        expect_front_first=form.loaded == FEED_FACE_UP,
         quality=DEFAULT_QUALITY,
         keep_original=form.keep_original,
         enhancers=enhancers,

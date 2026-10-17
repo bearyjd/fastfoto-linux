@@ -71,7 +71,9 @@ class DocumentScanRequest:
     can be trimmed before it is made grey or black and white) and at the scanner's full length
     (never a paper size): ``mode`` and ``max_length_mm`` are read-only, not settings of the
     request. ``raw_parent`` and ``raw_policy`` are those of :class:`ScanRequest`; the pages are
-    taken at ``dpi`` when the scanner's file does not say its own resolution.
+    taken at ``dpi`` when the scanner's file does not say its own resolution. ``duplex`` says
+    whether the feeder scans both sides; it must agree with ``settings.duplex``, which says
+    whether the pages are paired as the two sides of sheets.
     """
 
     target: ScanTarget
@@ -85,6 +87,11 @@ class DocumentScanRequest:
         if self.dpi not in DOCUMENT_DPI:
             raise ValueError(
                 f"dpi {self.dpi!r} is not supported for documents; use one of {DOCUMENT_DPI}"
+            )
+        if self.duplex != self.settings.duplex:
+            raise ValueError(
+                f"the scan is duplex={self.duplex} but the document settings are "
+                f"duplex={self.settings.duplex}; the pages would be paired wrongly"
             )
 
     @property

@@ -347,7 +347,7 @@ What the first pull request settled where the specification left room.
   blank back stays blank, while a line 6 mm above the new edge keeps the page. Pencil must be about 45 levels darker than the paper
   (local contrast) to count; lighter pencil is indistinguishable from show-through. A page is
   blank when it has **no** mark, so one short line, a **lone page number** (decided: kept, it
-  cannot be told from content), a punch hole or a scanner streak keeps the page; the cost of that
+  cannot be told from content), a punch hole with no mirror on the other side (below) or a scanner streak keeps the page; the cost of that
   caution is a few blank backs kept. The one thing the rule lets go is a faint straight thin line with
   nothing beside it (next point), so a lone faint straight stroke can be lost.
 - **Fold creases.** The blank back of a letter folded in thirds was kept: its two rows of creases
@@ -426,6 +426,130 @@ What the first pull request settled where the specification left room.
   300 dpi and finer (a stub that short shows nothing of the crease's course, and real segments are
   2 to 23 mm); a speck on a crease counts when the scan is soft enough to grow it past a
   millimetre; fragments of 1.0 mm or more beside the artefact keep the page at 300 dpi.
+- **Holes through the paper.** A back with nothing on it was kept for the holes of a staple, which
+  show as small dark marks (real ones: neutral, darkest about 90 to 97, 1.5 mm long, 11 to 15 mm
+  from one edge and 5 mm from the top, with the same marks mirrored on the front). A hole through
+  the paper does not keep a page. On a duplex document a counted mark (as `is_blank` counts it) is a
+  hole when its whole shape is the size of a staple hole or of a punched hole, it lies within 25 mm
+  of an edge of the page (`EDGE_ZONE_MM`), and the other side of the same sheet has a dark shape of
+  the same size at the mirrored spot. A staple hole is at most 1.8 mm long (`STAPLE_MAX_MM`; real
+  ones are 0.6 to 1.35 mm). A punched hole is a round disc 4 to 8 mm long (`PUNCH_MIN_MM`,
+  `HOLE_MAX_MM`; punched holes are about 6 mm) whose box has a short side at least 0.8 of its long
+  one (`PUNCH_ASPECT_MIN`) and is at least 0.6 filled (`PUNCH_FILL_MIN`; a disc fills 0.78).
+  Anything in between, and a long thin or hollow mark over 1.8 mm (a "0", an "o" of print), is never
+  a hole, on either side. The back of a sheet is its front flipped left to right, so x becomes the
+  frame width less x and y stays, taken in the scanner's frame with each side's trim offsets added
+  back (`Trimmed.left`, `right`, `top`; the frame width is the trimmed width plus both). Two sides
+  of a different resolution, or of frames more than `SHIFT_MM` apart in width, are not a sheet. The
+  shapes are the pixels darker than 160 on the darkest colour channel (`HOLE_TONE`; a hole shows the
+  dark backing, ink that is only 55 levels darker than the paper is not one). A mark's shape is the
+  whole dark shape that meets its box, cropped to its own bounding box, not clipped by the box or by
+  the 5 mm blank margin: the margin is not looked at, so a hole that straddles it is counted as a
+  mark only where it lies inside, and its box starts at the margin while its dark shape starts
+  before it (a real one: 1.19 x 0.68 mm, starting at 4.8 mm from the top, its box at 5.1 mm). A
+  shape that is not a hole's size and shape is not a hole (one longer than 8 mm, `HOLE_MAX_MM`,
+  say): a small mark joined to a long dark line is content. Only the window of 8 mm round the box is
+  labelled, since a shape that reaches its edge is longer than that. They match when each side of
+  the other shape's box is within 1.5 times that of the mark's (`SIZE_RATIO`) and, shifted by up to
+  2.0 mm in either direction (`SHIFT_MM`; the sides line up to about 1.2 mm on real pages), they
+  overlap by at least 0.5 (intersection over union), `MATCH_IOU`. The other side's shape is the
+  whole connected dark shape, not what lies in the mark's box: a 6 mm disc over a big dark block
+  would otherwise overlap by 0.78. One shape explains one mark (greedy, best overlap first, the
+  marks in reading order), so the "1" of "11" is not explained by the one "1" of "10". A hole shows
+  the grey backing and print is black, so a hole's darkest pixel is no darker than 60 on both sides
+  (`HOLE_DARKEST_MIN`: print is darkest 0 to 12, real holes 89 to 106), the darkest pixels of the
+  two sides are within 30 of each other (`HOLE_TONE_MATCH`: real holes 15), and the mean blue less
+  red of its shape is within 12 of 0 (`HOLE_TINT`: real holes 4), so black print, pen, stamps and
+  ink of a colour are not holes. A page number in Arabic digits set at 8 pt or more in a
+  proportional Sans or Serif font has digits 2 to 3 mm tall (tested at 8 to 12 pt), over a staple
+  hole, and not round discs, so in no grey is it a hole.
+  When a page has two or more holes they share one registration: their offsets from the mirrored
+  spot agree within 0.5 mm (`OFFSET_SPREAD_MM`: real holes 0.1), because marks that only look alike
+  land at arbitrary offsets inside the window. The window is 2.0 mm (`SHIFT_MM`), and a hole is
+  found as far out as its overlap allows, so a bigger hole is found further: as measured, up to 2.5
+  mm for a staple hole of 1.8 mm and up to 3.5 mm for a punched hole of 6 mm. A page is blank when
+  it has no counted mark, or when every counted mark is a hole; any other mark keeps the page as
+  before. The overlap of all shifts is one `cv2.matchTemplate` (sums of products), not a loop: at
+  600 dpi a loop is 9000 shifts per mark. Only a page whose every mark is small and near an edge
+  gets that far, so a text page costs nothing extra. On real pages the prototype of the rule dropped
+  the two backs that were kept for staple holes (overlap 0.84 to 0.88, and 0.59 to 0.87 for three
+  marks near a corner), kept every text page, and explained one real hole on a text page of 1128
+  marks. That was measured with the prototype. The first shipped version took the shape from the
+  dark pixels in the mark's box and kept the app back, one of whose two marks straddles the margin
+  (the box cut it short, and the whole shape opposite then failed the size and the overlap); the
+  shape is now the whole dark shape. Re-run on the real pages, the rule as shipped before the tone,
+  tint and registration checks left both real stapled backs blank and kept every text page.
+- **Print is not a hole.** The rule matched any dark shape, so a back with only a page number was
+  dropped when the front's number lay at the mirrored spot and was alike (the overlap of the digits
+  of "5" and "6", "15" and "16", "35" and "36" is 0.5 or more): with Liberation Sans and Serif at 9
+  to 12 pt and 200 and 300 dpi, 251 of 3168 synthetic sheets lost their back. A back with one small
+  pen note was dropped by its chance resemblance to the dense text opposite (1.2 to 4.3 % of
+  trials), and a front with only a dark stamp was dropped for its lighter ghost on the back. What
+  tells a hole from print is its grey, its colour and its registration. Measured on the five real
+  holes of two sheets: darkest 89 to 100 on the judged side and 97 to 106 on its partner (at most 15
+  apart), mean colour 122 to 139, blue less red at most 4, 0.68 to 1.19 mm, overlap 0.59 to 0.87,
+  and every hole of a sheet at the same offset from its partner to within 0.1 mm ((+1.27, -0.68) and
+  (+1.19, -0.68) mm on one sheet, (+0.68, +0.25), (+0.68, +0.17) and (+0.76, +0.17) mm on the
+  other). Printed text on the same pages is darkest 0 to 12 (5th, 50th and 95th percentile 0, 0 to 2
+  and 9 to 12). So the limits are set between them: `HOLE_DARKEST_MIN` 60 (print is darker, holes
+  are 89 or more), `HOLE_TONE_MATCH` 30 (twice what real holes differ by), `HOLE_TINT` 12 (three
+  times), `OFFSET_SPREAD_MM` 0.5 (five times). The offset of a hole is where its counterpart's
+  centre lies from the mirrored spot's, on each axis, and a page with a single hole has no
+  registration to compare. The tone and tint are measured over the pixels darker than 160 of the
+  whole shape, on both sides. Decided: a hole on a page that is only black and white is not
+  recognised (nothing on it is grey), the safe side; pencil is left to shape and registration alone.
+- **A staple hole is small; only a punched hole is round.** The round-2 rule told a hole from print
+  by its grey, its colour and its registration alone, and a lone grey page number was dropped when
+  the front had a grey one at the mirrored spot (tone 89 to 150, Liberation Sans 10 pt, centred at
+  the foot: the overlap of the "5" and the "6" is 0.543 against 0.5; over 200 pairs of numbers, back
+  only, 7 backs were dropped at tone 89, 5 to 6 at 102, 2 at 128 and 1 at 150, none at 60 to 64 and
+  none in Serif). What tells grey print from a hole is its size. Measured on 17 matched real staple
+  holes across 5 scans: whole shape 0.59 to 1.35 mm long and 0.42 to 0.93 mm short, aspect 0.57 to
+  1.0, fill 0.29 to 0.78, darkest 86 to 108; the digits of a page number at 8 to 12 pt are 2.0 to
+  3.0 mm tall. So a mark can be a hole only if its whole shape is at most 1.8 mm long
+  (`STAPLE_MAX_MM` 1.8 is a third above the largest real hole), or if it is a round disc: 4 to 8 mm
+  long (`PUNCH_MIN_MM`, `HOLE_MAX_MM`), its box with a short side at least 0.8 of the long
+  (`PUNCH_ASPECT_MIN`) and at least 0.6 filled (`PUNCH_FILL_MIN`; a disc fills 0.78, a ring such as
+  a "0" or an "o" much less). Anything in between is never a hole. A digit is 0.65 to 0.70 em tall,
+  1.8 mm at 7.3 to 7.8 pt, but the dark shape of a light digit is smaller than its glyph, so the
+  claim starts at 8 pt: probed with 2400 sheets (tones 89 to 150, three fonts, 200 and 300 dpi), 14
+  backs were dropped at 7.5 pt (0.6 %) and 32 at 7 pt (1.3 %), none at 8 pt and up. The digits of a
+  page number in Arabic digits at 8 pt and more in a proportional Sans or Serif font are over the
+  staple size and are not discs; grey monospace digits at 8 to 9 pt can be dropped (the limits,
+  below). The size is judged on both sides: the shape opposite must be a hole's size too. Re-run on
+  the same 200 pairs (Sans and Serif, 10 and 12 pt, tones 40 to 150, 200 dpi) no back is dropped,
+  and none of the 7200 sheets of a grid of tones 89 to 150, three fonts, 8 to 12 pt, 200 and 300 dpi
+  loses its back (225 did before). What is left is smaller grey marks, glyphs only x-height tall and
+  monospace digits (the limits, below).
+- **Pairing.** Pages are paired in order, 1+2, 3+4 and so on, as the two sides of sheets
+  (`DocumentSettings.duplex`, default true). `doc scan` pairs the pages it scans unless
+  `--simplex`, and `doc process` pairs the pages it is given unless `--simplex`, because raw pages
+  from a duplex scan come in pairs: give it pages that start with a front. The desktop app pairs
+  when "Both sides" is on. A scan request whose `duplex` and settings disagree is refused (as for
+  photos), and the command printed after a scanner failure says `--simplex` for a one-sided scan.
+  An odd last page has no partner. A sheet is worked on at a time (two pages in memory at most);
+  The two pages of a sheet are loaded together to be judged by each other (a cancel is honoured before each is decoded), then `on_page` and the cancel check run for each page in turn, just before it is judged and encoded. Without pairing, or without a
+  partner, there are no holes and a page is judged as it always was.
+- **Limits of the hole rule:** pencil and grey marks rely on size, shape, tint and registration: the
+  same symmetric mark at the mirrored spots of both sides, within 25 mm of an edge, on an otherwise
+  blank back is taken for a hole when it is grey and neutral, and the back is dropped. That includes
+  smaller grey marks: a grey "." or "-" or "o" of pencil or of grey print (a whole shape of at most
+  1.8 mm, as the digits of a numeral set under 8 pt can be) at the mirrored spot of a grey mark on
+  the other side (a lone symmetric pencil dot or dash at the same spot of both sides, on a back with
+  nothing else). It also includes grey glyphs only x-height tall, lowercase roman folios such as
+  "x", "v" and "o", up to about 9 pt in Sans or 11 pt in Serif, at the mirrored spot of a similar
+  grey glyph on a grey front (as measured, "ix" on the front and "x" on the back), and grey
+  monospace digits at 8 to 9 pt. Each of these drops only the lone folio of an otherwise blank back.
+  Black print and ink are never holes, and a page number in Arabic digits set at 8 pt or more in a
+  proportional Sans or Serif font keeps its page in any grey. A 1-bit page has no greys (a hole is
+  as black as print), so on one nothing is a hole. A rotation between the sides spreads the offsets
+  of holes in proportion to the distance between them, so holes 216 mm apart (a three-hole punch on
+  Letter paper) are holes only while the sides are within about 0.15 degrees of each other; staple
+  holes close together are not affected. Beyond that the page is kept (the safe side). Pairing is by
+  page order, so `doc process` given pages that do not start with a front pairs them wrongly: a back
+  then meets another front, and is kept unless that front has a shape at the mirrored spot too (the
+  safe side; a stapled stack has one, and a back it shows the holes of is dropped all the same,
+  rightly).
 - **Black and white.** A pixel is black when it is darker than 96 (the same level as a mark), or
   when it is 25 levels darker than the mean of an 8 mm window and than the 8 mm closing of the
   page (strokes thinner than the window removed). The mean alone follows uneven lighting but

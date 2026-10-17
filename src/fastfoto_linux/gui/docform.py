@@ -131,6 +131,7 @@ def to_document_settings(
         keep_blank=form.keep_blank,
         ocr=ocr_mode(form, ocr_available=ocr_available),
         langs=form.langs,
+        duplex=form.both_sides,
     )
 
 

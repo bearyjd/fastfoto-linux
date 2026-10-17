@@ -193,7 +193,7 @@ def test_an_unusable_page_stops_everything_before_any_page_is_processed(
     assert list(out.iterdir()) == []
 
 
-def test_pages_are_loaded_and_encoded_one_at_a_time(
+def test_pages_that_are_not_paired_are_loaded_and_encoded_one_at_a_time(
     raw: Path, out: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     events: list[str] = []
@@ -210,7 +210,7 @@ def test_pages_are_loaded_and_encoded_one_at_a_time(
     monkeypatch.setattr(build, "load_page", load)
     monkeypatch.setattr(build, "encode_page", encode)
     pages = write_pages(raw, [text_scene(n) for n in range(4)])
-    build_document(pages, settings(out))
+    build_document(pages, settings(out, duplex=False))
     assert events == ["load", "encode"] * 4
 
 

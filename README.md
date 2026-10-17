@@ -180,8 +180,8 @@ uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr o
     shadow when its strokes are under 2 mm and, mixed with the slip by the blur, its tone is
     within 36 of the backing colour and bluer than red by at most 24. The hue gate keeps out ink
     bluer than that, not neutral grey: a pencil stroke 1 pixel wide of tone 170 or lighter, or 2
-    pixels wide of tone 190 or lighter, is cut with the band, while a stroke 3 pixels wide is
-    kept down to tone 190, and any darker one is kept;
+    pixels wide of tone 190 or lighter, is cut with the band, and a stroke 3 pixels wide only
+    when lighter than about 190 (about 184 right at the cut);
   - specks under 0.5 mm within 50 of the backing colour in the strip are dust (0.4 mm dots on a
     slip are cut with it);
   - a scrap of the backing's colour that touches the band is taken for the band;

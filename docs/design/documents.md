@@ -271,8 +271,8 @@ What the first pull request settled where the specification left room.
     within 36 of the backing colour and bluer than red by at most 24. The hue gate is one-sided:
     it keeps out ink bluer than that, but neutral grey passes it. Measured on a slip of (195, 205,
     215): a pencil stroke 1 pixel wide of tone 170 or lighter, or 2 pixels wide of tone 190 or
-    lighter, is cut with the band, while a stroke 3 pixels wide is kept down to tone 190, and any
-    darker one is kept;
+    lighter, is cut with the band, and a stroke 3 pixels wide only when lighter than about 190 (about
+    184 right at the cut);
   - specks under 0.5 mm within 50 of the backing colour in the strip are dust, of any hue: 0.4 mm
     dots on a slip are cut with it;
   - a scrap of the backing's colour that touches the band is taken for the band;

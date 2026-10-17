@@ -139,14 +139,12 @@ def _load_sheet(
     numbers: range,
     settings: DocumentSettings,
     cancel: threading.Event | None,
-    on_page: Callable[[int, int], None] | None,
 ) -> list[Trimmed]:
-    """Load and trim the pages with these (1-based) ``numbers``: a sheet, or one page."""
+    """Load and trim the pages with these (1-based) ``numbers``: a sheet, or one page. A cancel
+    is honoured before each page is decoded."""
     sheet: list[Trimmed] = []
     for number in numbers:
-        _stop_if_cancelled(cancel, f"page {number} of {len(pages)} was processed")
-        if on_page is not None:
-            on_page(number, len(pages))
+        _stop_if_cancelled(cancel, f"page {number} of {len(pages)} was read")
         sheet.append(trim_page(load_page(pages[number - 1], fallback_dpi=settings.fallback_dpi)))
     return sheet
 
@@ -159,11 +157,18 @@ def _encode_sheet(
     on_page: Callable[[int, int], None] | None,
 ) -> tuple[list[EncodedPage], list[int]]:
     """Encode the pages of one sheet that stay in the PDF, and number the ones dropped as blank.
+
+    The sheet's pages are loaded together, because each is judged beside the other, but
+    ``on_page`` and the cancel check go page by page: each comes just before its page is judged
+    and encoded, so a page's progress is not reported before the page before it is encoded.
     The sheet's pixels are gone when this returns, so a document never holds more than a sheet."""
-    sheet = _load_sheet(pages, numbers, settings, cancel, on_page)
+    sheet = _load_sheet(pages, numbers, settings, cancel)
     kept: list[EncodedPage] = []
     dropped: list[int] = []
     for index, (number, trimmed) in enumerate(zip(numbers, sheet, strict=True)):
+        _stop_if_cancelled(cancel, f"page {number} of {len(pages)} was processed")
+        if on_page is not None:
+            on_page(number, len(pages))
         partner = sheet[1 - index] if len(sheet) > 1 else None
         if not settings.keep_blank and is_blank_beside(trimmed, partner):
             logger.info("page %d (%s) is blank and left out", number, pages[number - 1].name)

@@ -15,8 +15,8 @@ coloured (print: darkest 0 to 12). So the darkest pixel of a hole is no darker t
 ``HOLE_DARKEST_MIN`` on both sides, the two sides' darkest pixels are within ``HOLE_TONE_MATCH`` of
 each other (a dark stamp is not its own pale ghost), and the mean blue less red of its shape is
 within ``HOLE_TINT`` of 0 (blue and red ink are not holes). A page number, a note in pen, a stamp
-or a signature is therefore never a hole, whatever lies opposite. Limits: pencil and grey marks rely
-on shape, tint and registration only, and a 1-bit page has no greys (a hole is as black as print),
+or a signature is therefore never a hole, whatever lies opposite. Limits: pencil and grey marks
+rely on shape, tint and registration only. A 1-bit page has no greys (a hole is as black as print),
 so on one nothing is a hole.
 
 The back of a sheet is its front flipped left to right and the top stays on top, so a spot that is

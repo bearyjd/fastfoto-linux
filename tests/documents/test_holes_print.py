@@ -51,11 +51,11 @@ def test_numbers_at_the_outer_corners_are_kept_too(front: int, back: int, points
     assert blanks(*sides) == KEPT
 
 
-@pytest.mark.parametrize("start", range(1, 10))
+@pytest.mark.parametrize("start", range(1, 19))
 def test_no_back_of_a_numbered_document_is_dropped_for_its_number(start: int) -> None:
     """A sample of the pages 1 and 2 to 99 and 100: every size and place, in turn."""
     dropped = []
-    for index, front in enumerate(range(start, 100, 9)):
+    for index, front in enumerate(range(start, 100, 18)):
         points, where = 9 + (front + index) % 4, ("centre", "outer")[index % 2]
         sides = numbered(front, front + 1, dpi=200, font=BUNDLED, points=points, where=where)
         if blanks(*sides)[1]:

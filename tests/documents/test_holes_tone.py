@@ -4,9 +4,12 @@ Ink of a colour, or a dark mark against its pale ghost, is not the backing seen 
 
 import pytest
 
-from fastfoto_linux.documents.holes import HOLE_TINT, HOLE_TONE_MATCH
+from fastfoto_linux.documents.blank import is_blank_beside
+from fastfoto_linux.documents.holes import HOLE_DARKEST_MIN, HOLE_TINT, HOLE_TONE_MATCH
+from fastfoto_linux.documents.trim import trim_page
 from tests.doc_synth import Scene
 from tests.doc_synth_holes import STAPLES, Tone, holes_painter, sheet
+from tests.documents.helpers import bw_page, grey_page
 from tests.documents.holes_helpers import DPIS, blanks, mirrored
 
 KEPT = (False, False)
@@ -38,6 +41,15 @@ def test_a_dark_mark_and_its_pale_ghost_are_not_a_hole(dpi: int) -> None:
 
 
 @pytest.mark.parametrize("dpi", DPIS)
+def test_a_grey_mark_opposite_a_black_one_is_not_a_hole_though_the_greys_are_near(
+    dpi: int,
+) -> None:
+    """Within the match, but one side is as dark as ink: the back's mark is judged by what is
+    opposite as well as by itself."""
+    assert blanks(*staples(dpi, HOLE_DARKEST_MIN - 15, HOLE_DARKEST_MIN + 10)) == KEPT
+
+
+@pytest.mark.parametrize("dpi", DPIS)
 @pytest.mark.parametrize("tint", [HOLE_TINT - 6, -HOLE_TINT + 6], ids=str)
 def test_a_hole_that_is_a_little_off_neutral_is_still_a_hole(dpi: int, tint: int) -> None:
     """A real hole is neutral to within 4 levels of blue less red."""
@@ -59,3 +71,13 @@ def test_a_coloured_mark_over_a_grey_one_is_not_a_hole_either(dpi: int) -> None:
     blue = (GREY, GREY, GREY + HOLE_TINT + 25)
     assert blanks(*staples(dpi, GREY, blue)) == KEPT
     assert blanks(*staples(dpi, blue, GREY)) == KEPT
+
+
+@pytest.mark.parametrize("kind", ["grey", "bw"])
+def test_a_grey_page_has_holes_and_a_one_bit_page_has_none(kind: str) -> None:
+    """A hole is as black as print on a page of only black and white, so nothing there is one."""
+    front, back = staples(200, GREY, GREY)
+    make = grey_page if kind == "grey" else bw_page
+    first, second = trim_page(make(front)), trim_page(make(back))
+    assert is_blank_beside(first, second) is (kind == "grey")
+    assert is_blank_beside(second, first) is (kind == "grey")

@@ -85,3 +85,13 @@ def test_the_offset_a_hole_is_found_at_is_the_window_for_small_holes_and_more_fo
         200, [holes_painter(holes)], [holes_painter(mirrored(holes))], shift_mm=(shift, 0.0)
     )
     assert blanks(front, back)[1] is blank
+
+
+@pytest.mark.parametrize("dpi", DPIS)
+def test_the_offset_is_from_centre_to_centre_whatever_the_sizes(dpi: int) -> None:
+    """A 6 mm punch hole seen as 4.5 mm on the other side, and a staple hole of the same size:
+    their corners are 0.75 mm and 0 mm off, their centres are in the same place."""
+    front = [disc(8.0, 20.0, 6.0), dash(8.0, 60.0, 1.8, 0.7)]
+    back = [like(front[0], 4.5, 4.5), mirrored([front[1]])[0]]
+    sides = sheet(dpi, [holes_painter(front)], [holes_painter(back)], shift_mm=(0.6, 0.3))
+    assert blanks(*sides) == BLANK

@@ -16,7 +16,7 @@ import numpy as np
 import pytest
 
 from fastfoto_linux.documents.trim import trim_page
-from tests.doc_synth import LETTER_MM, paper_scene, px, with_tinted_block
+from tests.doc_synth import LETTER_MM, paper_scene, px
 from tests.doc_synth_band import SHADOW_RGB, banded_scene, with_jpeg
 from tests.documents.helpers import colour_page
 from tests.documents.test_trim_band_real import BAND_MM, assert_band_cut, frame, painted
@@ -193,11 +193,13 @@ def test_a_pale_ink_stroke_darker_than_the_slip_it_lies_on_still_keeps_the_band(
 
 
 def test_a_light_line_in_the_backing_beside_a_receipt_still_keeps_that_strip() -> None:
-    """Only the strip of a band cut is judged for streaks: a side strip is not a band, and a line
-    in it is no more forgiven than before."""
+    """A side strip is not a band and has no streak rule: the line is not backing, so the columns
+    of backing beside the receipt end at it and nothing is cut there, as before."""
     scene = paper_scene(dpi=DPI, paper_mm=RECEIPT_MM, scan_mm=LETTER_MM, offset_mm=60.0)
     assert trim_page(colour_page(scene)).left > 0
-    line = with_tinted_block(scene, -40.0, 0.0, (0.5, RECEIPT_MM[1]), STREAK_RGB)
+    column = px(20.0, DPI)
+    rows = slice(scene.paper_top, scene.paper_end)
+    line = painted(scene, rows, slice(column, column + px(0.5, DPI)), STREAK_RGB)
     assert trim_page(colour_page(line)).left == 0
 
 

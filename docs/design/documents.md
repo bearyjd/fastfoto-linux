@@ -237,27 +237,46 @@ What the first pull request settled where the specification left room.
      tail keeps the page, found by the ink search of the tail rule, so a pale island in the tail
      is not joined to a side by the white around it. In the strip pad pixels are exempt one by one
      (white, and the pixels within 2 px of both white and backing, where the pad's edge passes
-     into the backing, on the unblurred strip), and the backing joins a side of the strip through
-     the pad, because the slanted edge and a side wedge lie at opposite ends of the lowest rows.
-     Backing is within 20 of the backing colour, as in the side strips and the tail. The shadow
-     gets more: a cluster of tone within 36 of the backing colour (blue over red) is backing where
-     the shadow lies, in the first 1.5 mm of the strip, next to the cut, and within 2 px of the
-     pad (the edge of a wedge), and only when it is under 2 mm long. The shadow's specks measured
-     on real pages are 0.3 to 1.4 mm; a pale bar, a stroke of pale ink or a slip in that tone is
+     into the backing, on the unblurred strip). Backing is within 20 of the backing colour, as in
+     the side strips and the tail, and counts only where it is joined to a side of the strip or
+     to its first row, the band next to the cut, by backing alone. The pad joins nothing: a
+     separate island of the backing's colour on the pad or in the tail is not the band (one of at
+     least 5% of the width moves the tail's start below itself, into the strip). The shadow gets
+     more: a cluster of tone within 36 of the backing colour (blue
+     over red) is backing where the shadow lies, in the first 1.5 mm of the strip, next to the
+     cut, and within 2 px of the pad (the edge of a wedge), and only when it is under 2 mm long
+     and bluer than red by at most 24 on average (on the blurred strip). The shadow's specks
+     measured on real pages are 0.3 to 1.4 mm long and 0.3 to 19 bluer than red (median 9);
+     the backing is 17 bluer than red and the shadow 14, a faded blue ink or a pencil on a slip
+     of the backing's colour 30 to 40, so ink in that tone, though it is within 36 of the
+     backing, is not the shadow. A pale bar, a stroke of pale ink or a slip in that tone is
      longer and keeps the page. A cluster under 0.5 mm whose pixels are all within 50 of the
      backing colour, of any hue, is dust. Every other pixel goes to the last check, so a mark
-     that is darker, not blue or beyond that tolerance, and dust of ink size in the pad, keep the
-     page, as in the tail. At least 30 mm of page stay after the bottom cut, and after the top cut
+     that is darker, not blue or beyond that tolerance, ink bluer than the shadow, and dust of
+     ink size in the pad, keep the page, as in the tail. At least 30 mm of page stay after the
+     bottom cut, and after the top cut
      as well. Where there is no band cut, because there is no band or the cut is not safe, the
      tail rule above runs as before. Colour pages only: grey and 1-bit pages are not cut by the
      band rule (a grey page has no hue to tell the backing by).
-  Limits: side slivers of up to 2 mm are left (they are slanted and the strip rule needs 3 mm). A
-  bar at least half the page wide in the backing colour (within 20 of it), flush with the paper's
-  end, is cut with the band up to the caps above, like a full-height sidebar of that colour at a
-  side, unless the band's shadow lies below it: the shadow is beyond the 1.5 mm of the strip, so
-  the last check keeps the bar. A bar in a blue-grey between 20 and 36 from the backing colour is
-  kept. After a band cut the new edge is the paper's, so the blank-page margin is measured in full
-  from the new edge (see **Blank pages**).
+  Limits, stated exactly:
+  - side slivers of up to 2 mm are left (they are slanted and the strip rule needs 3 mm);
+  - a bar at least half the page wide within 20 of the backing colour, flush with the paper's end
+    and with no shadow below it, is cut with the band up to the caps above, like a full-height
+    sidebar of that colour at a side, and with it what is in it in the band's own hue (bluer than
+    red by at most 24). The band's shadow below the bar keeps it, being beyond the 1.5 mm of the
+    strip, and so does ink in another hue, or a bar in a blue-grey between 20 and 36 from the
+    backing colour;
+  - pale ink in the band's own blue-grey (within 36 of the backing colour and bluer than red by
+    at most 24), within 1.5 mm of the cut on a slip of the backing's colour, is forgiven as
+    shadow when its strokes are under 2 mm;
+  - specks under 0.5 mm within 50 of the backing colour in the strip are dust, of any hue: 0.4 mm
+    dots on a slip are cut with it;
+  - a scrap of the backing's colour that touches the band is taken for the band;
+  - the last one or two pixel rows of a glyph whose bottom lies in the band rows may go (0.04 to
+    0.13 mm).
+
+  After a band cut the new edge is the paper's, so the blank-page margin is measured in full from
+  the new edge (see **Blank pages**).
 - **Blank pages.** Marks are found on the darkest colour channel, shrunk to at most 150 dpi
   keeping the darkest pixel: a spot is a mark when it is 45 grey levels darker than the paper
   around it (measured against an 8 mm morphological closing, so strokes thinner than that are

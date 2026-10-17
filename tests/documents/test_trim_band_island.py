@@ -13,7 +13,7 @@ from fastfoto_linux.documents.trim import _tail_start, trim_page
 from tests.doc_synth import BACKING_RGB, px
 from tests.doc_synth_band import with_jpeg
 from tests.documents.helpers import colour_page
-from tests.documents.test_trim_band_real import frame, painted
+from tests.documents.test_trim_band_real import BAND_MM, assert_band_cut, frame, painted
 
 SLIP_RGB = (195, 205, 215)
 COLOURS = {"slip": SLIP_RGB, "backing": BACKING_RGB}
@@ -58,3 +58,15 @@ def test_a_small_island_of_the_backing_colour_in_the_white_tail_is_kept(
         frame(dpi, tilt_deg=tilt), offset_mm, (size_mm, size_mm), COLOURS[name]
     )
     assert scene.height - trim_page(colour_page(scene)).bottom >= bottom
+
+
+@pytest.mark.parametrize("dpi", [200, 300])
+def test_a_band_with_pad_at_both_sides_is_still_cut(dpi: int) -> None:
+    """Pad (white) over 15% of the width at each end of the band's rows: the band's backing
+    touches neither side, but it is the band next to the cut, the first row of the strip."""
+    scene = frame(dpi, tilt_deg=0.0)
+    rows = slice(scene.paper_end, scene.paper_end + px(BAND_MM, dpi))
+    edge = int(0.15 * scene.width)
+    scene = painted(scene, rows, slice(0, edge), 255)
+    scene = with_jpeg(painted(scene, rows, slice(scene.width - edge, scene.width), 255))
+    assert_band_cut(scene, trim_page(colour_page(scene)))

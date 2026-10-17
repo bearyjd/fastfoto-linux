@@ -162,15 +162,28 @@ uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr o
   check judges the strip that is cut (the band, the pad under it, the first 3 mm of the tail; the
   rest of the tail by the ink search of the tail rule), where pad pixels are exempt one by one
   (white, and the pixels where the pad blends with the backing) and the backing is within 20 of
-  the backing colour, joined to a side through the pad. Only the shadow gets more: tone within 36
-  of the backing colour counts as backing in the first 1.5 mm of the strip next to the cut and at
-  the pad's edge, and only in a speck, and a pale cluster under 0.5 mm that is within 50 of the
-  backing colour is dust. Every other pixel counts, a pale bar, pale ink or a darker or not blue
-  mark too; 30 mm of page stay, and grey and 1-bit pages are not cut by the band rule.
-  Limits: side slivers of up to 2 mm are left (slanted, under the 3 mm of the strip rule), and a
-  bar at least half the page wide in the backing colour (within 20 of it), flush with the paper's
-  end, is cut with the band, like a sidebar of that colour at a side, unless the band's shadow lies
-  below it; a bar in another blue-grey (up to 36 from the backing colour) is kept.
+  the backing colour, joined to a side of the strip or to its first row, the band next to the cut,
+  by backing alone: the pad joins nothing, so an island of the backing's colour in the tail is
+  not the band. Only the shadow gets more: tone within 36 of the backing colour and bluer than red
+  by at most 24 counts as backing in the first 1.5 mm of the strip next to the cut and at the
+  pad's edge, and only in a speck, and a pale cluster under 0.5 mm that is within 50 of the
+  backing colour is dust. Every other pixel counts, a pale bar, ink bluer than the shadow or a
+  darker or not blue mark too; 30 mm of page stay, and grey and 1-bit pages are not cut by the
+  band rule.
+  Limits:
+  - side slivers of up to 2 mm are left (slanted, under the 3 mm of the strip rule);
+  - a bar at least half the page wide within 20 of the backing colour, flush with the paper's end
+    and with no shadow below it, is cut with the band, like a sidebar of that colour at a side,
+    and with it what is in it in the band's own hue; the band's shadow below the bar, ink in
+    another hue or a bar in another blue-grey (20 to 36 from the backing colour) keeps it;
+  - pale ink in the band's own blue-grey (within 36 of the backing colour and bluer than red by
+    at most 24), within 1.5 mm of the cut on a slip of the backing's colour, is forgiven as
+    shadow;
+  - specks under 0.5 mm within 50 of the backing colour in the strip are dust (0.4 mm dots on a
+    slip are cut with it);
+  - a scrap of the backing's colour that touches the band is taken for the band;
+  - the last pixel row or two of a glyph whose bottom lies in the band rows may go (0.04 to
+    0.13 mm).
 - A page is blank only when it has no mark at all inside its 5 mm margin: dust, paper texture
   and faint show-through from the other side do not count, while a single short line, a
   signature, a lone page number or pencil at least about 45 grey levels darker than the paper

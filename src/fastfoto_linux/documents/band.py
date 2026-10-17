@@ -38,26 +38,39 @@ backing band is the reliable sign of where the paper ends.
   where the pad's edge rings. Ink anywhere in the rest of the tail keeps the page (the ink search
   of the tail rule), so the white of the tail joins nothing to a side. In the strip pad pixels
   are exempt one by one: white, and the pixels within 2 px of both white and backing, where the
-  pad's edge passes into the backing. The backing joins a side of the strip through the pad, so
-  that pad at both ends of a row does not cut it off. Backing is within 20 of the backing colour,
-  as in the side strips and the tail. The shadow gets more: a cluster of tone within 36 of the
-  backing colour (``SHADOW_TOLERANCE``, as for the rows) is backing where the shadow lies, in the
-  first 1.5 mm of the strip, next to the cut, and within 2 px of the pad (the edge of a wedge),
-  and only when it is under 2 mm long: a pale bar, a stroke of pale ink or a slip in that tone is
-  longer and keeps the page. A cluster under 0.5 mm whose pixels are all within 50 of the backing
-  colour, of any hue, is dust. Every other pixel goes to the last check; a mark that is darker,
-  not blue or beyond that tolerance, and dust of ink size in the pad, keep the page, as in the
-  tail.
+  pad's edge passes into the backing. Backing is within 20 of the backing colour, as in the side
+  strips and the tail, and counts only where it is joined to a side of the strip or to its first
+  row, the band next to the cut, by backing alone: the pad joins nothing, so a separate island of
+  the backing's colour, on the pad or in the tail, is not the band. The shadow gets more: a
+  cluster of tone within 36 of the backing colour (``SHADOW_TOLERANCE``, as for the rows) is
+  backing where the shadow lies, in the first 1.5 mm of the strip, next to the cut, and within
+  2 px of the pad (the edge of a wedge), and only when it is under 2 mm long and bluer than red
+  by at most 24 on average: the backing and its shadow are (17 and 14), a faded blue ink or a
+  pencil on a slip of the backing's colour is not (30 to 40). A pale bar, a stroke of pale ink or
+  a slip in that tone is longer and keeps the page. A cluster under 0.5 mm whose pixels are all
+  within 50 of the backing colour, of any hue, is dust. Every other pixel goes to the last check;
+  a mark that is darker, not blue or beyond that tolerance, ink bluer than the shadow, and dust
+  of ink size in the pad, keep the page, as in the tail.
 * After a band cut the new edge is the paper's, so the blank-page margin is measured in full
   from the new edge (``Trimmed.tail_rows``): the kept edge line is margin, not a mark.
 
 Only colour pages are looked at: grey and 1-bit pages are not cut by the band rule (a grey page
-has no hue to tell the backing by). Limits: side slivers of up to 2 mm are left, because they are
-slanted and the strip rule needs 3 mm. A bar at least half the page wide in the backing colour
-(within 20 of it), flush with the paper's end, is cut with the band, as a full-height sidebar of
-that colour is at a side, unless the band's shadow lies below it: that is beyond the 1.5 mm of the
-strip, so the last check keeps the bar. A bar in a blue-grey between 20 and 36 from the backing
-colour is kept.
+has no hue to tell the backing by). Limits, stated exactly:
+
+* Side slivers of up to 2 mm are left, because they are slanted and the strip rule needs 3 mm.
+* A bar at least half the page wide within 20 of the backing colour, flush with the paper's end
+  and with no shadow below it, is cut with the band, as a full-height sidebar of that colour is
+  at a side, and with it what is in it in the band's own hue (bluer than red by at most 24). The
+  band's shadow below the bar keeps it, being beyond the 1.5 mm of the strip; so does ink in
+  another hue, and a bar in a blue-grey between 20 and 36 from the backing colour.
+* Pale ink in the band's own blue-grey (within 36 of the backing colour and bluer than red by at
+  most 24), within 1.5 mm of the cut on a slip of the backing's colour, is forgiven as shadow
+  when its strokes are under 2 mm.
+* Specks under 0.5 mm within 50 of the backing colour in the strip are dust: 0.4 mm dots on a
+  slip are cut with it.
+* A scrap of the backing's colour that touches the band is taken for the band.
+* The last pixel row or two of a glyph whose bottom lies in the band rows may go (0.04 to
+  0.13 mm).
 """
 
 from dataclasses import dataclass

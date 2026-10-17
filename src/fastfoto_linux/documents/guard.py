@@ -4,14 +4,16 @@ neither (the rules, and what the trim does about it, are in ``trim``).
 
 The check runs on a blurred copy (3x3), so that noise makes no clusters of its own and a dot of
 two or three pixels grows into one. A band cut's strip (``pad=True``, its first row next to the
-cut) is judged with the scanner's pad exempt pixel by pixel and the backing joined to a side
-through it. Backing is within ``BACKGROUND_PRIOR_TOLERANCE`` of the measured colour, but the band
-darkens towards the paper, so shadow tone (up to ``SHADOW_TOLERANCE``, blue over red) is backing
-too, only where the shadow lies: in the first ``SHADOW_STRIP_MM`` of the strip, next to the cut,
-and within ``FRINGE_PX`` of the pad's edge, and only in clusters shorter than
-``SHADOW_CLUSTER_MM``: a longer run of that tone is a bar or a stroke of ink, not a speck. A
-cluster shorter than ``DUST_MM`` whose pixels are all within ``DUST_TOLERANCE`` of the backing
-colour, whatever the hue, is dust.
+cut) is judged with the scanner's pad exempt pixel by pixel. Backing is within
+``BACKGROUND_PRIOR_TOLERANCE`` of the measured colour and joined to a side of the strip by backing
+alone, in a band strip also to its first row, the band: the pad joins nothing, so a separate
+island of the backing's colour is not the band. The band darkens towards the paper, so shadow tone
+(up to ``SHADOW_TOLERANCE``, blue over red) is backing too, only where the shadow lies: in the
+first ``SHADOW_STRIP_MM`` of the strip, next to the cut, and within ``FRINGE_PX`` of the pad's
+edge, and only in clusters shorter than ``SHADOW_CLUSTER_MM`` (a longer run of that tone is a bar
+or a stroke of ink, not a speck) and in the backing's hue: a cluster whose mean blue minus red is
+over ``SHADOW_BLUE_MAX`` is faded ink or pencil, not shadow. A cluster shorter than ``DUST_MM``
+whose pixels are all within ``DUST_TOLERANCE`` of the backing colour, whatever the hue, is dust.
 """
 
 import math
@@ -38,7 +40,7 @@ SHADOW_STRIP_MM = 1.5  # the shadow's specks are forgiven in this much of the st
 SHADOW_CLUSTER_MM = 2.0  # a cluster of shadow tone is a speck only when it is shorter than this
 DUST_MM = 0.5  # a pale cluster shorter than this, anywhere in the strip, is dust
 DUST_TOLERANCE = 50  # and pale means this near the backing colour (RGB, any hue)
-SHADOW_BLUE_MAX = 24  # a speck of shadow tone is forgiven only at most this much bluer than red
+SHADOW_BLUE_MAX = 24  # shadow is forgiven if its blue minus red is at most this (ink: 30+)
 
 
 def grey_of(pixels: np.ndarray) -> np.ndarray:
@@ -74,31 +76,36 @@ def ink_clusters(mask: np.ndarray, dpi: int) -> np.ndarray:
     return boxes[longest >= ink_size_px(dpi)]
 
 
-def joined_to_sides(tone: np.ndarray) -> np.ndarray:
-    """The part of ``tone`` that is connected to the left or the right edge of the array: the
-    backing runs in from the side of the frame, a note lying in the strip does not."""
+def joined_to_sides(tone: np.ndarray, *, first_row: bool = False) -> np.ndarray:
+    """The part of ``tone`` that is connected to the left or the right edge of the array, and
+    with ``first_row`` to its first row: the backing runs in from the side of the frame, a note
+    lying in the strip does not."""
     count, labels = cv2.connectedComponents(tone.astype(np.uint8), connectivity=8)
     joined = np.zeros(count, dtype=bool)
     joined[labels[:, 0]] = True
     joined[labels[:, -1]] = True
+    if first_row:
+        joined[labels[0]] = True
     joined[0] = False  # label 0 is what is not ``tone``
     return joined[labels]
 
 
 def backing_pixels(
-    strip: np.ndarray, bridge: np.ndarray | None = None, tolerance: float | None = None
+    strip: np.ndarray, tolerance: float | None = None, *, band: bool = False
 ) -> np.ndarray:
     """Which pixels of ``strip`` are the scanner's backing and so need no keeping.
 
     On a colour page: backing-coloured (within ``tolerance``, the scanner's by default) and
-    joined to a side of the strip, directly or through the ``bridge`` pixels (the pad of a band
-    cut). A grey page has no hue, and a pale slip or a pastel margin looks just like the backing
+    joined to a side of the strip by backing alone. In the strip of a band cut (``band``) the
+    first row, next to the cut, is the band's own backing and joins as a side does; the pad does
+    not join anything: a separate island of the backing's colour is not the band, however close
+    to it. A grey page has no hue, and a pale slip or a pastel margin looks just like the backing
     wherever it lies, so on a grey page nothing is backing.
     """
     if strip.ndim != RGB_NDIM:
         return np.zeros(strip.shape, dtype=bool)
     backing = backing_mask(strip, BACKGROUND_PRIOR_TOLERANCE if tolerance is None else tolerance)
-    return joined_to_sides(backing if bridge is None else backing | bridge) & backing
+    return joined_to_sides(backing, first_row=band)
 
 
 def blended(white: np.ndarray, backing: np.ndarray) -> np.ndarray:
@@ -145,13 +152,27 @@ def _dust(unexplained: np.ndarray, smooth: np.ndarray, dpi: int) -> np.ndarray:
     return ((longest > 0) & (longest < _size_px(DUST_MM, dpi)) & ~has_far)[labels]
 
 
+def _in_shadow_hue(clusters: np.ndarray, smooth: np.ndarray) -> np.ndarray:
+    """The clusters of ``clusters`` whose mean blue minus red on ``smooth`` is at most
+    ``SHADOW_BLUE_MAX``: the shadow is the backing's own blue-grey, a faded blue ink or a pencil
+    on a slip is bluer."""
+    labels, longest = _clusters(clusters)
+    ids = labels[clusters]
+    size = np.maximum(np.bincount(ids, minlength=len(longest)), 1)
+    blue = np.bincount(ids, smooth[..., 2][clusters], minlength=len(longest))
+    red = np.bincount(ids, smooth[..., 0][clusters], minlength=len(longest))
+    return ((blue - red) / size <= SHADOW_BLUE_MAX)[labels] & clusters
+
+
 def _shadow_backing(
     smooth: np.ndarray, pad: np.ndarray, strict: np.ndarray, dpi: int
 ) -> np.ndarray:
     """The pixels of shadow tone that count as backing in a band strip: within the band's
-    tolerance, where the shadow lies, in clusters short enough for a speck."""
-    wide = backing_pixels(smooth, pad, SHADOW_TOLERANCE) & ~strict & _shadow_places(pad, dpi)
-    return _shorter_than(wide, _size_px(SHADOW_CLUSTER_MM, dpi))
+    tolerance, where the shadow lies, in the backing's hue, in clusters short enough for a
+    speck."""
+    wide = backing_pixels(smooth, SHADOW_TOLERANCE, band=True) & ~strict
+    specks = _shorter_than(wide & _shadow_places(pad, dpi), _size_px(SHADOW_CLUSTER_MM, dpi))
+    return _in_shadow_hue(specks, smooth)
 
 
 def holds_content(strip: np.ndarray, white: float, dpi: int, *, pad: bool = False) -> bool:
@@ -167,7 +188,7 @@ def holds_content(strip: np.ndarray, white: float, dpi: int, *, pad: bool = Fals
     if not marked.any():
         return False
     exempt = pad_pixels(strip) if pad else None
-    backing = backing_pixels(smooth, exempt)
+    backing = backing_pixels(smooth, band=pad)
     if exempt is not None:
         backing = backing | _shadow_backing(smooth, exempt, backing, dpi)
     unexplained = marked & ~backing & ~blended(~marked, backing)

@@ -11,7 +11,8 @@ def is_blank(page: LoadedPage, *, trimmed_bottom: int = 0) -> bool:
 
     The margin belongs to the scanner's frame, not to the trimmed page: ``trimmed_bottom`` rows
     that were cut off the bottom (the tail) take their share of the margin with them, so
-    trimming never turns paper into margin.
+    trimming never turns paper into margin. A band cut leaves the paper's own edge: the caller
+    passes ``Trimmed.tail_rows``, which is 0 then, and the margin is whole.
 
     One confident mark keeps the page, so a signature, a short line, or a page number alone is
     not blank. The one thing that is not a mark is a faint fold crease: a line, that is a mark

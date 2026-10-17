@@ -46,7 +46,8 @@ ffscan doc process PAGE.png ... --out DIR [--mkdir] [same output options]
    **full scan length** (the scanner pads the page after the paper ends). Never a fixed paper size: Letter
    would cut Legal pages.
 2. **Load** each page: RGB, 8-bit grey or 1-bit PNG — a loader of its own (the photo loader is RGB-only).
-3. **Trim** only what is certainly empty (blank white or the scanner's backing): the white tail after the paper end and, where clearly
+3. **Trim** only what is certainly empty (blank white or the scanner's backing): the white tail after the paper end,
+   the scanner's full-width backing band (and the pad below it) beyond the paper, and, where clearly
    present, the scanner's blue-grey backing strip along an edge. Letter is the scanner's full width, so
    side edges are usually absent. **When unsure, trim nothing** — never cut content.
 4. **Blank pages** (mainly duplex backs): ignore a ~5 mm margin and any backing strip; a page is blank when
@@ -149,7 +150,7 @@ What the first pull request settled where the specification left room.
   because the tail may be white across the whole width. Only colour pages are checked, since grey
   and 1-bit pages have no hue to tell it by: a grey page is trimmed at the bottom only, never at
   a side, and a 1-bit page not at all. A grey page therefore loses the white tail only, never a
-  side, and a grey receipt keeps its tail (see the last check, below). The top is never trimmed.
+  side, and a grey receipt keeps its tail (see the last check, below). The top is trimmed only by the band rule (see **Backing band**).
   A colour page is trimmed in colour and only then made grey or black and white (`build` trims
   the loaded page, `encode_page` converts it), so `--colour grey` and `--colour bw` on colour
   pages get the colour trim; `ffscan doc scan` always scans in colour for the same reason. A printed sidebar in any
@@ -195,6 +196,95 @@ What the first pull request settled where the specification left room.
   12 levels) it counts only when more than 3 x (12 - gap) levels darker than the slip: about 21
   on a slip 5 below the white, where the unblurred check kept 15. A page that would be under 10 mm tall or wide after trimming is kept whole
   (logged at debug) so that one such page does not abort the run.
+- **Backing band.** On the first real scan every page kept 15 to 21 mm of non-paper at the bottom
+  and 1 to 2 mm at the top, which the white-tail rule cannot see: the paper is often pure 255,
+  like the scanner's pad, so only the backing tells where it ends. Measured on real pages (numbers
+  only; the tests use synthetic pages built from them). A raw frame is full length (2544 x 4642 px,
+  393 mm at 300 dpi) with about 98 mm of white tail below the paper. The scanner straightens the
+  paper by rotating the frame (1 to 3 degrees): the paper stays axis-aligned and the pad of pure
+  white (everything outside the rotated scan) is a slanted lower edge, over about 10 mm of height,
+  and the pad also forms wedges up the sides (a white strip 13 mm wide on every row of the band on
+  one page, 0.6% of white in every row on another). The page is a JPEG, which leaves pixels at 243
+  to 254 next to the slanted pad, neither pad (250 and up) nor backing. From the bottom edge of the
+  scan up: the pad, a full-width backing band of 6 to 15 mm (99% of its pixels within 20 of the
+  backing colour), darker next to the paper (a shadow of about (182-195, 188-202, 196-210), up to
+  1 mm), an optional edge line of about 1 mm (24 to 64% of its pixels under 120), then the paper.
+  At the top: at most 2 mm of backing, usually under 0.4 mm on a raw frame, so the top rule rarely
+  fires. The rule is this.
+  1. The frame has a tail, so the band is looked for above the white tail (`_tail_start`), not on
+     the whole frame, and the tail goes with the band.
+  2. Rows are judged by what is not white, with white as every channel at 240 or more (the pad,
+     the paper at 250 to 255, the codec's ringing). A band row has non-white pixels on at least
+     50% of its width and backing on at least 95% of those (backing: within 36 of the backing
+     colour, blue over red), so the side wedges do not hide it. Pixels that are neither white nor
+     backing but within 2 px of white are the pad's blurred edge and count for neither. A row with
+     more than 10 mm of white that touches neither side of the row (a white slip, a narrow item; a
+     gap of a few pixels does not split a run of white) is not a band row.
+  3. The band is the first run of band rows going up from the bottom of that page, with only pad
+     rows (under 50% non-white) below it, starting within 20 mm of its edge: a band of 3 to 20 mm
+     at the bottom and of 1 to 4 mm at the top (the run starts within 0.5 mm of the top edge). The
+     least counts from the middle of the pad's slant, the most from where it ends. A longer run,
+     such as a backing-coloured header or form margin, is not a band and nothing is cut. The
+     paper ends where the run ends: the run never extends into the white rows above it, because
+     the paper can be pure 255, and the cut is made there, never through the edge line, which is
+     not backing and so ends the run. At least 1 mm of the band stays at the bottom (none at the
+     top), and up to ~4 mm when the shadow next to the paper is dark: the shadow is darker than
+     the backing of the last check (within 20 of it), so the cut never takes a row of the last
+     4 mm of the band in which under 95% of the non-white pixels are within 20, and a darker
+     shadow stays with the paper.
+  4. The last check judges the whole strip that is cut: the band, the slanted pad under it and
+     the first 3 mm of the white tail, where the pad's edge rings. Ink anywhere in the rest of the
+     tail keeps the page, found by the ink search of the tail rule, so a pale island in the tail
+     is not joined to a side by the white around it. In the strip pad pixels are exempt one by one
+     (white, and the pixels within 2 px of both white and backing, where the pad's edge passes
+     into the backing, on the unblurred strip). Backing is within 20 of the backing colour, as in
+     the side strips and the tail, and counts only where it is joined to a side of the strip or
+     to its first row, the band next to the cut, by backing alone. The pad joins nothing: a
+     separate island of the backing's colour on the pad or in the tail is not the band (one of at
+     least 5% of the width moves the tail's start below itself, into the strip). The shadow gets
+     more: a cluster of tone within 36 of the backing colour (blue
+     over red) is backing where the shadow lies, in the first 1.5 mm of the strip, next to the
+     cut, and within 2 px of the pad (the edge of a wedge), and only when it is under 2 mm long
+     and bluer than red by at most 24 on average (on the blurred strip). The shadow's specks
+     measured on real pages are 0.3 to 1.4 mm long and 0.3 to 19 bluer than red (median 9);
+     the backing is 17 bluer than red and the shadow 14, a faded blue ink or a bluish pencil on a
+     slip of the backing's colour 30 to 40, so ink in that tone, though it is within 36 of the
+     backing, is not the shadow. A pale bar, a stroke of pale ink or a slip in that tone is
+     longer and keeps the page. A cluster under 0.5 mm whose pixels are all within 50 of the
+     backing colour, of any hue, is dust. Every other pixel goes to the last check, so a mark
+     that is darker, not blue or beyond that tolerance, ink bluer than the shadow, and dust of
+     ink size in the pad, keep the page, as in the tail. At least 30 mm of page stay after the
+     bottom cut, and after the top cut
+     as well. Where there is no band cut, because there is no band or the cut is not safe, the
+     tail rule above runs as before. Colour pages only: grey and 1-bit pages are not cut by the
+     band rule (a grey page has no hue to tell the backing by).
+  Limits, stated exactly:
+  - side slivers of up to 2 mm are left (they are slanted and the strip rule needs 3 mm);
+  - a bar at least half the page wide within 20 of the backing colour, flush with the paper's end
+    and with no shadow below it, is cut with the band up to the caps above, like a full-height
+    sidebar of that colour at a side, and with it what is in it in the band's own hue (bluer than
+    red by at most 24). The band's shadow below the bar keeps it, being beyond the 1.5 mm of the
+    strip, and so does ink in another hue, or a bar in a blue-grey between 20 and 36 from the
+    backing colour;
+  - pale ink or pencil within 1.5 mm of the cut on a slip of the backing's colour is forgiven as
+    shadow when its strokes are under 2 mm and, mixed with the slip by the blur (3x3), its tone is
+    within 36 of the backing colour and bluer than red by at most 24. The hue gate is one-sided:
+    it keeps out ink bluer than that, but neutral grey passes it. Measured on a slip of (195, 205,
+    215): a pencil stroke 1 pixel wide of tone 170 or lighter, or 2 pixels wide of tone 190 or
+    lighter, is cut with the band, and a stroke 3 pixels wide only when lighter than about 190 (about
+    184 right at the cut);
+  - specks under 0.5 mm within 50 of the backing colour in the strip are dust, of any hue: 0.4 mm
+    dots on a slip are cut with it;
+  - a scrap of the backing's colour that touches the band is taken for the band;
+  - a scrap of the backing's colour that touches a side of the page in the first 3 mm of the
+    white tail, which are part of the strip, is joined to the side by backing alone and goes with
+    the band; further down, the ink search of the tail rule finds it and the page is kept, and so
+    is a scrap that touches neither a side nor the band;
+  - the last one or two pixel rows of a glyph whose bottom lies in the band rows may go (0.04 to
+    0.13 mm).
+
+  After a band cut the new edge is the paper's, so the blank-page margin is measured in full from
+  the new edge (see **Blank pages**).
 - **Blank pages.** Marks are found on the darkest colour channel, shrunk to at most 150 dpi
   keeping the darkest pixel: a spot is a mark when it is 45 grey levels darker than the paper
   around it (measured against an 8 mm morphological closing, so strokes thinner than that are
@@ -203,7 +293,10 @@ What the first pull request settled where the specification left room.
   the factor - 1 pixels that keeping the darkest pixel of a block adds, so a 0.9 mm speck is dust
   at 200, 300 and 600 dpi alike. The 5 mm margin is ignored; it belongs to the scanner's frame, so
   rows trimmed off the bottom take their share of it with them (today the 5 mm kept below the
-  lowest mark means the two never overlap). Pencil must be about 45 levels darker than the paper
+  lowest mark means the two never overlap). After a band cut the new
+  bottom edge is the paper's own, so only white-tail rows are passed as `trimmed_bottom`
+  (`Trimmed.tail_rows`, 0 after a band cut): the kept edge line is margin, not a mark, and a
+  blank back stays blank, while a line 6 mm above the new edge keeps the page. Pencil must be about 45 levels darker than the paper
   (local contrast) to count; lighter pencil is indistinguishable from show-through. A page is
   blank when it has **no** mark, so one short line, a **lone page number** (decided: kept, it
   cannot be told from content), a punch hole or a scanner streak keeps the page; the cost of that

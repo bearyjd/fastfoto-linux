@@ -145,7 +145,7 @@ def _encode_pages(
             on_page(number, len(pages))
         trimmed = trim_page(load_page(path, fallback_dpi=settings.fallback_dpi))
         page = trimmed.page
-        if not settings.keep_blank and is_blank(page, trimmed_bottom=trimmed.bottom):
+        if not settings.keep_blank and is_blank(page, trimmed_bottom=trimmed.tail_rows):
             logger.info("page %d (%s) is blank and left out", number, path.name)
             dropped.append(number)
             continue

@@ -51,6 +51,7 @@ class Scene:
     content: Box | None  # box around everything inked (None: nothing)
     paper_end: int  # first row below the paper (the height when there is no tail)
     paper_x: tuple[int, int]  # first column of the paper, and the first one after it
+    paper_top: int = 0  # first row of the paper; positions in mm are measured from here
 
     @property
     def height(self) -> int:
@@ -127,7 +128,7 @@ def with_text(  # noqa: PLR0913
     height, width = px(height_mm, dpi), px(height_mm * 0.6, dpi)
     stroke = max(MIN_STROKE_PX, px(STROKE_MM, dpi))
     advance = width + 2 * stroke
-    left, top = scene.paper_x[0] + px(x_mm, dpi), px(y_mm, dpi)
+    left, top = scene.paper_x[0] + px(x_mm, dpi), scene.paper_top + px(y_mm, dpi)
     fill = (tone, tone, tone)
 
     def paint(draw: ImageDraw.ImageDraw) -> None:
@@ -158,7 +159,7 @@ def with_signature(  # noqa: PLR0913
 ) -> Scene:
     """One long connected pen stroke: a single mark far bigger than a letter."""
     dpi = scene.dpi
-    left, top = scene.paper_x[0] + px(x_mm, dpi), px(y_mm, dpi)
+    left, top = scene.paper_x[0] + px(x_mm, dpi), scene.paper_top + px(y_mm, dpi)
     width, height = px(width_mm, dpi), px(height_mm, dpi)
     stroke = max(MIN_STROKE_PX, px(STROKE_MM, dpi))
     xs = np.linspace(0, width - 1, 60)
@@ -211,7 +212,7 @@ def with_solid_block(scene: Scene, x_mm: float, y_mm: float, size_mm: float, ton
     """A filled square (a stamp, a logo), counted as content."""
     left, top, side = (
         scene.paper_x[0] + px(x_mm, scene.dpi),
-        px(y_mm, scene.dpi),
+        scene.paper_top + px(y_mm, scene.dpi),
         px(size_mm, scene.dpi),
     )
     image = scene.image.copy()
@@ -225,7 +226,7 @@ def with_tinted_block(
     scene: Scene, x_mm: float, y_mm: float, size_mm: tuple[float, float], rgb: tuple[int, int, int]
 ) -> Scene:
     """A filled rectangle of one colour that is not counted as content (a form's coloured bar)."""
-    left, top = scene.paper_x[0] + px(x_mm, scene.dpi), px(y_mm, scene.dpi)
+    left, top = scene.paper_x[0] + px(x_mm, scene.dpi), scene.paper_top + px(y_mm, scene.dpi)
     width, height = px(size_mm[0], scene.dpi), px(size_mm[1], scene.dpi)
     image = scene.image.copy()
     image[top : top + height, left : left + width] = rgb

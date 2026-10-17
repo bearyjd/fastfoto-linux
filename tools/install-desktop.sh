@@ -14,7 +14,8 @@
 # runs `brew install tesseract` only when asked (--with-tesseract, or "y" on a terminal). It never
 # uses sudo, and --uninstall leaves Homebrew packages alone.
 # Homebrew's folder is used only when it is owned by root or by the user and nobody else can write to
-# it; otherwise it is ignored (with the reason), and brew is never run from it.
+# it; otherwise it is ignored (with the reason). brew is never run from an untrusted folder found by
+# the fallback lookup; a brew on your own PATH is yours.
 set -euo pipefail
 umask 022 # files are readable by others whatever the user's umask is
 

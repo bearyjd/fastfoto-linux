@@ -26,7 +26,7 @@ class DocumentTools:
 
     @property
     def ocr_available(self) -> bool:
-        """True when ``ocrmypdf`` is installed (looked up each time: it may be installed later)."""
+        """True when OCR is available, OCRmyPDF and Tesseract both (looked up each time)."""
         return self.find_ocr() is not None
 
     @property

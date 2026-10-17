@@ -93,9 +93,10 @@ def check_settings(settings: DocumentSettings) -> CheckedSettings:
 
     Raises DocumentSettingsError for a name with no usable characters or OCR languages that are
     no Tesseract codes (even with OCR off), and OcrMissingError when searchable text is required
-    (``OcrMode.ON``) and ``ocrmypdf`` is not installed, and ``OutputFolderMissingError`` (a
-    DocumentSettingsError) when the output folder is not an existing folder: the caller makes it,
-    and a PDF is not worked on, nor a stack of paper scanned, for a folder that is not there.
+    (``OcrMode.ON``) and OCR is not available (OCRmyPDF, Tesseract or both is missing), and
+    ``OutputFolderMissingError`` (a DocumentSettingsError) when the output folder is not an
+    existing folder: the caller makes it, and a PDF is not worked on, nor a stack of paper
+    scanned, for a folder that is not there.
     """
     try:
         name = sanitise_prefix(settings.name)
@@ -117,7 +118,7 @@ def _now() -> datetime:
 
 
 def _ocr_executable(mode: OcrMode) -> str | None:
-    """The tool to run, or None when OCR is off or (``auto``) not installed."""
+    """The tool to run, or None when OCR is off or (``auto``) not available."""
     if mode is OcrMode.OFF:
         return None
     found = find_ocrmypdf()

@@ -211,7 +211,7 @@ def run_ocr(  # noqa: PLR0913
     Recognised text is never read or logged.
     """
     validate_langs(langs)
-    version = ocrmypdf_version(executable)  # asked once per program
+    version = ocrmypdf_version(executable)  # an answer is remembered, a failure asked again
     try:
         with tempfile.TemporaryDirectory(prefix=STAGING_PREFIX, dir=staging_parent) as folder:
             return _run(

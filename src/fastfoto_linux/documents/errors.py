@@ -16,7 +16,8 @@ class AllPagesBlankError(DocumentError):
 
 
 class OcrMissingError(DocumentError):
-    """Searchable text was required (``--ocr on``) but ``ocrmypdf`` is not installed."""
+    """Searchable text was required (``--ocr on``) but OCR is not available: OCRmyPDF,
+    Tesseract or both is missing."""
 
 
 class DocumentCancelledError(DocumentError):

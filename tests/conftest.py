@@ -71,7 +71,7 @@ def classic_machine_without_ocr(monkeypatch: pytest.MonkeyPatch) -> None:
         raise importlib.metadata.PackageNotFoundError(name)
 
     monkeypatch.setattr(ocr_version, "metadata_version", not_installed)
-    ocr_version.program_version.cache_clear()
+    ocr_version.remembered_version.cache_clear()
 
 
 @pytest.fixture(autouse=True)

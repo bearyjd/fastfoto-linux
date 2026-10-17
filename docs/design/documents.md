@@ -66,7 +66,8 @@ ffscan doc process PAGE.png ... --out DIR [--mkdir] [same output options]
    known-defect range) out of the run altogether. That is `--rasterizer pypdfium` only for OCRmyPDF 17 or
    newer: older versions do not know the option and would exit with status 2 ("unrecognized arguments"),
    so for them it is left out (they use Ghostscript). The version is read from the installed
-   metadata for the app's own module, and from `ocrmypdf --version` (asked once, 10 s limit) for a
+   metadata for the app's own module, and from `ocrmypdf --version` (10 s limit, in a session of its own whose group is
+   killed on a time-out; an answer is remembered, a failure is asked again next run) for a
    program; a version that cannot be told gets the command without the option. A status 2 is worded
    "the installed OCRmyPDF (version X) did not accept the options it was given, or could not read the
    PDF": the exit code cannot tell the two apart and the output is never read. If OCR fails
@@ -453,7 +454,6 @@ What the first pull request settled where the specification left room.
   (the lock gives up after 60 s). The number is chosen with `next_index`, shared with photos of
   the same name, with the same retry on collision as photos.
 
-### Needs real hardware or native tools
 ### Where the OCR programs are
 `ocrmypdf` is the `ocr` extra of the package (`packaging/requirements-ocr.txt` holds its hashed wheels; the
 Flatpak does not install it yet), so the native install has it whatever the distribution packages. It
@@ -477,6 +477,7 @@ Homebrew: its formula pulls in Ghostscript and its own Python. Without the orien
 OCRmyPDF's rotation step can fail the whole run, which here falls back to the plain PDF. Read from
 the documentation, run only against stand-ins (CI has no Tesseract).
 
+### Needs real hardware or native tools
 Trim on real pages (backing colour, tail tone), blank detection on real backs, what `scanimage`
 writes for Gray, speed at 300 dpi, OCR quality on real letters, and whether real `ocrmypdf`
 keeps the producer metadata (it may overwrite it; CI has no `ocrmypdf`).

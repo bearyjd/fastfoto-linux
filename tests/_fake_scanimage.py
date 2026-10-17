@@ -124,8 +124,10 @@ _SCRIPT = textwrap.dedent(
         if not failed:
             os.rename(part, batch % n)
 
-    for text in spec.get("early_stderr_lines", []):
-        say(text + "\\n")
+    # One write, so that a busy machine cannot stop this process between two of the lines: a pipe
+    # write this small is atomic, and the reader gets all the lines or none of them.
+    if spec.get("early_stderr_lines"):
+        say("".join(text + "\\n" for text in spec["early_stderr_lines"]))
     if spec.get("die_by_signal"):
         os.kill(os.getpid(), spec["die_by_signal"])
         time.sleep(30)

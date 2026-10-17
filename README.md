@@ -151,27 +151,28 @@ uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr o
   that cannot be told from show-through and does not.
   `--keep-blank` keeps every page. The summary lists the dropped pages by number. If every page looks blank nothing is
   written and the exit code is 1.
-- The blank rule ignores faint fold creases. A letter folded in thirds has two rows of them on
-  its blank back, and a deskewed scan can leave a faint line along the page edge. A mark does
-  not count toward "not blank" when it is a faint line with nothing beside it. A line is straight
-  (at least 90% of its pixels lie within 0.4 mm of its axis, so a slanted one counts), thin
-  (0.8 mm wide on average: its area over its length) and at least 2.5 times longer than wide. It
-  is faint when no part of it darker than 140 (of 255, on the darkest colour channel) is a mark by
-  itself, which takes a dark part at least a millimetre long: a dark speck on a crease is dust,
-  and dark ink touching one counts. It has nothing beside it when no other mark has a pixel more
-  than 0.8 mm and at most 4.0 mm off its axis, alongside it: light type that the scanner has
-  blurred leaves only the stems of its letters, each a faint straight stroke, but every stem has
-  other stems beside it, while the pieces of one crease lie end to end and dust is too small to be
-  a mark. Real creases measured 0.17 to 0.51 mm thick and 152 to 204 at their darkest; text
-  measured 120 or darker. Everything that is not a faint straight line with nothing beside it
-  counts however faint: a dark ruled line, a page number, pale type, a tally, round letters,
-  cursive in the thinnest pen, a signature wave, a curved line, a pale highlighter band. Limits: a
-  lone faint straight stroke ("l", "I", "1", "-", "!", the stem of an "i" or "j") and dashed or
-  ruled lines are lines too and may be ignored, and so is text so pale and small that only a few
-  isolated stems register (darkest 190, 6 to 8 pt); a crease with a mark beside it keeps the page,
-  and creases that cross are one big mark and keep the page; a speck under a millimetre next to a
-  crease segment under 2 mm long can keep the page (at 300 dpi and finer); ink lying along a
-  crease counts only where it leaves it. Trimming is not affected.
+- The blank rule ignores faint fold creases. A letter folded in thirds has two rows of them on its
+  blank back, and a deskewed scan can leave a faint line along the page edge. A mark does not count
+  toward "not blank" when it is a faint line with nothing beside it. A line is straight (at least
+  90% of its pixels lie within 0.4 mm of its axis, so a slanted one counts), thin (0.8 mm wide on
+  average: its area over its length) and at least 2.5 times longer than wide. It is faint when no
+  part of it darker than 140 (of 255, on the darkest colour channel) is a mark by itself, which
+  takes a dark part at least a millimetre long: a dark speck on a crease is dust, and dark ink
+  touching one counts. It has nothing beside it when no other mark has a pixel more than 0.8 mm and
+  at most 4.0 mm off its axis, alongside it: light type that the scanner has blurred leaves only the
+  stems of its letters, each a faint straight stroke, but every stem has other stems beside it,
+  while the pieces of one crease lie end to end and dust is too small to be a mark. Real creases
+  measured 0.17 to 0.51 mm thick and 152 to 204 at their darkest; text measured 120 or darker.
+  Everything that is not a faint straight line with nothing beside it counts however faint: a dark
+  ruled line, a page number, pale type, a tally, round letters, cursive in the thinnest pen, a
+  signature wave, a curved line, a pale highlighter band. Limits: a lone faint straight stroke ("l",
+  "I", "1", "-", "!", the stem of an "i" or "j") and dashed or ruled lines are lines too and may be
+  ignored, and so is text so pale and small that only a few isolated stems register (darkest 190, 6
+  to 8 pt), and so are two strokes so close that the far one lies within 0.8 mm of the near one's
+  axis (a tight "=" in 10 pt); a crease with a mark beside it keeps the page, and creases that cross
+  are one big mark and keep the page; a speck under a millimetre next to a crease segment under 2 mm
+  long can keep the page (at 300 dpi and finer); ink lying along a crease counts only where it
+  leaves it. Trimming is not affected.
 - Searchable text needs `ocrmypdf` and, for its page rotation, Tesseract's orientation data:
   `sudo dnf install ocrmypdf tesseract-osd`. `--ocr auto` (default) uses it
   when present and otherwise writes the plain PDF and says so; `--ocr on` refuses to start

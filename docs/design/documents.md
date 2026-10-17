@@ -253,19 +253,19 @@ What the first pull request settled where the specification left room.
   their pixels within 0.25 mm of their axis (the tolerance is 0.4 mm) and are at least 3.6 times
   longer than wide; the squattest real one, 2 mm long and 0.51 thick, is 3.9. The tolerance
   absorbs a bow of about 0.3 mm over 153 mm; a line bowed by 0.5 mm is not straight and counts.
-  The tests use pencil-like strokes darkest 110 to 150; that is a test value, not a measurement
-  of real pencil. Known limits, all of them on the side of keeping a page except the first two:
-  a lone faint straight stroke ("l", "I", "1", "-", "!", the stem of an "i" or "j") and dashed or
-  ruled lines (pieces end to end, or rules more than 4.0 mm apart) are lines and may be ignored;
-  text so pale and small that only a few isolated stems register (darkest 190, 6 to 8 pt, where
-  the plain detector finds three marks or fewer) may be ignored; a crease with a mark beside it
-  keeps the page, so do two creases less than 4.0 mm apart; creases that cross are one big
-  mark and keep the page; a speck under a millimetre next to a crease segment under 2 mm long
-  can keep the page, at 300 dpi and finer (a stub that short shows nothing of the crease's course, and real segments
-  are 2 to 23 mm); ink lying along a
-  crease counts only where it leaves it, so a stroke that is a mark only thanks to the part inside
-  the crease can be missed; a speck on a crease counts when the scan is soft enough to grow it
-  past a millimetre.
+  The tests use pencil-like strokes darkest 110 to 150; that is a test value, not a measurement of
+  real pencil. Known limits, all of them on the side of keeping a page except the first two: a lone
+  faint straight stroke ("l", "I", "1", "-", "!", the stem of an "i" or "j") and dashed or ruled
+  lines (pieces end to end, or rules more than 4.0 mm apart) are lines and may be ignored; text so
+  pale and small that only a few isolated stems register (darkest 190, 6 to 8 pt, where the plain
+  detector finds three marks or fewer) may be ignored, and so may two strokes so close that the far
+  one lies within 0.8 mm of the near one's axis (a tight "=" in 10 pt, a crease drawn twice); a
+  crease with a mark beside it keeps the page, so do two creases less than 4.0 mm apart; creases
+  that cross are one big mark and keep the page; a speck under a millimetre next to a crease segment
+  under 2 mm long can keep the page, at 300 dpi and finer (a stub that short shows nothing of the
+  crease's course, and real segments are 2 to 23 mm); ink lying along a crease counts only where it
+  leaves it, so a stroke that is a mark only thanks to the part inside the crease can be missed; a
+  speck on a crease counts when the scan is soft enough to grow it past a millimetre.
 - **Black and white.** A pixel is black when it is darker than 96 (the same level as a mark), or
   when it is 25 levels darker than the mean of an 8 mm window and than the 8 mm closing of the
   page (strokes thinner than the window removed). The mean alone follows uneven lighting but

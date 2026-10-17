@@ -244,8 +244,10 @@ What the first pull request settled where the specification left room.
   tried and kept a real blank back, whose long artefact has thin fragments 1.9 to 3.8 mm beside it
   (1.0 to 1.2 mm long, 0.17 thick, darkest 194 to 197). The real page is 300 dpi, and fragments of
   that size sit at the mark-size edge: on the real page they are no marks and the back is blank,
-  while synthetic ones of 1.0 to 1.2 mm at 300 dpi (and at 600 dpi) are marks and keep the page,
-  which is pinned as the conservative side; ones of 0.8 mm or less are dust. The rule only ever turns an ignored line back into a mark: it can keep a page
+  while synthetic ones of 1.0 to 1.2 mm are marks and keep the page at 300 dpi (darkest 176 or
+  195) and at 600 dpi when darkest 176, which is pinned as the conservative side; at darkest 195
+  they are no marks at 200 or 600 dpi, and ones of 0.8 mm or less are dust. The rule only ever
+  turns an ignored line back into a mark: it can keep a page
   that the straight-line rule dropped and never drops one that rule kept. Two real creased
   backs gave the numbers: creases 0.17 to 0.51 mm thick, darkest 152 to 204, in segments 2 to
   23 mm long in two rows at a third and two thirds of the height; one faint tall artefact
@@ -255,7 +257,8 @@ What the first pull request settled where the specification left room.
   fixtures at 200, 300 and 600 dpi, crisp, soft and tinted, every crease and the artefact have all
   their pixels within 0.25 mm of their axis (the tolerance is 0.4 mm) and are at least 3.6 times
   longer than wide; the squattest real one, 2 mm long and 0.51 thick, is 3.9. The tolerance
-  absorbs a bow of 0.3 mm over 153 mm at every resolution and pen tried; a bow of 0.4 to 0.6 mm
+  absorbs a bow of 0.3 mm over 153 mm at every resolution with a 0.4 mm pen (with a 0.5 mm pen
+  at 200 dpi it already counts); a bow of 0.4 to 0.6 mm
   passes or not depending on the resolution and the pen, and one of 0.8 mm or more is not straight
   and counts. A wave swinging 0.15 mm either side of a line is that line at every resolution and pen
   tried; one swinging 0.3 mm either side (0.6 mm peak to peak) counts with a 0.3 mm pen, and with a
@@ -271,8 +274,8 @@ What the first pull request settled where the specification left room.
   pixels off the stroke's axis, so at least 90% of the tick, `STRAIGHT_SHARE`, is still straight
   and a longer stroke allows a longer hook; 1.0 mm is ignored, 3.0 mm keeps the page, 1.6 to 2 mm
   depends on the resolution); text so pale (darkest about 190 to 196) that only a few
-  isolated stems register, at any size from 6 to 14 pt (in the probes at most about 7 stems, 5 to
-  18 mm apart, and no page with 6 or more marks was blank); two strokes so close that the far one
+  isolated stems register (in the probes up to about 7 stems, 5 to 18 mm apart, at sizes from 6
+  to 14 pt; the tests pin 6 to 12 pt); two strokes so close that the far one
   lies within 0.8 mm of the near one's axis (a tight "=" in 10 pt, a crease drawn twice); a line
   bowed or waved so little that it counts as straight (above); and ink lying along a crease counts
   only where it leaves it, so a stroke that is a mark only thanks to the part inside the crease can

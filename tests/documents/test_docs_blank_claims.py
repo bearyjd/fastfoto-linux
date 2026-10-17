@@ -50,7 +50,8 @@ def test_the_limits_of_the_crease_rule_are_listed_exactly(name: str) -> None:
     assert "dashed or ruled lines" in text
     assert "text so pale" in text
     assert "only a few isolated stems register" in text
-    assert "at any size from 6 to 14 pt" in text
+    assert "at sizes from 6 to 14 pt" in text
+    assert "the tests pin 6 to 12 pt" in text
     assert f"tally more than about {marks.OUTER_MM} mm apart" in text
     assert "a bare tick whose hook is about 2 mm or shorter" in text
     assert f"lies within {marks.INNER_MM} mm of the near one's axis" in text

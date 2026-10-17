@@ -165,14 +165,18 @@ uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr o
   measured 0.17 to 0.51 mm thick and 152 to 204 at their darkest; text measured 120 or darker.
   Everything that is not a faint straight line with nothing beside it counts however faint: a dark
   ruled line, a page number, pale type, a tally, round letters, cursive in the thinnest pen, a
-  signature wave, a curved line, a pale highlighter band. Limits: a lone faint straight stroke ("l",
-  "I", "1", "-", "!", the stem of an "i" or "j") and dashed or ruled lines are lines too and may be
-  ignored, and so is text so pale and small that only a few isolated stems register (darkest 190, 6
-  to 8 pt), and so are two strokes so close that the far one lies within 0.8 mm of the near one's
-  axis (a tight "=" in 10 pt); a crease with a mark beside it keeps the page, and creases that cross
-  are one big mark and keep the page; a speck under a millimetre next to a crease segment under 2 mm
-  long can keep the page (at 300 dpi and finer); ink lying along a crease counts only where it
-  leaves it. Trimming is not affected.
+  signature wave, a curved line, a pale highlighter band. A tally counts while its stems are about
+  4.0 mm apart or closer. Limits: a lone faint straight stroke ("l", "I", "1", "-", "!", the stem of
+  an "i" or "j") and dashed or ruled lines are lines too and may be ignored; so are the stems of a
+  tally more than about 4.0 mm apart (each is alone) and a bare tick whose hook is about 2 mm or
+  shorter; so is text so pale (darkest about 190 to 196) that only a few isolated stems register,
+  at any size from 6 to 14 pt (in the probes at most about 7 stems, 5 to 18 mm apart; no page with
+  6 or more marks was blank); so are two strokes so close that the far one lies within 0.8 mm
+  of the near one's axis (a tight "=" in 10 pt); and ink lying along a crease counts only where it
+  leaves it. Kept, on the conservative side: a crease with a mark beside it keeps the page, and
+  creases that cross are one big mark and keep the page; a speck under a millimetre next to a
+  crease segment under 2 mm long can keep the page (at 300 dpi and finer). Trimming is not
+  affected.
 - Searchable text needs `ocrmypdf` and, for its page rotation, Tesseract's orientation data:
   `sudo dnf install ocrmypdf tesseract-osd`. `--ocr auto` (default) uses it
   when present and otherwise writes the plain PDF and says so; `--ocr on` refuses to start

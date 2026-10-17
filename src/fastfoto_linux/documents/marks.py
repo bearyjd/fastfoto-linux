@@ -15,10 +15,11 @@ the stems of its letters, each a faint straight stroke but with other stems besi
 of one crease lie end to end, and dust is too small to be a mark. The letter folded in thirds that
 was scanned on both sides has creases on its blank back. A dark speck on a crease is dust and does
 not count; dark ink touching one (a letter, a stem, a "7") does.
-Limits: a lone faint straight stroke (an "l", an "I", a "-", a "!", the stem of an "i") and dashed
-or ruled lines are lines too and may be ignored, as is text so pale and small that only a few
-isolated stems register; a crease with a mark beside it keeps the page, and so do creases that
-cross.
+Limits: a lone faint straight stroke (an "l", an "I", a "1", a "-", a "!", the stem of an "i" or
+a "j") and dashed or ruled lines are lines too and may be ignored, as are the stems of a tally
+further apart than about ``OUTER_MM``, a bare tick whose hook is about 2 mm or shorter, two strokes
+closer than ``INNER_MM`` (a tight "=") and text so pale that only a few isolated stems register;
+a crease with a mark beside it keeps the page, and so do creases that cross.
 """
 
 from dataclasses import dataclass

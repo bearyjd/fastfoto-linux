@@ -48,8 +48,11 @@ def test_the_limits_of_the_crease_rule_are_listed_exactly(name: str) -> None:
         'a lone faint straight stroke ("l", "I", "1", "-", "!", the stem of an "i" or "j")' in text
     )
     assert "dashed or ruled lines" in text
-    assert "text so pale and small that only a few isolated stems register" in text
-    assert "darkest 190, 6 to 8 pt" in text
+    assert "text so pale" in text
+    assert "only a few isolated stems register" in text
+    assert "at any size from 6 to 14 pt" in text
+    assert f"tally more than about {marks.OUTER_MM} mm apart" in text
+    assert "a bare tick whose hook is about 2 mm or shorter" in text
     assert f"lies within {marks.INNER_MM} mm of the near one's axis" in text
     assert 'a tight "=" in 10 pt' in text
     assert "a crease with a mark beside it keeps the page" in text
@@ -71,6 +74,10 @@ def test_nothing_is_claimed_that_the_rule_no_longer_does(name: str) -> None:
     assert 'the stems of a faint "i", "j" or "ii"' not in text
     assert "signature wave are lines" not in text
     assert "thin faint line" not in text  # the line is straight as well as thin
+    assert "pale and small" not in text  # the size does not matter: 6 to 14 pt
+    assert "6 to 8 pt" not in text
+    assert "three marks or fewer" not in text
+    assert "bowed by 0.5 mm is not straight" not in text
     assert "LINE_MAX_MM" not in text
     assert "LINE_ASPECT" not in text
 
@@ -103,8 +110,19 @@ def test_the_design_note_names_the_constants_of_the_rule() -> None:
 def test_the_design_note_explains_who_a_neighbour_is() -> None:
     design = text_of("design note")
     assert "a neighbour must itself be mark-sized" in design
-    assert "thin fragments beside the slanted artefact are dust, not neighbours" in design
+    assert (
+        "thin fragments beside the slanted artefact count only when they are mark-sized" in design
+    )
+    assert "thin fragments beside the slanted artefact are dust" not in design
     assert "any-spot" in design  # the variant that was tried and kept a real blank back
+
+
+def test_the_design_note_sorts_the_limits_into_two_groups() -> None:
+    design = text_of("design note")
+    assert "**A page may be called blank**" in design
+    assert "**A page is kept, on the conservative side**" in design
+    assert "except the first two" not in design
+    assert "(`OUTER_MM`, measured to the nearest pixel" in design
 
 
 def test_the_design_note_states_the_sizes_of_a_mark_and_a_speck() -> None:
@@ -139,6 +157,9 @@ def test_the_marks_module_documents_the_crease_rule() -> None:
     assert "fold crease" in text
     assert "straight" in text
     assert "lone faint straight stroke" in text
+    assert '"1"' in text
+    assert '"j"' in text
+    assert 'a tight "="' in text
     assert "beside" in text
     assert "faint flat signature wave" not in text
     for name in (

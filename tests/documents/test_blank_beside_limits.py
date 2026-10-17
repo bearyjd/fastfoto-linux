@@ -318,8 +318,9 @@ def tick(dpi: int, hook_mm: float) -> Scene:
 def test_a_bare_tick_with_a_short_hook_is_a_lone_stroke(
     dpi: int, hook_mm: float, expected: dict[str, bool]
 ) -> None:
-    """Known limit: a tick whose hook is about 2 mm or shorter is one faint straight stroke with
-    no other mark beside it. (Between 1.6 and 2 mm the verdict depends on the resolution.)"""
+    """Known limit: on a 12 mm stroke, a hook of about 2 mm or shorter leaves 90% of the pixels
+    on the axis (``STRAIGHT_SHARE``): one faint straight line with nothing beside it. (Between
+    1.6 and 2 mm the verdict depends on the resolution.)"""
     assert len(marks_of(tick(dpi, hook_mm))) == 1
     assert verdicts(tick(dpi, hook_mm)) == expected
 

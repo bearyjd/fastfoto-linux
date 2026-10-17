@@ -239,10 +239,13 @@ What the first pull request settled where the specification left room.
   mark. The inner limit and the length keep out the neighbours a crease does have: the pieces of one
   crease lie end to end, near the axis and outside each other's length. The neighbours are all the
   mark-sized components, faint lines included, so the stems of pale type are each other's; a
-  neighbour must itself be mark-sized, and thin fragments beside the slanted artefact are dust, not
-  neighbours. The any-spot variant, which took any dark spot beside the line, was tried and kept a
-  real blank back, whose long artefact has thin fragments 1.9 to 3.8 mm beside it (1.0 to 1.2 mm
-  long, 0.17 thick). The rule only ever turns an ignored line back into a mark: it can keep a page
+  neighbour must itself be mark-sized, so thin fragments beside the slanted artefact count only
+  when they are mark-sized. The any-spot variant, which took any dark spot beside the line, was
+  tried and kept a real blank back, whose long artefact has thin fragments 1.9 to 3.8 mm beside it
+  (1.0 to 1.2 mm long, 0.17 thick, darkest 194 to 197). The real page is 300 dpi, and fragments of
+  that size sit at the mark-size edge: on the real page they are no marks and the back is blank,
+  while synthetic ones of 1.0 to 1.2 mm at 300 dpi (and at 600 dpi) are marks and keep the page,
+  which is pinned as the conservative side; ones of 0.8 mm or less are dust. The rule only ever turns an ignored line back into a mark: it can keep a page
   that the straight-line rule dropped and never drops one that rule kept. Two real creased
   backs gave the numbers: creases 0.17 to 0.51 mm thick, darkest 152 to 204, in segments 2 to
   23 mm long in two rows at a third and two thirds of the height; one faint tall artefact
@@ -252,20 +255,33 @@ What the first pull request settled where the specification left room.
   fixtures at 200, 300 and 600 dpi, crisp, soft and tinted, every crease and the artefact have all
   their pixels within 0.25 mm of their axis (the tolerance is 0.4 mm) and are at least 3.6 times
   longer than wide; the squattest real one, 2 mm long and 0.51 thick, is 3.9. The tolerance
-  absorbs a bow of about 0.3 mm over 153 mm; a line bowed by 0.5 mm is not straight and counts.
+  absorbs a bow of 0.3 mm over 153 mm at every resolution and pen tried; a bow of 0.4 to 0.6 mm
+  passes or not depending on the resolution and the pen, and one of 0.8 mm or more is not straight
+  and counts. A wave swinging 0.15 mm either side of a line is that line at every resolution and pen
+  tried; one swinging 0.3 mm either side (0.6 mm peak to peak) counts with a 0.3 mm pen, and with a
+  0.5 mm pen from about 0.2 mm; a millimetre either side is writing.
   The tests use pencil-like strokes darkest 110 to 150; that is a test value, not a measurement of
-  real pencil. Known limits, all of them on the side of keeping a page except the first two: a lone
-  faint straight stroke ("l", "I", "1", "-", "!", the stem of an "i" or "j") and dashed or ruled
-  lines (pieces end to end, or rules more than 4.0 mm apart) are lines and may be ignored; text so
-  pale and small that only a few isolated stems register (darkest 190, 6 to 8 pt, where the plain
-  detector finds three marks or fewer) may be ignored, and so may two strokes so close that the far
-  one lies within 0.8 mm of the near one's axis (a tight "=" in 10 pt, a crease drawn twice); a
-  crease with a mark beside it keeps the page, so do two creases less than 4.0 mm apart; creases
-  that cross are one big mark and keep the page; a speck under a millimetre next to a crease segment
-  under 2 mm long can keep the page, at 300 dpi and finer (a stub that short shows nothing of the
-  crease's course, and real segments are 2 to 23 mm); ink lying along a crease counts only where it
-  leaves it, so a stroke that is a mark only thanks to the part inside the crease can be missed; a
-  speck on a crease counts when the scan is soft enough to grow it past a millimetre.
+  real pencil.
+  Known limits, in two groups. **A page may be called blank**, because what is on it is a faint
+  straight line with nothing beside it: a lone faint straight stroke ("l", "I", "1", "-", "!", the
+  stem of an "i" or "j"); dashed or ruled lines (pieces end to end, or rules more than 4.0 mm
+  apart); the stems of a tally more than about 4.0 mm apart (`OUTER_MM`, measured to the nearest
+  pixel of the next stem: 3.5 mm keeps the page, 4.5 mm does not, 4.2 mm depends on the resolution);
+  a bare tick whose hook is about 2 mm or shorter (on a stroke 8 to 16 mm long: the hook is the
+  pixels off the stroke's axis, so at least 90% of the tick, `STRAIGHT_SHARE`, is still straight
+  and a longer stroke allows a longer hook; 1.0 mm is ignored, 3.0 mm keeps the page, 1.6 to 2 mm
+  depends on the resolution); text so pale (darkest about 190 to 196) that only a few
+  isolated stems register, at any size from 6 to 14 pt (in the probes at most about 7 stems, 5 to
+  18 mm apart, and no page with 6 or more marks was blank); two strokes so close that the far one
+  lies within 0.8 mm of the near one's axis (a tight "=" in 10 pt, a crease drawn twice); a line
+  bowed or waved so little that it counts as straight (above); and ink lying along a crease counts
+  only where it leaves it, so a stroke that is a mark only thanks to the part inside the crease can
+  be missed. **A page is kept, on the conservative side**: a crease with a mark beside it keeps the
+  page, so do two creases less than 4.0 mm apart; creases that cross are one big mark and keep the
+  page; a speck under a millimetre next to a crease segment under 2 mm long can keep the page, at
+  300 dpi and finer (a stub that short shows nothing of the crease's course, and real segments are
+  2 to 23 mm); a speck on a crease counts when the scan is soft enough to grow it past a
+  millimetre; fragments of 1.0 mm or more beside the artefact keep the page at 300 dpi.
 - **Black and white.** A pixel is black when it is darker than 96 (the same level as a mark), or
   when it is 25 levels darker than the mean of an 8 mm window and than the 8 mm closing of the
   page (strokes thinner than the window removed). The mean alone follows uneven lighting but

@@ -19,14 +19,16 @@ SLIP_RGB = (195, 205, 215)
 COLOURS = {"slip": SLIP_RGB, "backing": BACKING_RGB}
 ISLAND_MM = (11.5, 3.0)  # wide and tall: over 5% of the width, so it moves the tail's start
 FRAMES = [(200, 0.0), (200, 1.5), (300, 0.0)]  # resolution and tilt
+SCRAP_MM = (6.0, 1.0)  # at a side, under 5% of the width: the tail's start stays where it is
 
 
-def island_at(scene, offset_mm: float, size_mm: tuple[float, float], rgb):
+def island_at(scene, offset_mm: float, size_mm: tuple[float, float], rgb, *, at_side=False):
     """``scene`` with an island of ``size_mm`` (wide, tall) ``offset_mm`` under the row where its
-    tail starts (without the island), and the row after the island."""
+    tail starts (without the island), in the middle of the page or against its left edge, and the
+    row after the island."""
     dpi = scene.dpi
     first = _tail_start(with_jpeg(scene).image, dpi) + px(offset_mm, dpi)
-    column = int(0.45 * scene.width)
+    column = 0 if at_side else int(0.45 * scene.width)
     wide, tall = px(size_mm[0], dpi), px(size_mm[1], dpi)
     painted_scene = painted(scene, slice(first, first + tall), slice(column, column + wide), rgb)
     return with_jpeg(painted_scene), first + tall
@@ -53,6 +55,27 @@ def test_a_small_island_of_the_backing_colour_in_the_white_tail_is_kept(
     scene, bottom = island_at(
         frame(dpi, tilt_deg=tilt), offset_mm, (size_mm, size_mm), COLOURS[name]
     )
+    assert scene.height - trim_page(colour_page(scene)).bottom >= bottom
+
+
+@pytest.mark.parametrize(("dpi", "tilt"), FRAMES[:2])
+def test_a_scrap_of_the_backing_colour_at_a_side_in_the_first_3_mm_of_the_tail_is_cut(
+    dpi: int, tilt: float
+) -> None:
+    """The first ``TAIL_KEEP_MM`` of the tail are in the strip, and a scrap that touches a side of
+    it is joined to the side by backing alone: it is taken for the band (a documented limit)."""
+    scene, bottom = island_at(frame(dpi, tilt_deg=tilt), 2.0, SCRAP_MM, BACKING_RGB, at_side=True)
+    result = trim_page(colour_page(scene))
+    assert result.band_bottom
+    assert scene.height - result.bottom < bottom
+
+
+@pytest.mark.parametrize(("dpi", "tilt"), FRAMES[:2])
+def test_the_same_scrap_below_the_first_3_mm_of_the_tail_is_ink_and_kept(
+    dpi: int, tilt: float
+) -> None:
+    """Beyond the strip only the ink search of the tail rule looks, and it finds the scrap."""
+    scene, bottom = island_at(frame(dpi, tilt_deg=tilt), 4.0, SCRAP_MM, BACKING_RGB, at_side=True)
     assert scene.height - trim_page(colour_page(scene)).bottom >= bottom
 
 

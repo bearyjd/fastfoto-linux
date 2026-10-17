@@ -65,7 +65,15 @@ from dataclasses import dataclass, replace
 import cv2
 import numpy as np
 
-from fastfoto_linux.documents.band import BOTTOM_EDGE, TOP_EDGE, WHITE_MIN, EdgeRule, band_cut
+from fastfoto_linux.documents.band import (
+    BOTTOM_EDGE,
+    SHADOW_TOLERANCE,
+    TOP_EDGE,
+    WHITE_MIN,
+    EdgeRule,
+    backing_mask,
+    band_cut,
+)
 from fastfoto_linux.documents.loader import MIN_PAGE_MM, WHITE, LoadedPage
 from fastfoto_linux.documents.marks import find_marks
 from fastfoto_linux.documents.modes import ColourMode
@@ -266,13 +274,15 @@ def _backing_pixels(strip: np.ndarray, bridge: np.ndarray | None = None) -> np.n
     """Which pixels of ``strip`` are the scanner's backing and so need no keeping.
 
     On a colour page: backing-coloured and joined to a side of the strip, directly or (for the
-    band cut) through the ``bridge`` pixels, the pad. A grey page has no hue, and a pale slip or a
-    pastel margin looks just like the backing wherever it lies, so on a grey page nothing is
-    backing.
+    band cut) through the ``bridge`` pixels, the pad. The band cut judges the colour by the band's
+    own tolerance (``SHADOW_TOLERANCE``: the band darkens towards the paper and the codec rings),
+    every other strip by the scanner's. A grey page has no hue, and a pale slip or a pastel
+    margin looks just like the backing wherever it lies, so on a grey page nothing is backing.
     """
     if strip.ndim != RGB_NDIM:
         return np.zeros(strip.shape, dtype=bool)
-    backing = _is_backing(strip)
+    tolerance = BACKGROUND_PRIOR_TOLERANCE if bridge is None else SHADOW_TOLERANCE
+    backing = backing_mask(strip, tolerance)
     return _joined_to_sides(backing if bridge is None else backing | bridge) & backing
 
 

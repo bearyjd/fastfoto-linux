@@ -369,11 +369,11 @@ def test_the_offer_after_a_problem_with_saving_says_to_fix_it_first() -> None:
 
 
 def test_a_pdf_made_without_the_text_the_tool_was_missing_for_is_a_warning(tmp_path: Path) -> None:
-    made = clean_document(tmp_path, ocr=OcrStatus.UNAVAILABLE, detail="ocrmypdf is not installed")
+    made = clean_document(tmp_path, ocr=OcrStatus.UNAVAILABLE, detail="Tesseract is not installed")
     banner = document_result_banner(State.DONE, made)
     assert banner is not None
     assert banner.kind == "warning"
     assert banner.text == (
         f"Document_0001.pdf saved to {tmp_path}, "
-        "but searchable text was not added (OCRmyPDF is not installed)."
+        "but searchable text was not added (Tesseract is not installed)."
     )

@@ -28,7 +28,7 @@ from tests.gui.doc_helpers import (
 )
 from tests.gui.qt.qt_helpers import child, click, settle, wait_until
 
-pytestmark = pytest.mark.usefixtures("kirigami")
+pytestmark = pytest.mark.usefixtures("kirigami", "ocrmypdf_comes_with_the_app")
 
 
 @pytest.fixture

@@ -28,6 +28,8 @@ jobs:
       - run: uv run --no-sync ruff format --check .
       - name: The desktop installer's hashed requirements match uv.lock
         run: uv export --locked --no-dev --no-emit-project --hashes --no-header --no-annotate --quiet | diff - packaging/requirements-desktop.txt
+      - name: The OCR extra's hashed requirements match uv.lock
+        run: uv export --locked --no-dev --no-emit-project --extra ocr --hashes --no-header --no-annotate --quiet | diff - packaging/requirements-ocr.txt
 
   test:
     runs-on: ubuntu-latest

@@ -46,3 +46,12 @@ def run_fake(
         timeout_s=SHORT_TIMEOUT_S,
         grace_s=SHORT_GRACE_S,
     )
+
+
+def program(folder: Path, name: str) -> str:
+    """A program that does nothing, in ``folder``; returns its path."""
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / name
+    path.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    path.chmod(0o755)
+    return str(path)

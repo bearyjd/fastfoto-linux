@@ -26,6 +26,13 @@ ffscan = "fastfoto_linux.cli:main"
 # the PyPI PySide6 wheel bundles its own Qt and cannot load the system Kirigami plugin.
 fastfoto = "fastfoto_linux.gui.qt.app:main"
 
+[project.optional-dependencies]
+# Searchable text. The native installer installs it (packaging/requirements-ocr.txt, hashed);
+# Tesseract, the program it drives, is not a Python package (brew install tesseract).
+ocr = [
+    "ocrmypdf>=17.13.0",
+]
+
 [dependency-groups]
 dev = [
     "pypdf>=6.20.1",

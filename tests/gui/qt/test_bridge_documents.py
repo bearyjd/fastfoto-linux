@@ -22,6 +22,8 @@ from tests.cli.fakes import DEVICE
 from tests.gui.doc_helpers import FakeBuild, ScriptedDocumentSession
 from tests.gui.qt.qt_helpers import settle, wait_until
 
+pytestmark = pytest.mark.usefixtures("ocrmypdf_comes_with_the_app")
+
 
 @pytest.fixture
 def make_doc_bridge(make_bridge: Any, out: Path):

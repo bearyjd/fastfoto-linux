@@ -43,6 +43,7 @@ from fastfoto_linux.documents.ocr import (
     run_ocr,
     validate_langs,
 )
+from fastfoto_linux.documents.ocr_tools import ocr_missing_text
 from fastfoto_linux.documents.pdf import assemble_pdf
 from fastfoto_linux.documents.publish import publish_pdf, require_output_folder
 from fastfoto_linux.documents.trim import Trimmed, trim_page
@@ -96,9 +97,10 @@ def check_settings(settings: DocumentSettings) -> CheckedSettings:
 
     Raises DocumentSettingsError for a name with no usable characters or OCR languages that are
     no Tesseract codes (even with OCR off), and OcrMissingError when searchable text is required
-    (``OcrMode.ON``) and ``ocrmypdf`` is not installed, and ``OutputFolderMissingError`` (a
-    DocumentSettingsError) when the output folder is not an existing folder: the caller makes it,
-    and a PDF is not worked on, nor a stack of paper scanned, for a folder that is not there.
+    (``OcrMode.ON``) and OCR is not available (OCRmyPDF, Tesseract or both is missing), and
+    ``OutputFolderMissingError`` (a DocumentSettingsError) when the output folder is not an
+    existing folder: the caller makes it, and a PDF is not worked on, nor a stack of paper
+    scanned, for a folder that is not there.
     """
     try:
         name = sanitise_prefix(settings.name)
@@ -120,12 +122,12 @@ def _now() -> datetime:
 
 
 def _ocr_executable(mode: OcrMode) -> str | None:
-    """The tool to run, or None when OCR is off or (``auto``) not installed."""
+    """The tool to run, or None when OCR is off or (``auto``) not available."""
     if mode is OcrMode.OFF:
         return None
     found = find_ocrmypdf()
     if found is None and mode is OcrMode.ON:
-        raise OcrMissingError("searchable text needs ocrmypdf, which is not installed")
+        raise OcrMissingError(f"searchable text needs OCR, but {ocr_missing_text()}")
     return found
 
 
@@ -213,7 +215,7 @@ def _searchable(  # noqa: PLR0913 - what OCR needs, and the one hook, in one pla
     if settings.ocr is OcrMode.OFF:
         return OcrOutcome(OcrStatus.SKIPPED)
     if executable is None:
-        return OcrOutcome(OcrStatus.UNAVAILABLE, "ocrmypdf is not installed")
+        return OcrOutcome(OcrStatus.UNAVAILABLE, ocr_missing_text())
     if on_ocr is not None:
         on_ocr()
     timeout = settings.ocr_timeout_s

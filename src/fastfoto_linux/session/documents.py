@@ -79,8 +79,8 @@ def run_document_session(  # noqa: PLR0913 - the callbacks are the interface; sc
     ``DocumentSettingsError`` for a name with no usable characters, OCR languages that are no
     Tesseract codes or an output folder that is not an existing folder (the one error
     ``OutputFolderMissingError``, which ``build_document`` raises too), an ``OcrMissingError``
-    when searchable text is required (``OcrMode.ON``) and ``ocrmypdf`` is not installed. Both
-    are ``DocumentError`` with a message fit to show as it is.
+    when searchable text is required (``OcrMode.ON``) and OCR is not available (OCRmyPDF,
+    Tesseract or both is missing). Both are ``DocumentError`` with a message fit to show as it is.
 
     A scanner that fails part-way leaves the pages it finished and **no PDF is made from part
     of a stack** (a PDF with its last pages missing is too easy to take for the whole): the

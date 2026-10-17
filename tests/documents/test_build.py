@@ -226,7 +226,7 @@ def test_required_ocr_that_is_missing_stops_before_a_single_page_is_read(
     monkeypatch.setattr(build, "inspect_page", refuse)
     monkeypatch.setattr(build, "load_page", refuse)
     pages = write_pages(raw, [text_scene(1)])
-    with pytest.raises(OcrMissingError, match="ocrmypdf"):
+    with pytest.raises(OcrMissingError, match="OCRmyPDF"):
         build_document(pages, settings(out, ocr=OcrMode.ON))
     assert list(out.iterdir()) == []
 
@@ -237,6 +237,29 @@ def test_automatic_ocr_without_ocrmypdf_still_writes_the_plain_pdf(raw: Path, ou
     assert result.ocr.status is OcrStatus.UNAVAILABLE
     assert result.ok
     assert result.pdf.exists()
+    assert result.ocr.detail == "OCRmyPDF and Tesseract are not installed"
+
+
+def test_automatic_ocr_without_tesseract_says_it_is_tesseract_that_is_missing(
+    raw: Path, out: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake.put_on_path(tmp_path / "bin", monkeypatch)
+    (tmp_path / "bin" / "tesseract").unlink()
+    pages = write_pages(raw, [text_scene(1)])
+    result = build_document(pages, settings(out, ocr=OcrMode.AUTO))
+    assert result.ocr.status is OcrStatus.UNAVAILABLE
+    assert result.ocr.detail == "Tesseract is not installed"
+
+
+def test_required_ocr_without_tesseract_says_it_is_tesseract_that_is_missing(
+    raw: Path, out: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fake.put_on_path(tmp_path / "bin", monkeypatch)
+    (tmp_path / "bin" / "tesseract").unlink()
+    pages = write_pages(raw, [text_scene(1)])
+    with pytest.raises(OcrMissingError, match="Tesseract is not installed") as raised:
+        build_document(pages, settings(out, ocr=OcrMode.ON))
+    assert "OCRmyPDF" not in str(raised.value)
 
 
 def test_ocr_that_works_publishes_the_searchable_pdf(

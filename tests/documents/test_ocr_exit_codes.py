@@ -5,9 +5,10 @@ from pathlib import Path
 
 import pytest
 
+from fastfoto_linux.documents import ocr_tools
 from fastfoto_linux.documents.ocr import OcrStatus, run_ocr
 from tests import _fake_ocrmypdf as fake
-from tests.documents.ocr_helpers import PLAIN, TIMEOUT_S, run_fake
+from tests.documents.ocr_helpers import PLAIN, TIMEOUT_S, program, run_fake
 
 INSTALL = "sudo dnf install tesseract-langpack-eng tesseract-osd"
 
@@ -28,7 +29,7 @@ def fake_on_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     ("code", "hint"),
     [
         (1, "--lang"),
-        (2, "could not read"),
+        (2, "did not accept the options"),
         (3, INSTALL),
         (4, "not a valid PDF"),
         (5, "permission"),
@@ -62,6 +63,35 @@ def test_a_missing_dependency_names_the_language_packs_asked_for(
     assert "sudo dnf install tesseract-langpack-eng tesseract-langpack-deu tesseract-osd" in (
         outcome.detail
     )
+
+
+def test_a_missing_dependency_on_a_homebrew_system_names_the_brew_packages(
+    fake_on_path: Path, staging: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    program(fake_on_path.parent, "brew")
+    monkeypatch.setattr(ocr_tools, "BREW", "brew")
+    outcome = run_fake(
+        fake_on_path, monkeypatch, staging_parent=staging, langs="eng+deu", mode="exit", exit_code=3
+    )
+    assert ocr_tools.BREW_INSTALL_HINT in outcome.detail
+    assert ocr_tools.BREW_LANG_HINT in outcome.detail
+    assert "dnf" not in outcome.detail
+
+
+def test_a_missing_dependency_on_an_immutable_system_without_brew_names_the_rpm_ostree_packages(
+    fake_on_path: Path, staging: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    marker = tmp_path / "ostree-booted"
+    marker.touch()
+    monkeypatch.setattr(ocr_tools, "OSTREE_MARKER", marker)
+    outcome = run_fake(
+        fake_on_path, monkeypatch, staging_parent=staging, langs="eng+deu", mode="exit", exit_code=3
+    )
+    assert "rpm-ostree install tesseract-langpack-eng tesseract-langpack-deu tesseract-osd" in (
+        outcome.detail
+    )
+    assert "reboot" in outcome.detail
+    assert "dnf" not in outcome.detail
 
 
 def test_a_code_nobody_documented_is_reported_as_it_is(

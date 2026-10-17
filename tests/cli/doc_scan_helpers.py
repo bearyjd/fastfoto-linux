@@ -6,7 +6,7 @@ from fastfoto_linux.cli import main
 
 STAMP = "20261013T230000Z"
 OFF = ["--ocr", "off"]
-HINT = "sudo dnf install ocrmypdf"
+HINT = "sudo dnf install tesseract tesseract-osd"
 
 
 def doc_scan(out: Path, *extra: str) -> int:

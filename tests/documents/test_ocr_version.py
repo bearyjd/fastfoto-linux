@@ -1,7 +1,10 @@
 """Which ocrmypdf will run: the version of the app's own module or what the program says, asked
 at most once, and what that version accepts."""
 
+import contextlib
 import logging
+import os
+import signal
 import sys
 from pathlib import Path
 
@@ -90,6 +93,42 @@ def test_a_program_that_does_not_answer_is_given_up_on(
     monkeypatch.setattr(ocr_version, "VERSION_TIMEOUT_S", 0.5)
     fake.configure(monkeypatch, version_hang=True)
     assert ocrmypdf_version(str(fake_on_path)) is None
+
+
+def test_a_program_that_hangs_is_stopped_with_everything_it_started(
+    fake_on_path: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pid_file = tmp_path / "grandchild.pid"
+    monkeypatch.setattr(ocr_version, "VERSION_TIMEOUT_S", 2.0)  # time to start the grandchild
+    fake.configure(monkeypatch, version_hang=True, version_child=str(pid_file))
+    try:
+        assert ocrmypdf_version(str(fake_on_path)) is None
+        grandchild = int(pid_file.read_text(encoding="utf-8"))
+        assert fake.wait_until_gone(grandchild), (
+            "the grandchild of the version probe is still alive"
+        )
+    finally:  # do not leave a sleeper behind when the test fails
+        if pid_file.exists():
+            with contextlib.suppress(ProcessLookupError):
+                os.kill(int(pid_file.read_text(encoding="utf-8")), signal.SIGKILL)
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [{"version_text": "no idea"}, {"version_hang": True}],
+    ids=["no version printed", "no answer in time"],
+)
+def test_only_an_answer_is_remembered_a_failure_is_asked_again(
+    fake_on_path: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: dict[str, object]
+) -> None:
+    monkeypatch.setattr(ocr_version, "VERSION_TIMEOUT_S", 0.5)
+    log = tmp_path / "version.log"
+    fake.configure(monkeypatch, version_log=str(log), **failure)
+    assert ocrmypdf_version(str(fake_on_path)) is None
+    fake.configure(monkeypatch, version="17.13.0", version_log=str(log))
+    assert ocrmypdf_version(str(fake_on_path)) == "17.13.0"
+    assert ocrmypdf_version(str(fake_on_path)) == "17.13.0"
+    assert log.read_text(encoding="utf-8").splitlines() == ["asked", "asked"]
 
 
 # ---- what a version accepts -----------------------------------------------------------------

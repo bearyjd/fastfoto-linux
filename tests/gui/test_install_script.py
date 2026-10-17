@@ -815,6 +815,64 @@ def test_on_a_terminal_anything_but_yes_installs_nothing(
     assert BREW_INSTALL_HINT in output
 
 
+def run_with_streams(
+    checkout: Path, env: dict[str, str], *, stdin_tty: bool, stdout_tty: bool
+) -> tuple[int, str]:
+    """The installer with "y" waiting on its input, which is a terminal or a pipe, and its output
+    (and errors) a terminal or a pipe: the prompt needs both ends to be a terminal."""
+    script = str(checkout / "tools" / "install-desktop.sh")
+    in_master, in_slave = pty.openpty() if stdin_tty else (-1, -1)
+    out_master, out_slave = pty.openpty() if stdout_tty else (-1, -1)
+    process = subprocess.Popen(
+        ["bash", script],
+        env=env,
+        stdin=in_slave if stdin_tty else subprocess.PIPE,
+        stdout=out_slave if stdout_tty else subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    for slave in (in_slave, out_slave):
+        if slave >= 0:
+            os.close(slave)
+    if stdin_tty:
+        os.write(in_master, b"y\n")
+    else:
+        assert process.stdin is not None
+        process.stdin.write(b"y\n")
+        process.stdin.close()
+    output = b""
+    while True:
+        try:
+            if stdout_tty:
+                chunk = os.read(out_master, 4096)
+            else:
+                assert process.stdout is not None
+                chunk = process.stdout.read()
+        except OSError:  # the other end is closed
+            break
+        if not chunk:
+            break
+        output += chunk
+    for master in (in_master, out_master):
+        if master >= 0:
+            os.close(master)
+    return process.wait(timeout=60), output.decode(errors="replace")
+
+
+@pytest.mark.parametrize(
+    ("stdin_tty", "stdout_tty"),
+    [(False, False), (False, True), (True, False)],
+    ids=["both piped", "only output a terminal", "only input a terminal"],
+)
+def test_a_yes_that_is_not_typed_at_a_terminal_installs_nothing(
+    checkout: Path, ocr_env: dict[str, str], tmp_path: Path, stdin_tty: bool, stdout_tty: bool
+) -> None:
+    add_brew(tmp_path, ocr_env)
+    status, output = run_with_streams(checkout, ocr_env, stdin_tty=stdin_tty, stdout_tty=stdout_tty)
+    assert status == 0, output
+    assert not brew_log(tmp_path).exists()
+    assert BREW_INSTALL_HINT in output  # it got as far as saying how, and did not ask
+
+
 def test_a_dry_run_on_a_terminal_asks_nothing(
     checkout: Path, ocr_env: dict[str, str], tmp_path: Path
 ) -> None:

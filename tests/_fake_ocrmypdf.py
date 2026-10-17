@@ -17,7 +17,8 @@ grandchild's and the folder it was given (``staging_dir``) with that folder's pe
 (``staging_mode``).
 
 ``--version`` is answered before anything else (the spec's ``version``, 17.13.0 unless it says
-otherwise; ``version_text`` is what is printed instead, ``version_hang`` makes it sleep and
+otherwise; ``version_text`` is what is printed instead, ``version_hang`` makes it sleep,
+``version_child`` is a file that receives the pid of a sleeping grandchild it starts first and
 ``version_log`` is a file that gets one line for every such call). Like a real ocrmypdf older than
 17 it rejects ``--rasterizer`` with argparse's exit status 2, and ``reject`` is a list of other
 flags it rejects the same way.
@@ -52,6 +53,12 @@ _SCRIPT = textwrap.dedent(
     if argv == ["--version"]:
         if spec.get("version_log"):
             open(spec["version_log"], "a").write("asked\\n")
+        if spec.get("version_child"):
+            sleeper = subprocess.Popen(
+                [sys.executable, "-c", "import time; time.sleep(60)"],
+                stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            open(spec["version_child"], "w").write(str(sleeper.pid))
         if spec.get("version_hang"):
             time.sleep(60)
         print(spec.get("version_text", version))

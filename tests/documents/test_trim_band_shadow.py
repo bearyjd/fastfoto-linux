@@ -11,7 +11,8 @@ import numpy as np
 import pytest
 
 from fastfoto_linux.documents.trim import trim_page
-from tests.doc_synth import LETTER_MM, paper_scene, px, with_jpeg, with_tinted_block
+from tests.doc_synth import LETTER_MM, paper_scene, px, with_tinted_block
+from tests.doc_synth_band import with_jpeg
 from tests.documents.helpers import colour_page
 from tests.documents.test_trim_band_real import assert_band_cut, frame, painted
 from tests.documents.trim_helpers import DPI, RECEIPT_MM

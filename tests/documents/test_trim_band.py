@@ -12,16 +12,8 @@ import numpy as np
 import pytest
 
 from fastfoto_linux.documents.trim import trim_page
-from tests.doc_synth import (
-    BACKING_RGB,
-    EDGE_LINE_MM,
-    PAD_WEDGE_MM,
-    Scene,
-    banded_scene,
-    px,
-    with_text,
-    with_tinted_block,
-)
+from tests.doc_synth import BACKING_RGB, Scene, px, with_text, with_tinted_block
+from tests.doc_synth_band import EDGE_LINE_MM, PAD_WEDGE_MM, banded_scene
 from tests.documents.helpers import bw_page, colour_page, grey_page
 
 DPIS = (200, 300, 600)

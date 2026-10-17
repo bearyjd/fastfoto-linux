@@ -1,12 +1,33 @@
 """What the README, the design note and the docstrings say about the backing band is what the
-code does: its structure, what is cut, and the limits (side slivers, a bar in the backing colour).
+code does: the numbers are the constants of the code, the limits are the tested limits, and none
+of it tells how the rule came about (that is in the pull request).
 """
 
+import re
 from pathlib import Path
 
 import pytest
 
-from fastfoto_linux.documents import band, trim
+from fastfoto_linux.documents import band, guard, trim
+from fastfoto_linux.documents.band import (
+    BAND_SHARE,
+    BOTTOM_EDGE,
+    COLOURED_SHARE,
+    FRINGE_PX,
+    HOLE_MM,
+    SHADOW_TOLERANCE,
+    SHADOW_ZONE_MM,
+    TOP_EDGE,
+    WHITE_MIN,
+)
+from fastfoto_linux.documents.guard import (
+    DUST_MM,
+    DUST_TOLERANCE,
+    SHADOW_CLUSTER_MM,
+    SHADOW_STRIP_MM,
+)
+from fastfoto_linux.documents.trim import MIN_PAPER_MM
+from fastfoto_linux.pipeline.crop import BACKGROUND_PRIOR_TOLERANCE
 
 ROOT = Path(__file__).resolve().parents[2]
 DOCUMENTS = {
@@ -14,45 +35,68 @@ DOCUMENTS = {
     "design note": (ROOT / "docs" / "design" / "documents.md").read_text(encoding="utf-8"),
     "band docstring": band.__doc__ or "",
 }
-CLAIMS = (
-    "full-width backing band",
-    "pad of pure white",
-    "never through the edge line",
-    "at most 1 mm of the band stays",
-    "a band of 3 to 20 mm at the bottom and of 1 to 4 mm at the top",
-    "side slivers of up to 2 mm are left",
-    "a full-width bar in the backing colour at the top or bottom edge is cut",
-    "grey and 1-bit pages are not cut by the band rule",
-    "the blank-page margin is measured in full from the new edge",
-    # round 2: the geometry of a real frame
-    "the band is looked for above the white tail",
-    "the pad also forms wedges up the sides",
-    "a band row has non-white pixels on at least 50% of its width",
-    "backing on at least 95% of those",
-    "white is every channel at 240 or more",
-    "never extends into the white rows above it",
-    "more than 10 mm of white that touches neither side of the row",
-    "pad pixels are exempt one by one",
-    # round 3: the last check of a band cut uses the band's own tolerance
-    "judged by the band's own tolerance",
-)
+# Each fact is a number of the code with its unit and one word of context.
+FACTS = {
+    "size at the bottom": f"{BOTTOM_EDGE.min_mm:g} to {BOTTOM_EDGE.max_mm:g} mm",
+    "size at the top": f"to {TOP_EDGE.max_mm:g} mm at the top",
+    "reach": f"within {BOTTOM_EDGE.reach_mm:g} mm",
+    "least that stays": f"at least {BOTTOM_EDGE.keep_mm:g} mm of the band stays",
+    "most that stays": f"~{SHADOW_ZONE_MM:g} mm",
+    "non-white share": f"{COLOURED_SHARE:.0%} of its width",
+    "backing share": f"{BAND_SHARE:.0%} of those",
+    "white": f"{WHITE_MIN} or more",
+    "slip in a row": f"more than {HOLE_MM:g} mm of white",
+    "page that stays": f"{MIN_PAPER_MM:g} mm of page",
+    "fringe": f"within {FRINGE_PX} px",
+    "strict tolerance": f"within {BACKGROUND_PRIOR_TOLERANCE:g} of the backing",
+    "wide tolerance": f"within {SHADOW_TOLERANCE} of the backing",
+    "shadow strip": f"{SHADOW_STRIP_MM:g} mm of the strip",
+    "shadow speck": f"under {SHADOW_CLUSTER_MM:g} mm",
+    "dust size": f"under {DUST_MM:g} mm",
+    "dust colour": f"within {DUST_TOLERANCE} of the backing",
+}
+README_SKIPS = {"fringe", "wide tolerance", "shadow speck"}  # the README is short
+CONCEPTS = ("full-width", "edge line", "white tail", "wedge", "1-bit", "sliver", "flush with")
 STALE = (
     "The top is never trimmed",
     "top is never trimmed",
-    "95% of all the pixels",  # round 1: the share was of the whole width
+    "95% of all the pixels",
     "never over what is not white",
-    "starts within 20 mm of the bottom edge",  # round 1: of the frame, tail included
+    "starts within 20 mm of the bottom edge",
+    "at most 1 mm of the band stays",
+    "at most 1 mm of it stays",
 )
+TEXTS = {**DOCUMENTS, "trim docstring": trim.__doc__ or "", "guard docstring": guard.__doc__ or ""}
 
 
-@pytest.mark.parametrize("claim", CLAIMS)
+def flat(text: str) -> str:
+    return " ".join(text.split())
+
+
+def has_number(text: str, fact: str) -> bool:
+    return re.search(r"(?<![\d.])" + re.escape(fact), flat(text).lower()) is not None
+
+
+@pytest.mark.parametrize("fact", list(FACTS))
 @pytest.mark.parametrize("name", list(DOCUMENTS))
-def test_the_band_rule_is_described(name: str, claim: str) -> None:
-    assert claim in " ".join(DOCUMENTS[name].split())
+def test_the_numbers_of_the_band_rule_are_the_constants_of_the_code(name: str, fact: str) -> None:
+    if name == "README" and fact in README_SKIPS:
+        pytest.skip("the README gives the rule, not every constant")
+    assert has_number(DOCUMENTS[name], FACTS[fact].lower()), FACTS[fact]
+
+
+@pytest.mark.parametrize("concept", CONCEPTS)
+@pytest.mark.parametrize("name", list(DOCUMENTS))
+def test_the_band_rule_is_described(name: str, concept: str) -> None:
+    assert concept in flat(DOCUMENTS[name]).lower()
 
 
 @pytest.mark.parametrize("stale", STALE)
-@pytest.mark.parametrize("name", [*DOCUMENTS, "trim docstring"])
-def test_the_top_is_no_longer_described_as_never_trimmed(name: str, stale: str) -> None:
-    text = trim.__doc__ or "" if name == "trim docstring" else DOCUMENTS[name]
-    assert stale not in " ".join(text.split())
+@pytest.mark.parametrize("name", list(TEXTS))
+def test_nothing_describes_the_band_rule_as_it_was(name: str, stale: str) -> None:
+    assert stale.lower() not in flat(TEXTS[name]).lower()
+
+
+@pytest.mark.parametrize("name", list(TEXTS))
+def test_nothing_tells_the_history_of_the_rule_in_rounds(name: str) -> None:
+    assert re.search(r"\bround \d", TEXTS[name], flags=re.IGNORECASE) is None

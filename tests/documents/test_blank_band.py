@@ -12,7 +12,8 @@ import pytest
 from fastfoto_linux.documents import DocumentSettings, OcrMode, build_document
 from fastfoto_linux.documents.blank import is_blank
 from fastfoto_linux.documents.trim import trim_page
-from tests.doc_synth import EDGE_LINE_MM, Scene, banded_scene, with_text
+from tests.doc_synth import Scene, with_text
+from tests.doc_synth_band import EDGE_LINE_MM, banded_scene
 from tests.documents.helpers import colour_page, text_scene, write_pages
 
 DPIS = (200, 300, 600)

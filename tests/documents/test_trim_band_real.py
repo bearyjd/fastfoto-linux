@@ -15,15 +15,8 @@ import pytest
 
 from fastfoto_linux.documents.band import BOTTOM_EDGE, band_cut
 from fastfoto_linux.documents.trim import trim_page
-from tests.doc_synth import (
-    BACKING_RGB,
-    SHADOW_RGB,
-    Scene,
-    px,
-    scanner_page,
-    with_jpeg,
-    with_text,
-)
+from tests.doc_synth import BACKING_RGB, Scene, px, with_text
+from tests.doc_synth_band import SHADOW_RGB, scanner_page, with_jpeg
 from tests.documents.helpers import bw_page, colour_page, grey_page
 
 KEEP_MM = 1.0

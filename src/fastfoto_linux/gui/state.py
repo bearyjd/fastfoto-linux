@@ -4,7 +4,14 @@ from collections.abc import Mapping
 from enum import StrEnum, auto
 from types import MappingProxyType
 
-from fastfoto_linux.session import SessionResult
+from fastfoto_linux.session import DocumentSessionResult, SessionResult
+
+
+class Mode(StrEnum):
+    """What the page scans: photos, or documents that become one PDF."""
+
+    PHOTOS = "photos"
+    DOCUMENTS = "documents"
 
 
 class State(StrEnum):
@@ -71,7 +78,7 @@ def can_cancel(state: State) -> bool:
     return state in _CANCELLABLE
 
 
-def final_state(result: SessionResult) -> State:
+def final_state(result: SessionResult | DocumentSessionResult) -> State:
     """Where a finished session leaves the page: FAILED, CANCELLED or DONE."""
     if result.error is not None:
         return State.FAILED

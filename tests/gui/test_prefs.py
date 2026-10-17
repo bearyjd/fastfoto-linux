@@ -21,7 +21,7 @@ def path(tmp_path: Path) -> Path:
 CUSTOM = ScanForm(
     output_folder="/srv/demo/FastFoto",
     album="Family Trips",
-    feed="face-up",
+    loaded="face-down",
     backs="always",
     restore=False,
     orient=False,
@@ -114,7 +114,7 @@ def test_unknown_keys_are_ignored(path: Path, caplog: pytest.LogCaptureFixture) 
         ("dpi", "fast"),
         ("dpi", 123),
         ("dpi", True),
-        ("feed", "sideways"),
+        ("loaded", "sideways"),
         ("backs", 3),
         ("redeye", "yes"),
         ("album", ["a"]),
@@ -132,6 +132,72 @@ def test_a_bad_value_costs_only_its_own_field(
     others = {k: v for k, v in vars_of(CUSTOM).items() if k != key}
     assert {k: getattr(loaded, k) for k in others} == others
     assert key in caplog.text
+
+
+def write_prefs(path: Path, data: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data))
+
+
+@pytest.mark.parametrize(("old", "loaded"), [("face-down", "face-up"), ("face-up", "face-down")])
+def test_an_old_file_keeps_its_behaviour_under_the_new_names(
+    path: Path, old: str, loaded: str
+) -> None:
+    """Before the names were fixed the file's "face-down" meant back first, "face-up" front."""
+    write_prefs(path, {"feed": old, "album": "Rome"})
+    form = load_form(path)
+    assert form.loaded == loaded
+    assert (form.loaded == "face-down") is (old == "face-up")  # front first, as it was saved
+    assert form.album == "Rome"
+
+
+@pytest.mark.parametrize("loaded", ["face-up", "face-down"])
+def test_a_new_file_is_read_as_it_is(path: Path, loaded: str) -> None:
+    write_prefs(path, {"loaded": loaded})
+    assert load_form(path).loaded == loaded
+
+
+@pytest.mark.parametrize("both", ["face-up", "face-down"])
+def test_the_new_key_wins_over_the_old_one(path: Path, both: str) -> None:
+    write_prefs(path, {"feed": both, "loaded": both})  # the old key alone would mean the opposite
+    assert load_form(path).loaded == both
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        {"loaded": "sideways"},
+        {"loaded": 3},
+        {"loaded": ["face-up"]},
+        {"feed": "sideways"},
+        {"feed": None},
+        {"feed": ["face-down"]},
+        {"loaded": "sideways", "feed": "face-up"},  # the new key is there, so it decides
+    ],
+)
+def test_a_garbled_loading_direction_gives_the_default(
+    path: Path, data: dict[str, object], caplog: pytest.LogCaptureFixture
+) -> None:
+    write_prefs(path, {**data, "album": "Rome"})
+    with caplog.at_level(logging.WARNING, logger=LOGGER):
+        form = load_form(path)
+    assert form == ScanForm(album="Rome")
+    assert form.loaded == "face-up"
+    assert caplog.records != []
+
+
+def test_the_loading_direction_is_saved_under_the_new_key(path: Path) -> None:
+    save_form(ScanForm(loaded="face-down"), path)
+    saved = json.loads(path.read_text())
+    assert saved["loaded"] == "face-down"
+    assert "feed" not in saved
+
+
+def test_a_new_choice_beats_the_old_key_left_in_the_file(path: Path) -> None:
+    write_prefs(path, {"feed": "face-up"})  # front first, the old way of saying it
+    assert load_form(path).loaded == "face-down"
+    save_form(ScanForm(loaded="face-up"), path)
+    assert load_form(path).loaded == "face-up"
 
 
 def vars_of(form: ScanForm) -> dict[str, object]:

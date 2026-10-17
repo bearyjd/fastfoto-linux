@@ -18,7 +18,7 @@ from fastfoto_linux.pipeline.sides import BackPolicy
 from fastfoto_linux.scanner import SUPPORTED_DPI, ScanTarget
 from fastfoto_linux.session import RawPolicy, ScanRequest
 
-FEED_CHOICES = (FEED_FACE_DOWN, FEED_FACE_UP)
+FEED_CHOICES = (FEED_FACE_UP, FEED_FACE_DOWN)
 BACK_CHOICES = tuple(policy.value for policy in BackPolicy)
 NUMBER_PATTERN = "####"  # the real number is only known when the photo is written
 
@@ -34,7 +34,7 @@ class ScanForm:
     album: str = ""
     date: str = ""
     notes: str = ""
-    feed: str = FEED_FACE_DOWN
+    loaded: str = FEED_FACE_UP
     backs: str = BackPolicy.AUTO.value
     restore: bool = True
     orient: bool = True
@@ -144,7 +144,7 @@ _SYNTAX_CHECKS: tuple[tuple[str, _Check], ...] = (
     ("album", _check_album_text),
     ("date", _check_date),
     ("notes", _check_notes),
-    ("feed", lambda form: _choice("feed", form.feed, FEED_CHOICES)),
+    ("loaded", lambda form: _choice("loading direction", form.loaded, FEED_CHOICES)),
     ("backs", lambda form: _choice("backs setting", form.backs, BACK_CHOICES)),
     ("dpi", lambda form: _choice("resolution", form.dpi, SUPPORTED_DPI)),
 )
@@ -163,6 +163,16 @@ def _run(checks: tuple[tuple[str, _Check], ...], form: ScanForm) -> dict[str, st
 def validate_syntax(form: ScanForm) -> dict[str, str]:
     """A message per field whose text is wrong; looks at nothing but the form itself."""
     return _run(_SYNTAX_CHECKS, form)
+
+
+DiskKey = tuple[str, str]
+DiskCheck = Callable[[ScanForm], None]
+"""Starts reading the disk for a form and returns at once; the answer goes to ``on_disk``."""
+
+
+def disk_key(form: ScanForm) -> DiskKey:
+    """What a read of the disk depends on: the output folder and the album."""
+    return (form.output_folder.strip(), form.album.strip())
 
 
 def validate_filesystem(form: ScanForm) -> dict[str, str]:
@@ -222,11 +232,11 @@ def update_field(form: ScanForm, name: str, value: object) -> ScanForm:
     if name in _BOOL_FIELDS:
         return replace(form, **{name: bool(value)})
     if name == "dpi":
-        return replace(form, dpi=_whole_number(name, value))
+        return replace(form, dpi=whole_number(name, value))
     return replace(form, **{name: str(value)})
 
 
-def _whole_number(name: str, value: object) -> int:
+def whole_number(name: str, value: object) -> int:
     if isinstance(value, float) and not value.is_integer():
         raise ValueError(f"{name} must be a whole number, got {value!r}")
     try:
@@ -249,7 +259,7 @@ def to_settings(form: ScanForm) -> ProcessSettings:
         notes=form.notes or None,
         duplex=True,
         back_policy=BackPolicy(form.backs),
-        expect_front_first=form.feed == FEED_FACE_UP,
+        expect_front_first=form.loaded == FEED_FACE_DOWN,
         quality=DEFAULT_QUALITY,
         keep_original=form.keep_original,
         enhancers=enhancers,

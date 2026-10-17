@@ -7,6 +7,8 @@ import org.kde.kirigami as Kirigami
 QQC2.ScrollView {
     id: panel
 
+    objectName: "photosForm"
+
     // The settings can be changed again once the scan is over.
     readonly property bool editable: !bridge.busy
 
@@ -138,20 +140,20 @@ QQC2.ScrollView {
             Layout.fillWidth: true
             model: [
                 {
-                    "text": qsTr("Face down (back first)"),
-                    "value": "face-down"
+                    "text": qsTr("Face up (back first)"),
+                    "value": "face-up"
                 },
                 {
-                    "text": qsTr("Face up (front first)"),
-                    "value": "face-up"
+                    "text": qsTr("Face down (front first)"),
+                    "value": "face-down"
                 }
             ]
             textRole: "text"
             valueRole: "value"
-            currentIndex: Math.max(0, indexOfValue(bridge.form.feed))
+            currentIndex: Math.max(0, indexOfValue(bridge.form.loaded))
             enabled: panel.editable
             Accessible.name: qsTr("Loaded")
-            onActivated: bridge.setField("feed", currentValue)
+            onActivated: bridge.setField("loaded", currentValue)
         }
 
         QQC2.ComboBox {

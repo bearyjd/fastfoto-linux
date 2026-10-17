@@ -90,7 +90,7 @@ def test_the_whole_page_carries_the_notes(tmp_path) -> None:
 
 def test_the_scan_time_is_the_time_of_the_front_page(tmp_path) -> None:
     raw, out = workspace(tmp_path)
-    back_page, front_page = write_sheets(raw, [wide_sheet(0)])  # face-down: the back comes first
+    back_page, front_page = write_sheets(raw, [wide_sheet(0)])  # face-up: the back comes first
     front_time = datetime(2026, 10, 12, 9, 5, 7)
     os.utime(back_page, (datetime(2026, 10, 12, 9, 4, 0).timestamp(),) * 2)
     os.utime(front_page, (front_time.timestamp(),) * 2)

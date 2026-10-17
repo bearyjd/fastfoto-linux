@@ -33,16 +33,28 @@ def test_the_defaults(settings_of, out) -> None:
     assert settings.notes is None
     assert settings.duplex is True
     assert settings.back_policy is BackPolicy.AUTO
-    assert settings.expect_front_first is False  # FastFoto loading: the back comes first
+    assert settings.expect_front_first is False  # photos face up, top edge first: back first
     assert settings.quality == 95
     assert settings.keep_original is True
     assert settings.orienter is auto_orient
     assert settings.enhancers == (restore_colour,)  # red-eye is opt-in (about 17% visible damage)
 
 
-def test_face_up_means_the_front_comes_first(settings_of) -> None:
-    assert settings_of("--feed", "face-up").expect_front_first is True
-    assert settings_of("--feed", "face-down").expect_front_first is False
+def test_face_up_is_the_default_and_means_the_back_comes_first(settings_of) -> None:
+    assert settings_of("--feed", "face-up").expect_front_first is False
+
+
+def test_face_down_means_the_front_comes_first(settings_of) -> None:
+    assert settings_of("--feed", "face-down").expect_front_first is True
+
+
+def test_the_feed_help_says_which_side_each_loading_scans_first(capsys) -> None:
+    assert main(["process", "--help"]) == 0
+    text = " ".join(capsys.readouterr().out.split())
+    assert (
+        "how photos were loaded (top edge first): face-up scans the back first (default); "
+        "face-down scans the front first (these names used to mean the opposite)"
+    ) in text
 
 
 def test_every_value_option(settings_of) -> None:

@@ -42,7 +42,7 @@ from fastfoto_linux.documents.ocr import (
     validate_langs,
 )
 from fastfoto_linux.documents.pdf import assemble_pdf
-from fastfoto_linux.documents.publish import publish_pdf
+from fastfoto_linux.documents.publish import publish_pdf, require_output_folder
 from fastfoto_linux.documents.trim import trim_page
 from fastfoto_linux.output.errors import InvalidPrefixError
 from fastfoto_linux.output.naming import sanitise_prefix
@@ -92,8 +92,9 @@ def check_settings(settings: DocumentSettings) -> CheckedSettings:
 
     Raises DocumentSettingsError for a name with no usable characters or OCR languages that are
     no Tesseract codes (even with OCR off), and OcrMissingError when searchable text is required
-    (``OcrMode.ON``) and ``ocrmypdf`` is not installed. The output folder is not checked here:
-    it is the caller's to make, and publishing refuses a missing one.
+    (``OcrMode.ON``) and ``ocrmypdf`` is not installed, and ``OutputFolderMissingError`` (a
+    DocumentSettingsError) when the output folder is not an existing folder: the caller makes it,
+    and a PDF is not worked on, nor a stack of paper scanned, for a folder that is not there.
     """
     try:
         name = sanitise_prefix(settings.name)
@@ -105,7 +106,9 @@ def check_settings(settings: DocumentSettings) -> CheckedSettings:
         validate_langs(settings.langs)
     except ValueError as error:
         raise DocumentSettingsError(str(error)) from error
-    return CheckedSettings(name, _ocr_executable(settings.ocr))
+    executable = _ocr_executable(settings.ocr)
+    require_output_folder(settings.output_root)
+    return CheckedSettings(name, executable)
 
 
 def _now() -> datetime:
@@ -128,13 +131,18 @@ def _stop_if_cancelled(cancel: threading.Event | None, before: str) -> None:
 
 
 def _encode_pages(
-    pages: Sequence[Path], settings: DocumentSettings, cancel: threading.Event | None
+    pages: Sequence[Path],
+    settings: DocumentSettings,
+    cancel: threading.Event | None,
+    on_page: Callable[[int, int], None] | None,
 ) -> tuple[list[EncodedPage], tuple[int, ...]]:
     """Encode the pages that stay in the PDF, and number the ones dropped as blank."""
     kept: list[EncodedPage] = []
     dropped: list[int] = []
     for number, path in enumerate(pages, start=1):
         _stop_if_cancelled(cancel, f"page {number} of {len(pages)} was processed")
+        if on_page is not None:
+            on_page(number, len(pages))
         trimmed = trim_page(load_page(path, fallback_dpi=settings.fallback_dpi))
         page = trimmed.page
         if not settings.keep_blank and is_blank(page, trimmed_bottom=trimmed.tail_rows):
@@ -145,17 +153,21 @@ def _encode_pages(
     return kept, tuple(dropped)
 
 
-def _searchable(
+def _searchable(  # noqa: PLR0913 - what OCR needs, and the one hook, in one place
     plain: bytes,
     executable: str | None,
     settings: DocumentSettings,
     page_count: int,
+    *,
     cancel: threading.Event | None,
+    on_ocr: Callable[[], None] | None,
 ) -> OcrOutcome:
     if settings.ocr is OcrMode.OFF:
         return OcrOutcome(OcrStatus.SKIPPED)
     if executable is None:
         return OcrOutcome(OcrStatus.UNAVAILABLE, "ocrmypdf is not installed")
+    if on_ocr is not None:
+        on_ocr()
     timeout = settings.ocr_timeout_s
     if timeout is None:
         timeout = OCR_BASE_S + OCR_PER_PAGE_S * page_count
@@ -173,12 +185,14 @@ def _searchable(
     return outcome
 
 
-def build_document(
+def build_document(  # noqa: PLR0913 - the hooks are the interface
     pages: Sequence[Path],
     settings: DocumentSettings,
     *,
     cancel: threading.Event | None = None,
     clock: Callable[[], datetime] | None = None,
+    on_page: Callable[[int, int], None] | None = None,
+    on_ocr: Callable[[], None] | None = None,
 ) -> DocumentResult:
     """Make one PDF in ``settings.output_root`` from page files, in the order given.
 
@@ -187,6 +201,10 @@ def build_document(
     A failed or timed-out OCR still publishes the plain PDF (``result.ok`` is then False).
     When ``cancel`` is set DocumentCancelledError (OcrCancelledError during OCR) is raised and
     nothing is published. Settings that cannot make a PDF are refused first (``check_settings``).
+
+    ``on_page(number, total)`` is called before each page is processed (a page that is then dropped
+    as blank included) and ``on_ocr()`` once before the searchable text is made, so that a front
+    end can say where the work is. Both run on the calling thread.
     """
     if not pages:
         raise DocumentError("no pages to process")
@@ -195,11 +213,11 @@ def build_document(
     for number, path in enumerate(pages, start=1):
         _stop_if_cancelled(cancel, f"page {number} of {len(pages)} was checked")
         inspect_page(path, fallback_dpi=settings.fallback_dpi, decode=True)
-    encoded, dropped = _encode_pages(pages, settings, cancel)
+    encoded, dropped = _encode_pages(pages, settings, cancel, on_page)
     if not encoded:
         raise AllPagesBlankError(f"all {len(pages)} pages look blank, so no PDF was written")
     plain = assemble_pdf(encoded, title=name, created=(clock or _now)())
-    outcome = _searchable(plain, executable, settings, len(encoded), cancel)
+    outcome = _searchable(plain, executable, settings, len(encoded), cancel=cancel, on_ocr=on_ocr)
     published = publish_pdf(
         outcome.pdf if outcome.pdf is not None else plain, settings.output_root, name
     )

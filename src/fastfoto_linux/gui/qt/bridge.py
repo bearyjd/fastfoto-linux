@@ -13,17 +13,26 @@ from typing import Any
 from PySide6.QtCore import Property, QObject, Qt, QUrl, Signal, Slot
 
 from fastfoto_linux.gui.controller import Controller, disk_key
+from fastfoto_linux.gui.docform import DocumentForm
+from fastfoto_linux.gui.doctools import DocumentSetup, DocumentTools
 from fastfoto_linux.gui.form import (
     BACK_CHOICES,
-    FEED_CHOICES,
     ScanForm,
     absolute_folder,
     validate_filesystem,
 )
-from fastfoto_linux.gui.prefs import load_form, save_form
+from fastfoto_linux.gui.prefs import (
+    load_document_form,
+    load_form,
+    load_mode,
+    save_document_form,
+    save_form,
+    save_mode,
+)
+from fastfoto_linux.gui.qt.documents_view import DocumentsView
 from fastfoto_linux.gui.qt.photos_model import PhotosModel, file_url
 from fastfoto_linux.gui.report import photos_heading
-from fastfoto_linux.gui.state import ActionBlockedError
+from fastfoto_linux.gui.state import ActionBlockedError, Mode
 from fastfoto_linux.gui.worker import DiscoverFn, ProcessFn, SessionFn, Worker
 from fastfoto_linux.scanner import SUPPORTED_DPI
 from fastfoto_linux.scanner.run import TERMINATE_GRACE_S
@@ -96,7 +105,7 @@ class Bridge(QObject):
     _event = Signal(str, object)
     _disk = Signal(object, object)
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - the seams the tests replace are the interface
         self,
         *,
         form: ScanForm | None = None,
@@ -104,10 +113,15 @@ class Bridge(QObject):
         discover: DiscoverFn | None = None,
         session: SessionFn | None = None,
         process: ProcessFn | None = None,
+        mode: Mode | None = None,
+        documents: DocumentTools | None = None,
     ) -> None:
         super().__init__()
         self._photos = PhotosModel(self)
-        self._worker = Worker(self, discover=discover, session=session, process=process)
+        tools = documents or DocumentTools()
+        self._worker = Worker(
+            self, discover=discover, session=session, process=process, documents=tools
+        )
         start = form if form is not None else (load_form() if remember else ScanForm())
         self.controller = Controller(
             self._worker,
@@ -115,7 +129,15 @@ class Bridge(QObject):
             save_form=save_form if remember else None,
             on_change=self._on_change,
             disk_check=self._start_disk_check,
+            documents=DocumentSetup(
+                form=load_document_form() if remember else DocumentForm(),
+                mode=mode if mode is not None else (load_mode() if remember else Mode.PHOTOS),
+                tools=tools,
+                save_form=save_document_form if remember else None,
+                save_mode=save_mode if remember else None,
+            ),
         )
+        self._documents = DocumentsView(self.controller, self)
         self._close_signalled = False
         self._closed = False
         # Guards ``_closed`` and every emit from a thread. Not re-entrant, on purpose: that is safe
@@ -139,6 +161,12 @@ class Bridge(QObject):
 
     def on_page(self, number: int) -> None:
         self._send("on_page", number)
+
+    def on_build_page(self, progress: tuple[int, int]) -> None:
+        self._send("on_build_page", progress)
+
+    def on_ocr(self) -> None:
+        self._send("on_ocr", True)
 
     def on_photo(self, files: object) -> None:
         self._send("on_photo", files)
@@ -205,6 +233,7 @@ class Bridge(QObject):
 
     def _on_change(self) -> None:
         self._photos.set_items(self.controller.photos)
+        self._documents.refresh()
         self.changed.emit()
         if self.controller.close_ready and not self._close_signalled:
             self._close_signalled = True
@@ -227,6 +256,10 @@ class Bridge(QObject):
     @Property(str, notify=changed)
     def progressText(self) -> str:
         return self.controller.progress_text
+
+    @Property(str, notify=changed)
+    def mode(self) -> str:
+        return self.controller.mode.value
 
     @Property(bool, notify=changed)
     def busy(self) -> bool:
@@ -335,13 +368,13 @@ class Bridge(QObject):
     def photos(self) -> PhotosModel:
         return self._photos
 
+    @Property(QObject, constant=True)
+    def documents(self) -> DocumentsView:
+        return self._documents
+
     @Property("QVariantList", constant=True)
     def dpiChoices(self) -> list[int]:
         return list(SUPPORTED_DPI)
-
-    @Property("QVariantList", constant=True)
-    def feedChoices(self) -> list[str]:
-        return list(FEED_CHOICES)
 
     @Property("QVariantList", constant=True)
     def backChoices(self) -> list[str]:
@@ -353,6 +386,16 @@ class Bridge(QObject):
     @_guarded(None)
     def setField(self, name: str, value: Any) -> None:
         self.controller.set_field(name, value)
+
+    @Slot(str)
+    @_guarded(None)
+    def setMode(self, mode: str) -> None:
+        self.controller.set_mode(mode)
+
+    @Slot(str, "QVariant")
+    @_guarded(None)
+    def setDocumentField(self, name: str, value: Any) -> None:
+        self.controller.set_document_field(name, value)
 
     @Slot()
     @_guarded(None)
@@ -396,9 +439,11 @@ class Bridge(QObject):
     # -- python side -------------------------------------------------------------------------
 
     def remember(self) -> None:
-        """Save the form for the next run (the controller also does at every scan)."""
+        """Save the forms and the mode for the next run (the controller also does at every scan)."""
         try:
             save_form(self.controller.form)
+            save_document_form(self.controller.document_form)
+            save_mode(self.controller.mode)
         except OSError as error:
             logger.warning("could not remember the settings: %s", error)
 

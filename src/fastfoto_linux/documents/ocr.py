@@ -29,6 +29,9 @@ logger = logging.getLogger(__name__)
 
 LANGS_PATTERN = r"[a-z_]+(\+[a-z_]+)*"
 DEFAULT_LANGS = "eng"
+OCR_INSTALL_HINT = (
+    "sudo dnf install ocrmypdf tesseract-osd"  # OSD data is what --rotate-pages needs
+)
 GRACE_S = 5.0  # SIGTERM to SIGKILL
 POLL_S = 0.05
 STAGING_PREFIX = ".ffscan-ocr-"

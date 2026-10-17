@@ -6,7 +6,13 @@ import pytest
 
 from tests.cli.fakes import block_hardware, refuse
 
-WORKER_TRANSPORT = ("resolve_target", "run_session", "process_pages")
+WORKER_TRANSPORT = (
+    "resolve_target",
+    "run_session",
+    "process_pages",
+    "run_document_session",
+    "build_document",
+)
 
 
 @pytest.fixture(autouse=True)

@@ -14,7 +14,16 @@ ROOT = Path(__file__).resolve().parents[2]
 APP_ID = "io.github.bearyjd.FastFotoLinux"
 DESKTOP = ROOT / "packaging" / f"{APP_ID}.desktop"
 ICON = ROOT / "packaging" / f"{APP_ID}.svg"
-QML_FILES = ("Main.qml", "ScanPage.qml", "FormPanel.qml", "ResultsView.qml", "PhotoCell.qml")
+QML_FILES = (
+    "Main.qml",
+    "ScanPage.qml",
+    "FormPanel.qml",
+    "ResultsView.qml",
+    "PhotoCell.qml",
+    "ModeSwitch.qml",
+    "DocumentFormPanel.qml",
+    "DocumentsView.qml",
+)
 QML_DIR = ROOT / "src" / "fastfoto_linux" / "gui" / "qml"
 CI = ROOT / ".github" / "workflows" / "ci.yml"
 QML_CONTROL = re.compile(r"QQC2\.(?:Button|ToolButton|TextField|TextArea|ComboBox|CheckBox|Switch)")

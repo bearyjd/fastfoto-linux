@@ -28,6 +28,10 @@ def test_the_blank_rule_is_described_as_ignoring_faint_fold_creases(name: str) -
     assert f"{marks.STROKE_MAX_MM} mm" in text
     assert f"{marks.ELONGATION_MIN} times longer than wide" in text
     assert f"darker than {marks.FAINT_DARKEST}" in text
+    assert "faint line with nothing beside it" in text
+    assert f"more than {marks.INNER_MM} mm and at most {marks.OUTER_MM} mm" in text
+    assert "alongside it" in text
+    assert "the pieces of one crease lie end to end" in text
 
 
 @pytest.mark.parametrize("name", list(DOCUMENTS))
@@ -40,8 +44,13 @@ def test_the_dust_and_ink_on_a_crease_are_described(name: str) -> None:
 @pytest.mark.parametrize("name", list(DOCUMENTS))
 def test_the_limits_of_the_crease_rule_are_listed_exactly(name: str) -> None:
     text = text_of(name)
-    assert 'a faint straight single stroke ("l", "I", "-", "!", a ruled line)' in text
-    assert 'the stems of a faint "i", "j" or "ii"' in text
+    assert (
+        'a lone faint straight stroke ("l", "I", "1", "-", "!", the stem of an "i" or "j")' in text
+    )
+    assert "dashed or ruled lines" in text
+    assert "text so pale and small that only a few isolated stems register" in text
+    assert "(darkest 190, 6 to 8 pt)" in text
+    assert "a crease with a mark beside it keeps the page" in text
     assert "creases that cross are one big mark and keep the page" in text
     assert "a speck under a millimetre next to a crease segment under 2 mm long" in text
     assert "ink lying along a crease counts only where it leaves it" in text
@@ -56,6 +65,8 @@ def test_nothing_is_claimed_that_the_rule_no_longer_does(name: str) -> None:
     assert "so pencil handwriting keeps the page" not in text
     assert "pencil measured" not in text.lower()
     assert "pencil 110 to 150" not in text.lower()
+    assert 'a faint straight single stroke ("l", "I", "-", "!", a ruled line)' not in text
+    assert 'the stems of a faint "i", "j" or "ii"' not in text
     assert "signature wave are lines" not in text
     assert "thin faint line" not in text  # the line is straight as well as thin
     assert "LINE_MAX_MM" not in text
@@ -79,10 +90,19 @@ def test_the_design_note_names_the_constants_of_the_rule() -> None:
         "SPECK_MIN_MM",
         "DUST_HALO_MM",
         "MARK_MIN_MM",
+        "INNER_MM",
+        "OUTER_MM",
     )
     for name in names:
         assert hasattr(marks, name)
         assert f"`{name}`" in design
+
+
+def test_the_design_note_explains_who_a_neighbour_is() -> None:
+    design = text_of("design note")
+    assert "a neighbour must itself be mark-sized" in design
+    assert "thin fragments beside the slanted artefact are dust, not neighbours" in design
+    assert "any-spot" in design  # the variant that was tried and kept a real blank back
 
 
 def test_the_design_note_states_the_sizes_of_a_mark_and_a_speck() -> None:
@@ -116,9 +136,17 @@ def test_the_marks_module_documents_the_crease_rule() -> None:
     text = " ".join((marks.__doc__ or "").split())
     assert "fold crease" in text
     assert "straight" in text
-    assert "faint straight single stroke" in text
+    assert "lone faint straight stroke" in text
+    assert "beside" in text
     assert "faint flat signature wave" not in text
-    for name in ("STRAIGHT_SHARE", "STRAIGHT_TOLERANCE_MM", "STROKE_MAX_MM", "ELONGATION_MIN"):
+    for name in (
+        "STRAIGHT_SHARE",
+        "STRAIGHT_TOLERANCE_MM",
+        "STROKE_MAX_MM",
+        "ELONGATION_MIN",
+        "INNER_MM",
+        "OUTER_MM",
+    ):
         assert name in text
 
 
@@ -131,3 +159,4 @@ def test_the_blank_module_describes_the_straight_thin_line() -> None:
     assert "straight" in text
     assert "thin" in text
     assert "faint fold crease" in text
+    assert "beside" in text

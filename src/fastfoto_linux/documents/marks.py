@@ -43,6 +43,8 @@ ELONGATION_MIN = 2.5  # a line is this many times longer than wide (the squattes
 # a pencil comma or a dot: under 2)
 FAINT_DARKEST = 140  # a part of a line darker than this may be a mark by itself (creases: 152+)
 SPECK_MIN_MM = 0.5  # a dark part this wide is a speck on the line; thinner is the line's grain
+INNER_MM = 0.8  # a mark nearer a line's axis than this is on the line itself (pieces of a crease)
+OUTER_MM = 4.0  # a mark this near, alongside a line, is a neighbour: writing has them, a crease not
 DUST_HALO_MM = 0.3  # the blur round a dark speck, taken off a line before it is judged
 _TONES = 256
 _HISTOGRAM_SMOOTHING = 5

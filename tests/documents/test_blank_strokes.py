@@ -2,8 +2,9 @@
 
 Thin-pen cursive, a signature wave and a curved line are as faint and as thin as a crease but not
 straight; dark ink that touches a crease (a hairline stem, a "7") would be a mark on its own, so it
-is one on the crease. Known limits, kept on the side of ignoring a faint straight stroke: a lone
-stem or a roman "ii" in faint thin pen is a pair of straight lines like any other.
+is one on the crease. Known limit, kept on the side of ignoring a faint straight stroke: a lone
+stem in faint thin pen is a straight line like any other (a roman "ii" is two, side by side, and
+keeps the page: see ``test_blank_beside``).
 """
 
 import itertools
@@ -104,10 +105,11 @@ def test_a_wave_that_is_straight_enough_is_a_line(dpi: int) -> None:
 
 @pytest.mark.parametrize("dpi", DPIS)
 @pytest.mark.parametrize("tone", FAINT_TONES)
-def test_a_faint_roman_ii_is_two_straight_strokes_and_may_be_ignored(dpi: int, tone: int) -> None:
-    """Known limit: the stems of a faint "ii" are separate marks, each a faint straight stroke."""
+def test_a_faint_roman_ii_is_two_straight_strokes_and_keeps_the_page(dpi: int, tone: int) -> None:
+    """The stems of a faint "ii" are separate marks, each a faint straight stroke, and each lies
+    beside the other: 1.2 mm off its axis, within its length."""
     assert len(marks_of(with_roman_two(sheet(dpi), 50.0, 60.0, tone=tone))) == 2
-    assert verdicts(with_roman_two(sheet(dpi), 50.0, 60.0, tone=tone)) == BLANK
+    assert verdicts(with_roman_two(sheet(dpi), 50.0, 60.0, tone=tone)) == KEPT
 
 
 @pytest.mark.parametrize("dpi", DPIS)

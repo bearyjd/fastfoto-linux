@@ -140,12 +140,12 @@ QQC2.ScrollView {
             Layout.fillWidth: true
             model: [
                 {
-                    "text": qsTr("Face down (back first)"),
-                    "value": "face-down"
+                    "text": qsTr("Face up (back first)"),
+                    "value": "face-up"
                 },
                 {
-                    "text": qsTr("Face up (front first)"),
-                    "value": "face-up"
+                    "text": qsTr("Face down (front first)"),
+                    "value": "face-down"
                 }
             ]
             textRole: "text"

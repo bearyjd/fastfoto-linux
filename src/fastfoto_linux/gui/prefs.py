@@ -10,6 +10,7 @@ from dataclasses import fields
 from pathlib import Path
 from typing import Any
 
+from fastfoto_linux.cli.options import FEED_FACE_DOWN, FEED_FACE_UP
 from fastfoto_linux.gui.docform import DOCUMENT_COLOURS, DOCUMENT_FIELD_NAMES, DocumentForm
 from fastfoto_linux.gui.form import (
     BACK_CHOICES,
@@ -30,6 +31,10 @@ NOT_REMEMBERED = ("date", "notes")  # they belong to one batch, not to the next
 REMEMBERED = tuple(name for name in FIELD_NAMES if name not in NOT_REMEMBERED)
 DOCUMENTS_KEY = "documents"  # the Documents form lives under this key, the Photos one is flat
 MODE_KEY = "mode"
+OLD_FEED_KEY = (
+    "feed"  # what the loading direction was stored as, with the names the wrong way round
+)
+_FROM_OLD_FEED = {FEED_FACE_DOWN: FEED_FACE_UP, FEED_FACE_UP: FEED_FACE_DOWN}
 _CHOICES = {"loaded": FEED_CHOICES, "backs": BACK_CHOICES, "dpi": SUPPORTED_DPI}
 _TYPES = {field.name: field.type for field in fields(ScanForm)}
 _DOCUMENT_CHOICES = {"colour": DOCUMENT_COLOURS, "dpi": DOCUMENT_DPI}
@@ -63,12 +68,26 @@ def _read_object(path: Path) -> dict[str, Any] | None:
     return data
 
 
+def _migrated(data: dict[str, Any]) -> dict[str, Any]:
+    """``data`` with an old ``feed`` entry read as ``loaded``; ``loaded`` wins when both are there.
+
+    The old entry named the loading the wrong way round: its "face-down" meant the back is
+    scanned first, which is "face-up" now (and the other way round). A value that is not one of
+    the two is kept as it is, so that it is logged and skipped like any other.
+    """
+    if "loaded" in data or OLD_FEED_KEY not in data:
+        return data
+    old = data[OLD_FEED_KEY]
+    return {**data, "loaded": _FROM_OLD_FEED.get(old, old) if isinstance(old, str) else old}
+
+
 def load_form(path: Path | None = None) -> ScanForm:
     """The remembered form; defaults for anything missing, wrong or unreadable (logged)."""
     path = prefs_path() if path is None else path
     data = _read_object(path)
     if data is None:
         return ScanForm()
+    data = _migrated(data)
     return ScanForm(**{name: data[name] for name in REMEMBERED if _usable(name, data, path)})
 
 

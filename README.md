@@ -390,9 +390,11 @@ hardware is still to be tried.
 
 Started from a terminal, `fastfoto` hides two lines that KDE's own code prints and that do no harm:
 `QML Shortcut: ... Only binding to one of multiple key bindings` from KDE's menu items (the context
-menu of every text field; its Copy shortcut has three key bindings), and `kf.kio.widgets.kdirmodel:
-No node found for item that was just removed` for the hidden `.ffscan-raw-...` folder of a scan,
-which is renamed to `.raw/<time>` on purpose. Every other message is still printed.
+menu of every text field; its Copy and Paste shortcuts each have several key bindings), and
+`kf.kio.widgets.kdirmodel: No node found for item that was just removed` for the hidden
+`.ffscan-raw-...` folder of a scan, which is renamed to `.raw/<time>` on purpose. Every other
+message is still printed. When the app runs under systemd (its output goes to the journal), those
+other lines go to stderr, as Qt's default handler does when it is not logging to the journal.
 
 ### Flatpak
 

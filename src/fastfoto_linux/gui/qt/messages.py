@@ -16,8 +16,9 @@ from fastfoto_linux.session.raw import TEMP_PREFIX
 
 # kf6-qqc2-desktop-style gives every text field a context menu (private/TextFieldContextMenu.qml).
 # Its items show their shortcuts through org/kde/desktop/MenuItem.qml (line 85, a
-# `Shortcut { sequence: action.shortcut }`), and StandardKey.Copy has three key bindings, so Qt
-# warns each time the menu is built. The app has no shortcuts of its own and Copy works.
+# `Shortcut { sequence: action.shortcut }`), and StandardKey.Copy and StandardKey.Paste have
+# several key bindings each, so Qt warns each time the menu is built. The app has no shortcuts of
+# its own, and Copy and Paste work.
 SHORTCUT_FILE = "org/kde/desktop/MenuItem.qml"
 SHORTCUT_TEXT = "Only binding to one of multiple key bindings associated with"
 
@@ -45,8 +46,15 @@ def _is_removed_temp_folder(category: str | None, text: str) -> bool:
 
 
 def is_known_noise(category: str | None, file: str | None, text: str) -> bool:
-    """True for the two KDE lines that are hidden; False for every other message."""
-    return _is_shortcut_warning(file, text) or _is_removed_temp_folder(category, text)
+    """True for the two KDE lines that are hidden; False for every other message.
+
+    Never raises: a message that cannot be read (a URL that does not parse, say) is not noise, so
+    it is passed on like any other instead of being lost.
+    """
+    try:
+        return _is_shortcut_warning(file, text) or _is_removed_temp_folder(category, text)
+    except Exception:  # a Qt message handler must not raise: the line is shown instead
+        return False
 
 
 def _print_like_qt(kind: Any, context: Any, text: str) -> None:

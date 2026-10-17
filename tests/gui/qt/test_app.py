@@ -7,6 +7,8 @@ from tests.gui.qt import require_qt, unavailable
 
 require_qt()
 
+from PySide6.QtCore import QLoggingCategory, qCWarning
+from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuickControls2 import QQuickStyle
 from PySide6.QtWidgets import QApplication
 
@@ -94,6 +96,55 @@ def test_the_known_kde_lines_are_hidden_while_the_app_runs_and_shown_again_after
     assert messages == [other]
     qCWarning(category, temp)  # the app has put the previous handler back
     assert messages == [other, temp]
+    settle()
+
+
+KDIRMODEL = "kf.kio.widgets.kdirmodel"
+TEMP_REMOVED = (
+    'No node found for item that was just removed: QUrl("file:///photos/.ffscan-raw-ab12cd")'
+)
+
+
+def warn_temp_folder_removed() -> None:
+    qCWarning(QLoggingCategory(KDIRMODEL), TEMP_REMOVED)
+
+
+def test_the_filter_is_on_while_the_engine_loads_and_off_after_a_failed_load(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    kirigami: None,
+    messages: list[str],
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+
+    def engine_that_does_not_load(bridge: Any) -> tuple[Any, list[str]]:
+        warn_temp_folder_removed()  # KDE's style prints its lines while the window loads
+        return QQmlApplicationEngine(), ["boom"]
+
+    monkeypatch.setattr(app, "create_engine", engine_that_does_not_load)
+    assert app.main(run_loop=lambda: 0) == 1
+    assert messages == []  # hidden while the engine loaded
+    warn_temp_folder_removed()
+    assert messages == [TEMP_REMOVED]  # the previous handler is back
+    settle()
+
+
+def test_the_filter_is_taken_off_when_creating_the_engine_raises(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    kirigami: None,
+    messages: list[str],
+) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
+
+    def engine_that_raises(bridge: Any) -> tuple[Any, list[str]]:
+        raise RuntimeError("no engine today")
+
+    monkeypatch.setattr(app, "create_engine", engine_that_raises)
+    with pytest.raises(RuntimeError, match="no engine today"):
+        app.main(run_loop=lambda: 0)
+    warn_temp_folder_removed()
+    assert messages == [TEMP_REMOVED]  # the previous handler is back
     settle()
 
 

@@ -36,8 +36,25 @@ def test_the_shortcut_warning_is_noise_whether_the_style_is_compiled_in_or_a_fil
     assert is_known_noise("default", path, SHORTCUT_TEXT)
 
 
+def test_the_paste_shortcut_warning_is_noise_too() -> None:
+    # StandardKey.Paste (10) has several key bindings as well: the same warning, another number
+    text = SHORTCUT_TEXT.replace("associated with 9.", "associated with 10.")
+    assert text != SHORTCUT_TEXT
+    assert is_known_noise("default", KDE_MENU_ITEM, text)
+
+
 def test_the_removed_temp_folder_line_of_the_kde_folder_dialog_is_noise() -> None:
     assert is_known_noise(KDIRMODEL, None, removed(f"{TEMP_PREFIX}ab12cd"))
+
+
+@pytest.mark.parametrize("tail", [" ", "\n", " \t\n"], ids=["space", "newline", "mixed"])
+def test_trailing_whitespace_after_the_removed_temp_folder_line_is_still_noise(tail: str) -> None:
+    assert is_known_noise(KDIRMODEL, None, removed(f"{TEMP_PREFIX}ab12cd") + tail)
+
+
+@pytest.mark.parametrize("slashes", ["/", "//"])
+def test_the_removed_temp_folder_is_noise_with_a_trailing_slash_on_its_url(slashes: str) -> None:
+    assert is_known_noise(KDIRMODEL, None, removed(f"{TEMP_PREFIX}ab12cd{slashes}"))
 
 
 # -- near misses are passed through --------------------------------------------------------------
@@ -50,10 +67,21 @@ def test_the_removed_temp_folder_line_of_the_kde_folder_dialog_is_noise() -> Non
         "qrc:/qt/qml/org/kde/other/MenuItem.qml",
         "file:///app/MenuItem.qml",
         "qrc:/qt/qml/org/kde/desktop/MenuItem.qml.bak",
+        "qrc:/qt/qml/xorg/kde/desktop/MenuItem.qml",  # ends in the path, but not in a folder
+        "MenuItem.qml",
         "",
         None,
     ],
-    ids=["other-item", "other-style", "other-folder", "other-suffix", "empty", "none"],
+    ids=[
+        "other-item",
+        "other-style",
+        "other-folder",
+        "other-suffix",
+        "not-a-folder",
+        "bare-name",
+        "empty",
+        "none",
+    ],
 )
 def test_the_same_shortcut_text_from_another_file_is_not_noise(file: str | None) -> None:
     assert not is_known_noise("default", file, SHORTCUT_TEXT)
@@ -98,6 +126,18 @@ def test_other_lines_of_the_directory_model_are_not_noise(text: str) -> None:
     assert not is_known_noise(KDIRMODEL, None, text)
 
 
+def test_text_before_the_removed_item_message_is_not_noise() -> None:
+    line = removed(f"{TEMP_PREFIX}ab12cd")
+    assert not is_known_noise(KDIRMODEL, None, "while syncing: " + line)
+
+
+@pytest.mark.parametrize(
+    "tail", [" and then more", ".", ' QUrl("file:///a")'], ids=["words", "dot", "url"]
+)
+def test_text_after_the_removed_item_message_is_not_noise(tail: str) -> None:
+    assert not is_known_noise(KDIRMODEL, None, removed(f"{TEMP_PREFIX}ab12cd") + tail)
+
+
 def test_an_ordinary_warning_is_not_noise() -> None:
     assert not is_known_noise("default", None, "QML Item: something else broke")
 
@@ -128,3 +168,19 @@ def test_the_previous_handler_gets_everything_else_unchanged() -> None:
         (2, ctx_plain, "QML Item: something else broke"),
     ]
     assert seen[0][1] is ctx_other_file
+
+
+# -- a message that cannot be read is passed through, never lost ---------------------------------
+
+BAD_URL_LINE = 'No node found for item that was just removed: QUrl("http://[bad")'
+
+
+def test_a_removed_line_with_an_unparsable_url_is_not_noise_and_does_not_raise() -> None:
+    assert not is_known_noise(KDIRMODEL, None, BAD_URL_LINE)
+
+
+def test_the_handler_passes_a_line_with_an_unparsable_url_on_to_the_previous_handler() -> None:
+    seen: list[tuple[Any, ...]] = []
+    ctx = context(KDIRMODEL)
+    filtering_handler(lambda *args: seen.append(args))(1, ctx, BAD_URL_LINE)
+    assert seen == [(1, ctx, BAD_URL_LINE)]

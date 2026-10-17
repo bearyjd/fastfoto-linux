@@ -97,6 +97,12 @@ def _raw_note(raw_dir: Path | None, reason: DocumentRawReason | None) -> str:
     return f" Raw pages kept in {raw_dir}{because}."
 
 
+def _capitalised(words: str) -> str:
+    """``words`` starting a sentence: a lower-case first word gets its capital, a file name none."""
+    first = words.split(" ", 1)[0]
+    return words[:1].upper() + words[1:] if first.isalpha() else words
+
+
 def document_error_banner(
     error: BaseException,
     raw_dir: Path | None = None,
@@ -111,9 +117,10 @@ def document_error_banner(
     if isinstance(error, _NOT_STARTED) and raw_dir is None:
         return Banner("error", f"The scan did not start: {sentence(str(error))}")
     if isinstance(error, DocumentError):
-        return Banner("error", f"No PDF was made. {sentence(str(error))}{note}")
+        return Banner("error", f"No PDF was made. {_capitalised(sentence(str(error)))}{note}")
     if isinstance(error, OSError) and raw_dir is not None:
-        return Banner("error", f"No PDF was made. {sentence(os_error_words(error))}{note}")
+        words = _capitalised(sentence(os_error_words(error)))
+        return Banner("error", f"No PDF was made. {words}{note}")
     text = EMPTY_FEEDER_TEXT if isinstance(error, NoDocumentsError) else error_text(error)
     return Banner("error", f"The scan failed. {sentence(text)}{note}")
 
@@ -170,7 +177,9 @@ def document_result_banner(state: State, result: DocumentSessionResult) -> Banne
 
 def _saved(document: DocumentResult, result: DocumentSessionResult) -> Banner:
     item = item_from_document(document)
-    note = _raw_note(result.raw_dir, result.raw_reason)
+    # An error that is behind us (the PDF was made on a second try) is not a reason to name now.
+    reason = None if result.raw_reason is DocumentRawReason.ERROR else result.raw_reason
+    note = _raw_note(result.raw_dir, reason)
     where = f"{item.file_name} saved to {item.folder}"
     if item.ocr_warning:
         said = item.searchable_text

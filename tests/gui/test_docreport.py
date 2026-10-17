@@ -97,6 +97,19 @@ def test_kept_raw_pages_are_said_to_be_kept_and_why(tmp_path: Path) -> None:
     assert banner.text.endswith(f" Raw pages kept in {RAW} (blank pages were left out).")
 
 
+def test_pages_kept_after_a_first_failure_are_not_blamed_on_a_success(tmp_path: Path) -> None:
+    """ "Process them now" worked after an error: the banner must not still say it went wrong."""
+    made = clean_document(tmp_path)
+    result = DocumentSessionResult(
+        document=made.document, pages_scanned=3, raw_dir=RAW, raw_reason=DocumentRawReason.ERROR
+    )
+    banner = document_result_banner(State.DONE, result)
+    assert banner is not None
+    assert banner.kind == "positive"
+    assert "went wrong" not in banner.text
+    assert banner.text.endswith(f" Raw pages kept in {RAW}.")
+
+
 def test_a_pdf_without_its_searchable_text_is_a_warning_in_the_cli_words(tmp_path: Path) -> None:
     made = clean_document(tmp_path, ocr=OcrStatus.FAILED, detail="ocrmypdf exited with 6")
     result = DocumentSessionResult(
@@ -164,9 +177,13 @@ def test_all_pages_blank_says_no_pdf_was_made_and_where_the_pages_are() -> None:
     error = AllPagesBlankError("all 3 pages look blank, so no PDF was written")
     banner = document_error_banner(error, RAW, DocumentRawReason.ERROR)
     assert banner.text == (
-        "No PDF was made. all 3 pages look blank, so no PDF was written."
+        "No PDF was made. All 3 pages look blank, so no PDF was written."
         f" Raw pages kept in {RAW} (something went wrong)."
     )
+
+
+def capital(text: str) -> str:
+    return text[:1].upper() + text[1:]
 
 
 def test_an_unusable_page_is_a_no_pdf_message_too() -> None:
@@ -255,7 +272,7 @@ def test_a_refusal_after_pages_were_kept_is_not_a_scan_that_did_not_start(
     banner = document_error_banner(error, RAW, DocumentRawReason.CANCELLED)
     assert banner.kind == "error"
     assert banner.text == (
-        f"No PDF was made. {error}. Raw pages kept in {RAW} (the scan was cancelled)."
+        f"No PDF was made. {capital(str(error))}. Raw pages kept in {RAW} (the scan was cancelled)."
     )
 
 

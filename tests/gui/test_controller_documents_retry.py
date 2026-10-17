@@ -78,7 +78,9 @@ def test_a_refusal_when_the_pages_are_made_is_not_a_scan_that_did_not_start(
     controller.process_kept()
     controller.on_finished(kept_after(page.out / ".raw" / "s", error))
     assert controller.banner is not None
-    assert controller.banner.text.startswith(f"No PDF was made. {error}.")
+    assert controller.banner.text.startswith(
+        f"No PDF was made. {str(error)[:1].upper()}{str(error)[1:]}."
+    )
     assert controller.can_process_kept  # fix the folder, install the tool, or go on without it
 
 

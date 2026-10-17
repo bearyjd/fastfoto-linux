@@ -449,7 +449,7 @@ def test_pages_that_cannot_make_a_pdf_are_not_offered_again(page: Page) -> None:
     assert controller.state is State.FAILED
     assert not controller.can_process_kept
     assert controller.banner is not None
-    assert controller.banner.text.startswith("No PDF was made. all 2 pages look blank")
+    assert controller.banner.text.startswith("No PDF was made. All 2 pages look blank")
 
 
 def test_a_refusal_before_the_scan_is_said_as_such_and_the_scanner_stays_found(

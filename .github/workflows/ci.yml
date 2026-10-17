@@ -73,7 +73,7 @@ jobs:
 
   # The desktop app needs the distribution's PySide6 and Kirigami (the PyPI PySide6 wheel bundles
   # its own Qt and cannot load the system Kirigami plugin), so it is tested in a Fedora container.
-  # Not a required check yet: making it one needs a branch-protection change.
+  # A required check: it is listed in the branch protection.
   gui-fedora:
     name: gui (fedora)
     runs-on: ubuntu-latest

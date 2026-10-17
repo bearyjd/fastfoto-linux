@@ -290,9 +290,86 @@ What the first pull request settled where the specification left room.
   (`Trimmed.tail_rows`, 0 after a band cut): the kept edge line is margin, not a mark, and a
   blank back stays blank, while a line 6 mm above the new edge keeps the page. Pencil must be about 45 levels darker than the paper
   (local contrast) to count; lighter pencil is indistinguishable from show-through. A page is
-  blank when it has **no** mark, so one short line, a signature, a **lone page number** (decided:
-  kept, it cannot be told from content), a punch hole or a scanner streak keeps the page; the cost
-  of that caution is a few blank backs kept, never a page lost.
+  blank when it has **no** mark, so one short line, a **lone page number** (decided: kept, it
+  cannot be told from content), a punch hole or a scanner streak keeps the page; the cost of that
+  caution is a few blank backs kept. The one thing the rule lets go is a faint straight thin line with
+  nothing beside it (next point), so a lone faint straight stroke can be lost.
+- **Fold creases.** The blank back of a letter folded in thirds was kept: its two rows of creases
+  are marks. The blank rule (not trimming: `find_marks` has a flag, `ignore_faint_lines`, that
+  only `is_blank` sets) ignores faint fold creases, the marks that are faint lines. A line is
+  straight, thin and elongated, judged on the principal axis of its pixels (so a slanted one is
+  as good as an upright one) in source pixels, less the growth of keeping the darkest pixel of each
+  block. Straight: at least 90% of its pixels (`STRAIGHT_SHARE`) lie within 0.4 mm of its axis
+  (`STRAIGHT_TOLERANCE_MM`, half of the widest line). Thin: its mean width, the area over its
+  length along the axis, is at most 0.8 mm (`STROKE_MAX_MM`). Elongated: it is at least 2.5 times
+  longer than wide (`ELONGATION_MIN`). Writing is not straight for long: a loop or a wave is not
+  within 0.4 mm of any axis, however thin the pen or faint the pencil, which the earlier thickness
+  proxy (area over long side) could not tell at 200 dpi from a crease. A pale highlighter band is
+  not thin, and a pencil comma or a dot is not elongated. A line is faint
+  when no part of it darker than 140 on the darkest-channel grey (`FAINT_DARKEST`) is a mark by
+  itself, judged with the same size and area rule as any mark (`MARK_MIN_MM`, a millimetre long,
+  and a third of a square millimetre). A line is judged without its dark specks, the dark parts
+  at least 0.5 mm wide (`SPECK_MIN_MM`; thinner ones are the grain of the line itself), each grown
+  by `DUST_HALO_MM` (0.3 mm) for its blur, so a speck under a millimetre on a crease is dust,
+  and dark ink touching one keeps the page when it would be a mark on its own: its dark parts, and
+  whatever of the component lies off the strip that the line (away from the dark parts) follows,
+  are judged with the same mask and the same rule. A hairline stem or a "7" that is a mark alone
+  is one on a crease; a stroke on its own has no line to follow and is all ink.
+  A faint line is ignored only when it has nothing beside it. Light type that the scanner has
+  blurred clears the contrast mask only along the stems of its letters, and each stem alone is a
+  faint straight line: a page of them was called blank. Writing has other marks beside every stroke
+  and a crease has none: a faint line with nothing beside it is a crease. Any other mark with a
+  pixel more than 0.8 mm and at most 4.0 mm off the line's axis (`INNER_MM` and `OUTER_MM`),
+  alongside it (the pixel's position along the axis inside the line's own length), makes the line a
+  mark. The inner limit and the length keep out the neighbours a crease does have: the pieces of one
+  crease lie end to end, near the axis and outside each other's length. The neighbours are all the
+  mark-sized components, faint lines included, so the stems of pale type are each other's; a
+  neighbour must itself be mark-sized, so thin fragments beside the slanted artefact count only
+  when they are mark-sized. The any-spot variant, which took any dark spot beside the line, was
+  tried and kept a real blank back, whose long artefact has thin fragments 1.9 to 3.8 mm beside it
+  (1.0 to 1.2 mm long, 0.17 thick, darkest 194 to 197). The real page is 300 dpi, and fragments of
+  that size sit at the mark-size edge: on the real page they are no marks and the back is blank,
+  while synthetic ones of 1.0 to 1.2 mm are marks and keep the page at 300 dpi (darkest 176 or
+  195) and at 600 dpi when darkest 176, which is pinned as the conservative side; at darkest 195
+  they are no marks at 200 or 600 dpi, and ones of 0.8 mm or less are dust. The rule only ever
+  turns an ignored line back into a mark: it can keep a page
+  that the straight-line rule dropped and never drops one that rule kept. Two real creased
+  backs gave the numbers: creases 0.17 to 0.51 mm thick, darkest 152 to 204, in segments 2 to
+  23 mm long in two rows at a third and two thirds of the height; one faint tall artefact
+  7.6 x 153 mm (about 2.8 degrees off vertical, darkest 176) along the slanted edge of the deskew
+  pad; text darkest 0 to 12 on every mark, never above 120. So 140 sits 12 below the darkest
+  crease and 20 above the lightest text, and 0.8 mm is just over the thickest crease. On the test
+  fixtures at 200, 300 and 600 dpi, crisp, soft and tinted, every crease and the artefact have all
+  their pixels within 0.25 mm of their axis (the tolerance is 0.4 mm) and are at least 3.6 times
+  longer than wide; the squattest real one, 2 mm long and 0.51 thick, is 3.9. The tolerance
+  absorbs a bow of 0.3 mm over 153 mm at every resolution with a 0.4 mm pen (with a 0.5 mm pen
+  at 200 dpi it already counts); a bow of 0.4 to 0.6 mm
+  passes or not depending on the resolution and the pen, and one of 0.8 mm or more is not straight
+  and counts. A wave swinging 0.15 mm either side of a line is that line at every resolution and pen
+  tried; one swinging 0.3 mm either side (0.6 mm peak to peak) counts with a 0.3 mm pen, and with a
+  0.5 mm pen from about 0.2 mm; a millimetre either side is writing.
+  The tests use pencil-like strokes darkest 110 to 150; that is a test value, not a measurement of
+  real pencil.
+  Known limits, in two groups. **A page may be called blank**, because what is on it is a faint
+  straight line with nothing beside it: a lone faint straight stroke ("l", "I", "1", "-", "!", the
+  stem of an "i" or "j"); dashed or ruled lines (pieces end to end, or rules more than 4.0 mm
+  apart); the stems of a tally more than about 4.0 mm apart (`OUTER_MM`, measured to the nearest
+  pixel of the next stem: 3.5 mm keeps the page, 4.5 mm does not, 4.2 mm depends on the resolution);
+  a bare tick whose hook is about 2 mm or shorter (on a stroke 8 to 16 mm long: the hook is the
+  pixels off the stroke's axis, so at least 90% of the tick, `STRAIGHT_SHARE`, is still straight
+  and a longer stroke allows a longer hook; 1.0 mm is ignored, 3.0 mm keeps the page, 1.6 to 2 mm
+  depends on the resolution); text so pale (darkest about 190 to 196) that only a few
+  isolated stems register (in the probes up to about 7 stems, 5 to 18 mm apart, at sizes from 6
+  to 14 pt; the tests pin 6 to 12 pt); two strokes so close that the far one
+  lies within 0.8 mm of the near one's axis (a tight "=" in 10 pt, a crease drawn twice); a line
+  bowed or waved so little that it counts as straight (above); and ink lying along a crease counts
+  only where it leaves it, so a stroke that is a mark only thanks to the part inside the crease can
+  be missed. **A page is kept, on the conservative side**: a crease with a mark beside it keeps the
+  page, so do two creases less than 4.0 mm apart; creases that cross are one big mark and keep the
+  page; a speck under a millimetre next to a crease segment under 2 mm long can keep the page, at
+  300 dpi and finer (a stub that short shows nothing of the crease's course, and real segments are
+  2 to 23 mm); a speck on a crease counts when the scan is soft enough to grow it past a
+  millimetre; fragments of 1.0 mm or more beside the artefact keep the page at 300 dpi.
 - **Black and white.** A pixel is black when it is darker than 96 (the same level as a mark), or
   when it is 25 levels darker than the mean of an 8 mm window and than the 8 mm closing of the
   page (strokes thinner than the window removed). The mean alone follows uneven lighting but
@@ -371,10 +448,13 @@ What the second pull request settled where the specification left room.
   `--dpi` and every option that is not the default, quoted for the shell). A page the scanner
   was writing when it stopped is not among them. A cancel during the scan makes no PDF either,
   as it never did for photos.
-- **Fallback resolution.** What `scanimage` writes into the PNG header could not be checked
-  without the scanner, so the session gives the loader the resolution it asked the scanner for
-  as the fallback resolution (`DocumentSettings.fallback_dpi`): a page that does not say its
-  resolution is taken at it, a page that does keeps its own.
+- **Fallback resolution.** The scanner's PNG carries its resolution (checked on the FF-680W).
+  The session still gives the loader the resolution it asked the scanner for as the fallback
+  resolution (`DocumentSettings.fallback_dpi`), for a file that does not say: a page that does not
+  say its resolution is taken at it, a page that does keeps its own.
+- **Loading the feeder.** Load documents face down, top edge first: the printed side is then
+  scanned first and comes out upright, and a one-sided scan (`--simplex`) reads that side
+  (checked on the FF-680W).
 - **Order of checks.** The options are checked first (a usage error costs nothing), then
   `--ocr on` is checked before anything is scanned (before the output folder is made, the
   scanner looked for or checked), then the output folder, the scanner and the scan. The
@@ -397,8 +477,7 @@ What the second pull request settled where the specification left room.
 
 ### Needs real hardware
 The Gray PNG that `scanimage` writes (`doc scan` does not ask for it), trimming on real
-pages, blank detection on real backs, speed at 300 dpi, and whether the PNG header carries the
-resolution (the fallback covers it if not).
+pages, blank detection on real backs and speed at 300 dpi.
 
 
 ## Decisions in the desktop app (D3)

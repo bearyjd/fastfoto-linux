@@ -1,6 +1,7 @@
 """The limits of the band rule that a mutation check found nothing pinning: how far
 from the top a band may start, the share of a row that must be non-white, where the pad's slant
-ends and how many rows of the page are looked at. Numbers only: nothing here is a real pixel."""
+ends, how many rows of the page are looked at, and the two bounds of the shadow's specks (how far
+from the backing colour, how long). Numbers only: nothing here is a real pixel."""
 
 import numpy as np
 import pytest
@@ -12,8 +13,15 @@ from tests.doc_synth import BACKING_RGB, px
 from tests.doc_synth_band import banded_scene, with_jpeg
 from tests.documents.helpers import colour_page
 from tests.documents.test_trim_band_real import LEFTOVER_MM, assert_band_cut, frame, painted
+from tests.documents.test_trim_band_shadow import paint_at, strip_top
 
 WIDTH_PX = 400
+# the backing's colour made darker in all three channels: its hue stays (the distance is the
+# level times 1.73), so only the distance from it tells these apart
+INSIDE_36 = tuple(channel - 20 for channel in BACKING_RGB)  # 34.6 from the backing colour
+OUTSIDE_36 = tuple(channel - 22 for channel in BACKING_RGB)  # 38.1 from it
+STROKE_RGB = (180, 193, 200)  # 31 from the backing colour, blue over red by 20: shadow tone
+SPECK_COLUMNS_PX = (700, 1100, 1500)  # at 300 dpi
 
 
 @pytest.mark.parametrize("dpi", [200, 300])
@@ -87,3 +95,45 @@ def test_the_longest_band_that_starts_the_farthest_from_the_edge_is_found() -> N
     cut = band_cut(np.concatenate([white, band, pad]), dpi, BOTTOM_EDGE)
     keep = mm_to_px(BOTTOM_EDGE.keep_mm, dpi)
     assert cut == mm_to_px(BOTTOM_EDGE.reach_mm, dpi) + len(band) - keep
+
+
+# ---- the two bounds of a shadow speck ----------------------------------------------------------
+
+
+def specks_under_the_cut(dpi: int, size_mm: tuple[float, float], tone):
+    """Three specks of ``size_mm`` (wide, tall) 0.2 mm under the first row of the strip that the
+    band cut removes (the shadow's place), after the codec."""
+    scene = frame(dpi, tilt_deg=0.0)
+    row = strip_top(scene) + px(0.2, dpi)
+    for column in SPECK_COLUMNS_PX:
+        scene = paint_at(scene, row, column * dpi // 300, size_mm, tone)
+    return with_jpeg(scene)
+
+
+@pytest.mark.parametrize("dpi", [200, 300])
+@pytest.mark.parametrize(("tone", "forgiven"), [(INSIDE_36, True), (OUTSIDE_36, False)])
+def test_a_speck_in_the_hue_of_the_backing_is_shadow_only_within_36_of_its_colour(
+    dpi: int, tone: tuple[int, int, int], forgiven: bool
+) -> None:
+    """0.5 mm is not dust, and both tones are past the strict 20: only the distance differs."""
+    scene = specks_under_the_cut(dpi, (1.0, 0.5), tone)
+    result = trim_page(colour_page(scene))
+    if forgiven:
+        assert_band_cut(scene, result)
+    else:
+        assert not result.band_bottom
+
+
+@pytest.mark.parametrize("dpi", [200, 300])
+@pytest.mark.parametrize(("length_mm", "forgiven"), [(1.8, True), (2.2, False)])
+def test_a_flat_speck_of_shadow_tone_is_shadow_only_when_shorter_than_2_mm(
+    dpi: int, length_mm: float, forgiven: bool
+) -> None:
+    """The stroke lies along the cut, wholly inside the 1.5 mm of the strip where shadow is
+    forgiven, so only its length tells a speck from a bar or a pencil line."""
+    scene = specks_under_the_cut(dpi, (length_mm, 0.4), STROKE_RGB)
+    result = trim_page(colour_page(scene))
+    if forgiven:
+        assert_band_cut(scene, result)
+    else:
+        assert not result.band_bottom

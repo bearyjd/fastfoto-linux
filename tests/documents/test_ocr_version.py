@@ -1,5 +1,5 @@
 """Which ocrmypdf will run: the version of the app's own module or what the program says, asked
-at most once, and what that version accepts."""
+(an answer is remembered, a failure is asked again), and what that version accepts."""
 
 import contextlib
 import logging

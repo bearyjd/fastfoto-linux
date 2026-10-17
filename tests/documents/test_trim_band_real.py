@@ -9,6 +9,7 @@ the paper stays axis-aligned and is often pure 255 like the pad, and the page is
 
 from dataclasses import replace
 
+import cv2
 import numpy as np
 import pytest
 
@@ -141,6 +142,54 @@ def test_a_faint_pixel_in_the_pad_is_noise_and_a_speck_of_ink_size_is_not(dpi: i
     size = px(0.6, dpi)
     dust = with_jpeg(painted(scene, slice(row, row + size), slice(900, 900 + size), 60))
     assert not trim_page(colour_page(dust)).band_bottom
+
+
+def with_ringing(scene: Scene) -> Scene:
+    """The codec's ringing next to the pad's edge: 4 px of 247 in the pad (243 to 254 on real
+    pages), which is white (240 and up) but not pad (250 and up)."""
+    below = np.zeros(scene.image.shape[:2], bool)
+    below[scene.paper_end :] = True
+    pad = (scene.image.min(axis=2) >= 250) & below
+    distance = cv2.distanceTransform(pad.astype(np.uint8), cv2.DIST_L2, 3)
+    image = scene.image.copy()
+    image[pad & (distance <= 4.0)] = 247
+    return replace(scene, image=image)
+
+
+def with_soft_edge(scene: Scene) -> Scene:
+    """The pad's edge blurred over about 3 px (anti-aliasing and a soft scan), below the paper."""
+    image = scene.image.copy()
+    image[scene.paper_end :] = cv2.GaussianBlur(scene.image[scene.paper_end :], (0, 0), 1.0)
+    return replace(scene, image=image)
+
+
+@pytest.mark.parametrize("tilt", [0.5, -0.5, 1.5, 3.0])
+def test_ringing_next_to_the_pad_is_white_though_it_is_not_pad(tilt: float) -> None:
+    """On a nearly horizontal edge 4 px of 247 along it fill more than 5% of the rows it crosses
+    if they are counted as non-white."""
+    scene = with_ringing(real_page(300, tilt_deg=tilt))
+    assert_band_cut(scene, trim_page(colour_page(scene)))
+
+
+@pytest.mark.parametrize("tilt", [0.5, -0.5, 1.5, 3.0])
+def test_a_soft_pad_edge_is_neither_band_nor_content(tilt: float) -> None:
+    """Pixels where the pad blends into the backing are neither white nor backing: they count for
+    neither side of a row, and the last check does not take them for ink."""
+    scene = with_jpeg(with_soft_edge(frame(300, tilt_deg=tilt)))
+    assert_band_cut(scene, trim_page(colour_page(scene)))
+
+
+@pytest.mark.parametrize("dpi", [200, 300])
+def test_a_blank_slip_below_the_first_band_row_means_the_rows_are_not_pad_and_no_cut(
+    dpi: int,
+) -> None:
+    """Under the band only pad rows may lie (under half non-white). A white slip over 10 mm wide
+    in the lowest rows of the band is neither: the band rule leaves the page to the tail rule."""
+    scene = frame(dpi, tilt_deg=0.0)
+    last = scene.paper_end + px(BAND_MM, dpi)
+    rows = slice(last - px(2.0, dpi), last)
+    scene = with_jpeg(painted(scene, rows, slice(px(80.0, dpi), px(100.0, dpi)), 255))
+    assert not trim_page(colour_page(scene)).band_bottom
 
 
 # ---- what is next to the band is not touched ---------------------------------------------------

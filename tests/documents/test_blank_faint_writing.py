@@ -92,7 +92,7 @@ def test_a_faint_flat_cursive_word_keeps_the_page(dpi: int, tone: int) -> None:
 
 @pytest.mark.parametrize("dpi", DPIS)
 def test_a_faint_cursive_word_flecked_with_darker_pencil_keeps_the_page(dpi: int) -> None:
-    """Flecks 0.65 mm long and as wide as the stroke (darkest 130) are the grain of the line,
+    """Flecks as wide as the stroke (darkest 130, a millimetre apart) are the grain of the line,
     not dust: taking them off would leave the word too thin to count."""
     scene = with_cursive_word(sheet(dpi, WORD_MM), 30.0, 25.0, tone=150, grain_tone=130)
     assert len(marks_of(scene)) == 1

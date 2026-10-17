@@ -23,7 +23,8 @@ CURSIVE_STROKE_MM = 0.35
 WAVE_STROKE_MM = 0.5
 WAVE_PERIOD_MM = 21.0
 SAMPLES_PER_CYCLE = 40
-GRAIN_SAMPLES = 4  # about 0.65 mm of the stroke
+GRAIN_SAMPLES = 1  # a fleck is one step of the stroke, about 0.16 mm ...
+GRAIN_PERIOD_SAMPLES = 6  # ... in every sixth step, about 1 mm
 DUST_GAP_MM = 4.0  # specks on a crease are this far apart: two never join into a letter
 DUST_COLUMN_TONE = 200  # a column holds crease where the row is darker than this
 DUST_DARK_TONE = 120  # darker than any crease: a speck already there
@@ -53,8 +54,8 @@ def with_cursive_word(  # noqa: PLR0913
     """A flat cursive word of ``cycles`` loops (about 25 x 2.6 mm for ten) in one grey level.
 
     (``x_mm``, ``y_mm``) is the top left, measured from the paper's top left. With ``grain_tone``
-    every other 0.65 mm of the stroke is that darker grey: flecks of pencil too short to be
-    letters of their own.
+    0.16 mm in every millimetre of the stroke is that darker grey: flecks of pencil, the grain of
+    the line.
     """
     left = scene.paper_x[0] + px(x_mm, scene.dpi)
     scale = scene.dpi / MM_PER_INCH
@@ -67,7 +68,7 @@ def with_cursive_word(  # noqa: PLR0913
     word = _stroke(scene, points, tone, CURSIVE_STROKE_MM)
     if grain_tone is None:
         return word
-    for start in range(0, len(points) - GRAIN_SAMPLES, 2 * GRAIN_SAMPLES):
+    for start in range(0, len(points) - GRAIN_SAMPLES, GRAIN_PERIOD_SAMPLES):
         word = _stroke(
             word, points[start : start + GRAIN_SAMPLES + 1], grain_tone, CURSIVE_STROKE_MM
         )

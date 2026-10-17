@@ -114,6 +114,16 @@ def test_a_dark_letter_and_a_speck_on_one_crease_keep_the_page(dpi: int) -> None
     assert verdicts(scene) == KEPT
 
 
+@pytest.mark.parametrize("dpi", DPIS)
+def test_a_lone_speck_that_a_soft_scan_makes_a_mark_still_keeps_the_page(dpi: int) -> None:
+    """Dust is taken off a faint line only: a speck on its own that the plain detector finds a
+    mark (the blur grew it to a millimetre) is judged as it was."""
+    speck = with_solid_block(sheet(dpi, PAPER_MM), 25.0, 20.0, SPECK_MM, SPECK_TONE)
+    scene = softened(speck, blur_mm=0.15, shadow_levels=0)
+    assert len(marks_of(scene)) == 1
+    assert verdicts(scene) == KEPT
+
+
 # ---- soft scans: blurred, tinted, shadowed ---------------------------------------------------
 
 

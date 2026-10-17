@@ -3,8 +3,8 @@
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from fastfoto_linux.cli.cmd_doc import OCR_INSTALL_HINT
 from fastfoto_linux.documents import DocumentResult, find_ocrmypdf
+from fastfoto_linux.documents.ocr import OCR_INSTALL_HINT
 from fastfoto_linux.gui.docform import DocumentForm
 from fastfoto_linux.gui.state import Mode
 from fastfoto_linux.scanner.shim_trust import inside_flatpak

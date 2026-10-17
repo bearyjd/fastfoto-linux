@@ -12,9 +12,11 @@ from fastfoto_linux.documents import (
     DocumentCancelledError,
     DocumentError,
     DocumentResult,
+    OcrMode,
     build_document,
 )
 from fastfoto_linux.gui.docform import DocumentForm, document_errors, to_document_request
+from fastfoto_linux.gui.docreport import os_error_words
 from fastfoto_linux.gui.doctools import DocumentTools
 from fastfoto_linux.gui.form import (
     FormInvalidError,
@@ -248,10 +250,13 @@ class Worker:
         """Make the PDF of the pages a part-way scan kept, with the settings of that scan.
 
         A PDF that cannot be made comes back as a result (the pages are still on disk), not as an
-        exception, so the page can say so and keep the pages where they are.
+        exception, so the page can say so and keep the pages where they are. Searchable text that
+        the scan required is asked for, not required: the tool may be gone since, and a plain PDF
+        (the page says it has no text) is worth more than none.
         """
         self._sink.on_stage(Stage.PROCESSING)
-        settings = replace(request.settings, fallback_dpi=request.dpi)
+        ocr = OcrMode.AUTO if request.settings.ocr is OcrMode.ON else request.settings.ocr
+        settings = replace(request.settings, fallback_dpi=request.dpi, ocr=ocr)
         again = replace(kept, document=None, error=None, cancelled=False)
         try:
             document = self._reporting_build()(kept.kept_pages, settings, cancel=cancel)
@@ -259,6 +264,9 @@ class Worker:
             result = replace(again, cancelled=True)
         except DocumentError as error:
             result = replace(again, error=error)
+        except OSError as error:  # a full disk, a folder that cannot be written to
+            logger.warning("the PDF could not be saved: %s", error)
+            result = replace(again, error=OSError(error.errno, os_error_words(error)))
         else:
             result = replace(again, document=document, kept_pages=())
         return functools.partial(self._sink.on_finished, result)

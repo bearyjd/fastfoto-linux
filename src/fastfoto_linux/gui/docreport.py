@@ -1,13 +1,17 @@
 """The words of Documents mode: progress, results, failures, the offer to process kept pages."""
 
+import errno
 from pathlib import Path
+from types import MappingProxyType
 
 from fastfoto_linux.documents import (
     DocumentError,
     DocumentResult,
     DocumentSettingsError,
     OcrMissingError,
+    OcrStatus,
 )
+from fastfoto_linux.documents.errors import OutputFolderMissingError
 from fastfoto_linux.gui.documents import item_from_document
 from fastfoto_linux.gui.report import (
     CHECKING_SCANNER_TEXT,
@@ -30,6 +34,19 @@ _RAW_REASONS = {
     DocumentRawReason.NOT_DELETED: "they could not be deleted",
 }
 _NOT_STARTED = (DocumentSettingsError, OcrMissingError)  # refused before anything was scanned
+_DISK_FULL = "The disk is full"
+_NOT_ALLOWED = "The folder cannot be written to (permission denied)"
+_READ_ONLY = "The folder is read-only"
+_FIXABLE_OS_ERRORS = MappingProxyType(
+    {
+        errno.ENOSPC: _DISK_FULL,
+        errno.EDQUOT: _DISK_FULL,
+        errno.EACCES: _NOT_ALLOWED,
+        errno.EPERM: _NOT_ALLOWED,
+        errno.EROFS: _READ_ONLY,
+    }
+)
+"""The ``OSError`` numbers a user can do something about, and what to tell them."""
 EMPTY_FEEDER_TEXT = "The feeder is empty. Load the pages in the feeder and press Scan"
 
 
@@ -62,6 +79,17 @@ def document_progress_text(  # noqa: PLR0913 - the facts of one progress line ar
     }.get(state, "")
 
 
+def os_error_words(error: OSError) -> str:
+    """What an ``OSError`` that stopped a PDF from being saved says, without any file name.
+
+    The name is a temporary file the user never saw; only the kind of trouble is worth saying.
+    """
+    known = _FIXABLE_OS_ERRORS.get(error.errno)
+    if known is not None:
+        return known
+    return error.strerror or "An unexpected error stopped it"
+
+
 def _raw_note(raw_dir: Path | None, reason: DocumentRawReason | None) -> str:
     if raw_dir is None:
         return ""
@@ -74,35 +102,54 @@ def document_error_banner(
     raw_dir: Path | None = None,
     reason: DocumentRawReason | None = None,
 ) -> Banner:
-    """The error banner: what went wrong, and where the raw pages are and why."""
+    """The error banner: what went wrong, and where the raw pages are and why.
+
+    "The scan did not start" is only for a refusal before anything was scanned (no raw pages);
+    once pages are kept, a refusal or a PDF that could not be saved is "No PDF was made".
+    """
     note = _raw_note(raw_dir, reason)
-    if isinstance(error, _NOT_STARTED):
+    if isinstance(error, _NOT_STARTED) and raw_dir is None:
         return Banner("error", f"The scan did not start: {sentence(str(error))}")
     if isinstance(error, DocumentError):
         return Banner("error", f"No PDF was made. {sentence(str(error))}{note}")
+    if isinstance(error, OSError) and raw_dir is not None:
+        return Banner("error", f"No PDF was made. {sentence(os_error_words(error))}{note}")
     text = EMPTY_FEEDER_TEXT if isinstance(error, NoDocumentsError) else error_text(error)
     return Banner("error", f"The scan failed. {sentence(text)}{note}")
 
 
+def _can_be_fixed(error: Exception) -> bool:
+    """True when making the PDF again can work: the scanner had stopped, the tool or the folder
+    is back, or room was made or the permission given."""
+    if isinstance(error, ScannerError | OcrMissingError | OutputFolderMissingError):
+        return True
+    return isinstance(error, OSError) and error.errno in _FIXABLE_OS_ERRORS
+
+
 def offers_kept(result: DocumentSessionResult) -> bool:
-    """True when the pages kept are worth making a PDF of: a cancel or a scanner that stopped.
+    """True when the pages kept are worth making a PDF of: a cancel, a scanner that stopped, or
+    a problem the user can fix (a full disk, a folder that cannot be written to, a missing one).
 
     Not after an error that making the PDF again would repeat (every page blank, an unusable
-    page, a full disk).
+    page).
     """
     if result.document is not None or not result.kept_pages:
         return False
-    return result.cancelled or (result.error is not None and isinstance(result.error, ScannerError))
+    return result.cancelled or (result.error is not None and _can_be_fixed(result.error))
 
 
 def document_kept_text(result: DocumentSessionResult) -> str:
     """What the offer to make a PDF of the kept pages says."""
     kept = len(result.kept_pages)
-    if result.error is not None:
+    if isinstance(result.error, ScannerError):
         return (
             f"The scanner stopped after {count_noun(kept, 'page')} — kept in {result.raw_dir}. "
-            "No PDF is made from part of a stack."
+            "A PDF made now has only the pages scanned so far."
         )
+    if result.error is not None:
+        verb = "is" if kept == 1 else "are"
+        pages = count_noun(kept, "page")
+        return f"{pages} {verb} kept in {result.raw_dir}. Fix the problem, then make the PDF."
     verb = "was" if kept == 1 else "were"
     scanned = f"{count_noun(kept, 'page')} {verb} scanned before you cancelled"
     return f"{scanned} — kept in {result.raw_dir}"
@@ -129,5 +176,10 @@ def _saved(document: DocumentResult, result: DocumentSessionResult) -> Banner:
         said = item.searchable_text
         warning = said[:1].lower() + said[1:]
         return Banner("warning", f"{where}, but {warning}.{note}")
+    if item.ocr is OcrStatus.UNAVAILABLE:  # asked for, and the tool was gone when the PDF was made
+        return Banner(
+            "warning",
+            f"{where}, but searchable text was not added (OCRmyPDF is not installed).{note}",
+        )
     dropped = f" {item.dropped_text}." if item.dropped else ""
     return Banner("positive", f"{where}: {item.pages_text}.{dropped}{note}")

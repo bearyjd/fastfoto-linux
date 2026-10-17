@@ -262,8 +262,10 @@ The window says what it is doing ("Checking the scanner…", "Scanning page 3", 
 (page 2 of 5)", "Adding searchable text…") and **Cancel** works at every one of those steps. The
 results list shows each PDF with its page count, the blank pages left out (by number), whether it
 has searchable text (or why not), and an **Open** button. If the scan stops part-way, or you cancel,
-no PDF is made from part of the stack: the pages are kept and **Process them now** makes the PDF
-from them with the same settings. **Searchable text** needs OCRmyPDF; without it the box is off
+no PDF is made on its own from part of the stack: the pages are kept and **Process them now** makes
+the PDF from just those pages with the same settings (it is offered again after a full disk or a
+folder that cannot be written to, once that is fixed). Each form says how to load the feeder, as
+the label on the scanner does. **Searchable text** needs OCRmyPDF; without it the box is off
 and says `Install OCRmyPDF: sudo dnf install ocrmypdf tesseract-osd`. The Flatpak has no OCR yet
 and says that searchable text needs the native install; everything else in Documents mode works
 there.

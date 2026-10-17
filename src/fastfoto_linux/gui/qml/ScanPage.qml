@@ -107,6 +107,31 @@ Kirigami.Page {
                     Layout.fillHeight: true
                     visible: bridge.mode === "documents"
                 }
+
+                // How the scanner itself says to load it (the label on the feeder).
+                QQC2.Label {
+                    objectName: "photosLoadHint"
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    visible: bridge.mode === "photos"
+                    text: qsTr("Load photos face up, top edge first")
+                    textFormat: Text.PlainText
+                    wrapMode: Text.WordWrap
+                    color: Kirigami.Theme.disabledTextColor
+                    font: Kirigami.Theme.smallFont
+                }
+
+                QQC2.Label {
+                    objectName: "documentsLoadHint"
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    visible: bridge.mode === "documents"
+                    text: qsTr("Load pages face down, top edge first")
+                    textFormat: Text.PlainText
+                    wrapMode: Text.WordWrap
+                    color: Kirigami.Theme.disabledTextColor
+                    font: Kirigami.Theme.smallFont
+                }
             }
 
             Kirigami.Separator {

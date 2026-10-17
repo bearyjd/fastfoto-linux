@@ -298,7 +298,9 @@ What the second pull request settled where the specification left room.
   output folder exists, before it makes the raw folder or reaches for the scanner, so a front
   end that calls it directly cannot start a scan of a stack of paper for a PDF that cannot be
   made. It raises a `DocumentError` (`DocumentSettingsError` or `OcrMissingError`) whose
-  message can be shown as it is; the command line keeps its exit codes (2 and 3).
+  message can be shown as it is; the command line keeps its exit codes (2 and 3). An output
+  folder that goes away after the options were checked is a problem like any other (exit 1, as
+  for `doc process`), not a usage error.
 - **Stopping.** Ctrl-C, SIGTERM and SIGHUP are the same cancel as for photos: scanimage is
   stopped, nothing is published, the raw pages are kept and the exit code is 130. A cancel is
   honoured before each page is made and during OCR (the OCR process and its children are
@@ -324,8 +326,10 @@ What the third pull request settled where the specification left room.
 - **The session is reused, not copied.** A document run is `run_document_session`, with its
   pre-scan check, its cancel and its raw-page rules. The form checks the same rules again
   (`check_settings`' name and languages, the folder) only to show a mistake as the user types;
-  what the session raises (`DocumentSettingsError`, `OcrMissingError`, an `OSError` for the raw
-  folder) is shown as it is, as "The scan did not start: ...", and the page is ready to try again.
+  what the session raises is shown as it is: a `DocumentSettingsError` or `OcrMissingError` as
+  "The scan did not start: ...", an `OSError` for the raw folder as "The scan failed. <what the
+  system said>". Nothing was scanned either way, and the page is ready to try again. Once pages
+  are kept, the same refusals are "No PDF was made. ...", because the scan did start.
 - **Stage texts.** `build_document` takes two optional hooks, `on_page(number, total)` and
   `on_ocr()`, which the worker passes through the session's `build=` seam. "Checking the
   scanner…" and "Scanning page N" come from the session's own callbacks.
@@ -333,11 +337,17 @@ What the third pull request settled where the specification left room.
   found (looked for at start, at "Check again" and at a mode switch), so a tool that vanished
   since is refused before the stack is scanned. Missing, the box is off with the install hint
   (native) or "Searchable text needs the native install" (Flatpak), and the PDF is made without.
-- **Kept pages.** After a cancel, or a scanner that stopped part-way, "Process them now" builds
-  the PDF from `kept_pages` with the run's settings and the scan resolution as the fallback
-  resolution. A cancel while it is made, or a PDF that cannot be made, keeps the pages and, for a
-  cancel, offers them again; the same error is not offered again (every page blank, an unusable
-  page).
+- **Kept pages.** After a cancel, a scanner that stopped part-way, or a PDF that could not be
+  saved for a reason the user can fix (a full disk, a folder that cannot be written to or is
+  gone), "Process them now" builds the PDF from `kept_pages` with the run's settings and the scan
+  resolution as the fallback resolution, and the pages stay on offer until a PDF exists. Searchable
+  text that the scan required is only asked for then (`OcrMode.AUTO`): a tool that vanished since
+  gives a plain PDF and the usual warning, not a failure. An `OSError` while the PDF is made comes
+  back as a result in plain words, without the temporary file's name. A cancel keeps the pages and
+  offers them again; an error that another go would repeat (every page blank, an unusable page)
+  is not offered again.
+- **Loading hints.** Each form says how to load the feeder in the words of the scanner's own
+  label: "Load photos face up, top edge first" and "Load pages face down, top edge first".
 - **One error for a missing output folder.** `build_document`, `publish_pdf` and
   `run_document_session` raise `OutputFolderMissingError`, a `DocumentSettingsError` that is
   also the `OutputRootMissingError` older callers catch, with one message; `check_settings` finds

@@ -1,7 +1,5 @@
 """Documents mode on the scan page: its form, its searchable-text tool, its progress and words."""
 
-from dataclasses import replace
-
 from fastfoto_linux.gui.docform import (
     FOLDER_FIELD,
     document_destination,
@@ -119,5 +117,6 @@ class DocumentsSide:
         return document_kept_text(result)
 
     def kept_after_process(self, kept: DocumentSessionResult) -> DocumentSessionResult:
-        """Offered once, as for photos (the folder is still known for the error message)."""
-        return replace(kept, kept_pages=())
+        """Kept as they are: the pages stay on offer until a PDF exists. Nothing was written, so
+        another go repeats nothing."""
+        return kept

@@ -149,13 +149,20 @@ QQC2.ScrollView {
             onToggled: bridge.setDocumentField("both_sides", checked)
         }
 
-        QQC2.CheckBox {
-            objectName: "docKeepBlankBox"
-            text: qsTr("Keep blank pages")
-            checked: bridge.documents.form.keep_blank
-            enabled: panel.editable
-            Accessible.name: qsTr("Keep blank pages")
-            onToggled: bridge.setDocumentField("keep_blank", checked)
+        // A detail of "Both sides": set in and smaller, so that it is not read as a second main choice.
+        RowLayout {
+            Item {
+                implicitWidth: Kirigami.Units.gridUnit
+            }
+
+            QQC2.CheckBox {
+                objectName: "docKeepBlankBox"
+                text: qsTr("Keep blank pages")
+                checked: bridge.documents.form.keep_blank
+                enabled: panel.editable
+                Accessible.name: qsTr("Keep blank pages")
+                onToggled: bridge.setDocumentField("keep_blank", checked)
+            }
         }
 
         Item {

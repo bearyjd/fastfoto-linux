@@ -32,6 +32,7 @@ from fastfoto_linux.documents.streak import (
     STREAK_MAX_MM,
     STREAK_MIN_MM,
     STREAK_SHARE,
+    STREAK_TINT,
 )
 from fastfoto_linux.documents.trim import MIN_PAPER_MM, TAIL_KEEP_MM
 from fastfoto_linux.pipeline.crop import BACKGROUND_PRIOR_TOLERANCE
@@ -67,6 +68,8 @@ FACTS = {
     "streak brightness": f"{STREAK_LIGHTER:g} levels brighter",
     "streak rows": f"{STREAK_SHARE:.0%} of the rows that have backing on both sides",
     "streak length": f"at least {STREAK_MIN_MM:g} mm of such rows",
+    "streak tint": f"within {STREAK_TINT:g} of the backing's",
+    "streak resolution": "below 170 dpi",
 }
 README_SKIPS = {"fringe", "wide tolerance", "shadow speck"}  # the README is short
 CONCEPTS = (
@@ -125,6 +128,8 @@ def test_the_streak_rule_and_its_limit_are_described(name: str) -> None:
     text = flat(TEXTS[name]).lower()
     assert "light vertical line" in text
     assert "dark streak" in text
+    assert "every channel" in text
+    assert "blank slip" in text
 
 
 def test_the_readme_tells_what_a_streak_means_and_what_to_do_about_it() -> None:

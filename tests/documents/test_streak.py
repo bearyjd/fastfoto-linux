@@ -2,9 +2,11 @@
 
 A streak is a run of columns that, in at least ``STREAK_SHARE`` of the rows with backing on both
 sides of them (``STREAK_MAX_MM`` away, in whole pixels rounded up) and over at least
-``STREAK_MIN_MM`` of such rows, is not backing and is ``STREAK_LIGHTER`` levels brighter than the
-brighter of those two neighbours. Its blurred edge, one pixel each side in the same rows, goes with
-it. Synthetic arrays, numbers only.
+``STREAK_MIN_MM`` of such rows, is not backing, is ``STREAK_LIGHTER`` levels brighter in every
+channel than both of those two neighbours, and has the backing's tint (blue minus red) to within
+``STREAK_TINT``. Its blurred edge, one pixel each side in the same rows, goes with it. Where
+something crosses the streak, the pixels of the streak and its edge do not count as backing.
+Synthetic arrays, numbers only.
 """
 
 import math
@@ -19,7 +21,9 @@ from fastfoto_linux.documents.streak import (
     STREAK_MAX_MM,
     STREAK_MIN_MM,
     STREAK_SHARE,
+    STREAK_TINT,
     _narrow_runs,
+    crossed_pixels,
     streak_pixels,
 )
 from tests.doc_synth import BACKING_RGB
@@ -39,7 +43,7 @@ def plus(*levels: float) -> np.ndarray:
 
 LIGHT = plus(22, 23, 27)  # 24 levels brighter on average
 RINGING = plus(-15, -15, -15)  # a darker fringe next to a light line: not backing, not lighter
-SHIFT = (30, -20)  # a hue shift that is far from the backing; the blue channel sets the brightness
+BACKING_TINT = int(BACKING[2] - BACKING[0])  # blue minus red of the backing: 17
 
 
 def strip(rows: int = ROWS) -> np.ndarray:
@@ -60,7 +64,13 @@ def found(mask: np.ndarray) -> bool:
 
 
 def test_the_constants_are_the_rule() -> None:
-    assert (STREAK_MAX_MM, STREAK_LIGHTER, STREAK_SHARE, STREAK_MIN_MM) == (0.3, 4.0, 0.9, 3.0)
+    assert (STREAK_MAX_MM, STREAK_LIGHTER, STREAK_SHARE, STREAK_MIN_MM, STREAK_TINT) == (
+        0.3,
+        4.0,
+        0.9,
+        3.0,
+        12.0,
+    )
 
 
 def test_a_light_column_in_every_row_is_a_streak_and_the_backing_beside_it_is_not() -> None:
@@ -97,19 +107,42 @@ def test_an_input_is_never_changed() -> None:
 # ---- lighter, by how much ---------------------------------------------------------------------
 
 
-def hue_shifted(brighter_by: float) -> np.ndarray:
-    """A colour 36 from the backing whose mean is ``brighter_by`` over the backing's."""
-    blue = 3 * brighter_by - SHIFT[0] - SHIFT[1]
-    return plus(SHIFT[0], SHIFT[1], blue)
+LEADS = {  # levels over the backing, per channel, with the one under test left out
+    0: (None, 25, 14),
+    1: (20, None, 20),
+    2: (14, 25, None),
+}  # each is 20 or more from the backing, and within 11 of its tint, whatever the low channel
 
 
-@pytest.mark.parametrize(("brighter_by", "is_streak"), [(5.0, True), (3.0, False)])
-def test_a_line_must_be_a_few_levels_brighter_than_the_backing_beside_it(
-    brighter_by: float, is_streak: bool
+@pytest.mark.parametrize("channel", [0, 1, 2])
+@pytest.mark.parametrize(("lead", "is_streak"), [(5.0, True), (3.0, False)])
+def test_a_line_must_be_a_few_levels_brighter_in_every_channel(
+    channel: int, lead: float, is_streak: bool
 ) -> None:
-    rgb = hue_shifted(brighter_by)
+    """The mean of the channels is far over the backing's in all of these; one channel is not."""
+    rgb = plus(*(lead if level is None else level for level in LEADS[channel]))
     assert backing_distance(rgb[None, None])[0, 0] > 20
     assert found(streak_pixels(with_line(strip(), COLUMN, COLUMN + 2, rgb), DPI)) is is_streak
+
+
+@pytest.mark.parametrize(
+    ("shift", "is_streak"), [(0, True), (-12, True), (12, True), (-13, False), (13, False)]
+)
+def test_a_line_has_the_backings_tint_to_within_twelve(shift: int, is_streak: bool) -> None:
+    """Blue minus red is 17 in the backing and 12 either side of that in a streak: all of these
+    are 20 levels brighter or more in every channel."""
+    rgb = plus(20, 25, 20 + shift)
+    assert BACKING_TINT + shift == rgb[2] - rgb[0]
+    assert found(streak_pixels(with_line(strip(), COLUMN, COLUMN + 2, rgb), DPI)) is is_streak
+
+
+@pytest.mark.parametrize(
+    "rgb",
+    [(225, 225, 225), (238, 236, 225), (240, 215, 215), (255, 250, 190)],
+    ids=["light-grey", "cream", "pink", "yellow"],
+)
+def test_a_pale_line_of_another_colour_is_not_a_streak(rgb: tuple[int, int, int]) -> None:
+    assert not found(streak_pixels(with_line(strip(), COLUMN, COLUMN + 2, rgb), DPI))
 
 
 @pytest.mark.parametrize("tone", [150, 100])
@@ -167,11 +200,16 @@ def test_a_streak_has_backing_within_the_width_on_both_sides(columns: int, is_st
     assert found(streak_pixels(image, DPI)) is is_streak
 
 
-def test_the_width_is_never_under_two_pixels_whatever_the_resolution() -> None:
-    """At 50 dpi 0.3 mm is under a pixel: a line of three pixels is still the most one can be."""
-    image = with_line(strip(), COLUMN, COLUMN + 3, LIGHT)
-    assert found(streak_pixels(image, 50))
-    assert not found(streak_pixels(with_line(strip(), COLUMN, COLUMN + 4, LIGHT), 50))
+@pytest.mark.parametrize(
+    ("dpi", "is_streak"), [(100, False), (150, False), (169, False), (170, True), (200, True)]
+)
+def test_the_rule_is_off_where_two_pixels_are_wider_than_the_streak(
+    dpi: int, is_streak: bool
+) -> None:
+    """A streak is a pixel or two wide: 2 pixels are 0.3 mm at 169.3 dpi, and below 170 dpi a
+    pixel is too coarse to tell a streak from a line."""
+    image = with_line(strip(), COLUMN, COLUMN + 2, LIGHT)
+    assert found(streak_pixels(image, dpi)) is is_streak
 
 
 @pytest.mark.parametrize(
@@ -203,3 +241,71 @@ def test_the_backing_of_a_band_strip_needs_the_resolution_for_the_streak() -> No
         backing_pixels(strip(), band=True)
     assert backing_pixels(with_line(strip(), COLUMN, COLUMN + 2, LIGHT), band=True, dpi=DPI).any()
     assert backing_pixels(strip()).all()
+
+
+# ---- a mark crossing the streak ----------------------------------------------------------------
+
+MARK_ROWS = slice(40, 43)
+
+
+def crossed_strip() -> np.ndarray:
+    """A streak two pixels wide, crossed in three rows by a grey stroke 20 pixels long: where
+    the stroke lies over the streak, the blur with it is backing-coloured."""
+    image = with_line(strip(), COLUMN, COLUMN + 2, LIGHT)
+    image = with_line(image, COLUMN - 10, COLUMN + 10, 150, MARK_ROWS)
+    return with_line(image, COLUMN, COLUMN + 2, BACKING, MARK_ROWS)
+
+
+def test_a_streak_is_crossed_in_the_rows_where_its_neighbours_are_not_both_backing() -> None:
+    """The stroke's rows, at the streak and the pixel each side of it that its blur reaches."""
+    crossed = crossed_pixels(crossed_strip(), DPI)
+    assert crossed[MARK_ROWS, COLUMN - 1 : COLUMN + 3].all()
+    assert crossed.sum() == 3 * 4
+
+
+def test_the_streak_found_is_still_the_streak_in_the_rows_that_are_clear() -> None:
+    mask = streak_pixels(crossed_strip(), DPI)
+    assert mask[:40, COLUMN].all()
+    assert not mask[MARK_ROWS, COLUMN].any()
+
+
+def test_the_pixels_of_a_crossed_streak_are_not_backing_whatever_their_colour() -> None:
+    """A stroke over a light streak blurs into the backing's colour; it is part of the stroke."""
+    backing = backing_pixels(crossed_strip(), band=True, dpi=DPI)
+    assert not backing[MARK_ROWS, COLUMN : COLUMN + 2].any()
+    assert backing[:40].all()
+
+
+def test_a_faint_row_of_a_streak_with_backing_on_both_sides_is_not_crossed() -> None:
+    """The streak is only 10 levels over the backing here, which is within 20: backing by
+    colour, with backing beside it. Nothing crosses it."""
+    image = with_line(strip(), COLUMN, COLUMN + 2, LIGHT)
+    image = with_line(image, COLUMN, COLUMN + 2, plus(10, 10, 10), slice(10, 15))
+    assert not crossed_pixels(image, DPI).any()
+    assert backing_pixels(image, band=True, dpi=DPI).all()
+
+
+@pytest.mark.parametrize("first", [5, COLUMN + 4], ids=["far-left", "touching-the-offset"])
+def test_a_mark_that_does_not_lie_over_the_streak_does_not_cross_it(first: int) -> None:
+    """Beside the streak, the mark is not backing and neither is the streak's own pixel: nothing
+    of the streak is backing by colour in those rows, so nothing is to be taken away."""
+    image = with_line(strip(), COLUMN, COLUMN + 2, LIGHT)
+    image = with_line(image, first, first + 10, 150, MARK_ROWS)
+    assert not crossed_pixels(image, DPI).any()
+
+
+def test_a_strip_without_a_streak_has_nothing_crossed() -> None:
+    image = with_line(strip(), 10, 40, 150, MARK_ROWS)
+    assert not crossed_pixels(image, DPI).any()
+
+
+@pytest.mark.parametrize("dpi", [100, 150])
+def test_nothing_is_crossed_where_the_rule_is_off(dpi: int) -> None:
+    assert not crossed_pixels(crossed_strip(), dpi).any()
+
+
+def test_the_crossing_never_changes_its_input() -> None:
+    image = crossed_strip()
+    before = image.copy()
+    crossed_pixels(image, DPI)
+    assert np.array_equal(image, before)

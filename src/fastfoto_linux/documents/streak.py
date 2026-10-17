@@ -34,6 +34,7 @@ STREAK_LIGHTER = 4.0  # levels brighter (mean of RGB) than the brighter of the t
 STREAK_SHARE = 0.9  # of the rows that have backing on both sides of the column
 STREAK_MIN_MM = 3.0  # and those rows are at least this tall in all (a band is 3 mm or more)
 STREAK_MIN_OFFSET_PX = 2  # one pixel is noise at any resolution
+STREAK_TINT = 12.0  # its blue minus red is within this of the backing's
 
 
 def _offset_px(dpi: int) -> int:
@@ -96,3 +97,9 @@ def streak_pixels(smooth: np.ndarray, dpi: int) -> np.ndarray:
     grown[:-1] |= columns[1:]
     rows = candidates[:, columns].any(axis=1)
     return (candidates & columns) | (grown & rows[:, None] & ~backing)
+
+
+def crossed_pixels(smooth: np.ndarray, dpi: int) -> np.ndarray:
+    """The pixels of ``smooth`` that are not to count as backing though they may look it, because
+    something crosses the streak there."""
+    raise NotImplementedError

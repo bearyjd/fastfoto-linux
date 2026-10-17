@@ -1,65 +1,48 @@
 """Fold creases do not keep a blank page; writing does, however faint, unless it is a thin line.
 
-The rule: a mark does not count toward "not blank" when it is line-like (0.6 mm thick or less, or
-8 times longer than wide) and faint (its darkest pixel is 140 or lighter). Everything else counts.
+The rule: a faint line is not a mark. A line is a thin stroke (0.8 mm thick on average) that is
+0.6 mm thick or less, or 8 times longer than wide; it is faint when no part of it darker than 140
+is a mark by itself. Everything else counts.
 """
 
 import numpy as np
 import pytest
 
-from fastfoto_linux.documents.blank import BLANK_MARGIN_MM, is_blank
+from fastfoto_linux.documents.blank import BLANK_MARGIN_MM
 from fastfoto_linux.documents.marks import (
     FAINT_DARKEST,
     LINE_ASPECT,
     LINE_MAX_MM,
+    STROKE_MAX_MM,
     find_marks,
 )
 from tests.doc_synth import (
     INK_TONE,
-    SPECK_TONE,
-    Scene,
-    paper_scene,
     with_show_through,
     with_solid_block,
+    with_specks,
     with_text,
 )
 from tests.doc_synth_creases import (
     with_creases,
-    with_dust_clear_of_creases,
     with_line,
     with_pencil_words,
     with_slanted_artefact,
 )
-from tests.documents.helpers import colour_page, grey_page, pages_of
-
-DPIS = [200, 300, 600]
-KINDS = ["colour", "grey", "bw"]
-BLANK = dict.fromkeys(KINDS, True)
-KEPT = dict.fromkeys(KINDS, False)
-SMALL_MM = (100.0, 120.0)  # creases at 40 and 80 mm; small so that 600 dpi stays fast
-TALL_MM = (100.0, 230.0)  # tall enough for a 153 mm artefact
-FAINT_BAR_TONE = 160
-
-
-def sheet(dpi: int, paper_mm: tuple[float, float] = SMALL_MM, **kwargs) -> Scene:
-    return paper_scene(dpi=dpi, paper_mm=paper_mm, **kwargs)
-
-
-def verdicts(scene: Scene) -> dict[str, bool]:
-    return {kind: is_blank(page) for kind, page in pages_of(scene).items()}
-
-
-def grey_verdicts(scene: Scene) -> dict[str, bool]:
-    """For tones a 1-bit page turns white (lighter than 128): colour and grey only."""
-    return {"colour": is_blank(colour_page(scene)), "grey": is_blank(grey_page(scene))}
-
-
-def bar(dpi: int, thickness_mm: float, length_mm: float, tone: int = FAINT_BAR_TONE) -> Scene:
-    """A horizontal bar of the given size on an empty sheet, well inside the margin."""
-    return with_line(
-        sheet(dpi), (30.0, 60.0), (30.0 + length_mm, 60.0), tone=tone, thickness_mm=thickness_mm
-    )
-
+from tests.doc_synth_faint import with_dust_on_creases
+from tests.documents.blank_helpers import (
+    BLANK,
+    DPIS,
+    FAINT_BAR_TONE,
+    KEPT,
+    KEPT_ALSO_IN_1_BIT,
+    TALL_MM,
+    bar,
+    marks_of,
+    sheet,
+    verdicts,
+)
+from tests.documents.helpers import colour_page
 
 # ---- the fixtures are marks to the plain detector, or the tests below would prove nothing ----
 
@@ -91,6 +74,7 @@ LAYOUTS = {
 @pytest.mark.parametrize("layout", list(LAYOUTS))
 def test_a_creased_blank_back_is_blank_at_every_resolution(dpi: int, layout: str) -> None:
     scene = with_creases(sheet(dpi), **LAYOUTS[layout])
+    assert marks_of(scene)  # plain detector: they are marks
     assert verdicts(scene) == BLANK
 
 
@@ -116,7 +100,8 @@ def test_creases_with_show_through_texture_are_blank() -> None:
 
 
 def test_creases_among_dust_are_blank() -> None:
-    dusty = with_dust_clear_of_creases(with_creases(sheet(300), broken=True), 40, max_px=8)
+    creased = with_creases(sheet(300), broken=True)
+    dusty = with_dust_on_creases(with_specks(creased, 40, max_px=8), 30, max_mm=0.6)
     assert verdicts(dusty) == BLANK
 
 
@@ -129,7 +114,8 @@ def test_creases_artefact_dust_and_texture_together_are_blank() -> None:
     """What one real back looked like: broken creases, the artefact, dust, paper texture."""
     scene = with_slanted_artefact(sheet(300, TALL_MM, noise=6))
     scene = with_creases(scene, broken=True, from_mm=20.0)
-    assert verdicts(with_dust_clear_of_creases(scene, 40, max_px=8)) == BLANK
+    scene = with_dust_on_creases(with_specks(scene, 40, max_px=8), 30, max_mm=0.6)
+    assert verdicts(scene) == BLANK
 
 
 # ---- pages that are not blank ----------------------------------------------------------------
@@ -138,14 +124,13 @@ def test_creases_artefact_dust_and_texture_together_are_blank() -> None:
 @pytest.mark.parametrize("dpi", DPIS)
 def test_a_line_of_dark_text_among_creases_keeps_the_page(dpi: int) -> None:
     scene = with_text(with_creases(sheet(dpi), broken=True), 25, 20, 6)
-    assert verdicts(scene) == KEPT
+    assert verdicts(scene, one_bit=True) == KEPT_ALSO_IN_1_BIT
 
 
 @pytest.mark.parametrize("dpi", DPIS)
 def test_pencil_handwriting_keeps_the_page(dpi: int) -> None:
-    """Strokes darkest 110-150, letters 2.6 mm, a few words."""
-    scene = with_pencil_words(sheet(dpi), 25, 20)
-    assert verdicts(scene) == KEPT
+    """Strokes darkest 110-150 (a test value, not a measurement), letters 2.6 mm, a few words."""
+    assert verdicts(with_pencil_words(sheet(dpi), 25, 20)) == KEPT
 
 
 @pytest.mark.parametrize("dpi", DPIS)
@@ -156,83 +141,76 @@ def test_pencil_handwriting_among_creases_keeps_the_page(dpi: int) -> None:
 
 def test_pencil_at_the_faintest_level_still_keeps_the_page_by_its_round_letters() -> None:
     scene = with_pencil_words(sheet(300), 25, 20, "noon", tones=(FAINT_DARKEST + 10,))
-    assert grey_verdicts(scene) == {"colour": False, "grey": False}
+    assert verdicts(scene) == KEPT
 
 
 @pytest.mark.parametrize("tone", [40, 95])
 def test_a_dark_ruled_line_alone_keeps_the_page(tone: int) -> None:
-    scene = bar(300, 0.3, 60.0, tone=tone)
-    assert verdicts(scene) == KEPT
+    assert verdicts(bar(300, 0.3, 60.0, tone=tone), one_bit=True) == KEPT_ALSO_IN_1_BIT
 
 
 def test_a_dark_ruled_line_among_creases_keeps_the_page() -> None:
     scene = with_creases(bar(300, 0.3, 60.0, tone=60), broken=True)
-    assert verdicts(scene) == KEPT
+    assert verdicts(scene, one_bit=True) == KEPT_ALSO_IN_1_BIT
 
 
 @pytest.mark.parametrize("dpi", DPIS)
 def test_a_small_dark_page_number_among_creases_keeps_the_page(dpi: int) -> None:
     scene = with_text(with_creases(sheet(dpi)), 50, 95, 1, tone=INK_TONE)
-    assert verdicts(scene) == KEPT
+    assert verdicts(scene, one_bit=True) == KEPT_ALSO_IN_1_BIT
 
 
 # ---- the edges of the rule -------------------------------------------------------------------
 
 
 def test_a_thin_line_just_darker_than_the_faint_level_counts() -> None:
-    scene = bar(300, 0.3, 60.0, tone=FAINT_DARKEST - 1)
-    assert grey_verdicts(scene) == {"colour": False, "grey": False}
+    assert verdicts(bar(300, 0.3, 60.0, tone=FAINT_DARKEST - 1)) == KEPT
 
 
 def test_a_thin_line_at_the_faint_level_does_not() -> None:
-    scene = bar(300, 0.3, 60.0, tone=FAINT_DARKEST)
-    assert grey_verdicts(scene) == {"colour": True, "grey": True}
+    assert verdicts(bar(300, 0.3, 60.0, tone=FAINT_DARKEST)) == BLANK
 
 
 def test_a_faint_bar_that_is_neither_thin_nor_long_counts() -> None:
     """1 mm wide and 5 mm long: ratio 5, a faint mark of letter size is writing."""
-    assert grey_verdicts(bar(300, 1.0, 5.0)) == {"colour": False, "grey": False}
+    assert verdicts(bar(300, 1.0, 5.0)) == KEPT
 
 
-def test_a_faint_bar_that_is_not_thin_but_many_times_longer_than_wide_does_not() -> None:
-    """1.2 mm wide and 12 mm long: ratio 10, a line though thicker than a crease."""
-    assert grey_verdicts(bar(300, 1.2, 12.0)) == {"colour": True, "grey": True}
+def test_a_faint_bar_many_times_longer_than_wide_but_not_a_thin_stroke_counts() -> None:
+    """1.2 mm wide and 12 mm long: ratio 10, but thicker than a stroke: faint writing."""
+    assert STROKE_MAX_MM < 1.2
+    assert verdicts(bar(300, 1.2, 12.0)) == KEPT
 
 
 def test_a_faint_thin_dash_that_is_not_many_times_longer_than_wide_does_not() -> None:
     """0.5 mm wide and 3 mm long: ratio 6, still thinner than a crease."""
-    assert grey_verdicts(bar(300, 0.5, 3.0)) == {"colour": True, "grey": True}
+    assert verdicts(bar(300, 0.5, 3.0)) == BLANK
 
 
 def test_a_big_faint_block_still_keeps_the_page() -> None:
     scene = with_solid_block(sheet(300), 30, 30, 20, tone=FAINT_BAR_TONE)
-    assert grey_verdicts(scene) == {"colour": False, "grey": False}
+    assert verdicts(scene) == KEPT
 
 
 def test_the_constants_sit_between_the_numbers_of_the_real_pages() -> None:
     assert 120 < FAINT_DARKEST <= 152  # text is 120 or darker, creases are 152 or lighter
     assert 0.51 < LINE_MAX_MM < 1.0  # the thickest crease; a letter's stroke is wider than a mm
+    assert LINE_MAX_MM < STROKE_MAX_MM  # a thin mark is a thin stroke
     assert 5 <= LINE_ASPECT < 20  # a pencil "l" is about 7; the artefact is about 20
 
 
-# ---- the known limits, kept on the side of keeping the page --------------------------------
-
-
-def test_dust_sitting_on_a_crease_keeps_the_page() -> None:
-    """A dark speck makes the crease it touches one mark whose darkest pixel is not faint."""
-    scene = with_solid_block(with_creases(sheet(300)), 50, 39.5, 0.9, tone=SPECK_TONE)
-    assert grey_verdicts(scene) == {"colour": False, "grey": False}
+# ---- the known limits, kept on the side of keeping the page ---------------------------------
 
 
 def test_creases_that_cross_are_one_big_mark_and_keep_the_page() -> None:
     scene = with_creases(with_creases(sheet(300)), vertical=True)
-    assert grey_verdicts(scene) == {"colour": False, "grey": False}
+    assert verdicts(scene) == KEPT
 
 
 def test_a_lone_faint_pencil_stroke_may_be_ignored() -> None:
     """Known limit: a single faint stroke ("1", "l") is a thin faint line, like a crease."""
     scene = with_line(sheet(300), (50.0, 50.0), (50.0, 52.6), tone=150, thickness_mm=0.35)
-    assert grey_verdicts(scene) == {"colour": True, "grey": True}
+    assert verdicts(scene) == BLANK
 
 
 # ---- find_marks ------------------------------------------------------------------------------

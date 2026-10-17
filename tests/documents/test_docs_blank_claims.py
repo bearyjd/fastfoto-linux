@@ -21,18 +21,52 @@ def text_of(name: str) -> str:
 def test_the_blank_rule_is_described_as_ignoring_faint_fold_creases(name: str) -> None:
     text = text_of(name)
     assert "faint fold creases" in text
-    assert "line-like and faint" in text
-    assert "0.6 mm" in text
-    assert "8 times" in text
-    assert "140" in text
+    assert "faint line" in text
+    assert "thin stroke" in text
+    assert f"{marks.LINE_MAX_MM} mm thick or less" in text
+    assert f"{marks.LINE_ASPECT} times longer than wide" in text
+    assert f"{marks.STROKE_MAX_MM} mm" in text
+    assert f"darker than {marks.FAINT_DARKEST}" in text
 
 
 @pytest.mark.parametrize("name", list(DOCUMENTS))
-def test_the_limit_of_the_crease_rule_is_described(name: str) -> None:
+def test_the_dust_and_letters_on_a_crease_are_described(name: str) -> None:
     text = text_of(name)
-    assert "a single faint pencil stroke" in text
-    assert "dust" in text
-    assert "touching a crease" in text
+    assert "a dark speck on a crease is dust" in text or "a speck under a millimetre" in text
+    assert "dark letter touching one" in text
+
+
+@pytest.mark.parametrize("name", list(DOCUMENTS))
+def test_the_limits_of_the_crease_rule_are_listed_exactly(name: str) -> None:
+    text = text_of(name)
+    assert 'a faint thin single stroke ("l", "I", "-", "!", a ruled line)' in text
+    assert "a faint flat signature wave" in text
+    assert "creases that cross are one big mark and keep the page" in text
+
+
+@pytest.mark.parametrize("name", list(DOCUMENTS))
+def test_nothing_is_claimed_that_the_rule_no_longer_does(name: str) -> None:
+    text = text_of(name)
+    assert "never a page lost" not in text
+    assert "touching a crease keeps the page" not in text
+    assert "a dust speck touching a crease" not in text
+    assert "so pencil handwriting keeps the page" not in text
+    assert "pencil measured" not in text.lower()
+    assert "pencil 110 to 150" not in text.lower()
+
+
+def test_pencil_110_to_150_is_called_a_test_value() -> None:
+    design = text_of("design note")
+    assert "pencil-like strokes darkest 110 to 150" in design
+    assert "a test value, not a measurement" in design
+
+
+def test_the_design_note_names_the_constants_of_the_rule() -> None:
+    design = text_of("design note")
+    names = ("LINE_MAX_MM", "LINE_ASPECT", "STROKE_MAX_MM", "FAINT_DARKEST", "SPECK_MIN_MM")
+    for name in (*names, "DUST_HALO_MM"):
+        assert hasattr(marks, name)
+        assert f"`{name}`" in design
 
 
 @pytest.mark.parametrize("name", list(DOCUMENTS))
@@ -55,3 +89,5 @@ def test_the_scanners_png_is_described_as_carrying_its_resolution() -> None:
 def test_the_marks_module_documents_the_crease_rule() -> None:
     text = " ".join((marks.__doc__ or "").split())
     assert "fold crease" in text
+    assert "faint thin single stroke" in text
+    assert "faint flat signature wave" in text

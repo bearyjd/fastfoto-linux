@@ -31,6 +31,9 @@ MARK_MIN_AREA_MM2 = 0.3
 # 0.17-0.51 mm thick, darkest pixel 152-204. Real text: darkest pixel 0-120.
 LINE_MAX_MM = 0.6  # a mark this thin or thinner is line-like (the thickest crease: 0.51)
 LINE_ASPECT = 8  # a mark this many times longer than wide is line-like (a deskew artefact: 20)
+STROKE_MAX_MM = 0.8  # ... but only a thin stroke: its area over its long side, at most this
+SPECK_MIN_MM = 0.5  # a dark part this wide is a speck on the line; thinner is the line's grain
+DUST_HALO_MM = 0.3  # the blur round a dark speck, taken off a line before it is judged
 FAINT_DARKEST = 140  # a mark no darker than this is faint (creases 152 and up, text 120 and down)
 _TONES = 256
 _HISTOGRAM_SMOOTHING = 5

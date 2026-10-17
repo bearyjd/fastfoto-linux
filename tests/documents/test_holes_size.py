@@ -3,9 +3,11 @@ or a punched hole (a filled disc of ``PUNCH_MIN_MM`` to ``HOLE_MAX_MM``) can be 
 holes are 0.6 to 1.35 mm long, grey 86 to 108; a printed digit is 2 to 3 mm tall and not round.
 Anything in between, and a long thin or hollow mark, keeps its page, whatever lies opposite."""
 
+from collections.abc import Callable
+
 import pytest
 
-from fastfoto_linux.documents.holes import PUNCH_MIN_MM, STAPLE_MAX_MM
+from fastfoto_linux.documents.holes import HOLE_MAX_MM, PUNCH_MIN_MM, STAPLE_MAX_MM
 from tests.doc_synth import Scene
 from tests.doc_synth_holes import Hole, dash, disc, holes_painter, ring, sheet
 from tests.documents.holes_helpers import FAST_DPIS, blanks, mirrored
@@ -36,6 +38,24 @@ def test_staple_holes_as_small_and_as_grey_as_the_real_ones_are_holes(
 @pytest.mark.parametrize("diameter", [PUNCH_MIN_MM + 0.5, 6.0, 7.5], ids=str)
 def test_a_round_disc_of_a_punched_hole_is_a_hole(dpi: int, diameter: float) -> None:
     assert blanks(*pair(dpi, [disc(8.0, 40.0, diameter)])) == BLANK
+
+
+def square(x_mm: float, y_mm: float, side_mm: float) -> Hole:
+    return Hole(x_mm, y_mm, side_mm, side_mm)
+
+
+@pytest.mark.parametrize("dpi", FAST_DPIS)
+@pytest.mark.parametrize("size", [HOLE_MAX_MM + 1.0, 10.0, 12.0], ids=str)
+@pytest.mark.parametrize("shape", [disc, square], ids=["disc", "square"])
+@pytest.mark.parametrize("corner", [(2.0, 2.0), (4.0, 4.0)], ids=str)
+def test_a_disc_or_square_over_the_punched_size_in_a_corner_is_never_a_hole(
+    dpi: int, size: float, shape: Callable[[float, float, float], Hole], corner: tuple[float, float]
+) -> None:
+    """A grey blot of 9 to 12 mm at the same corner of both sides keeps the back: a punched hole
+    is no longer than ``HOLE_MAX_MM``, whatever the mark opposite. The 5 mm blank margin clips the
+    part of the blot that is counted to under ``HOLE_MAX_MM``, so only the size of its whole shape
+    (``_hole_sized``) keeps the page."""
+    assert blanks(*pair(dpi, [shape(*corner, size)])) == KEPT
 
 
 @pytest.mark.parametrize("dpi", FAST_DPIS)

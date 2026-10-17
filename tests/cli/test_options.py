@@ -53,7 +53,7 @@ def test_the_feed_help_says_which_side_each_loading_scans_first(capsys) -> None:
     text = " ".join(capsys.readouterr().out.split())
     assert (
         "how photos were loaded (top edge first): face-up scans the back first (default); "
-        "face-down scans the front first"
+        "face-down scans the front first (these names used to mean the opposite)"
     ) in text
 
 

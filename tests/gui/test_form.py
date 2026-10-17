@@ -185,6 +185,9 @@ def test_notes_have_a_length_limit(form: ScanForm) -> None:
 def test_unsupported_choices_are_errors(form: ScanForm) -> None:
     bad = replace(form, dpi=123, loaded="sideways", backs="maybe")
     assert set(validate(bad)) == {"dpi", "loaded", "backs"}
+    assert validate(bad)["loaded"] == (
+        "Unsupported loading direction 'sideways'; use one of face-up, face-down."
+    )
     assert all(dpi in SUPPORTED_DPI for dpi in (300, 600))
 
 

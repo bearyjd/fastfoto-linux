@@ -60,7 +60,7 @@ def write_sheets(
     front_first: bool = False,
     first_number: int = 1,
 ) -> list[Path]:
-    """Pages ``page-NNNN.png`` for ``sheets``; the default is back first (face-down loading)."""
+    """Pages ``page-NNNN.png`` for ``sheets``; the default is back first (face-up loading)."""
     directory.mkdir(parents=True, exist_ok=True)
     paths: list[Path] = []
     for (front, _), (back, _) in sheets:
@@ -86,7 +86,7 @@ def workspace(tmp_path: Path) -> tuple[Path, Path]:
 
 
 def settings_for(out: Path, **overrides) -> ProcessSettings:
-    """Settings for a face-down batch (back page first) unless overridden."""
+    """Settings for a face-up batch (back page first) unless overridden."""
     return ProcessSettings(output_root=out, **{"expect_front_first": False, **overrides})
 
 

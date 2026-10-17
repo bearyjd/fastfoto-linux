@@ -54,9 +54,9 @@ def test_the_default_chain_orients_and_restores_into_an_enhanced_copy(
     assert "enhanced: 1" in capsys.readouterr().out
 
 
-def test_face_up_loading_reads_the_first_page_of_a_sheet_as_the_front(tmp_path, out) -> None:
+def test_face_down_loading_reads_the_first_page_of_a_sheet_as_the_front(tmp_path, out) -> None:
     pages = write_sheets(tmp_path / "raw", [plain_sheet()], front_first=True)
-    assert process(out, pages, "--feed", "face-up", "--backs", "always") == 0
+    assert process(out, pages, "--feed", "face-down", "--backs", "always") == 0
     assert names(out) == ["FastFoto_0001.jpg", "FastFoto_0001_b.jpg"]
 
 

@@ -184,6 +184,8 @@ def test_a_full_disk_in_the_first_run_offers_the_pages_too(
     page.process()
 
     assert controller.state is State.DONE
+    assert controller.banner is not None
+    assert "went wrong" not in controller.banner.text  # it worked this time
     (pdf,) = page.pdfs()
     assert len(pypdf.PdfReader(pdf).pages) == 3
 

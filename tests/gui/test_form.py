@@ -59,7 +59,7 @@ def test_every_option_the_form_has_maps_like_the_command_line(out: Path, form: S
     args = cli_namespace(
         out,
         *("--album", "Family Trips", "--date", "1975-06", "--notes", "Summer"),
-        *("--backs", "always", "--feed", "face-up", "--no-restore", "--redeye", "--no-orient"),
+        *("--backs", "always", "--feed", "face-down", "--no-restore", "--redeye", "--no-orient"),
         *("--enhanced-only", "--dpi", "300"),
     )
     filled = replace(
@@ -68,7 +68,7 @@ def test_every_option_the_form_has_maps_like_the_command_line(out: Path, form: S
         date="1975-06",
         notes="Summer",
         backs="always",
-        feed="face-up",
+        loaded="face-down",
         restore=False,
         redeye=True,
         orient=False,
@@ -89,10 +89,18 @@ def test_toggles_pick_the_processing_steps(form: ScanForm) -> None:
     assert none.orienter is None
 
 
-def test_feed_and_backs_reach_the_settings(form: ScanForm) -> None:
-    face_up = to_settings(replace(form, feed="face-up", backs="never"))
-    assert face_up.expect_front_first is True
-    assert face_up.back_policy is BackPolicy.NEVER
+def test_loading_and_backs_reach_the_settings(form: ScanForm) -> None:
+    face_down = to_settings(replace(form, loaded="face-down", backs="never"))
+    assert face_down.expect_front_first is True  # face down: the front is scanned first
+    assert face_down.back_policy is BackPolicy.NEVER
+    assert to_settings(replace(form, loaded="face-up")).expect_front_first is False
+
+
+def test_photos_are_loaded_face_up_by_default_and_the_back_is_scanned_first(
+    form: ScanForm,
+) -> None:
+    assert ScanForm().loaded == "face-up"
+    assert FEED_CHOICES == ("face-up", "face-down")
     assert to_settings(form).expect_front_first is False
 
 
@@ -175,8 +183,11 @@ def test_notes_have_a_length_limit(form: ScanForm) -> None:
 
 
 def test_unsupported_choices_are_errors(form: ScanForm) -> None:
-    bad = replace(form, dpi=123, feed="sideways", backs="maybe")
-    assert set(validate(bad)) == {"dpi", "feed", "backs"}
+    bad = replace(form, dpi=123, loaded="sideways", backs="maybe")
+    assert set(validate(bad)) == {"dpi", "loaded", "backs"}
+    assert validate(bad)["loaded"] == (
+        "Unsupported loading direction 'sideways'; use one of face-up, face-down."
+    )
     assert all(dpi in SUPPORTED_DPI for dpi in (300, 600))
 
 

@@ -152,7 +152,7 @@ def test_a_card_with_next_to_nothing_on_it_is_saved_at_the_full_height_of_the_fr
 @pytest.mark.parametrize(
     ("expect_front_first", "front_page_first"),
     [(False, False), (True, True), (None, True)],
-    ids=["face-down", "face-up", "unknown"],
+    ids=["face-up", "face-down", "unknown"],
 )
 def test_the_feed_order_tells_front_from_back_when_the_content_cannot(
     tmp_path, expect_front_first, front_page_first
@@ -173,7 +173,7 @@ def test_the_normal_side_decision_is_used_when_it_works_for_the_sheet(
 
     monkeypatch.setattr("fastfoto_linux.pipeline.sides.crop", cannot_crop)
     raw, out = workspace(tmp_path)
-    # Delivered face-up although the settings say face-down: the paper tells the sides apart.
+    # Delivered front first although the settings say face-up: the paper tells the sides apart.
     pages = write_sheets(raw, [plain_sheet(0)], front_first=True)
     result = process_pages(pages, settings_for(out, expect_front_first=False))
     assert result.failed[0].reason == "the photo could not be processed"

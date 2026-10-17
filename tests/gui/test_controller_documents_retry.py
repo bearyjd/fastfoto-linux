@@ -65,20 +65,26 @@ def test_the_first_run_offers_the_pages_after_a_problem_with_saving(page: Page) 
 
 
 @pytest.mark.parametrize(
-    "error",
+    ("error", "said"),
     [
-        OutputFolderMissingError("the output folder /out is not an existing folder"),
-        OcrMissingError("searchable text needs ocrmypdf, which is not installed"),
+        (
+            OutputFolderMissingError("the output folder /out is not an existing folder"),
+            "The output folder /out is not an existing folder.",
+        ),
+        (
+            OcrMissingError("searchable text needs ocrmypdf, which is not installed"),
+            "Searchable text needs ocrmypdf, which is not installed.",
+        ),
     ],
 )
 def test_a_refusal_when_the_pages_are_made_is_not_a_scan_that_did_not_start(
-    page: Page, error: Exception
+    page: Page, error: Exception, said: str
 ) -> None:
     controller = page.cancelled(3)
     controller.process_kept()
     controller.on_finished(kept_after(page.out / ".raw" / "s", error))
     assert controller.banner is not None
-    assert controller.banner.text.startswith(f"No PDF was made. {error}.")
+    assert controller.banner.text.startswith(f"No PDF was made. {said}")
     assert controller.can_process_kept  # fix the folder, install the tool, or go on without it
 
 

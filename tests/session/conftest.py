@@ -66,7 +66,7 @@ def make_request(
     raw_parent: Path | None = None,
     **settings: Any,
 ) -> ScanRequest:
-    """A request for a face-down duplex batch into ``out`` unless overridden.
+    """A request for a face-up duplex batch into ``out`` unless overridden.
 
     Backs are never kept or dropped by default, so that a plain sheet is a clean run; pass
     ``back_policy=BackPolicy.AUTO`` to have blank backs dropped.

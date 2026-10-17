@@ -52,7 +52,7 @@ class ProcessSettings:
 
     ``prefix`` None names files after the album (``FastFoto`` without one). ``duplex`` says
     whether pages come in front/back pairs; ``expect_front_first`` is the loading order
-    (False: the back is scanned first, as with FastFoto's face-down loading; None: unknown).
+    (False: the back is scanned first, as with photos loaded face up; None: unknown).
     ``orienter`` turns the front only (the back stays as scanned). ``enhancers`` run in order on
     the oriented front and produce the ``_a`` copy; with ``keep_original`` False the plain
     original is then left out.

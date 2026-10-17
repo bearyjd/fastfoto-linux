@@ -13,7 +13,13 @@ from fastfoto_linux.documents.trim import trim_page
 from tests.doc_synth import BACKING_RGB, px
 from tests.doc_synth_band import banded_scene, with_jpeg
 from tests.documents.helpers import colour_page
-from tests.documents.test_trim_band_real import BAND_MM, frame, painted
+from tests.documents.test_trim_band_real import BAND_MM, PALE_BACKING, frame, painted
+from tests.documents.test_trim_band_shadow import (
+    MID_BAND_MM,
+    SHADOW_TONE,
+    paint_at,
+    wedge_edge,
+)
 
 STEEL = (176, 196, 222)  # 30 from the backing colour: past the strict 20, inside the band's 36
 PASTEL = (200, 220, 240)  # 23 from it
@@ -63,6 +69,21 @@ def test_a_bar_in_the_backing_colour_flush_with_the_paper_end_is_kept_when_a_sha
     assert kept_rows(scene, trim_page(colour_page(scene))) >= scene.paper_end
 
 
+@pytest.mark.parametrize(("share", "cut"), [(1.0, True), (0.55, True), (0.45, False)])
+@pytest.mark.parametrize("dpi", [200, 300])
+def test_a_bar_within_20_of_the_backing_and_no_shadow_below_it_is_cut_if_half_the_page_wide(
+    dpi: int, share: float, cut: bool
+) -> None:
+    """The documented limit: with no darker shadow in the way, such a bar cannot be told from the
+    band. Under half the width its rows are mostly white (pad rows): the band ends below it."""
+    scene = frame(dpi, band_mm=3.0, shadow_mm=0.0, edge_line=False, tilt_deg=1.5)
+    inset = round((1.0 - share) / 2 * scene.width)
+    bar = slice(scene.paper_end - px(6.0, dpi), scene.paper_end)
+    scene = with_jpeg(painted(scene, bar, slice(inset, scene.width - inset), PALE_BACKING))
+    result = trim_page(colour_page(scene))
+    assert (kept_rows(scene, result) < scene.paper_end - px(4.0, dpi)) is cut
+
+
 # ---- pale ink on a backing-coloured slip below the paper is never cut --------------------------
 
 
@@ -99,6 +120,41 @@ def test_a_pale_header_bar_flush_with_the_page_top_is_not_cut(
     scene = banded_scene(dpi=dpi, top_mm=0.0, edge_line=False, paper_mm=60.0)
     scene = with_jpeg(painted(scene, slice(0, px(bar_mm, dpi)), slice(None), rgb))
     assert trim_page(colour_page(scene)).top == 0
+
+
+@pytest.mark.parametrize(
+    ("row_mm", "forgiven"), [(1.6, True), (0.4, False)], ids=["next-to-cut", "far"]
+)
+@pytest.mark.parametrize("dpi", [200, 300])
+def test_at_the_top_the_shadow_is_forgiven_next_to_the_cut_and_not_at_the_edge_of_the_page(
+    dpi: int, row_mm: float, forgiven: bool
+) -> None:
+    """The strip of a top cut runs from the page's edge to the cut: its 1.5 mm that count as the
+    top of the strip are the ones at the paper, not the ones at the edge of the page."""
+    scene = banded_scene(dpi=dpi, top_mm=3.0, edge_line=True, paper_mm=60.0)
+    first = px(row_mm, dpi)
+    speck = painted(
+        scene,
+        slice(first, first + px(0.4, dpi)),
+        slice(px(100.0, dpi), px(101.2, dpi)),
+        SHADOW_TONE,
+    )
+    assert (trim_page(colour_page(with_jpeg(speck))).top > 0) is forgiven
+
+
+@pytest.mark.parametrize("tilt", [-3.0, 1.5])
+def test_shadow_tone_a_pixel_off_the_edge_of_a_side_wedge_is_forgiven_up_to_2_mm_long(
+    tilt: float,
+) -> None:
+    """Dust is under 0.5 mm: a run of 0.9 mm in the shadow's tone by the wedge's edge is the
+    shadow's fringe, which the pad's edge zone forgives (it is shorter than 2 mm)."""
+    scene = frame(300, tilt_deg=tilt)
+    row = scene.paper_end + px(MID_BAND_MM, 300)
+    edge, step = wedge_edge(scene, row)
+    size = (0.34, 0.9)
+    column = edge + 1 if step > 0 else edge - 1 - px(size[0], 300) + 1
+    scene = with_jpeg(paint_at(scene, row, column, size, SHADOW_TONE))
+    assert trim_page(colour_page(scene)).band_bottom
 
 
 # ---- backing is joined to a side through the pad of the band, not through the white tail -------

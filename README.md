@@ -153,19 +153,24 @@ uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr o
   the pad. Rows are judged by what is not white (white is every channel at 240 or more): a band row
   has non-white pixels on at least 50% of its width and backing on at least 95% of those (the
   backing colour or its shadow, within 36 of it), so the wedges do not hide it; a row with more
-  than 10 mm of white that touches neither side of the row is not a band row. The band is the first run of band rows going up from the
-  bottom of the page above the tail, a band of 3 to 20 mm at the bottom and of 1 to 4 mm at the
-  top, and a longer run is not a band. The run ends at the first row that is not a band row and
-  never extends into the white rows above it. The cut is made at the band's border with the
-  paper, never through the edge line, and at most 1 mm of the band stays at the bottom (none at
-  the top). The last check judges the whole strip that is cut, the tail included, where pad pixels
-  are exempt one by one (white, and the pixels where the pad blends with the backing) and the
-  backing is judged by the band's own tolerance (36, so the shadow towards the paper and a speck
-  of dust on the backing are not marks); every other pixel counts, a darker or not blue mark
-  too; 30 mm of page stay, and grey and 1-bit pages are not cut by the band rule.
+  than 10 mm of white that touches neither side of the row is not a band row. The band is the
+  first run of band rows going up from the bottom of the page above the tail, starting within
+  20 mm of its edge: a band of 3 to 20 mm at the bottom and of 1 to 4 mm at the top, and a longer
+  run is not a band. The cut is made at the
+  band's border with the paper, never through the edge line. At least 1 mm of the band stays at
+  the bottom (none at the top), up to ~4 mm when the shadow next to the paper is dark. The last
+  check judges the strip that is cut (the band, the pad under it, the first 3 mm of the tail; the
+  rest of the tail by the ink search of the tail rule), where pad pixels are exempt one by one
+  (white, and the pixels where the pad blends with the backing) and the backing is within 20 of
+  the backing colour, joined to a side through the pad. Only the shadow gets more: tone within 36
+  of the backing colour counts as backing in the first 1.5 mm of the strip next to the cut and at
+  the pad's edge, and only in a speck, and a pale cluster under 0.5 mm that is within 50 of the
+  backing colour is dust. Every other pixel counts, a pale bar, pale ink or a darker or not blue
+  mark too; 30 mm of page stay, and grey and 1-bit pages are not cut by the band rule.
   Limits: side slivers of up to 2 mm are left (slanted, under the 3 mm of the strip rule), and a
-  full-width bar in the backing colour at the top or bottom edge is cut with the band, like a
-  sidebar of that colour at a side.
+  bar at least half the page wide in the backing colour (within 20 of it), flush with the paper's
+  end, is cut with the band, like a sidebar of that colour at a side, unless the band's shadow lies
+  below it; a bar in another blue-grey (up to 36 from the backing colour) is kept.
 - A page is blank only when it has no mark at all inside its 5 mm margin: dust, paper texture
   and faint show-through from the other side do not count, while a single short line, a
   signature, a lone page number or pencil at least about 45 grey levels darker than the paper

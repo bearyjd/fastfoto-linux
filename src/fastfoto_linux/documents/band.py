@@ -28,28 +28,36 @@ backing band is the reliable sign of where the paper ends.
   is not a band row and never extends into the white rows above it, because the paper can be
   pure 255.
 * The cut is made at the band's border with the paper, never through the edge line: the edge line
-  is not backing, so it ends the run and is kept whole. At the bottom at most 1 mm of the band
-  stays, at the top none. The shadow is darker than what the last check in ``trim`` calls backing
-  (at most 20 from the backing colour), so the cut never takes a row of the last 4 mm of the band
-  in which that is not backing in 95% of the non-white pixels: a darker shadow stays with the
-  paper.
-* At least 30 mm of page stay after each cut, and the last check in ``trim`` applies to the whole
-  strip that is cut (at the bottom the tail too, so ink anywhere in it keeps the page). There
-  pad pixels are exempt one by one: white, and the pixels within 2 px of both white and backing,
-  where the pad's edge passes into the backing. The backing joins a side of the strip through the
-  pad, so that pad at both ends of a row does not cut it off, and it is judged by the band's own
-  tolerance (``SHADOW_TOLERANCE``, as for the rows), not by the 20 of the side strips and the
-  tail: the band darkens towards the paper, so the clusters of shadow tone in the top rows of the
-  strip, along a side wedge and a speck of dust are backing. Every other pixel goes to the last
-  check; a mark that is darker, not blue or beyond that tolerance, and dust of ink size in the
-  pad, keep the page, as in the tail.
+  is not backing, so it ends the run and is kept whole. At least 1 mm of the band stays at the
+  bottom (none at the top), and up to ~4 mm when the shadow next to the paper is dark: the shadow
+  is darker than what the last check in ``guard`` calls backing (within 20 of the backing
+  colour), so the cut never takes a row of the last 4 mm of the band in which that is not backing
+  in 95% of the non-white pixels.
+* At least 30 mm of page stay after each cut, and the last check in ``guard`` applies to the
+  strip that is cut: the band, the slanted pad under it and the first 3 mm of the white tail,
+  where the pad's edge rings. Ink anywhere in the rest of the tail keeps the page (the ink search
+  of the tail rule), so the white of the tail joins nothing to a side. In the strip pad pixels
+  are exempt one by one: white, and the pixels within 2 px of both white and backing, where the
+  pad's edge passes into the backing. The backing joins a side of the strip through the pad, so
+  that pad at both ends of a row does not cut it off. Backing is within 20 of the backing colour,
+  as in the side strips and the tail. The shadow gets more: a cluster of tone within 36 of the
+  backing colour (``SHADOW_TOLERANCE``, as for the rows) is backing where the shadow lies, in the
+  first 1.5 mm of the strip, next to the cut, and within 2 px of the pad (the edge of a wedge),
+  and only when it is under 2 mm long: a pale bar, a stroke of pale ink or a slip in that tone is
+  longer and keeps the page. A cluster under 0.5 mm whose pixels are all within 50 of the backing
+  colour, of any hue, is dust. Every other pixel goes to the last check; a mark that is darker,
+  not blue or beyond that tolerance, and dust of ink size in the pad, keep the page, as in the
+  tail.
 * After a band cut the new edge is the paper's, so the blank-page margin is measured in full
   from the new edge (``Trimmed.tail_rows``): the kept edge line is margin, not a mark.
 
 Only colour pages are looked at: grey and 1-bit pages are not cut by the band rule (a grey page
 has no hue to tell the backing by). Limits: side slivers of up to 2 mm are left, because they are
-slanted and the strip rule needs 3 mm; a full-width bar in the backing colour at the top or bottom
-edge is cut with the band, as a full-height sidebar of that colour is at a side.
+slanted and the strip rule needs 3 mm. A bar at least half the page wide in the backing colour
+(within 20 of it), flush with the paper's end, is cut with the band, as a full-height sidebar of
+that colour is at a side, unless the band's shadow lies below it: that is beyond the 1.5 mm of the
+strip, so the last check keeps the bar. A bar in a blue-grey between 20 and 36 from the backing
+colour is kept.
 """
 
 from dataclasses import dataclass
@@ -89,12 +97,15 @@ BOTTOM_EDGE = EdgeRule(bottom=True, reach_mm=20.0, min_mm=3.0, max_mm=20.0, keep
 TOP_EDGE = EdgeRule(bottom=False, reach_mm=0.5, min_mm=0.75, max_mm=4.0, keep_mm=0.0)
 
 
+def backing_distance(colours: np.ndarray) -> np.ndarray:
+    """For every colour (last axis RGB): its RGB distance from the measured background."""
+    return np.linalg.norm(colours.astype(np.float32) - _PRIOR, axis=-1)
+
+
 def backing_mask(colours: np.ndarray, tolerance: float = BACKGROUND_PRIOR_TOLERANCE) -> np.ndarray:
     """For every colour (last axis RGB): is it the scanner's backing, blue-grey and within
     ``tolerance`` of the measured background? Cream or neutral grey is never backing."""
-    offset = colours.astype(np.float32) - _PRIOR
-    near = np.linalg.norm(offset, axis=-1) <= tolerance
-    return near & (colours[..., 2] > colours[..., 0])
+    return (backing_distance(colours) <= tolerance) & (colours[..., 2] > colours[..., 0])
 
 
 def _edge_first(pixels: np.ndarray, rule: EdgeRule, dpi: int) -> np.ndarray:

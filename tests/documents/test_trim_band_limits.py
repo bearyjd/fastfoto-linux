@@ -64,10 +64,12 @@ def test_a_band_over_20_mm_is_not_cut_whatever_the_slant_of_the_pad(
 
 
 @pytest.mark.parametrize("tilt", [3.0, -3.0])
-def test_a_band_of_20_mm_at_the_steepest_tilt_is_cut_as_the_slant_is_not_counted(
+def test_a_band_of_24_mm_scanned_is_cut_at_3_degrees_as_the_slant_is_not_counted(
     tilt: float,
 ) -> None:
-    scene = with_jpeg(frame(200, band_mm=19.2, shadow_mm=0.8, tilt_deg=tilt))
+    """24 mm from the middle of the pad's slant is 18 mm from where the slant ends (11 mm high at
+    3 degrees): within the 20 mm of the rule, though the run from the middle is longer."""
+    scene = with_jpeg(frame(200, band_mm=23.2, shadow_mm=0.8, tilt_deg=tilt))
     result = trim_page(colour_page(scene))
     kept = scene.height - result.bottom
     assert result.band_bottom

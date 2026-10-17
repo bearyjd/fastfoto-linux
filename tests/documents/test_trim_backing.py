@@ -2,7 +2,7 @@
 
 import pytest
 
-from fastfoto_linux.documents import trim
+from fastfoto_linux.documents import band
 from fastfoto_linux.documents.trim import trim_page
 from fastfoto_linux.pipeline import crop
 from tests.doc_synth import (
@@ -112,8 +112,8 @@ def test_a_page_too_narrow_to_leave_paper_beside_a_strip_is_not_side_trimmed() -
 
 
 def test_the_backing_colour_and_tolerance_are_the_photo_cropper_s_not_copies() -> None:
-    assert getattr(trim, "BACKGROUND_PRIOR_RGB", None) is crop.BACKGROUND_PRIOR_RGB
-    assert getattr(trim, "BACKGROUND_PRIOR_TOLERANCE", None) is crop.BACKGROUND_PRIOR_TOLERANCE
+    assert getattr(band, "BACKGROUND_PRIOR_RGB", None) is crop.BACKGROUND_PRIOR_RGB
+    assert getattr(band, "BACKGROUND_PRIOR_TOLERANCE", None) is crop.BACKGROUND_PRIOR_TOLERANCE
 
 
 def test_a_page_that_is_not_the_scanners_backing_anywhere_is_untouched() -> None:

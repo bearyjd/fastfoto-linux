@@ -9,12 +9,13 @@ meant to alter verdicts or bytes.
 """
 
 import hashlib
-import re
+import io
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
+import pikepdf
 import pytest
 
 from fastfoto_linux.documents import ColourMode, DocumentSettings, OcrMode, build_document
@@ -317,16 +318,39 @@ def build_cases() -> dict[str, BuildCase]:
     }
 
 
-PDF_ID = re.compile(rb"/ID\s*\[[^\]]*\]")
-
-
 def _sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()[:HASH_CHARS]
 
 
-def _without_document_id(pdf: bytes) -> bytes:
-    """The PDF without its trailer ``/ID``, which qpdf derives from the time of writing."""
-    return PDF_ID.sub(b"/ID []", pdf)
+def _unparsed(obj: pikepdf.Object | None) -> str:
+    return "" if obj is None else obj.unparse().decode("ascii")
+
+
+def _describe_page(page: pikepdf.Page) -> dict[str, Any]:
+    image = next(iter(page.Resources.XObject.values()))
+    return {
+        "box": [round(float(side), 3) for side in page.MediaBox],
+        "content": _sha(page.Contents.read_bytes()),
+        "width": int(image.Width),
+        "height": int(image.Height),
+        "bits": int(image.BitsPerComponent),
+        "space": _unparsed(image.get("/ColorSpace")),
+        "filter": _unparsed(image.get("/Filter")),
+        "parms": _unparsed(image.get("/DecodeParms")),
+        "image": _sha(image.read_raw_bytes()),
+    }
+
+
+def _describe_pdf(data: bytes) -> dict[str, Any]:
+    """The PDF by what it says, not by its bytes: the bytes of one document differ between
+    machines (the compression of its small streams, the time-based ``/ID``), what it says does
+    not."""
+    with pikepdf.open(io.BytesIO(data)) as pdf:
+        return {
+            "info": {str(key): str(value) for key, value in sorted(pdf.docinfo.items())},
+            "pages": [_describe_page(page) for page in pdf.pages],
+            "after_eof": _sha(data.rsplit(b"%%EOF", 1)[1]),
+        }
 
 
 def run_build_case(case: BuildCase, root: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
@@ -348,5 +372,5 @@ def run_build_case(case: BuildCase, root: Path, monkeypatch: pytest.MonkeyPatch)
         "pages_in_pdf": result.pages_in_pdf,
         "ocr": result.ocr.status.name,
         "page_streams": [_sha(image_object(pdf, n)._data) for n in range(len(pdf.pages))],
-        "pdf": _sha(_without_document_id(data)),
+        "pdf": _describe_pdf(data),
     }

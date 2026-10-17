@@ -10,7 +10,49 @@
   ],
   "pages_in_pdf": 2,
   "pages_read": 3,
-  "pdf": "cb4512a416207a30"
+  "pdf": {
+   "after_eof": "01ba4719c80b6fe9",
+   "info": {
+    "/CreationDate": "D:20261015120000Z",
+    "/ModDate": "D:20261015120000Z",
+    "/Producer": "fastfoto-linux",
+    "/Title": "Document"
+   },
+   "pages": [
+    {
+     "bits": 1,
+     "box": [
+      0.0,
+      0.0,
+      612.0,
+      792.0
+     ],
+     "content": "74af54f7dd4911fc",
+     "filter": "[ /CCITTFaxDecode ]",
+     "height": 1100,
+     "image": "6e948ef1786682bc",
+     "parms": "[ << /BlackIs1 true /Columns 850 /K -1 /Rows 1100 >> ]",
+     "space": "/DeviceGray",
+     "width": 850
+    },
+    {
+     "bits": 1,
+     "box": [
+      0.0,
+      0.0,
+      612.0,
+      792.0
+     ],
+     "content": "74af54f7dd4911fc",
+     "filter": "[ /CCITTFaxDecode ]",
+     "height": 1100,
+     "image": "6e948ef1786682bc",
+     "parms": "[ << /BlackIs1 true /Columns 850 /K -1 /Rows 1100 >> ]",
+     "space": "/DeviceGray",
+     "width": 850
+    }
+   ]
+  }
  },
  "duplex blank backs": {
   "dropped": [
@@ -24,7 +66,49 @@
   ],
   "pages_in_pdf": 2,
   "pages_read": 4,
-  "pdf": "62a33d03783a53c0"
+  "pdf": {
+   "after_eof": "01ba4719c80b6fe9",
+   "info": {
+    "/CreationDate": "D:20261015120000Z",
+    "/ModDate": "D:20261015120000Z",
+    "/Producer": "fastfoto-linux",
+    "/Title": "Document"
+   },
+   "pages": [
+    {
+     "bits": 8,
+     "box": [
+      0.0,
+      0.0,
+      612.0,
+      792.0
+     ],
+     "content": "74af54f7dd4911fc",
+     "filter": "/DCTDecode",
+     "height": 1100,
+     "image": "fe0693c3e15e79ad",
+     "parms": "",
+     "space": "/DeviceRGB",
+     "width": 850
+    },
+    {
+     "bits": 8,
+     "box": [
+      0.0,
+      0.0,
+      612.0,
+      792.0
+     ],
+     "content": "74af54f7dd4911fc",
+     "filter": "/DCTDecode",
+     "height": 1100,
+     "image": "4ec57a95ce521273",
+     "parms": "",
+     "space": "/DeviceRGB",
+     "width": 850
+    }
+   ]
+  }
  },
  "duplex creased backs": {
   "dropped": [
@@ -38,7 +122,49 @@
   ],
   "pages_in_pdf": 2,
   "pages_read": 4,
-  "pdf": "62a33d03783a53c0"
+  "pdf": {
+   "after_eof": "01ba4719c80b6fe9",
+   "info": {
+    "/CreationDate": "D:20261015120000Z",
+    "/ModDate": "D:20261015120000Z",
+    "/Producer": "fastfoto-linux",
+    "/Title": "Document"
+   },
+   "pages": [
+    {
+     "bits": 8,
+     "box": [
+      0.0,
+      0.0,
+      612.0,
+      792.0
+     ],
+     "content": "74af54f7dd4911fc",
+     "filter": "/DCTDecode",
+     "height": 1100,
+     "image": "fe0693c3e15e79ad",
+     "parms": "",
+     "space": "/DeviceRGB",
+     "width": 850
+    },
+    {
+     "bits": 8,
+     "box": [
+      0.0,
+      0.0,
+      612.0,
+      792.0
+     ],
+     "content": "74af54f7dd4911fc",
+     "filter": "/DCTDecode",
+     "height": 1100,
+     "image": "4ec57a95ce521273",
+     "parms": "",
+     "space": "/DeviceRGB",
+     "width": 850
+    }
+   ]
+  }
  },
  "duplex faint marks": {
   "dropped": [
@@ -52,7 +178,65 @@
   ],
   "pages_in_pdf": 3,
   "pages_read": 4,
-  "pdf": "76df7451ca205864"
+  "pdf": {
+   "after_eof": "01ba4719c80b6fe9",
+   "info": {
+    "/CreationDate": "D:20261015120000Z",
+    "/ModDate": "D:20261015120000Z",
+    "/Producer": "fastfoto-linux",
+    "/Title": "Document"
+   },
+   "pages": [
+    {
+     "bits": 8,
+     "box": [
+      0.0,
+      0.0,
+      612.0,
+      792.0
+     ],
+     "content": "74af54f7dd4911fc",
+     "filter": "/DCTDecode",
+     "height": 1100,
+     "image": "fe0693c3e15e79ad",
+     "parms": "",
+     "space": "/DeviceRGB",
+     "width": 850
+    },
+    {
+     "bits": 8,
+     "box": [
+      0.0,
+      0.0,
+      612.0,
+      792.0
+     ],
+     "content": "74af54f7dd4911fc",
+     "filter": "/DCTDecode",
+     "height": 1100,
+     "image": "c1ff5a57aaafdd59",
+     "parms": "",
+     "space": "/DeviceRGB",
+     "width": 850
+    },
+    {
+     "bits": 8,
+     "box": [
+      0.0,
+      0.0,
+      612.0,
+      792.0
+     ],
+     "content": "74af54f7dd4911fc",
+     "filter": "/DCTDecode",
+     "height": 1100,
+     "image": "4ec57a95ce521273",
+     "parms": "",
+     "space": "/DeviceRGB",
+     "width": 850
+    }
+   ]
+  }
  },
  "duplex staple-hole backs": {
   "dropped": [
@@ -66,7 +250,49 @@
   ],
   "pages_in_pdf": 2,
   "pages_read": 4,
-  "pdf": "a6394baa18cab12e"
+  "pdf": {
+   "after_eof": "01ba4719c80b6fe9",
+   "info": {
+    "/CreationDate": "D:20261015120000Z",
+    "/ModDate": "D:20261015120000Z",
+    "/Producer": "fastfoto-linux",
+    "/Title": "Document"
+   },
+   "pages": [
+    {
+     "bits": 8,
+     "box": [
+      0.0,
+      0.0,
+      283.32,
+      340.2
+     ],
+     "content": "caeb01db2c4fe814",
+     "filter": "/DCTDecode",
+     "height": 945,
+     "image": "366a5dff4de850f2",
+     "parms": "",
+     "space": "/DeviceRGB",
+     "width": 787
+    },
+    {
+     "bits": 8,
+     "box": [
+      0.0,
+      0.0,
+      283.32,
+      340.2
+     ],
+     "content": "caeb01db2c4fe814",
+     "filter": "/DCTDecode",
+     "height": 945,
+     "image": "2fb38bfa4a79863c",
+     "parms": "",
+     "space": "/DeviceRGB",
+     "width": 787
+    }
+   ]
+  }
  },
  "fake ocrmypdf": {
   "dropped": [
@@ -79,7 +305,49 @@
   ],
   "pages_in_pdf": 2,
   "pages_read": 3,
-  "pdf": "89841a3cf65abdf7"
+  "pdf": {
+   "after_eof": "a161fb6d4d9763ba",
+   "info": {
+    "/CreationDate": "D:20261015120000Z",
+    "/ModDate": "D:20261015120000Z",
+    "/Producer": "fastfoto-linux",
+    "/Title": "Document"
+   },
+   "pages": [
+    {
+     "bits": 8,
+     "box": [
+      0.0,
+      0.0,
+      612.0,
+      792.0
+     ],
+     "content": "74af54f7dd4911fc",
+     "filter": "/DCTDecode",
+     "height": 1100,
+     "image": "fe0693c3e15e79ad",
+     "parms": "",
+     "space": "/DeviceRGB",
+     "width": 850
+    },
+    {
+     "bits": 8,
+     "box": [
+      0.0,
+      0.0,
+      612.0,
+      792.0
+     ],
+     "content": "74af54f7dd4911fc",
+     "filter": "/DCTDecode",
+     "height": 1100,
+     "image": "4ec57a95ce521273",
+     "parms": "",
+     "space": "/DeviceRGB",
+     "width": 850
+    }
+   ]
+  }
  },
  "grey": {
   "dropped": [
@@ -92,7 +360,49 @@
   ],
   "pages_in_pdf": 2,
   "pages_read": 3,
-  "pdf": "418c867bea74de18"
+  "pdf": {
+   "after_eof": "01ba4719c80b6fe9",
+   "info": {
+    "/CreationDate": "D:20261015120000Z",
+    "/ModDate": "D:20261015120000Z",
+    "/Producer": "fastfoto-linux",
+    "/Title": "Document"
+   },
+   "pages": [
+    {
+     "bits": 8,
+     "box": [
+      0.0,
+      0.0,
+      612.0,
+      792.0
+     ],
+     "content": "74af54f7dd4911fc",
+     "filter": "/DCTDecode",
+     "height": 1100,
+     "image": "377325064eefa344",
+     "parms": "",
+     "space": "/DeviceGray",
+     "width": 850
+    },
+    {
+     "bits": 8,
+     "box": [
+      0.0,
+      0.0,
+      612.0,
+      792.0
+     ],
+     "content": "74af54f7dd4911fc",
+     "filter": "/DCTDecode",
+     "height": 1100,
+     "image": "7f89e850d285543f",
+     "parms": "",
+     "space": "/DeviceGray",
+     "width": 850
+    }
+   ]
+  }
  },
  "keep blank": {
   "dropped": [],
@@ -105,7 +415,81 @@
   ],
   "pages_in_pdf": 4,
   "pages_read": 4,
-  "pdf": "b7f5cf4e3711fb7e"
+  "pdf": {
+   "after_eof": "01ba4719c80b6fe9",
+   "info": {
+    "/CreationDate": "D:20261015120000Z",
+    "/ModDate": "D:20261015120000Z",
+    "/Producer": "fastfoto-linux",
+    "/Title": "Document"
+   },
+   "pages": [
+    {
+     "bits": 8,
+     "box": [
+      0.0,
+      0.0,
+      612.0,
+      792.0
+     ],
+     "content": "74af54f7dd4911fc",
+     "filter": "/DCTDecode",
+     "height": 1100,
+     "image": "fe0693c3e15e79ad",
+     "parms": "",
+     "space": "/DeviceRGB",
+     "width": 850
+    },
+    {
+     "bits": 8,
+     "box": [
+      0.0,
+      0.0,
+      612.0,
+      792.0
+     ],
+     "content": "74af54f7dd4911fc",
+     "filter": "/DCTDecode",
+     "height": 1100,
+     "image": "2afa0c244be848f1",
+     "parms": "",
+     "space": "/DeviceRGB",
+     "width": 850
+    },
+    {
+     "bits": 8,
+     "box": [
+      0.0,
+      0.0,
+      612.0,
+      792.0
+     ],
+     "content": "74af54f7dd4911fc",
+     "filter": "/DCTDecode",
+     "height": 1100,
+     "image": "4ec57a95ce521273",
+     "parms": "",
+     "space": "/DeviceRGB",
+     "width": 850
+    },
+    {
+     "bits": 8,
+     "box": [
+      0.0,
+      0.0,
+      612.0,
+      792.0
+     ],
+     "content": "74af54f7dd4911fc",
+     "filter": "/DCTDecode",
+     "height": 1100,
+     "image": "8ce52922e1627880",
+     "parms": "",
+     "space": "/DeviceRGB",
+     "width": 850
+    }
+   ]
+  }
  },
  "odd last page": {
   "dropped": [
@@ -118,7 +502,49 @@
   ],
   "pages_in_pdf": 2,
   "pages_read": 3,
-  "pdf": "62a33d03783a53c0"
+  "pdf": {
+   "after_eof": "01ba4719c80b6fe9",
+   "info": {
+    "/CreationDate": "D:20261015120000Z",
+    "/ModDate": "D:20261015120000Z",
+    "/Producer": "fastfoto-linux",
+    "/Title": "Document"
+   },
+   "pages": [
+    {
+     "bits": 8,
+     "box": [
+      0.0,
+      0.0,
+      612.0,
+      792.0
+     ],
+     "content": "74af54f7dd4911fc",
+     "filter": "/DCTDecode",
+     "height": 1100,
+     "image": "fe0693c3e15e79ad",
+     "parms": "",
+     "space": "/DeviceRGB",
+     "width": 850
+    },
+    {
+     "bits": 8,
+     "box": [
+      0.0,
+      0.0,
+      612.0,
+      792.0
+     ],
+     "content": "74af54f7dd4911fc",
+     "filter": "/DCTDecode",
+     "height": 1100,
+     "image": "4ec57a95ce521273",
+     "parms": "",
+     "space": "/DeviceRGB",
+     "width": 850
+    }
+   ]
+  }
  },
  "png kinds": {
   "dropped": [
@@ -132,7 +558,65 @@
   ],
   "pages_in_pdf": 3,
   "pages_read": 4,
-  "pdf": "9d62413d774d9b01"
+  "pdf": {
+   "after_eof": "01ba4719c80b6fe9",
+   "info": {
+    "/CreationDate": "D:20261015120000Z",
+    "/ModDate": "D:20261015120000Z",
+    "/Producer": "fastfoto-linux",
+    "/Title": "Document"
+   },
+   "pages": [
+    {
+     "bits": 8,
+     "box": [
+      0.0,
+      0.0,
+      612.0,
+      792.0
+     ],
+     "content": "74af54f7dd4911fc",
+     "filter": "/DCTDecode",
+     "height": 1100,
+     "image": "fe0693c3e15e79ad",
+     "parms": "",
+     "space": "/DeviceRGB",
+     "width": 850
+    },
+    {
+     "bits": 8,
+     "box": [
+      0.0,
+      0.0,
+      612.0,
+      792.0
+     ],
+     "content": "74af54f7dd4911fc",
+     "filter": "/DCTDecode",
+     "height": 1100,
+     "image": "377325064eefa344",
+     "parms": "",
+     "space": "/DeviceGray",
+     "width": 850
+    },
+    {
+     "bits": 1,
+     "box": [
+      0.0,
+      0.0,
+      612.0,
+      792.0
+     ],
+     "content": "74af54f7dd4911fc",
+     "filter": "[ /CCITTFaxDecode ]",
+     "height": 1100,
+     "image": "6e948ef1786682bc",
+     "parms": "[ << /BlackIs1 true /Columns 850 /K -1 /Rows 1100 >> ]",
+     "space": "/DeviceGray",
+     "width": 850
+    }
+   ]
+  }
  },
  "png kinds in black and white": {
   "dropped": [
@@ -146,7 +630,65 @@
   ],
   "pages_in_pdf": 3,
   "pages_read": 4,
-  "pdf": "3193e32910d95f09"
+  "pdf": {
+   "after_eof": "01ba4719c80b6fe9",
+   "info": {
+    "/CreationDate": "D:20261015120000Z",
+    "/ModDate": "D:20261015120000Z",
+    "/Producer": "fastfoto-linux",
+    "/Title": "Document"
+   },
+   "pages": [
+    {
+     "bits": 1,
+     "box": [
+      0.0,
+      0.0,
+      612.0,
+      792.0
+     ],
+     "content": "74af54f7dd4911fc",
+     "filter": "[ /CCITTFaxDecode ]",
+     "height": 1100,
+     "image": "6e948ef1786682bc",
+     "parms": "[ << /BlackIs1 true /Columns 850 /K -1 /Rows 1100 >> ]",
+     "space": "/DeviceGray",
+     "width": 850
+    },
+    {
+     "bits": 1,
+     "box": [
+      0.0,
+      0.0,
+      612.0,
+      792.0
+     ],
+     "content": "74af54f7dd4911fc",
+     "filter": "[ /CCITTFaxDecode ]",
+     "height": 1100,
+     "image": "6e948ef1786682bc",
+     "parms": "[ << /BlackIs1 true /Columns 850 /K -1 /Rows 1100 >> ]",
+     "space": "/DeviceGray",
+     "width": 850
+    },
+    {
+     "bits": 1,
+     "box": [
+      0.0,
+      0.0,
+      612.0,
+      792.0
+     ],
+     "content": "74af54f7dd4911fc",
+     "filter": "[ /CCITTFaxDecode ]",
+     "height": 1100,
+     "image": "6e948ef1786682bc",
+     "parms": "[ << /BlackIs1 true /Columns 850 /K -1 /Rows 1100 >> ]",
+     "space": "/DeviceGray",
+     "width": 850
+    }
+   ]
+  }
  },
  "simplex": {
   "dropped": [
@@ -160,6 +702,48 @@
   ],
   "pages_in_pdf": 2,
   "pages_read": 4,
-  "pdf": "62a33d03783a53c0"
+  "pdf": {
+   "after_eof": "01ba4719c80b6fe9",
+   "info": {
+    "/CreationDate": "D:20261015120000Z",
+    "/ModDate": "D:20261015120000Z",
+    "/Producer": "fastfoto-linux",
+    "/Title": "Document"
+   },
+   "pages": [
+    {
+     "bits": 8,
+     "box": [
+      0.0,
+      0.0,
+      612.0,
+      792.0
+     ],
+     "content": "74af54f7dd4911fc",
+     "filter": "/DCTDecode",
+     "height": 1100,
+     "image": "fe0693c3e15e79ad",
+     "parms": "",
+     "space": "/DeviceRGB",
+     "width": 850
+    },
+    {
+     "bits": 8,
+     "box": [
+      0.0,
+      0.0,
+      612.0,
+      792.0
+     ],
+     "content": "74af54f7dd4911fc",
+     "filter": "/DCTDecode",
+     "height": 1100,
+     "image": "4ec57a95ce521273",
+     "parms": "",
+     "space": "/DeviceRGB",
+     "width": 850
+    }
+   ]
+  }
  }
 }

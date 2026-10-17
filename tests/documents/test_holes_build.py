@@ -138,3 +138,43 @@ def test_at_most_two_pages_are_in_memory_at_once(
     monkeypatch.setattr(build, "load_page", load)
     run(tmp_path, out, [text(sheet(DPI, seed=n)[0]) for n in range(6)])
     assert seen_alive == [0, 1, 0, 1, 0, 1]
+
+
+def test_progress_is_reported_for_each_page_just_before_it_is_encoded(
+    tmp_path: Path, out: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """In page order, though a sheet's two pages are loaded together to be judged by each other:
+    the progress of page 2 does not come before page 1 is encoded."""
+    events: list[object] = []
+    real_encode = build.encode_page
+
+    def encode(*args: Any, **kwargs: Any) -> Any:
+        events.append("encode")
+        return real_encode(*args, **kwargs)
+
+    monkeypatch.setattr(build, "encode_page", encode)
+    pages = write_pages(tmp_path / "raw", [text(sheet(DPI, seed=n)[0]) for n in range(4)])
+    settings = DocumentSettings(output_root=out, ocr=OcrMode.OFF)
+    build_document(pages, settings, on_page=lambda number, total: events.append(number))
+    assert events == [1, "encode", 2, "encode", 3, "encode", 4, "encode"]
+
+
+def test_a_cancel_seen_with_the_first_page_of_a_sheet_stops_before_its_second(
+    tmp_path: Path, out: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The cancel check is made before each page in turn, so page 1 was processed and the message
+    names page 2, not a page that nothing had begun."""
+    cancel = threading.Event()
+    encoded: list[str] = []
+    real_encode = build.encode_page
+
+    def encode(*args: Any, **kwargs: Any) -> Any:
+        encoded.append("page")
+        return real_encode(*args, **kwargs)
+
+    monkeypatch.setattr(build, "encode_page", encode)
+    pages = write_pages(tmp_path / "raw", [text(sheet(DPI, seed=n)[0]) for n in range(4)])
+    settings = DocumentSettings(output_root=out, ocr=OcrMode.OFF)
+    with pytest.raises(DocumentCancelledError, match="stopped before page 2 of 4 was processed"):
+        build_document(pages, settings, cancel=cancel, on_page=lambda number, total: cancel.set())
+    assert encoded == ["page"]

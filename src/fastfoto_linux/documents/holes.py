@@ -46,6 +46,10 @@ SHIFT_MM = 2.0  # the mirrored spot is searched this far to each side
 MATCH_IOU = 0.5  # the two shapes overlap by at least this share of their union
 SIZE_RATIO = 1.5  # each side of the other shape's box is within this factor of the mark's
 HOLE_TONE = 160  # a pixel darker than this (darkest colour channel) is part of a dark shape
+HOLE_DARKEST_MIN = 60  # a hole's darkest pixel is no darker than this on both sides: print is
+HOLE_TONE_MATCH = 30  # the darkest pixels of the two sides differ by at most this
+HOLE_TINT = 12  # a hole's mean blue less red is within this of 0
+OFFSET_SPREAD_MM = 0.5  # the holes of a page are all this far (give or take) from their mirrors
 
 _Key = tuple[int, int]  # where a shape lies on the other side: its box's top left corner
 

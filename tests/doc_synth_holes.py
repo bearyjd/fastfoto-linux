@@ -18,6 +18,7 @@ from tests.doc_synth import INK_TONE, LETTER_MM, Scene, paper_scene, px
 from tests.doc_synth_band import with_jpeg
 
 HOLE_TONE = 110  # the dark backing seen through a hole: a neutral dark grey
+Tone = int | tuple[int, int, int]  # a grey level, or a colour (red, green, blue)
 SMALL_MM = (100.0, 120.0)  # a small sheet keeps 600 dpi fast
 Painter = Callable[[Scene], Scene]
 
@@ -83,7 +84,7 @@ STAPLES = (dash(12.0, 6.0, 1.8), dash(14.6, 6.4, 1.5, 0.8), disc(16.8, 5.8, 1.2)
 PUNCHES = (disc(8.0, 20.0, 6.0), disc(8.0, 55.0, 6.0), disc(8.0, 90.0, 6.0))
 
 
-def with_holes(scene: Scene, holes: Sequence[Hole], tone: int = HOLE_TONE) -> Scene:
+def with_holes(scene: Scene, holes: Sequence[Hole], tone: Tone = HOLE_TONE) -> Scene:
     """``holes`` drawn in ``tone``. They are not content: a hole is not writing."""
     image = scene.image.copy()
     for hole in holes:
@@ -107,7 +108,7 @@ def with_holes(scene: Scene, holes: Sequence[Hole], tone: int = HOLE_TONE) -> Sc
     return replace(scene, image=image)
 
 
-def holes_painter(holes: Sequence[Hole], tone: int = HOLE_TONE) -> Painter:
+def holes_painter(holes: Sequence[Hole], tone: Tone = HOLE_TONE) -> Painter:
     return lambda scene: with_holes(scene, holes, tone)
 
 

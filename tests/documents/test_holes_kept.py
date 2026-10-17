@@ -7,8 +7,9 @@ import pytest
 
 from fastfoto_linux.documents.blank import is_blank_beside
 from fastfoto_linux.documents.holes import EDGE_ZONE_MM, HOLE_MAX_MM
-from tests.doc_synth import with_text
+from tests.doc_synth import INK_TONE, with_text
 from tests.doc_synth_holes import (
+    HOLE_TONE,
     STAPLES,
     dash,
     disc,
@@ -164,11 +165,15 @@ def test_a_pale_mark_at_the_mirrored_spot_is_not_a_hole(dpi: int) -> None:
 
 @pytest.mark.parametrize("dpi", DPIS)
 @pytest.mark.parametrize("numbers", [("1", "2"), ("3", "4"), ("10", "11")], ids="/".join)
+@pytest.mark.parametrize("tone", [INK_TONE, HOLE_TONE], ids=["black", "grey"])
 def test_page_numbers_at_the_mirrored_bottom_centre_spot_keep_both_pages(
-    dpi: int, numbers: tuple[str, str]
+    dpi: int, numbers: tuple[str, str], tone: int
 ) -> None:
+    """Black, they are print and never holes; in the grey of a hole it is their shapes that tell
+    (the digits differ, and a repeated digit is explained once)."""
+
     def printed(digits: str):
-        return lambda scene: with_number(scene, digits, centre_x_mm=50.0, y_mm=105.0)
+        return lambda scene: with_number(scene, digits, centre_x_mm=50.0, y_mm=105.0, tone=tone)
 
     front, back = sheet(dpi, [printed(numbers[0])], [printed(numbers[1])])
     assert blanks(front, back) == KEPT

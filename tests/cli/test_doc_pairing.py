@@ -9,8 +9,11 @@ import pytest
 from fastfoto_linux.cli import main
 from fastfoto_linux.scanner import ScanError
 from tests.cli.doc_scan_helpers import doc_scan, kept, visible
+from tests.doc_synth import LETTER_MM
+from tests.doc_synth_holes import sheet
 from tests.documents.helpers import reader, write_pages
 from tests.documents.holes_helpers import stapled_sheet
+from tests.documents.holes_print import BUNDLED, body_text, page_numbers
 
 pytestmark = pytest.mark.usefixtures("no_real_ocr", "fixed_stamp")
 
@@ -110,3 +113,18 @@ def test_the_recovery_command_of_a_duplex_scan_does_not(
     assert main(argv[1:]) == 0
     assert pdf_pages(spaced) == 1
     assert kept(spaced).is_dir()
+
+
+def test_process_keeps_a_back_that_has_only_its_page_number(
+    out: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Page 5 on the front and page 6 on the back, both centred at the foot of a Letter page at
+    200 dpi: the two numbers lie at the mirrored spot and overlap, yet neither is a hole."""
+    on_front, on_back = page_numbers(
+        "5", "6", points=10, dpi=200, font=BUNDLED, where="centre", paper_mm=LETTER_MM, foot_mm=9.4
+    )
+    text = body_text(7, paper_mm=LETTER_MM, margin_mm=20.0, top_mm=25.0, bottom_mm=25.0)
+    front, back = sheet(200, [text, on_front], [on_back], paper_mm=LETTER_MM, seed=7)
+    assert process(out, write_pages(tmp_path / "raw", [front, back])) == 0
+    assert "blank pages dropped: 0" in capsys.readouterr().out.splitlines()
+    assert pdf_pages(out) == 2

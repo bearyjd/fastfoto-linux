@@ -11,7 +11,7 @@ import cv2
 import numpy as np
 from PIL import Image
 
-from tests.doc_synth import BACKING_RGB, LETTER_MM, Scene, px
+from tests.doc_synth import BACKING_RGB, LETTER_MM, MIN_STROKE_PX, Scene, px
 
 # ---- the scanner's backing band, as measured on real pages (numbers only, no pixels) ----------
 
@@ -23,6 +23,8 @@ EDGE_LINE_TONE = 105  # the dark pixels of the paper's edge line (under 120)
 EDGE_LINE_SHARE = {"bottom": 0.45, "top": 0.2}  # the share of a row's pixels on the line
 TOP_PAD_SHARE = 0.15  # the first row at the top: this much of it is pad, the rest backing
 BAND_NOISE = 2
+GLYPH_WIDTH = 0.6  # a glyph is this much as wide as it is tall
+GLYPH_STROKE_MM = 0.4
 
 
 def _noisy(rng: np.random.Generator, rgb: tuple[int, int, int], rows: int, width: int):
@@ -180,3 +182,32 @@ def scanner_page(  # noqa: PLR0913
     alpha = _region_alpha(paper_end, height, width, tilt_deg, pivot_y, scan_end)[..., None]
     image[paper_end:] = np.round(alpha * scanned + (1.0 - alpha) * 255.0).astype(np.uint8)
     return Scene(image, dpi, None, paper_end, (0, width))
+
+
+def with_glyphs(  # noqa: PLR0913
+    scene: Scene,
+    top: int,
+    height_mm: float,
+    rgb: tuple[int, int, int],
+    *,
+    count: int = 12,
+    left_share: float = 0.4,
+) -> tuple[Scene, int]:
+    """A row of ``count`` letter-like glyphs (a stem, a bar over the top, a bar across the middle
+    of every second, a second stem on every third) of ``height_mm``, in ``rgb``, their top at row
+    ``top``: pale ink, as the pencil or faded blue of a form. Returns the scene and the row after
+    the glyphs' bottom."""
+    dpi = scene.dpi
+    height, width = px(height_mm, dpi), px(height_mm * GLYPH_WIDTH, dpi)
+    stroke = max(MIN_STROKE_PX, px(GLYPH_STROKE_MM, dpi))
+    advance = width + 2 * stroke
+    image = scene.image.copy()
+    for index in range(count):
+        left = int(left_share * scene.width) + index * advance
+        image[top : top + height, left : left + stroke] = rgb
+        image[top : top + stroke, left : left + width] = rgb
+        if index % 2:
+            image[top + height // 2 : top + height // 2 + stroke, left : left + width] = rgb
+        if index % 3 == 0:
+            image[top : top + height, left + width - stroke : left + width] = rgb
+    return replace(scene, image=image), top + height

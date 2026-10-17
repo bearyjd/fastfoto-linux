@@ -1,4 +1,4 @@
-"""The band cut's last check judges backing with the band's own colour tolerance (round 3).
+"""The band cut's last check judges backing with the band's own colour tolerance.
 
 On real pages the band darkens towards the paper and rings next to the pad, so the strip that a
 band cut removes holds tiny clusters of shadow tone: in the top rows of the strip, along a side

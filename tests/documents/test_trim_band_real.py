@@ -1,4 +1,4 @@
-"""The band rule on whole frames as the real scanner sends them (round 2).
+"""The band rule on whole frames as the real scanner sends them.
 
 A raw frame is full length: the paper, its band, then about 98 mm of white tail (393 mm at 300
 dpi). The scanner straightens the paper by rotating the frame, so the pad is everything outside

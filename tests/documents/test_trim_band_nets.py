@@ -1,7 +1,7 @@
-"""The band cut's last check must not take pale content for the shadow (round 4).
+"""The band cut's last check must not take pale content for the shadow.
 
-Round 3 judged backing in a band cut by the band's own tolerance (36) everywhere, so anything
-blue-grey within 36 of the backing colour was "backing" and went with the band: a bar printed
+Judging backing in a band cut by the band's own tolerance (36) everywhere would make anything
+blue-grey within 36 of the backing colour "backing", to go with the band: a bar printed
 flush with the paper's end, pale ink on a backing-coloured slip, a pale island in the tail. The
 wide tolerance is only for where the real shadow is: the top of the cut strip, next to the kept
 band, and the edge of the pad. Elsewhere the strict 20 judges. Numbers only: no real pixel.
@@ -46,7 +46,7 @@ def test_a_pale_bar_flush_with_the_paper_end_is_not_cut_into(
     dpi: int, tilt: float, bar_mm: float, inset_mm: float, rgb: tuple[int, int, int]
 ) -> None:
     """No gap and no edge line between the bar and the band: only the colour tells them apart.
-    Round 3 cut 2 to 6 mm of it, by the wide tolerance of the last check."""
+    The wide tolerance of the last check must not cut 2 to 6 mm of it."""
     scene = frame(dpi, edge_line=False, tilt_deg=tilt)
     bar = slice(scene.paper_end - px(bar_mm, dpi), scene.paper_end)
     sides = slice(px(inset_mm, dpi), scene.width - px(inset_mm, dpi))
@@ -166,8 +166,8 @@ def test_shadow_tone_a_pixel_off_the_edge_of_a_side_wedge_is_forgiven_up_to_2_mm
 def test_a_pale_island_in_the_white_tail_is_not_cut_as_the_tail_rule_keeps_it(
     dpi: int, offset_mm: float, size_mm: float, rgb: tuple[int, int, int]
 ) -> None:
-    """The white of the tail joins the island to both sides, so round 3 took it for backing and
-    cut it. Ink in the tail is found as the tail rule finds it (origin/main keeps it as well)."""
+    """The white of the tail would join the island to both sides, to be taken for backing and
+    cut. Ink in the tail is found as the tail rule finds it (origin/main keeps it as well)."""
     scene = frame(dpi, tilt_deg=1.5)
     first = scene.paper_end + px(BAND_MM + offset_mm, dpi)
     column = int(0.45 * scene.width)

@@ -38,6 +38,7 @@ SHADOW_STRIP_MM = 1.5  # the shadow's specks are forgiven in this much of the st
 SHADOW_CLUSTER_MM = 2.0  # a cluster of shadow tone is a speck only when it is shorter than this
 DUST_MM = 0.5  # a pale cluster shorter than this, anywhere in the strip, is dust
 DUST_TOLERANCE = 50  # and pale means this near the backing colour (RGB, any hue)
+SHADOW_BLUE_MAX = 24  # a speck of shadow tone is forgiven only at most this much bluer than red
 
 
 def grey_of(pixels: np.ndarray) -> np.ndarray:

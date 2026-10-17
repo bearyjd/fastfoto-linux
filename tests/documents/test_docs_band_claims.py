@@ -23,6 +23,7 @@ from fastfoto_linux.documents.band import (
 from fastfoto_linux.documents.guard import (
     DUST_MM,
     DUST_TOLERANCE,
+    SHADOW_BLUE_MAX,
     SHADOW_CLUSTER_MM,
     SHADOW_STRIP_MM,
 )
@@ -52,6 +53,7 @@ FACTS = {
     "wide tolerance": f"within {SHADOW_TOLERANCE} of the backing",
     "shadow strip": f"{SHADOW_STRIP_MM:g} mm of the strip",
     "shadow speck": f"under {SHADOW_CLUSTER_MM:g} mm",
+    "shadow hue": f"bluer than red by at most {SHADOW_BLUE_MAX}",
     "dust size": f"under {DUST_MM:g} mm",
     "dust colour": f"within {DUST_TOLERANCE} of the backing",
 }
@@ -65,6 +67,9 @@ STALE = (
     "starts within 20 mm of the bottom edge",
     "at most 1 mm of the band stays",
     "at most 1 mm of it stays",
+    "joins a side of the strip through the pad",
+    "joined to a side through the pad",
+    "pale ink or a darker or not blue",
 )
 TEXTS = {**DOCUMENTS, "trim docstring": trim.__doc__ or "", "guard docstring": guard.__doc__ or ""}
 

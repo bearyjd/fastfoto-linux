@@ -1,4 +1,4 @@
-"""The limits of the band rule that a mutation check found nothing pinning (round 4): how far
+"""The limits of the band rule that a mutation check found nothing pinning: how far
 from the top a band may start, the share of a row that must be non-white, where the pad's slant
 ends and how many rows of the page are looked at. Numbers only: nothing here is a real pixel."""
 

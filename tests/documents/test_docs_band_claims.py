@@ -27,7 +27,7 @@ from fastfoto_linux.documents.guard import (
     SHADOW_CLUSTER_MM,
     SHADOW_STRIP_MM,
 )
-from fastfoto_linux.documents.trim import MIN_PAPER_MM
+from fastfoto_linux.documents.trim import MIN_PAPER_MM, TAIL_KEEP_MM
 from fastfoto_linux.pipeline.crop import BACKGROUND_PRIOR_TOLERANCE
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -56,9 +56,19 @@ FACTS = {
     "shadow hue": f"bluer than red by at most {SHADOW_BLUE_MAX}",
     "dust size": f"under {DUST_MM:g} mm",
     "dust colour": f"within {DUST_TOLERANCE} of the backing",
+    "scrap at a side": f"in the first {TAIL_KEEP_MM:g} mm of the",
 }
 README_SKIPS = {"fringe", "wide tolerance", "shadow speck"}  # the README is short
-CONCEPTS = ("full-width", "edge line", "white tail", "wedge", "1-bit", "sliver", "flush with")
+CONCEPTS = (
+    "full-width",
+    "edge line",
+    "white tail",
+    "wedge",
+    "1-bit",
+    "sliver",
+    "flush with",
+    "neutral grey",
+)
 STALE = (
     "The top is never trimmed",
     "top is never trimmed",
@@ -70,6 +80,8 @@ STALE = (
     "joins a side of the strip through the pad",
     "joined to a side through the pad",
     "pale ink or a darker or not blue",
+    "or a pencil on a slip of the backing's colour",
+    "faded ink or pencil, not shadow",
 )
 TEXTS = {**DOCUMENTS, "trim docstring": trim.__doc__ or "", "guard docstring": guard.__doc__ or ""}
 

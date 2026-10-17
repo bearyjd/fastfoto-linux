@@ -46,11 +46,11 @@ backing band is the reliable sign of where the paper ends.
   backing where the shadow lies, in the first 1.5 mm of the strip, next to the cut, and within
   2 px of the pad (the edge of a wedge), and only when it is under 2 mm long and bluer than red
   by at most 24 on average: the backing and its shadow are (17 and 14), a faded blue ink or a
-  pencil on a slip of the backing's colour is not (30 to 40). A pale bar, a stroke of pale ink or
-  a slip in that tone is longer and keeps the page. A cluster under 0.5 mm whose pixels are all
-  within 50 of the backing colour, of any hue, is dust. Every other pixel goes to the last check;
-  a mark that is darker, not blue or beyond that tolerance, ink bluer than the shadow, and dust
-  of ink size in the pad, keep the page, as in the tail.
+  bluish pencil on a slip of the backing's colour is not (30 to 40). A pale bar, a stroke of pale
+  ink or a slip in that tone is longer and keeps the page. A cluster under 0.5 mm whose pixels
+  are all within 50 of the backing colour, of any hue, is dust. Every other pixel goes to the last
+  check; a mark that is darker, not blue or beyond that tolerance, ink bluer than the shadow, and
+  dust of ink size in the pad, keep the page, as in the tail.
 * After a band cut the new edge is the paper's, so the blank-page margin is measured in full
   from the new edge (``Trimmed.tail_rows``): the kept edge line is margin, not a mark.
 
@@ -63,12 +63,19 @@ has no hue to tell the backing by). Limits, stated exactly:
   at a side, and with it what is in it in the band's own hue (bluer than red by at most 24). The
   band's shadow below the bar keeps it, being beyond the 1.5 mm of the strip; so does ink in
   another hue, and a bar in a blue-grey between 20 and 36 from the backing colour.
-* Pale ink in the band's own blue-grey (within 36 of the backing colour and bluer than red by at
-  most 24), within 1.5 mm of the cut on a slip of the backing's colour, is forgiven as shadow
-  when its strokes are under 2 mm.
+* Pale ink or pencil within 1.5 mm of the cut on a slip of the backing's colour is forgiven as
+  shadow when its strokes are under 2 mm and, mixed with the slip by the blur, its tone is within
+  36 of the backing colour and bluer than red by at most 24. The hue gate is one-sided: it keeps
+  out ink bluer than that, but neutral grey passes it (a pencil stroke 1 pixel wide of tone 170
+  or lighter, or 2 pixels wide of 190 or lighter, is cut with the band; a stroke 3 pixels wide is
+  kept down to tone 190, and any darker one is kept).
 * Specks under 0.5 mm within 50 of the backing colour in the strip are dust: 0.4 mm dots on a
   slip are cut with it.
 * A scrap of the backing's colour that touches the band is taken for the band.
+* A scrap of the backing's colour that touches a side of the page in the first 3 mm of the white
+  tail, which are part of the strip, is joined to the side by backing alone and goes with the
+  band; further down the ink search of the tail rule finds it and the page is kept, and so is a
+  scrap that touches neither a side nor the band.
 * The last pixel row or two of a glyph whose bottom lies in the band rows may go (0.04 to
   0.13 mm).
 """

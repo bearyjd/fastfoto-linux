@@ -46,10 +46,12 @@ its first row, the band, by backing alone: the pad joins nothing. The strict tol
 applies there too, except to the shadow's specks and dust (see ``guard``), and ink in the white
 tail is found as the tail rule finds it. What is cut is therefore what is certainly empty, blank
 white or the scanner's backing, with the limits of that test: on a colour page a note of the
-backing's colour that touches the side of its strip, or the band, cannot be told from backing,
-a stroke under 3 pixels wide within 2 pixels of both white and backing is taken for the blur of an
-edge, and a stroke 1 pixel wide is diluted to a third of its depth by the blur (on a slip only 5
-levels below the tail's white it must be about 21 levels darker than the slip to count).
+backing's colour that touches the side of its strip, or the band, cannot be told from backing (in
+a band cut's strip that includes a scrap at a side in the first 3 mm of the tail, which goes with
+the band), a stroke under 3 pixels wide within 2 pixels of both white and backing is taken for the
+blur of an edge, and a stroke 1 pixel wide is diluted to a third of its depth by the blur (on a
+slip only 5 levels below the tail's white it must be about 21 levels darker than the slip to
+count).
 A page that would be under 10 mm tall or wide after trimming (the least ``find_marks``
 accepts) is kept whole.
 

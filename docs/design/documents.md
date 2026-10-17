@@ -247,8 +247,8 @@ What the first pull request settled where the specification left room.
      cut, and within 2 px of the pad (the edge of a wedge), and only when it is under 2 mm long
      and bluer than red by at most 24 on average (on the blurred strip). The shadow's specks
      measured on real pages are 0.3 to 1.4 mm long and 0.3 to 19 bluer than red (median 9);
-     the backing is 17 bluer than red and the shadow 14, a faded blue ink or a pencil on a slip
-     of the backing's colour 30 to 40, so ink in that tone, though it is within 36 of the
+     the backing is 17 bluer than red and the shadow 14, a faded blue ink or a bluish pencil on a
+     slip of the backing's colour 30 to 40, so ink in that tone, though it is within 36 of the
      backing, is not the shadow. A pale bar, a stroke of pale ink or a slip in that tone is
      longer and keeps the page. A cluster under 0.5 mm whose pixels are all within 50 of the
      backing colour, of any hue, is dust. Every other pixel goes to the last check, so a mark
@@ -266,12 +266,20 @@ What the first pull request settled where the specification left room.
     red by at most 24). The band's shadow below the bar keeps it, being beyond the 1.5 mm of the
     strip, and so does ink in another hue, or a bar in a blue-grey between 20 and 36 from the
     backing colour;
-  - pale ink in the band's own blue-grey (within 36 of the backing colour and bluer than red by
-    at most 24), within 1.5 mm of the cut on a slip of the backing's colour, is forgiven as
-    shadow when its strokes are under 2 mm;
+  - pale ink or pencil within 1.5 mm of the cut on a slip of the backing's colour is forgiven as
+    shadow when its strokes are under 2 mm and, mixed with the slip by the blur (3x3), its tone is
+    within 36 of the backing colour and bluer than red by at most 24. The hue gate is one-sided:
+    it keeps out ink bluer than that, but neutral grey passes it. Measured on a slip of (195, 205,
+    215): a pencil stroke 1 pixel wide of tone 170 or lighter, or 2 pixels wide of tone 190 or
+    lighter, is cut with the band, while a stroke 3 pixels wide is kept down to tone 190, and any
+    darker one is kept;
   - specks under 0.5 mm within 50 of the backing colour in the strip are dust, of any hue: 0.4 mm
     dots on a slip are cut with it;
   - a scrap of the backing's colour that touches the band is taken for the band;
+  - a scrap of the backing's colour that touches a side of the page in the first 3 mm of the
+    white tail, which are part of the strip, is joined to the side by backing alone and goes with
+    the band; further down, the ink search of the tail rule finds it and the page is kept, and so
+    is a scrap that touches neither a side nor the band;
   - the last one or two pixel rows of a glyph whose bottom lies in the band rows may go (0.04 to
     0.13 mm).
 

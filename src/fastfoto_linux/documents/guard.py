@@ -12,8 +12,9 @@ island of the backing's colour is not the band. The band darkens towards the pap
 first ``SHADOW_STRIP_MM`` of the strip, next to the cut, and within ``FRINGE_PX`` of the pad's
 edge, and only in clusters shorter than ``SHADOW_CLUSTER_MM`` (a longer run of that tone is a bar
 or a stroke of ink, not a speck) and in the backing's hue: a cluster whose mean blue minus red is
-over ``SHADOW_BLUE_MAX`` is faded ink or pencil, not shadow. A cluster shorter than ``DUST_MM``
-whose pixels are all within ``DUST_TOLERANCE`` of the backing colour, whatever the hue, is dust.
+over ``SHADOW_BLUE_MAX`` is faded blue ink or bluish pencil, not shadow (the gate is one-sided:
+neutral grey passes it). A cluster shorter than ``DUST_MM`` whose pixels are all within
+``DUST_TOLERANCE`` of the backing colour, whatever the hue, is dust.
 """
 
 import math
@@ -154,8 +155,8 @@ def _dust(unexplained: np.ndarray, smooth: np.ndarray, dpi: int) -> np.ndarray:
 
 def _in_shadow_hue(clusters: np.ndarray, smooth: np.ndarray) -> np.ndarray:
     """The clusters of ``clusters`` whose mean blue minus red on ``smooth`` is at most
-    ``SHADOW_BLUE_MAX``: the shadow is the backing's own blue-grey, a faded blue ink or a pencil
-    on a slip is bluer."""
+    ``SHADOW_BLUE_MAX``: the shadow is the backing's own blue-grey, a faded blue ink or a bluish
+    pencil on a slip is bluer."""
     labels, longest = _clusters(clusters)
     ids = labels[clusters]
     size = np.maximum(np.bincount(ids, minlength=len(longest)), 1)

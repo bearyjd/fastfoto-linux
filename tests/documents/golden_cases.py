@@ -18,7 +18,13 @@ from typing import Any
 import pikepdf
 import pytest
 
-from fastfoto_linux.documents import ColourMode, DocumentSettings, OcrMode, build_document
+from fastfoto_linux.documents import (
+    ColourMode,
+    DocumentResult,
+    DocumentSettings,
+    OcrMode,
+    build_document,
+)
 from fastfoto_linux.documents.blank import is_blank_beside
 from fastfoto_linux.documents.loader import LoadedPage
 from fastfoto_linux.documents.trim import trim_page
@@ -364,6 +370,12 @@ def run_build_case(case: BuildCase, root: Path, monkeypatch: pytest.MonkeyPatch)
     pages = case.pages(root / "raw")
     base = DocumentSettings(output_root=out, ocr=OcrMode.OFF)
     result = build_document(pages, replace(base, **case.settings), clock=lambda: FIXED_TIME)
+    return describe_result(result)
+
+
+def describe_result(result: DocumentResult) -> dict[str, Any]:
+    """What the golden records of a published document: counts, the dropped pages and the
+    hashes of each page's embedded image stream and of the PDF."""
     data = result.pdf.read_bytes()
     pdf = reader(data)
     return {

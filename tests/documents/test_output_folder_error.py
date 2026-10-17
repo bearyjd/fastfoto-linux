@@ -9,7 +9,7 @@ from fastfoto_linux.documents import (
     DocumentSettings,
     DocumentSettingsError,
     OcrMode,
-    build,
+    analyse,
     build_document,
     check_settings,
 )
@@ -43,7 +43,7 @@ def test_a_missing_folder_is_found_before_a_single_page_is_read(
     def refuse(*args: Any, **kwargs: Any) -> Any:
         raise AssertionError("a page was read before the output folder was checked")
 
-    monkeypatch.setattr(build, "inspect_page", refuse)
+    monkeypatch.setattr(analyse, "inspect_page", refuse)
     pages = write_pages(tmp_path, [text_scene(1)])
     with pytest.raises(DocumentSettingsError):
         build_document(pages, settings(tmp_path / "gone"))

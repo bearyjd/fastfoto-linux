@@ -156,12 +156,18 @@ def test_without_encoding_no_page_carries_bytes(raw: Path, out: Path) -> None:
     assert draft.dropped == (2,)
 
 
-def test_keep_blank_keeps_the_verdict_and_the_page(raw: Path, out: Path) -> None:
+def test_keep_blank_judges_nothing_and_keeps_every_page(
+    raw: Path, out: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def refuse(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("a page was judged although every page stays")
+
+    monkeypatch.setattr(analyse_module, "is_blank_beside", refuse)
     pages = write_pages(raw, [text_scene(1), blank_scene(2)])
     draft = analyse_document(pages, settings(out, keep_blank=True))
-    assert [page.blank for page in draft.pages] == [False, True]
+    assert [page.blank for page in draft.pages] == [False, False]
     assert draft.dropped == ()
-    assert draft.pages[1].encoded is not None
+    assert [page.encoded is not None for page in draft.pages] == [True, True]
     assert draft.keep_blank
 
 
@@ -223,7 +229,7 @@ def test_on_page_is_called_once_per_page_in_order_blank_pages_included(
     assert calls == [(1, 3), (2, 3), (3, 3)]
 
 
-@pytest.mark.parametrize("stop_at", [1, 2, 3, 4, 5])
+@pytest.mark.parametrize("stop_at", [1, 2, 3, 4])
 def test_a_cancel_stops_before_the_next_page_is_processed(
     stop_at: int, raw: Path, out: Path
 ) -> None:

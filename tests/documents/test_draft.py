@@ -30,7 +30,7 @@ def _scenes(dpi: int) -> dict[str, Scene]:
                 dpi=dpi, paper_mm=SMALL_MM, scan_mm=(WIDTH_MM + 30.0, 150.0), offset_mm=15.0
             )
         ),
-        "band": banded_scene(dpi=dpi, width_mm=WIDTH_MM, paper_mm=80.0, top_mm=6.0),
+        "band": banded_scene(dpi=dpi, width_mm=WIDTH_MM, paper_mm=60.0, top_mm=2.0),
     }
 
 
@@ -105,6 +105,6 @@ def test_a_box_that_leaves_nothing_of_the_page_is_refused() -> None:
     page = colour_page(_scenes(200)["plain"])
     height, width = page.pixels.shape[:2]
     with pytest.raises(ValueError, match="nothing"):
-        TrimBox(width // 2, width // 2, 0, 0).apply(page)
+        TrimBox(width, 0, 0, 0).apply(page)
     with pytest.raises(ValueError, match="nothing"):
         TrimBox(0, 0, height, 0).apply(page)

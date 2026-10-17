@@ -27,7 +27,8 @@ OPTIONS_REJECTED = 2
 MISSING_DEPENDENCY = 3
 _LANGPACK = "tesseract-langpack-{}"
 _ORIENTATION_DATA = "tesseract-osd"  # --rotate-pages needs it
-_BUNDLED_LANG = "eng"  # the only language data the Flatpak brings
+_BUNDLED_LANG = "eng"  # the only language the Flatpak brings
+_BUNDLED_DATA = (_BUNDLED_LANG, "osd")  # and the orientation data, which is not a language
 _DNF_INSTALL = "sudo dnf install"
 _RPM_OSTREE_INSTALL = "rpm-ostree install"
 
@@ -57,7 +58,7 @@ def _install_command(langs: str) -> str:
 
 
 def _flatpak_missing_dependency(langs: str) -> str:
-    others = [code for code in langs.split("+") if code != _BUNDLED_LANG]
+    others = [code for code in langs.split("+") if code not in _BUNDLED_DATA]
     if others:
         return (
             f"language data for {', '.join(others)} is not bundled: the Flatpak brings English "

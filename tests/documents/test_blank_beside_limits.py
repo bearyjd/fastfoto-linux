@@ -97,6 +97,16 @@ def test_the_reach_lies_between_a_crease_and_ruled_paper() -> None:
     assert 3.0 <= marks.OUTER_MM < 6.35
 
 
+@pytest.mark.parametrize("dpi", DPIS)
+def test_the_foot_of_a_line_is_not_a_neighbour_of_it(dpi: int) -> None:
+    """A 25 mm faint stroke with a 1.5 mm foot: the foot lies 0.8 to 1.6 mm off the axis, but it is
+    part of the line, not another mark beside it."""
+    scene = with_line(sheet(dpi), (50.0, 40.0), (50.0, 65.0), tone=BAR_TONE, thickness_mm=BAR_MM)
+    scene = with_line(scene, (50.0, 65.0), (51.5, 65.0), tone=BAR_TONE, thickness_mm=BAR_MM)
+    assert len(marks_of(scene)) == 1
+    assert verdicts(scene) == BLANK
+
+
 # ---- what is not a neighbour -----------------------------------------------------------------
 
 

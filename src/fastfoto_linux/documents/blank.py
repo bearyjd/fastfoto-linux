@@ -34,8 +34,10 @@ def is_blank_beside(page: Trimmed, partner: Trimmed | None) -> bool:
     A page is also blank when every mark on it is a hole through the paper that ``partner``
     shows too: at most ``holes.HOLE_MAX_MM`` (8 mm) long, within ``holes.EDGE_ZONE_MM`` (25 mm)
     of an edge, and matched on the other side at the mirrored spot within ``holes.SHIFT_MM``
-    (2.0 mm) by a shape of the same size that overlaps it by ``holes.MATCH_IOU`` (0.5) or more
-    (see ``holes``). Without a partner nothing is a hole, and the answer is that of ``is_blank``.
+    (2.0 mm) by a shape of the same size that overlaps it by ``holes.MATCH_IOU`` (0.5) or more (see
+    ``holes``; a mark's shape is its whole dark shape, even where the blank margin cuts the mark
+    short, and one longer than 8 mm is not a hole). Without a partner nothing is a hole, and the
+    answer is that of ``is_blank``.
     A mark that is not a hole keeps the page, as ever; when in doubt the answer is False.
     """
     marks = find_marks(

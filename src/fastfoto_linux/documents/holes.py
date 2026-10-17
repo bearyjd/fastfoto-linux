@@ -11,12 +11,16 @@ counted mark (see ``find_marks``) is a hole when all of this holds:
 The back of a sheet is its front flipped left to right and the top stays on top, so a spot that is
 ``x`` from the left of the scanner's frame on one side is ``frame width - x`` on the other, at the
 same ``y``. Both are taken in the scanner's frame, with the offsets of each side's trim added back.
-The shapes are the pixels darker than ``HOLE_TONE`` on the darkest colour channel. They match when
-the other side has a whole dark shape of the same size (each of its two sides within a factor of
-``SIZE_RATIO``; a big dark area under a small mark is not a hole) and, shifted by at most
-``SHIFT_MM`` in either direction (the sides line up to about 1.2 mm: the feeder, the deskew, the
-trim), the two overlap by at least ``MATCH_IOU`` (intersection over union). One shape explains one
-mark: two marks beside each other do not both match the one mark opposite.
+The shapes are the pixels darker than ``HOLE_TONE`` on the darkest colour channel. A mark's shape is
+the whole dark shape that meets its box, cropped to its own bounding box, not clipped by the box or
+by the blank margin (a hole that straddles the margin is counted only where it lies inside, and goes
+on beyond its box); one longer than ``HOLE_MAX_MM`` is not a hole, so a small mark joined to a long
+dark line is content. They match when the other side has a whole dark shape of the same size (each
+of its two sides within a factor of ``SIZE_RATIO``; a big dark area under a small mark is not a
+hole) and, shifted by at most ``SHIFT_MM`` in either direction (the sides line up to about 1.2 mm:
+the feeder, the deskew, the trim), the two overlap by at least ``MATCH_IOU`` (intersection over
+union). One shape explains one mark: two marks beside each other do not both match the one mark
+opposite.
 
 Limits: the same symmetric mark printed at the mirrored spots of both sides, near an edge of an
 otherwise blank back, is taken for a hole; and the pairing is by page order, so pages that do not
@@ -80,15 +84,32 @@ def _could_be_hole(mark: Mark, page: LoadedPage) -> bool:
 
 
 def _shape_of(page: LoadedPage, mark: Mark) -> _Shape | None:
-    """The dark pixels in the box of ``mark``; None when it holds none (a mark that is only
-    pale cannot be the dark backing seen through a hole)."""
-    crop = _dark(page.pixels[mark.y0 : mark.y1, mark.x0 : mark.x1])
-    rows, columns = np.nonzero(crop)
-    if len(rows) == 0:
+    """The whole dark shape of a mark: the dark connected pixels (``HOLE_TONE``) that meet its
+    box, cropped to their own bounding box. The box is only where the shape is found: the blank
+    margin clips it, and a hole that straddles the margin goes on beyond it. None when the box
+    holds nothing dark (a mark that is only pale cannot be the dark backing seen through a hole)
+    or when the shape is longer than ``HOLE_MAX_MM`` (a small mark joined to a long dark line is
+    content).
+
+    Only the window ``HOLE_MAX_MM`` round the box is looked at: a shape that reaches its edge is
+    longer than that, whatever lies beyond."""
+    height, width = page.pixels.shape[:2]
+    reach = mm_to_px(HOLE_MAX_MM, page.dpi) + 1
+    left, top = max(mark.x0 - reach, 0), max(mark.y0 - reach, 0)
+    right, bottom = min(mark.x1 + reach, width), min(mark.y1 + reach, height)
+    dark = _dark(page.pixels[top:bottom, left:right])
+    _, labels = cv2.connectedComponents(dark.astype(np.uint8), connectivity=8)
+    inside = labels[mark.y0 - top : mark.y1 - top, mark.x0 - left : mark.x1 - left]
+    wanted = np.unique(inside[inside > 0])
+    if len(wanted) == 0:
         return None
-    top, left = int(rows.min()), int(columns.min())
-    tight = crop[top : int(rows.max()) + 1, left : int(columns.max()) + 1]
-    return _Shape(tight, mark.x0 + left, mark.y0 + top)
+    joined = np.isin(labels, wanted)
+    rows, columns = np.nonzero(joined)
+    first_row, first_column = int(rows.min()), int(columns.min())
+    whole = joined[first_row : int(rows.max()) + 1, first_column : int(columns.max()) + 1]
+    if _mm(max(whole.shape), page.dpi) > HOLE_MAX_MM:
+        return None
+    return _Shape(whole, left + first_column, top + first_row)
 
 
 def _frame_width(side: Trimmed) -> int:

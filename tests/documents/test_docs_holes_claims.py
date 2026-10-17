@@ -80,6 +80,27 @@ def test_the_limits_of_the_hole_rule_are_listed(name: str) -> None:
     assert "(the safe side;" in text
 
 
+@pytest.mark.parametrize("name", list(DOCUMENTS))
+def test_a_marks_shape_is_the_whole_dark_shape_and_not_one_over_eight_millimetres(
+    name: str,
+) -> None:
+    text = text_of(name)
+    assert blank.BLANK_MARGIN_MM == 5.0
+    assert (
+        "A mark's shape is the whole dark shape that meets its box, cropped to its own "
+        "bounding box, not clipped by the box or by the 5 mm blank margin"
+    ) in text
+    assert f"longer than {holes.HOLE_MAX_MM:g} mm" in text
+    assert "a small mark joined to a long dark line is content" in text
+
+
+def test_the_design_note_says_the_real_page_numbers_were_measured_with_the_prototype() -> None:
+    text = text_of("design note")
+    assert "That was measured with the prototype." in text
+    assert "the shipped rule has to be measured on the real pages again" in text
+    assert "On real pages the rule dropped" not in text
+
+
 def test_the_design_note_no_longer_says_a_punch_hole_always_keeps_the_page() -> None:
     assert "a punch hole or a scanner streak keeps the page" not in text_of("design note")
 
@@ -92,6 +113,9 @@ def test_the_module_text_names_the_rule_and_its_limits() -> None:
     assert "the same symmetric mark printed at the mirrored spots of both sides" in text
     assert "the pairing is by page order, so pages that do not start with a front" in text
     assert "One shape explains one mark" in text
+    assert "not clipped by the box or by the blank margin" in text
+    assert "a small mark joined to a long dark line is content" in text
+    assert "whole dark shape" in squeezed(holes._shape_of.__doc__)
 
 
 def test_the_blank_rule_text_gives_the_numbers() -> None:

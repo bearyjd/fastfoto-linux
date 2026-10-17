@@ -232,7 +232,10 @@ uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr o
   side of the same sheet has a dark shape of the same size at the mirrored spot. The back of a
   sheet is its front flipped left to right, so x becomes the frame width less x and y stays, taken
   in the scanner's frame with each side's trim offsets added back. The shapes are the pixels
-  darker than 160 on the darkest colour channel. They match when each side of the other shape's
+  darker than 160 on the darkest colour channel. A mark's shape is the whole dark shape that
+  meets its box, cropped to its own bounding box, not clipped by the box or by the 5 mm blank
+  margin (a hole that straddles the margin is cut by it), and a shape longer than 8 mm is not a
+  hole: a small mark joined to a long dark line is content. They match when each side of the other shape's
   box is within 1.5 times that of the mark's and, shifted by up to 2.0 mm in either direction,
   they overlap by at least 0.5 (intersection over union). One shape explains one mark: two marks
   side by side do not both match the one opposite. A page is blank when it has no counted mark, or
@@ -248,8 +251,9 @@ uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr o
   dropped. Pairing is by page order, so `doc process` given pages that do not start with a front
   pairs them wrongly: a back then meets another front, and is kept unless that front has a shape
   at the mirrored spot too (the safe side; a stapled stack has one, and a back it shows the holes
-  of is dropped all the same, rightly). Pale marks (not darker than 160) and holes larger than
-  8 mm or further than 25 mm from every edge keep the page.
+  of is dropped all the same, rightly). Pale marks (not darker than 160), holes larger than
+  8 mm or further than 25 mm from every edge, and small marks joined to a dark line longer than
+  8 mm keep the page.
 - Searchable text needs `ocrmypdf` and, for its page rotation, Tesseract's orientation data:
   `sudo dnf install ocrmypdf tesseract-osd`. `--ocr auto` (default) uses it
   when present and otherwise writes the plain PDF and says so; `--ocr on` refuses to start

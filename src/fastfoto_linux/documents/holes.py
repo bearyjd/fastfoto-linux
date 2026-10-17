@@ -4,20 +4,26 @@ A staple, a punch or a clip leaves a hole, and the dark backing shows through it
 the sheet. A back that is otherwise empty would be kept for those marks, so on a duplex sheet a
 counted mark (see ``find_marks``) is a hole when all of this holds:
 
-* its longer side is at most ``HOLE_MAX_MM`` (punched holes are about 6 mm, staple holes 1 to 2),
+* its whole shape is the size of a staple hole or of a punched hole: at most ``STAPLE_MAX_MM`` long
+  (real staple holes: 0.6 to 1.35 mm), or a round disc ``PUNCH_MIN_MM`` to ``HOLE_MAX_MM`` long
+  (punched holes are about 6 mm) whose box has a short side at least ``PUNCH_ASPECT_MIN`` of its
+  long one and is at least ``PUNCH_FILL_MIN`` filled (a disc fills 0.78). Anything in between, and a
+  long thin or hollow mark over 1.8 mm (a "0", an "o" of print), is never a hole,
 * it lies within ``EDGE_ZONE_MM`` of an edge of the page,
 * it is grey and neutral, and the other side shows the same grey (below), and
-* the other side of the same sheet has a matching dark shape at the mirrored spot.
+* the other side of the same sheet has a matching dark shape, of a hole's size too, at the
+  mirrored spot.
 
-Print is never a hole. The backing seen through a hole is dark grey (real holes: darkest pixel 89
-to 106, the two sides at most 15 apart, mean blue less red at most 4); print and ink are black or
+Black print is never a hole. The backing seen through a hole is dark grey (real holes: darkest pixel
+89 to 106, the two sides at most 15 apart, mean blue less red at most 4); print and ink are black or
 coloured (print: darkest 0 to 12). So the darkest pixel of a hole is no darker than
 ``HOLE_DARKEST_MIN`` on both sides, the two sides' darkest pixels are within ``HOLE_TONE_MATCH`` of
 each other (a dark stamp is not its own pale ghost), and the mean blue less red of its shape is
-within ``HOLE_TINT`` of 0 (blue and red ink are not holes). A page number, a note in pen, a stamp
-or a signature is therefore never a hole, whatever lies opposite. Limits: pencil and grey marks
-rely on shape, tint and registration only. A 1-bit page has no greys (a hole is as black as print),
-so on one nothing is a hole.
+within ``HOLE_TINT`` of 0 (blue and red ink are not holes), so black print, pen, stamps and ink of a
+colour are not holes. Print in a grey as light as the backing is told by its size and shape. A page
+number set at 8 pt or more has digits 2 to 3 mm tall (tested at 8 to 12 pt), over a staple hole, and
+not round discs, so in no grey is it a hole. A 1-bit page has no greys (a hole is as black as
+print), so on one nothing is a hole.
 
 The back of a sheet is its front flipped left to right and the top stays on top, so a spot that is
 ``x`` from the left of the scanner's frame on one side is ``frame width - x`` on the other, at the
@@ -25,7 +31,7 @@ same ``y``. Both are taken in the scanner's frame, with the offsets of each side
 The shapes are the pixels darker than ``HOLE_TONE`` on the darkest colour channel. A mark's shape is
 the whole dark shape that meets its box, cropped to its own bounding box, not clipped by the box or
 by the blank margin (a hole that straddles the margin is counted only where it lies inside, and goes
-on beyond its box); one longer than ``HOLE_MAX_MM`` is not a hole, so a small mark joined to a long
+on beyond its box); one that is not a hole's size is not a hole, so a small mark joined to a long
 dark line is content. They match when the other side has a whole dark shape of the same size (each
 of its two sides within a factor of ``SIZE_RATIO``; a big dark area under a small mark is not a
 hole) and, shifted by at most ``SHIFT_MM`` in either direction (the sides line up to about 1.2 mm:
@@ -40,14 +46,16 @@ alike land at arbitrary offsets inside the window. The window is ``SHIFT_MM``, a
 as far out as its overlap allows, so a bigger hole is found further: measured, up to 2.5 mm for a
 staple hole of 1.8 mm and up to 3.5 mm for a punched hole of 6 mm.
 
-Limits: a rotation between the sides spreads the offsets of holes in proportion to the distance
-between them, so holes 180 mm apart (a three-hole punch on Letter paper) are holes only while the
-sides are within about 0.15 degrees of each other, and staple holes close together are not affected
-(beyond that the page is kept, the safe side); the same symmetric mark at the mirrored spots of both
-sides, in pencil or grey, near an edge of an otherwise blank back, is taken for a hole; and the
-pairing is by page order, so pages that do not start with a front are paired wrongly (a back then
-meets another front, and is kept unless that front has a shape at the mirrored spot too, as a
-stapled stack has).
+Limits: pencil and grey marks rely on size, shape, tint and registration only: the same symmetric
+mark at the mirrored spots of both sides, near an edge of an otherwise blank back, is taken for a
+hole, and that includes smaller grey marks, a grey "." or "-" or "o" of pencil or of grey print (a
+whole shape of at most 1.8 mm, as the digits of a numeral set under 8 pt can be) at the mirrored
+spot of a grey mark on the other side; a rotation between the sides spreads the offsets of holes in
+proportion to the distance between them, so holes 216 mm apart (a three-hole punch on Letter paper)
+are holes only while the sides are within about 0.15 degrees of each other, and staple holes close
+together are not affected (beyond that the page is kept, the safe side); and the pairing is by page
+order, so pages that do not start with a front are paired wrongly (a back then meets another front,
+and is kept unless that front has a shape at the mirrored spot too, as a stapled stack has).
 """
 
 from collections.abc import Sequence
@@ -135,6 +143,20 @@ def _mm(pixels: int, dpi: int) -> float:
     return pixels * MM_PER_INCH / dpi
 
 
+def _hole_sized(box: tuple[int, int], dark: int, dpi: int) -> bool:
+    """Whether a dark shape with a ``box`` (height, width) of ``dark`` pixels is a hole's size and
+    shape: a staple hole (its long side at most ``STAPLE_MAX_MM``, whatever its shape) or a
+    punched one (a round, filled disc, ``PUNCH_MIN_MM`` to ``HOLE_MAX_MM`` long). Anything in
+    between is not a hole, nor is a long, thin or ring-shaped mark: print is neither small enough
+    nor a disc."""
+    short, long = sorted(box)
+    if long <= mm_to_px(STAPLE_MAX_MM, dpi):
+        return True
+    if not mm_to_px(PUNCH_MIN_MM, dpi) <= long <= mm_to_px(HOLE_MAX_MM, dpi):
+        return False
+    return short >= PUNCH_ASPECT_MIN * long and dark >= PUNCH_FILL_MIN * short * long
+
+
 def _could_be_hole(mark: Mark, page: LoadedPage) -> bool:
     """Whether a mark is small enough, and near enough to an edge, to be a hole."""
     height, width = page.pixels.shape[:2]
@@ -148,9 +170,9 @@ def _shape_of(page: LoadedPage, mark: Mark) -> _Shape | None:
     box, cropped to their own bounding box. The box is only where the shape is found: the blank
     margin clips it, and a hole that straddles the margin goes on beyond it. None when the box
     holds nothing dark (a mark that is only pale cannot be the dark backing seen through a hole),
-    when the shape is longer than ``HOLE_MAX_MM`` (a small mark joined to a long dark line is
-    content), or when it is not hole grey (``_Tone``: black print and ink, and colours, are not
-    the backing).
+    when the shape is not a hole's size and shape (``_hole_sized``: a small mark joined to a long
+    dark line is content), or when it is not hole grey (``_Tone``: black print and ink, and
+    colours, are not the backing).
 
     Only the window ``HOLE_MAX_MM`` round the box is looked at: a shape that reaches its edge is
     longer than that, whatever lies beyond."""
@@ -169,7 +191,7 @@ def _shape_of(page: LoadedPage, mark: Mark) -> _Shape | None:
     first_row, first_column = int(rows.min()), int(columns.min())
     whole = joined[first_row : int(rows.max()) + 1, first_column : int(columns.max()) + 1]
     tone = _tone_of(region, joined)
-    if _mm(max(whole.shape), page.dpi) > HOLE_MAX_MM or not tone.is_hole_grey:
+    if not _hole_sized(whole.shape, int(whole.sum()), page.dpi) or not tone.is_hole_grey:
         return None
     return _Shape(whole, left + first_column, top + first_row, tone)
 
@@ -212,6 +234,12 @@ def _same_size(first: tuple[int, int], second: tuple[int, int]) -> bool:
     return all(max(a, b) <= SIZE_RATIO * min(a, b) for a, b in zip(first, second, strict=True))
 
 
+def _could_explain(shape: _Shape, box: tuple[int, int], dark: int, dpi: int) -> bool:
+    """Whether a dark shape on the other side, with a ``box`` (height, width) of ``dark`` pixels,
+    is a hole's size and the size of ``shape`` (the hole it would be the other end of)."""
+    return _hole_sized(box, dark, dpi) and _same_size(shape.sides, tuple(sorted(box)))
+
+
 def _overlap(template: np.ndarray, shape: np.ndarray, pad: int, reach: int) -> float:
     """The best intersection over union of ``template`` with ``shape`` over every shift of up to
     ``reach`` pixels from the spot ``pad`` pixels in from the corner of the canvas of ``shape``."""
@@ -245,11 +273,11 @@ def _counterpart(shape: _Shape, side: Trimmed, partner: Trimmed, taken: set[_Key
     )
     best: tuple[float, _Match] | None = None
     for label in range(1, count):
-        left, top, wide, tall, _ = stats[label].tolist()
+        left, top, wide, tall, dark = stats[label].tolist()
         key = (left + x - pad, top + y - pad)
         touches_edge = left == 0 or top == 0 or left + wide == window.shape[1]
         touches_edge = touches_edge or top + tall == window.shape[0]
-        if touches_edge or key in taken or not _same_size(shape.sides, tuple(sorted((tall, wide)))):
+        if touches_edge or key in taken or not _could_explain(shape, (tall, wide), dark, dpi):
             continue
         tone = _tone_of(window, labels == label)
         if not (tone.is_hole_grey and shape.tone.matches(tone)):

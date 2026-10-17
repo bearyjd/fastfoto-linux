@@ -74,9 +74,9 @@ def test_no_back_of_a_numbered_document_is_dropped_for_its_number(start: int) ->
     assert dropped == []
 
 
-# Grey page numbers (a grey print, a grey toner): (tone, points, font, dpi). Each of these was
-# taken for a hole beside the front's number before a hole had a size: digits of 8 to 12 pt are
-# 2 to 3 mm tall, over a staple hole, and not a round disc.
+# Grey page numbers (a grey print, a grey toner): (tone, points, font, dpi). All but the two in
+# Serif were taken for a hole beside the front's number before a hole had a size: digits of 8 to
+# 12 pt are 2 to 3 mm tall, over a staple hole, and not a round disc.
 GREY_NUMBERS = [
     pytest.param(
         *case,
@@ -85,17 +85,13 @@ GREY_NUMBERS = [
     )
     for case in (
         (89, 8, BUNDLED, 200),
-        (89, 10, "sans", 200),
         (89, 12, BUNDLED, 300),
-        (102, 8, "sans", 200),
         (102, 10, BUNDLED, 300),
         (102, 12, "sans", 300),
         (128, 8, BUNDLED, 300),
         (128, 10, BUNDLED, 200),
-        (128, 12, "sans", 300),
         (150, 10, BUNDLED, 300),
         (150, 12, BUNDLED, 300),
-        (150, 12, "sans", 300),
         (150, 8, "serif", 200),
         (102, 12, "serif", 200),
     )

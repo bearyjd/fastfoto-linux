@@ -6,6 +6,7 @@ Anything in between, and a long thin or hollow mark, keeps its page, whatever li
 import pytest
 
 from fastfoto_linux.documents.holes import PUNCH_MIN_MM, STAPLE_MAX_MM
+from tests.doc_synth import Scene
 from tests.doc_synth_holes import Hole, dash, disc, holes_painter, ring, sheet
 from tests.documents.holes_helpers import FAST_DPIS, blanks, mirrored
 
@@ -15,7 +16,9 @@ BLANK = (True, True)
 REAL_STAPLES = [(0.6, 0.42, 86), (0.9, 0.6, 96), (1.2, 0.7, 100), (1.35, 0.93, 108)]
 
 
-def pair(dpi: int, marks: list[Hole], *, tone: int = 110, other: list[Hole] | None = None):
+def pair(
+    dpi: int, marks: list[Hole], *, tone: int = 110, other: list[Hole] | None = None
+) -> tuple[Scene, Scene]:
     """A sheet with ``marks`` on the front and, mirrored, ``other`` (or the same) on the back."""
     return sheet(dpi, [holes_painter(marks, tone)], [holes_painter(mirrored(other or marks), tone)])
 

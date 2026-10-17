@@ -43,7 +43,7 @@ def test_the_constants_are_the_ones_the_rule_was_measured_with() -> None:
 def test_the_hole_rule_is_described_with_its_constants(name: str) -> None:
     text = text_of(name)
     assert "A hole through the paper does not keep a page" in text
-    assert "a counted mark is a hole when its whole shape is the size of a staple hole" in text
+    assert "is a hole when its whole shape is the size of a staple hole" in text
     assert "or of a punched hole" in text
     assert f"within {holes.EDGE_ZONE_MM:g} mm of an edge of the page" in text
     assert "the other side of the same sheet has a dark shape of the same size" in text
@@ -76,7 +76,10 @@ def test_a_hole_is_a_staple_hole_or_a_round_punched_disc(name: str) -> None:
     assert f"short side at least {holes.PUNCH_ASPECT_MIN:g} of its long one" in text
     assert "(`PUNCH_ASPECT_MIN`)" in text
     assert f"at least {holes.PUNCH_FILL_MIN:g} filled (`PUNCH_FILL_MIN`; a disc fills 0.78)" in text
-    assert 'Anything in between, and a long thin or hollow mark (a "0", an "o"), is never' in text
+    assert (
+        'Anything in between, and a long thin or hollow mark over 1.8 mm (a "0", an "o" of print), '
+        "is never a hole"
+    ) in text
 
 
 @pytest.mark.parametrize("name", list(DOCUMENTS))
@@ -102,8 +105,8 @@ def test_a_hole_is_grey_and_neutral_and_the_same_on_both_sides(name: str) -> Non
     assert "(`HOLE_TINT`: real holes 4)" in text
     assert "so black print, pen, stamps and ink of a colour are not holes" in text
     assert (
-        "A page number set from about 7.5 pt up has digits over 1.8 mm tall (2 to 3 mm at 8 to 12 "
-        "pt), over a staple hole, and not round discs, so in no grey is it a hole"
+        "A page number set at 8 pt or more has digits 2 to 3 mm tall (tested at 8 to 12 pt), "
+        "over a staple hole, and not round discs, so in no grey is it a hole"
     ) in text
     assert "whatever lies opposite" not in text
     assert "no longer matters" not in text
@@ -141,8 +144,8 @@ def test_the_limits_of_the_hole_rule_are_listed(name: str) -> None:
         "on an otherwise blank back is taken for a hole"
     ) in text
     assert (
-        'That includes smaller grey marks: a grey "." or "-" of pencil or of grey print (a whole '
-        "shape of at most 1.8 mm, as the digits of a numeral set under about 7.5 pt are)"
+        'That includes smaller grey marks: a grey "." or "-" or "o" of pencil or of grey print '
+        "(a whole shape of at most 1.8 mm, as the digits of a numeral set under 8 pt can be)"
     ) in text
     assert "at the mirrored spot of a grey mark on the other side" in text
     assert "Black print and ink are never holes" in text
@@ -201,6 +204,8 @@ def test_the_design_note_gives_the_numbers_the_size_classes_were_set_from() -> N
     assert "digits of a page number at 8 to 12 pt are 2.0 to 3.0 mm tall" in text
     assert "`STAPLE_MAX_MM` 1.8 is a third above the largest real hole" in text
     assert "0.543 against 0.5" in text
+    assert "14 backs were dropped at 7.5 pt (0.6 %) and 32 at 7 pt (1.3 %)" in text
+    assert "none at 8 pt and up" in text
 
 
 def test_the_design_note_no_longer_says_a_punch_hole_always_keeps_the_page() -> None:
@@ -214,14 +219,17 @@ def test_the_module_text_names_the_rule_and_its_limits() -> None:
         assert f"``{name}``" in text
     for name in ("STAPLE_MAX_MM", "PUNCH_MIN_MM", "PUNCH_ASPECT_MIN", "PUNCH_FILL_MIN"):
         assert f"``{name}``" in text
-    assert "Anything in between, and a long thin or hollow mark, is never a hole" in text
-    assert "A page number set from about 7.5 pt up" in text
+    assert (
+        'Anything in between, and a long thin or hollow mark over 1.8 mm (a "0", an "o" of print), '
+        "is never a hole"
+    ) in text
+    assert "A page number set at 8 pt or more" in text
     assert "whatever lies opposite" not in text
     assert "no longer matters" not in text
     assert "smaller grey marks" in text
     assert "The back of a sheet is its front flipped left to right and the top stays on top" in text
     assert "the same symmetric mark at the mirrored spots of both sides" in text
-    assert "Print is never a hole" in text
+    assert "Black print is never a hole" in text
     assert "share one registration" in text
     assert "A 1-bit page has no greys" in text
     assert "holes 216 mm apart (a three-hole punch on Letter paper)" in text

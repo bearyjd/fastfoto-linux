@@ -47,6 +47,12 @@ def brew_bin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 @pytest.fixture
+def brew_by_name(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``brew`` is looked for by its real name (tests/conftest.py gives it one nobody has)."""
+    monkeypatch.setattr(ocr_tools, "BREW", "brew")
+
+
+@pytest.fixture
 def ostree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     marker = tmp_path / "ostree-booted"
     marker.touch()
@@ -195,13 +201,15 @@ def test_an_immutable_system_installs_tesseract_with_brew(on_path: Path, ostree:
     assert ocr_install_hint() == BREW_INSTALL_HINT
 
 
-def test_a_system_with_brew_installs_tesseract_with_brew(on_path: Path, brew_bin: Path) -> None:
+def test_a_system_with_brew_installs_tesseract_with_brew(
+    on_path: Path, brew_bin: Path, brew_by_name: None
+) -> None:
     assert not uses_homebrew()  # a folder is not brew
     program(brew_bin, "brew")
     assert uses_homebrew()
     assert ocr_install_hint() == BREW_INSTALL_HINT
 
 
-def test_brew_on_path_counts(on_path: Path) -> None:
+def test_brew_on_path_counts(on_path: Path, brew_by_name: None) -> None:
     program(on_path, "brew")
     assert ocr_install_hint() == BREW_INSTALL_HINT

@@ -7,7 +7,12 @@
 # keeps a list in installed.txt); the settings in ~/.config/fastfoto-linux and your photos are
 # never touched. Everything pip fetches is pinned by hash and installed as a wheel: the
 # dependencies from packaging/requirements-desktop.txt (generated from uv.lock; a test keeps the
-# two in step) and the build backend from packaging/requirements-build.txt.
+# two in step), the OCR extra (ocrmypdf and its wheels) from packaging/requirements-ocr.txt, and
+# the build backend from packaging/requirements-build.txt.
+# Tesseract, which searchable text also needs, is a program, not a wheel: if it is missing the
+# installer says how to get it (Homebrew on an immutable system such as Bazzite, dnf otherwise) and
+# runs `brew install tesseract` only when asked (--with-tesseract, or "y" on a terminal). It never
+# uses sudo, and --uninstall leaves Homebrew packages alone.
 set -euo pipefail
 umask 022 # files are readable by others whatever the user's umask is
 
@@ -16,24 +21,29 @@ LAUNCHERS=(fastfoto ffscan)
 
 usage() {
   cat <<USAGE
-Usage: install-desktop.sh [--uninstall] [--dry-run] [--help]
+Usage: install-desktop.sh [--uninstall] [--dry-run] [--with-tesseract] [--help]
 
-  --uninstall  remove what this script installed
-  --dry-run    list what would be done and change nothing
-  --help       show this text
+  --uninstall       remove what this script installed
+  --dry-run         list what would be done and change nothing
+  --with-tesseract  install Tesseract (for searchable text) with Homebrew when it is missing;
+                    never with sudo. Without this option the command to run is only printed.
+  --help            show this text
 
 Environment: HOME and XDG_DATA_HOME (when it is an absolute path) say where things go;
 FASTFOTO_PYTHON is the Python used for the environment (default /usr/bin/python3, the one
-that has PySide6).
+that has PySide6); FASTFOTO_BREW_BIN is Homebrew's bin folder, where brew and tesseract are
+looked for besides PATH (default /home/linuxbrew/.linuxbrew/bin).
 USAGE
 }
 
 DRY_RUN=0
 UNINSTALL=0
+WITH_TESSERACT=0
 for argument in "$@"; do
   case "$argument" in
     --dry-run) DRY_RUN=1 ;;
     --uninstall) UNINSTALL=1 ;;
+    --with-tesseract) WITH_TESSERACT=1 ;;
     -h | --help) usage; exit 0 ;;
     *) echo "install-desktop.sh: unknown option: $argument" >&2; usage >&2; exit 2 ;;
   esac
@@ -72,7 +82,14 @@ APP_DATA="$DATA_HOME/fastfoto-linux"
 VENV="$APP_DATA/venv"
 RECORD="$APP_DATA/installed.txt"
 REQUIREMENTS="$REPO/packaging/requirements-desktop.txt"
+OCR_REQUIREMENTS="$REPO/packaging/requirements-ocr.txt"
 BUILD_REQUIREMENTS="$REPO/packaging/requirements-build.txt"
+BREW_BIN="${FASTFOTO_BREW_BIN:-/home/linuxbrew/.linuxbrew/bin}"
+OSTREE_MARKER="${FASTFOTO_OSTREE_MARKER:-/run/ostree-booted}" # exists on an rpm-ostree system
+# Kept in step with documents/ocr_tools.py, which tells the same to the app (the installer tests compare them).
+BREW_INSTALL_HINT="brew install tesseract"
+BREW_LANG_HINT="brew install tesseract-lang"
+DNF_INSTALL_HINT="sudo dnf install tesseract tesseract-osd"
 LIB_DIR="$HOME/.local/lib/fastfoto-linux"
 SHIM="$LIB_DIR/ff680w_usb_gap.so"
 BIN_DIR="$HOME/.local/bin"
@@ -113,17 +130,19 @@ make_venv() {
   "$PYTHON" -I -m venv ${mode[@]+"${mode[@]}"} --system-site-packages "$VENV"
 }
 
-# Nothing is fetched without a hash: first the build backend (hatchling), then the dependencies,
-# both as wheels only (no build step runs for them); this checkout then goes in on top, built with
-# that backend and without looking for dependencies again (pip would keep an installed package of
-# the same version, so it is reinstalled to make sure its code is what is installed).
+# Nothing is fetched without a hash: first the build backend (hatchling), then the dependencies and
+# the OCR extra, all as wheels only (no build step runs for them); this checkout then goes in on
+# top, built with that backend and without looking for dependencies again (pip would keep an
+# installed package of the same version, so it is reinstalled to make sure its code is what is
+# installed).
 install_package() {
   local file
-  for file in "$BUILD_REQUIREMENTS" "$REQUIREMENTS"; do
+  for file in "$BUILD_REQUIREMENTS" "$REQUIREMENTS" "$OCR_REQUIREMENTS"; do
     [[ -f "$file" ]] || fail "$file is missing; is this a complete checkout?"
   done
   "$VENV/bin/python" -I -m pip install --require-hashes --only-binary=:all: -r "$BUILD_REQUIREMENTS"
   "$VENV/bin/python" -I -m pip install --require-hashes --only-binary=:all: -r "$REQUIREMENTS"
+  "$VENV/bin/python" -I -m pip install --require-hashes --only-binary=:all: -r "$OCR_REQUIREMENTS"
   "$VENV/bin/python" -I -m pip install --no-build-isolation --no-deps --force-reinstall "$REPO"
 }
 
@@ -218,9 +237,70 @@ check_qt() {
   fi
 }
 
+# find_program NAME: the path of NAME on PATH, else in Homebrew's folder (a menu entry's PATH has no
+# Homebrew); nothing when it is nowhere.
+find_program() {
+  command -v "$1" 2> /dev/null || { [[ -x "$BREW_BIN/$1" ]] && echo "$BREW_BIN/$1"; }
+}
+
+# The command that installs Tesseract here: Homebrew's on an immutable system or where brew is.
+tesseract_hint() {
+  if [[ -e "$OSTREE_MARKER" ]] || find_program brew > /dev/null; then
+    echo "$BREW_INSTALL_HINT"
+  else
+    echo "$DNF_INSTALL_HINT"
+  fi
+}
+
+# install_tesseract BREW: never fatal, because the app works without searchable text.
+install_tesseract() {
+  if "$1" install tesseract; then
+    echo "Tesseract is installed. For languages other than English: $BREW_LANG_HINT"
+  else
+    echo "warning: Tesseract could not be installed with Homebrew; searchable text needs it: $BREW_INSTALL_HINT" >&2
+  fi
+}
+
+# tell_tesseract HINT BREW: the command to run, and why --with-tesseract could not do it.
+tell_tesseract() {
+  if ((WITH_TESSERACT)) && [[ -z "$2" ]]; then
+    echo "warning: --with-tesseract needs Homebrew (brew), which was not found" >&2
+  fi
+  echo "Searchable text needs Tesseract. To get it, run: $1"
+  [[ -z "$2" ]] || echo "(or run this installer again with --with-tesseract)"
+}
+
+# ask_to_install HINT BREW: on a terminal, anything but yes leaves it to the user.
+ask_to_install() {
+  local answer=""
+  read -r -p "Searchable text needs Tesseract. Install it now with Homebrew ($1)? [y/N] " answer || true
+  case "$answer" in
+    [yY] | [yY][eE][sS]) install_tesseract "$2" ;;
+    *) tell_tesseract "$1" "$2" ;;
+  esac
+}
+
+tesseract_step() {
+  local found brew hint
+  found=$(find_program tesseract || true)
+  brew=$(find_program brew || true)
+  hint=$(tesseract_hint)
+  if [[ -n "$found" ]]; then
+    ((!DRY_RUN)) || echo "would leave Tesseract alone: $found is already there"
+  elif [[ -n "$brew" ]] && ((WITH_TESSERACT)); then
+    act "install Tesseract with Homebrew: $hint" install_tesseract "$brew"
+  elif ((DRY_RUN)); then
+    echo "would tell how to get Tesseract: $hint${brew:+ (or run this installer again with --with-tesseract)}"
+  elif [[ -n "$brew" && -t 0 && -t 1 ]]; then
+    ask_to_install "$hint" "$brew"
+  else
+    tell_tesseract "$hint" "$brew"
+  fi
+}
+
 install_all() {
   act "create the environment $VENV ($PYTHON -I -m venv --system-site-packages)" make_venv
-  act "install the build backend from $BUILD_REQUIREMENTS and the dependencies from $REQUIREMENTS (hashes checked, wheels only), then $REPO without them" install_package
+  act "install the build backend from $BUILD_REQUIREMENTS, the dependencies from $REQUIREMENTS and the OCR dependencies (ocrmypdf and its wheels) from $OCR_REQUIREMENTS (hashes checked, wheels only), then $REPO without them" install_package
   act "build the USB gap shim: make -C $REPO/tools/usb-gap-shim" build_shim
   act "copy the shim to $SHIM (a private folder, replaced atomically)" copy_shim
   act "write the launcher $DESKTOP" write_desktop
@@ -229,6 +309,7 @@ install_all() {
   for name in "${LAUNCHERS[@]}"; do
     act "link $BIN_DIR/$name -> $VENV/bin/$name" link_launcher "$name"
   done
+  tesseract_step
   if ((!DRY_RUN)); then
     check_qt
     echo "Installed. Start FastFoto Linux from the application menu, or run: fastfoto"

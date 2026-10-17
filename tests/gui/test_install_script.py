@@ -654,7 +654,7 @@ def run_on_tty(checkout: Path, env: dict[str, str], answer: str, *args: str) -> 
     return process.wait(timeout=60), output.decode(errors="replace")
 
 
-def test_the_ocr_wheels_are_a_dry_run_step_of_their_own(
+def test_the_dry_run_names_the_ocr_requirements_once(
     checkout: Path, ocr_env: dict[str, str]
 ) -> None:
     done = run(checkout, ocr_env, "--dry-run")

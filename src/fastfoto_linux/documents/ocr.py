@@ -1,5 +1,9 @@
 """Add a text layer with ``ocrmypdf``, without ever losing the plain PDF.
 
+``ocrmypdf`` is run as a module of the app's own interpreter when it can import it, else as the
+program found by ``ocr_tools``; either way with Homebrew's folder on its PATH, where Tesseract
+may be (``ocr_tools.ocr_environment``). Its rasterizer is pdfium, so Ghostscript is never used.
+
 The PDF is staged in a private folder (mode 0700) of the system's temporary directory, never in
 the output folder; it is removed on every path except a SIGKILL of ``ffscan`` itself, which can
 leave an ``.ffscan-ocr-*`` folder behind that can simply be deleted. ``ocrmypdf`` runs there in
@@ -12,9 +16,9 @@ import contextlib
 import logging
 import os
 import re
-import shutil
 import signal
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -24,14 +28,13 @@ from pathlib import Path
 
 from fastfoto_linux.documents.errors import OcrCancelledError
 from fastfoto_linux.documents.ocr_codes import TOOL, describe_exit
+from fastfoto_linux.documents.ocr_tools import find_ocrmypdf, ocr_environment  # noqa: F401 - re-exported
 
 logger = logging.getLogger(__name__)
 
 LANGS_PATTERN = r"[a-z_]+(\+[a-z_]+)*"
 DEFAULT_LANGS = "eng"
-OCR_INSTALL_HINT = (
-    "sudo dnf install ocrmypdf tesseract-osd"  # OSD data is what --rotate-pages needs
-)
+RASTERIZER = "pypdfium"  # the known-defective Ghostscript 10.06 is never used
 GRACE_S = 5.0  # SIGTERM to SIGKILL
 POLL_S = 0.05
 STAGING_PREFIX = ".ffscan-ocr-"
@@ -48,7 +51,7 @@ class OcrMode(StrEnum):
 class OcrStatus(StrEnum):
     DONE = "done"
     SKIPPED = "skipped"  # --ocr off
-    UNAVAILABLE = "unavailable"  # --ocr auto and ocrmypdf is not installed
+    UNAVAILABLE = "unavailable"  # --ocr auto and ocrmypdf or Tesseract is not installed
     FAILED = "failed"
     TIMED_OUT = "timed out"
 
@@ -71,19 +74,18 @@ def validate_langs(text: str) -> str:
     return text
 
 
-def find_ocrmypdf() -> str | None:
-    """The ``ocrmypdf`` executable on PATH, or None."""
-    return shutil.which(TOOL)
-
-
 def _command(executable: str, langs: str, source: Path, target: Path) -> list[str]:
+    """The command line; ``executable`` is the running interpreter when ocrmypdf is its module."""
+    runner = [executable, "-m", TOOL] if executable == sys.executable else [executable]
     return [
-        executable,
+        *runner,
         "--output-type",
         "pdf",
         "--rotate-pages",
         "-l",
         langs,
+        "--rasterizer",
+        RASTERIZER,
         str(source),
         str(target),
     ]
@@ -164,6 +166,7 @@ def _run(  # noqa: PLR0913
         stdin=devnull,
         stdout=devnull,
         stderr=devnull,
+        env=ocr_environment(),
         start_new_session=True,
     )
     status = _wait(process, timeout_s, grace_s, cancel)
@@ -188,7 +191,8 @@ def run_ocr(  # noqa: PLR0913
     grace_s: float = GRACE_S,
     cancel: threading.Event | None = None,
 ) -> OcrOutcome:
-    """Run ``ocrmypdf --output-type pdf --rotate-pages -l LANGS`` on a staging copy of the PDF.
+    """Run ``ocrmypdf --output-type pdf --rotate-pages -l LANGS --rasterizer pypdfium`` on a
+    staging copy of the PDF.
 
     The copy lives in a new private folder (mode 0700) inside ``staging_parent``, which is the
     system temporary directory unless a caller names another one (the output folder is not a

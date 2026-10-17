@@ -56,9 +56,11 @@ def no_scanner_precheck(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.fixture(autouse=True)
 def classic_machine_without_ocr(monkeypatch: pytest.MonkeyPatch) -> None:
     """Where OCR programs are found and which install hint is shown depend on the machine: an
-    rpm-ostree system, Homebrew in /home/linuxbrew and an ``ocrmypdf`` in the test environment
-    would each change the answer. Every test starts on a classic system that has none of them; a
-    test that needs one sets ``BREW_BIN``, ``OSTREE_MARKER`` or ``OCR_MODULE`` itself."""
+    rpm-ostree system, Homebrew (in /home/linuxbrew or on PATH) and an ``ocrmypdf`` in the test
+    environment would each change the answer. Every test starts on a classic system that has none
+    of them; a test that needs one sets ``BREW_BIN``, ``OSTREE_MARKER``, ``BREW`` or ``OCR_MODULE``
+    itself."""
+    monkeypatch.setattr(ocr_tools, "BREW", "fastfoto-linux-no-such-brew")
     monkeypatch.setattr(ocr_tools, "BREW_BIN", Path("/nonexistent/linuxbrew/bin"))
     monkeypatch.setattr(ocr_tools, "OSTREE_MARKER", Path("/nonexistent/ostree-booted"))
     monkeypatch.setattr(ocr_tools, "OCR_MODULE", "fastfoto_linux_no_such_module")

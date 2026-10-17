@@ -30,8 +30,9 @@ ffscan doc process PAGE.png ... --out DIR [--mkdir] [same output options]
 ```
 - Writes `DIR/<NAME>_NNNN.pdf`. NAME defaults to `Document` and is cleaned like album names; NNNN uses the
   same numbering as photos (never reuses a number, never overwrites a file).
-- `--ocr auto` (default) adds a text layer when `ocrmypdf` is on PATH, otherwise writes the plain PDF and
-  says how to get OCR. `--ocr on` refuses to start if `ocrmypdf` is missing. `--lang` is passed to
+- `--ocr auto` (default) adds a text layer when OCR is available (`ocrmypdf` and Tesseract, see "Where
+  the OCR programs are" below), otherwise writes the plain PDF and says how to get it. `--ocr on`
+  refuses to start if either is missing. `--lang` is passed to
   Tesseract (default `eng`; `eng+deu` style allowed, validated against `[a-z_]+(\+[a-z_]+)*`).
 - Exit codes as `ffscan`: 0 ok, 1 processing problem (the PDF is still written when possible: e.g. OCR
   failed → plain PDF + warning), 2 usage, 3 scanner/shim/required tool missing, 4 feeder empty, 130 stopped.
@@ -59,8 +60,10 @@ ffscan doc process PAGE.png ... --out DIR [--mkdir] [same output options]
 6. **Encode**: colour/grey → JPEG embedded as-is (DCTDecode, quality ~85); black-and-white → lossless
    1-bit (CCITT G4 or Flate). Page size from pixels and dpi. Metadata: title = NAME, creation date,
    producer `fastfoto-linux`.
-7. **OCR**: `ocrmypdf --output-type pdf --rotate-pages -l LANGS in.pdf out.pdf` on a staging file, with a
-   time limit, cancellable. `--output-type pdf` avoids a Ghostscript re-encode of the images. If OCR fails
+7. **OCR**: `ocrmypdf --output-type pdf --rotate-pages -l LANGS --rasterizer pypdfium in.pdf out.pdf` on a
+   staging file, with a time limit, cancellable. `--output-type pdf` avoids a Ghostscript re-encode of
+   the images, and `--rasterizer pypdfium` keeps Ghostscript (the host's 10.06 is in OCRmyPDF's
+   known-defect range) out of the run altogether. If OCR fails
    or times out, publish the plain PDF, warn, exit 1. Never log recognised text.
 8. **Publish** once with the existing safe writer (folder lock, fsync, no overwrite).
 
@@ -71,7 +74,8 @@ two image kinds. Tests parse every PDF with a dev-only library (pypdf).
 ## Desktop app (D3)
 A **Photos | Documents** switch at the top of the form. Documents shows: name, colour (Colour / Grey /
 Black and white), resolution, "Both sides (drop blank pages)", "Searchable text" (disabled with
-"Install OCRmyPDF: `sudo dnf install ocrmypdf`" when missing). Results list each PDF with its page count,
+"Install Tesseract: `sudo dnf install tesseract tesseract-osd`", or `brew install tesseract` on a Homebrew
+system, when missing). Results list each PDF with its page count,
 dropped pages and an Open button. Settings are remembered per mode.
 
 ## Flatpak
@@ -443,11 +447,21 @@ What the first pull request settled where the specification left room.
   the same name, with the same retry on collision as photos.
 
 ### Needs real hardware or native tools
-On Fedora `ocrmypdf` alone pulls Tesseract and the English data but not `tesseract-osd`, the
-orientation data that `--rotate-pages` needs (OCRmyPDF's own installation notes name it), so the
-hint is `sudo dnf install ocrmypdf tesseract-osd`; without the data OCRmyPDF's rotation step can
-fail the whole run, which here falls back to the plain PDF. Read from its source, not run (CI has
-no `ocrmypdf`).
+### Where the OCR programs are
+`ocrmypdf` is the `ocr` extra of the package (`packaging/requirements-ocr.txt` holds its hashed wheels; the
+Flatpak does not install it yet), so the native install has it whatever the distribution packages. It
+is run as `python -m ocrmypdf` of the app's own interpreter when that can import it, else the
+`ocrmypdf` on PATH, else the one in Homebrew's folder. Tesseract is a program: on PATH, else in
+`/home/linuxbrew/.linuxbrew/bin`, which the PATH of a menu launcher lacks; `ocrmypdf` is started with
+that folder and the interpreter's folder in front of PATH. OCR is available only with both.
+
+Tesseract comes from Homebrew (`brew install tesseract`, `brew install tesseract-lang` for other
+languages; it includes `osd`, the orientation data that `--rotate-pages` needs) on an rpm-ostree
+system (`/run/ostree-booted` exists) or where `brew` is present, and from
+`sudo dnf install tesseract tesseract-osd` on classic Fedora. `ocrmypdf` is not installed from
+Homebrew: its formula pulls in Ghostscript and its own Python. Without the orientation data
+OCRmyPDF's rotation step can fail the whole run, which here falls back to the plain PDF. Read from
+the documentation, run only against stand-ins (CI has no Tesseract).
 
 Trim on real pages (backing colour, tail tone), blank detection on real backs, what `scanimage`
 writes for Gray, speed at 300 dpi, OCR quality on real letters, and whether real `ocrmypdf`

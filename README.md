@@ -241,14 +241,22 @@ uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr o
   creases that cross are one big mark and keep the page; a speck under a millimetre next to a
   crease segment under 2 mm long can keep the page (at 300 dpi and finer). Trimming is not
   affected.
-- Searchable text needs `ocrmypdf` and, for its page rotation, Tesseract's orientation data:
-  `sudo dnf install ocrmypdf tesseract-osd`. `--ocr auto` (default) uses it
-  when present and otherwise writes the plain PDF and says so; `--ocr on` refuses to start
+- Searchable text: `ocrmypdf` comes with the app (the installer puts it in the app's own
+  environment; from a checkout, `uv sync --extra ocr`), so only Tesseract, the program it drives,
+  is left to install. On Bazzite, Silverblue and other immutable systems (the check is that
+  `/run/ostree-booted` exists), and wherever Homebrew is installed, run `brew install tesseract`
+  (English and the orientation data that page rotation needs) and, for other languages,
+  `brew install tesseract-lang`. On classic Fedora run `sudo dnf install tesseract tesseract-osd`
+  (`tesseract-langpack-*` for other languages). Tesseract is looked for on PATH and in Homebrew's
+  own bin folder, which the PATH of a menu launcher does not have.
+  Pages are rasterized with pdfium, never Ghostscript. `--ocr auto` (default) uses OCR
+  when it is all there and otherwise writes the plain PDF and says so; `--ocr on` refuses to start
   without it (exit 3); `--ocr off` never runs it. `--lang` takes Tesseract codes (`eng`,
   `eng+deu`). If OCR fails or times out the plain PDF is still written, with one warning and exit
-  code 1; the warning says why from `ocrmypdf`'s exit code (for a missing language it names the
-  `tesseract-langpack-*` packages to install). OCR works in a private temporary folder, not in
-  the output folder. The Flatpak build has no OCR yet.
+  code 1; the warning says why from `ocrmypdf`'s exit code (for a missing language it names what
+  to install: `brew install tesseract-lang`, or the `tesseract-langpack-*` packages). OCR works in
+  a private temporary folder, not in the output folder. The Flatpak will bundle OCR in a later
+  release.
 - Exit codes are those of `ffscan`: 0 ok, 1 a processing problem (an unusable page stops the run
   before anything is written, and a file that is cut off or corrupt counts as unusable), 2 usage,
   3 a required tool is missing (`doc scan`: also the scanner or its shim, which is missing, not
@@ -279,8 +287,8 @@ uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr o
   a PDF with its last pages missing is too easy to take for the whole. The pages already scanned
   are kept, the error says where and prints the exact `ffscan doc process` command that makes a
   PDF from the finished pages when you want one. If every page looks blank nothing is written
-  and the exit code is 1, with the raw pages kept. `--ocr on` without `ocrmypdf` is refused
-  (exit 3) before anything is scanned.
+  and the exit code is 1, with the raw pages kept. `--ocr on` without OCR (`ocrmypdf` and
+  Tesseract) is refused (exit 3) before anything is scanned.
 - Needs the scanner (not checked in CI): the Gray PNG that scanimage writes (`doc scan` does not
   ask for it, but pages given to `doc process` may be grey), trimming on real pages, blank
   detection on real backs, speed at 300 dpi, and OCR quality on real letters.
@@ -360,10 +368,11 @@ has searchable text (or why not), and an **Open** button. If the scan stops part
 no PDF is made on its own from part of the stack: the pages are kept and **Process them now** makes
 the PDF from just those pages with the same settings (it is offered again after a full disk or a
 folder that cannot be written to, once that is fixed). Each form says how to load the feeder, as
-the label on the scanner does. **Searchable text** needs OCRmyPDF; without it the box is off
-and says `Install OCRmyPDF: sudo dnf install ocrmypdf tesseract-osd`. The Flatpak has no OCR yet
-and says that searchable text needs the native install; everything else in Documents mode works
-there.
+the label on the scanner does. **Searchable text** needs Tesseract (OCRmyPDF comes with the app);
+without it the box is off and says `Install Tesseract: sudo dnf install tesseract tesseract-osd`,
+or `Install Tesseract: brew install tesseract` on Bazzite, Silverblue and other systems with
+Homebrew. The Flatpak has no OCR yet (it will bundle it in a later release) and says that
+searchable text needs the native install; everything else in Documents mode works there.
 
 Install it for your user (no root; nothing to do with `uv` or pip):
 
@@ -376,13 +385,21 @@ tools/install-desktop.sh --uninstall              # remove it again
 
 The installer creates a virtual environment that can see the system PySide6 and installs the
 dependencies into it from `packaging/requirements-desktop.txt`, which pins every package by hash
-(it is generated from `uv.lock`), after the build backend from `packaging/requirements-build.txt`
-(also pinned by hash); only wheels are installed, and the checkout is built with that backend. It builds the USB gap shim (`make` and `gcc` are needed) into
+(it is generated from `uv.lock`), and `ocrmypdf` with its own dependencies from
+`packaging/requirements-ocr.txt` (the `ocr` extra, pinned the same way), after the build backend
+from `packaging/requirements-build.txt` (also pinned by hash); only wheels are installed, and the
+checkout is built with that backend. It builds the USB gap shim (`make` and `gcc` are needed) into
 `~/.local/lib/fastfoto-linux/` (a folder only you can use), adds an application menu entry and
 icon, and links `fastfoto` and `ffscan` into `~/.local/bin`. What it installed is listed in
 `~/.local/share/fastfoto-linux/installed.txt`; `--uninstall` removes only that. PySide6 is not a pip
 dependency on purpose: the PyPI wheel bundles its own Qt and cannot load the system Kirigami
 plugin. Without PySide6 and Kirigami, `fastfoto` says what to install and exits with status 3.
+
+Tesseract, which searchable text needs, is a program and not a Python package. When it is not
+found the installer prints the command to run (`brew install tesseract` on Bazzite, Silverblue
+and wherever Homebrew is installed, `sudo dnf install tesseract tesseract-osd` on classic Fedora).
+`tools/install-desktop.sh --with-tesseract` runs the Homebrew command for you (on a terminal it
+asks first); it never uses `sudo`, and `--uninstall` leaves Homebrew packages alone.
 
 Not done yet: editing photos after the scan (rotate, fix the date, re-run the enhancement), the
 scanner's Start button, and processing while still scanning. A scan through the app on real

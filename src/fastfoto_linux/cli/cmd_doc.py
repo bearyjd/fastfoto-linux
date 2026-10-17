@@ -42,7 +42,7 @@ from fastfoto_linux.documents import (
     build_document,
     find_ocrmypdf,
 )
-from fastfoto_linux.documents.ocr import OCR_INSTALL_HINT
+from fastfoto_linux.documents.ocr_tools import ocr_install_hint
 from fastfoto_linux.scanner import ScannerError, resolve_target, run_scan
 from fastfoto_linux.session import (
     DocumentScanRequest,
@@ -87,7 +87,7 @@ def add_parser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]"
 def _require_ocr_if_asked(settings: DocumentSettings) -> None:
     if settings.ocr is OcrMode.ON and find_ocrmypdf() is None:
         raise CliError(
-            f"--ocr on needs ocrmypdf, which is not installed ({OCR_INSTALL_HINT})",
+            f"--ocr on needs ocrmypdf, which is not installed ({ocr_install_hint()})",
             EXIT_TOOL_MISSING,
         )
 
@@ -121,7 +121,7 @@ def run_process(args: argparse.Namespace) -> int:
         result = build_document(pages, settings)
     except (AllPagesBlankError, OcrMissingError) as error:
         _raise_failure(error)
-    print_document_summary(result, install_hint=OCR_INSTALL_HINT)
+    print_document_summary(result, install_hint=ocr_install_hint())
     return EXIT_OK if result.ok else EXIT_PROCESSING_ERROR
 
 
@@ -161,7 +161,7 @@ def _scan_into(request: DocumentScanRequest, root: Path) -> int:
     if session.document is not None:
         print_document_summary(
             session.document,
-            install_hint=OCR_INSTALL_HINT,
+            install_hint=ocr_install_hint(),
             pages_label=PAGES_SCANNED,
             raw_line=raw_pages_line(session),
         )

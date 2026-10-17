@@ -2,13 +2,20 @@
 
 The tool's output is never read (it holds the recognised text), so the only evidence of what went
 wrong is how it ended. Each code of OCRmyPDF's "return code policy" has one fixed hint. Code 3
-("a required program is missing") also covers missing language data, which is the usual cause on
-Fedora, so its hint names the packages to install.
+("a required program is missing") also covers missing language data, which is the usual cause, so
+its hint names what to install: the Homebrew formulae on a system that uses Homebrew, else the
+Fedora packages.
 """
 
 import signal
 
-TOOL = "ocrmypdf"
+from fastfoto_linux.documents.ocr_tools import (
+    BREW_INSTALL_HINT,
+    BREW_LANG_HINT,
+    TOOL,
+    uses_homebrew,
+)
+
 MISSING_DEPENDENCY = 3
 _LANGPACK = "tesseract-langpack-{}"
 _ORIENTATION_DATA = "tesseract-osd"  # --rotate-pages needs it
@@ -31,11 +38,17 @@ _HINTS = {
 }
 
 
-def _missing_dependency(langs: str) -> str:
+def _install_command(langs: str) -> str:
+    if uses_homebrew():
+        return f"{BREW_INSTALL_HINT} (English, page rotation), {BREW_LANG_HINT} (other languages)"
     packages = [_LANGPACK.format(code) for code in langs.split("+")] + [_ORIENTATION_DATA]
+    return f"{_INSTALL} {' '.join(packages)}"
+
+
+def _missing_dependency(langs: str) -> str:
     return (
         "a program or language data it needs is missing; install Tesseract and the language "
-        f"data: {_INSTALL} {' '.join(packages)}"
+        f"data: {_install_command(langs)}"
     )
 
 

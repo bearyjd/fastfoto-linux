@@ -112,8 +112,9 @@ jobs:
             tests/gui/test_app_guard.py --cov --cov-config=tools/ci/coveragerc-gui-qt \
             --cov-report=term-missing --cov-fail-under=80
 
-  # The Flatpak bundle of the desktop app (packaging/flatpak). Not a required check: making it one
-  # is a branch-protection change. The builder image for KDE 6.11 is
+  # The Flatpak bundle of the desktop app (packaging/flatpak), then a smoke test of the OCR that it
+  # brings (Tesseract with English and orientation data, and OCRmyPDF), run in its own sandbox. The
+  # builder image for KDE 6.11 is
   # ghcr.io/flathub-infra/flatpak-github-actions:kde-6.11, pinned by digest so that a changed image
   # cannot change this job; to update, look up the new digest of the tag
   # (skopeo inspect --raw docker://ghcr.io/flathub-infra/flatpak-github-actions:kde-6.11 | sha256sum)
@@ -134,3 +135,9 @@ jobs:
           bundle: io.github.bearyjd.FastFotoLinux.flatpak
           manifest-path: packaging/flatpak/io.github.bearyjd.FastFotoLinux.yml
           upload-artifact: true
+      # The action leaves the bundle in the workspace. The runtime is installed by the build.
+      - name: Install the bundle for the user
+        run: flatpak install --user --noninteractive --bundle io.github.bearyjd.FastFotoLinux.flatpak
+      - name: OCR inside the sandbox
+        timeout-minutes: 5
+        run: tools/ci/flatpak-ocr-smoke.sh

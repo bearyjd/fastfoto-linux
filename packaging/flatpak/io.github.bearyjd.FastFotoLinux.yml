@@ -1,5 +1,6 @@
 # FastFoto Linux as a Flatpak: the desktop app (`fastfoto`) and the developer CLI (`ffscan`, run
-# with `--command=ffscan`), scanning over USB with the epsonds backend plus the USB gap shim.
+# with `--command=ffscan`), scanning over USB with the epsonds backend plus the USB gap shim, and
+# searchable text: Tesseract (English and page-orientation data) with OCRmyPDF.
 # Build and install instructions are in README.md ("Flatpak").
 app-id: io.github.bearyjd.FastFotoLinux
 runtime: org.kde.Platform
@@ -25,6 +26,8 @@ finish-args:
   - --filesystem=xdg-pictures
   # Always the shim built into this Flatpak, never one built on the host under ~/.local.
   - --env=FF680W_SHIM=/app/lib/fastfoto-linux/ff680w_usb_gap.so
+  # Since Tesseract 4 this is the folder that holds the .traineddata files themselves.
+  - --env=TESSDATA_PREFIX=/app/share/tessdata
 
 build-options:
   env:
@@ -50,6 +53,7 @@ cleanup:
   - /build-backend
   - /etc/sane.d/saned.conf
   - /include
+  - /lib/cmake
   - /lib/pkgconfig
   - /sbin
   - /bin/gamma4scanimage
@@ -108,9 +112,63 @@ modules:
       - type: file
         path: ../../tools/usb-gap-shim/Makefile
 
-  # numpy, opencv-python-headless and pillow from the hashed wheels of uv.lock, and the build
-  # backend (installed apart, not shipped); both files are written by
-  # tools/flatpak/gen_wheel_sources.py.
+  # Searchable text. The KDE runtime has no Tesseract and no PDF rasterizer; OCRmyPDF needs only
+  # Tesseract (>= 4.1.1) and pdfium (a wheel) when it writes a plain PDF, so nothing else is built.
+  # Built from the same release archives as Flathub's org.kde.skanpage, with no training tools.
+  # Placed before the Python modules so that editing the app does not rebuild them.
+  # Leptonica is BSD-2-Clause; Tesseract and its data are Apache-2.0.
+  - name: leptonica
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_SHARED_LIBS=ON
+      - -DSW_BUILD=OFF
+    sources:
+      - type: archive
+        url: https://github.com/DanBloomberg/leptonica/releases/download/1.87.0/leptonica-1.87.0.tar.gz
+        sha256: c73363397f96eb1295602bf44d708a994ad42046c791bf03ea0505d829bdb6a7
+        x-checker-data:
+          type: anitya
+          project-id: 1549
+          stable-only: true
+          url-template: https://github.com/DanBloomberg/leptonica/releases/download/$version/leptonica-$version.tar.gz
+
+  - name: tesseract
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_SHARED_LIBS=ON
+      - -DSW_BUILD=OFF
+      - -DBUILD_TRAINING_TOOLS=OFF
+      # No network or archive support: nothing here downloads data or reads archives.
+      - -DDISABLE_CURL=ON
+      - -DDISABLE_ARCHIVE=ON
+      - -DGRAPHICS_DISABLED=ON
+    sources:
+      - type: archive
+        url: https://github.com/tesseract-ocr/tesseract/archive/refs/tags/5.5.3.tar.gz
+        sha256: 9218e62793116d42a9f6d14cd9348518b27f382096eea3d0f2d1a24616bb5884
+        x-checker-data:
+          type: anitya
+          project-id: 4954
+          stable-only: true
+          url-template: https://github.com/tesseract-ocr/tesseract/archive/refs/tags/$version.tar.gz
+      # tessdata_fast 4.1.0, single files (the whole repository is about 340 MB): English, and the
+      # orientation data that `--rotate-pages` needs. Other languages are not bundled.
+      - type: file
+        url: https://github.com/tesseract-ocr/tessdata_fast/raw/4.1.0/eng.traineddata
+        sha256: 7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2
+      - type: file
+        url: https://github.com/tesseract-ocr/tessdata_fast/raw/4.1.0/osd.traineddata
+        sha256: 9cf5d576fcc47564f11265841e5ca839001e7e6f38ff7f7aacf46d15a96b00ff
+    post-install:
+      - install -Dm644 ${FLATPAK_BUILDER_BUILDDIR}/eng.traineddata ${FLATPAK_DEST}/share/tessdata/eng.traineddata
+      - install -Dm644 ${FLATPAK_BUILDER_BUILDDIR}/osd.traineddata ${FLATPAK_DEST}/share/tessdata/osd.traineddata
+      - test -x /app/bin/tesseract
+
+  # The desktop's wheels (numpy, opencv-python-headless, pillow, ...) and OCRmyPDF's, from the
+  # hashed wheels of uv.lock (packaging/requirements-ocr.txt), and the build backend (installed
+  # apart, not shipped); both files are written by tools/flatpak/gen_wheel_sources.py.
   - python-deps.json
   - python-build-deps.json
 

@@ -241,7 +241,17 @@ What the first pull request settled where the specification left room.
      passes into the backing, on the unblurred strip), and the backing joins a side of the strip
      through the pad, because the slanted edge and a side wedge lie at opposite ends of the lowest
      rows. Every other pixel goes to the last check, so dust of ink size in the pad keeps the
-     page, as in the tail. At least 30 mm of page stay after the bottom cut, and after the top
+     page, as in the tail.
+  5. **Round 3.** With rule 3 the band was found on 8 of 8 real pages, but the last check then
+     cancelled the cut on 6 of them. Its unexplained clusters were all tiny and of a shadow tone:
+     in the top 0.2 to 0.7 mm of the cut strip, where the band darkens towards the paper (mean
+     (189-192, 196-200, 204-207), clusters of 0.3 to 1.4 mm, 7 to 82 px), along the edge of a side
+     wedge (0.17 x 0.51 mm), and one speck of dust on the backing (0.25 x 0.34 mm). They are within
+     36 of the backing colour with blue over red, and were left out only because the last check
+     used the strict 20. In a band cut the backing is now judged by the band's own tolerance
+     (36, the one the rows use), still joined to a side through the pad; the clusters keep their
+     size (0.3 mm), the pad exemption is as before, and the tail rule and the side cuts keep the
+     strict 20. A mark that is darker, not blue, or beyond 36 of the backing still keeps the page. At least 30 mm of page stay after the bottom cut, and after the top
      cut as well. Where there is no band cut, because there is no band or the cut is not safe,
      the tail rule above runs as before. Colour pages only: grey and 1-bit pages are not cut by
      the band rule (a grey page has no hue to tell the backing by).

@@ -37,8 +37,12 @@ backing band is the reliable sign of where the paper ends.
   strip that is cut (at the bottom the tail too, so ink anywhere in it keeps the page). There
   pad pixels are exempt one by one: white, and the pixels within 2 px of both white and backing,
   where the pad's edge passes into the backing. The backing joins a side of the strip through the
-  pad, so that pad at both ends of a row does not cut it off. Every other pixel goes to the last
-  check; dust of ink size in the pad keeps the page, as in the tail.
+  pad, so that pad at both ends of a row does not cut it off, and it is judged by the band's own
+  tolerance (``SHADOW_TOLERANCE``, as for the rows), not by the 20 of the side strips and the
+  tail: the band darkens towards the paper, so the clusters of shadow tone in the top rows of the
+  strip, along a side wedge and a speck of dust are backing. Every other pixel goes to the last
+  check; a mark that is darker, not blue or beyond that tolerance, and dust of ink size in the
+  pad, keep the page, as in the tail.
 * After a band cut the new edge is the paper's, so the blank-page margin is measured in full
   from the new edge (``Trimmed.tail_rows``): the kept edge line is margin, not a mark.
 

@@ -156,8 +156,10 @@ uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr o
   never extends into the white rows above it. The cut is made at the band's border with the
   paper, never through the edge line, and at most 1 mm of the band stays at the bottom (none at
   the top). The last check judges the whole strip that is cut, the tail included, where pad pixels
-  are exempt one by one (white, and the pixels where the pad blends with the backing) and every
-  other pixel counts; 30 mm of page stay, and grey and 1-bit pages are not cut by the band rule.
+  are exempt one by one (white, and the pixels where the pad blends with the backing) and the
+  backing is judged by the band's own tolerance (36, so the shadow towards the paper and a speck
+  of dust on the backing are not marks); every other pixel counts, a darker or not blue mark
+  too; 30 mm of page stay, and grey and 1-bit pages are not cut by the band rule.
   Limits: side slivers of up to 2 mm are left (slanted, under the 3 mm of the strip rule), and a
   full-width bar in the backing colour at the top or bottom edge is cut with the band, like a
   sidebar of that colour at a side.

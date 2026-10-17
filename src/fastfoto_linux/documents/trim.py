@@ -41,7 +41,8 @@ and a cluster of backing grey keeps the strip. Where the backing beside a receip
 paper, the strip holds backing grey, so the tail there is kept. On a colour page, pixels where
 backing and white blend, at the edge of a blurred scan, are no content either. The strip of a
 band cut, the tail included, is judged with the scanner's pad exempt pixel by pixel (white, and
-the pixels within 2 pixels of both white and backing; see ``band``). What is cut is therefore what
+the pixels within 2 pixels of both white and backing; see ``band``) and its backing judged by the
+band's own tolerance, not the strict one above. What is cut is therefore what
 is certainly empty, blank white or the scanner's backing, with the limits of that test: on a colour
 page a note of the backing's colour that touches the side of its strip cannot be told from backing,
 a stroke under 3 pixels wide within 2 pixels of both white and backing is taken for the blur of an

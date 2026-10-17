@@ -165,6 +165,16 @@ def validate_syntax(form: ScanForm) -> dict[str, str]:
     return _run(_SYNTAX_CHECKS, form)
 
 
+DiskKey = tuple[str, str]
+DiskCheck = Callable[[ScanForm], None]
+"""Starts reading the disk for a form and returns at once; the answer goes to ``on_disk``."""
+
+
+def disk_key(form: ScanForm) -> DiskKey:
+    """What a read of the disk depends on: the output folder and the album."""
+    return (form.output_folder.strip(), form.album.strip())
+
+
 def validate_filesystem(form: ScanForm) -> dict[str, str]:
     """A message per field the disk disagrees with (a field whose text is bad is skipped)."""
     unreadable = validate_syntax(form).keys()

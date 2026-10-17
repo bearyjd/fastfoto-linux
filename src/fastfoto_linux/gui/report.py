@@ -6,7 +6,12 @@ from pathlib import Path
 from fastfoto_linux.gui.state import State
 from fastfoto_linux.pipeline.issues import SheetIssue, failed_sheet_line
 from fastfoto_linux.pipeline.process import ProcessResult
-from fastfoto_linux.scanner import NoDocumentsError, ScannerError
+from fastfoto_linux.scanner import (
+    NoDocumentsError,
+    ScannerError,
+    ScannerNotFoundError,
+    ShimMissingError,
+)
 from fastfoto_linux.session import RawReason, SessionResult
 
 MAX_SHEET_LINES = 3  # more failed sheets than this are summed up, one sentence per kind
@@ -24,6 +29,11 @@ _RAW_REASONS = {
 
 
 CHECKING_SCANNER_TEXT = "Checking the scanner…"
+NOT_CHECKED = "The scanner has not been checked yet."
+CHECKING_TEXT = "Looking for the scanner…"
+FOUND_TEXT = "Scanner found."
+NO_SCANNER_HINT = "Press Check again to look for the scanner."
+LOST_TEXT = "The scanner is not available; the message above says why."
 
 
 @dataclass(frozen=True)
@@ -32,6 +42,11 @@ class Banner:
 
     kind: str
     text: str
+
+
+def scanner_lost(error: BaseException | None) -> bool:
+    """True when the scanner itself is gone; a jam or an empty feeder leaves it found."""
+    return isinstance(error, ScannerNotFoundError | ShimMissingError)
 
 
 def raw_reason_text(reason: RawReason) -> str:

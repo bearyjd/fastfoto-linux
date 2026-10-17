@@ -106,9 +106,12 @@ def add_output_options(parser: argparse.ArgumentParser) -> None:
     )
     pages.add_argument(
         "--feed",
-        choices=[FEED_FACE_DOWN, FEED_FACE_UP],
-        default=FEED_FACE_DOWN,
-        help="how photos were loaded: face-down scans the back first (default)",
+        choices=[FEED_FACE_UP, FEED_FACE_DOWN],
+        default=FEED_FACE_UP,
+        help=(
+            "how photos were loaded (top edge first): face-up scans the back first (default); "
+            "face-down scans the front first"
+        ),
     )
     _add_enhancement_options(parser)
 
@@ -185,7 +188,7 @@ def build_settings(args: argparse.Namespace) -> ProcessSettings:
             notes=args.notes,
             duplex=not args.simplex,
             back_policy=BackPolicy(args.backs),
-            expect_front_first=args.feed == FEED_FACE_UP,
+            expect_front_first=args.feed == FEED_FACE_DOWN,
             quality=args.quality,
             keep_original=args.keep_original,
             enhancers=enhancers,

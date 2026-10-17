@@ -23,14 +23,14 @@ uv sync
 uv run ffscan devices                     # USB scanners and whether the USB gap shim is found
 uv run ffscan scan --out ~/Scans --mkdir --album "Family Trips" --date 1975-06
 uv run ffscan scan --out ~/Scans --net scanner.local --backs always --keep-raw
-uv run ffscan process page-*.png --out ~/Scans --album "Family Trips" --feed face-up
+uv run ffscan process page-*.png --out ~/Scans --album "Family Trips" --feed face-down
 ```
 
 - `devices` only reads sysfs; it never talks to the scanner. Over USB the scanner needs the gap
   shim: build it with `make -C tools/usb-gap-shim`.
-- `scan` scans the document feeder (both sides, 600 dpi) and processes the pages. Photos are
-  loaded face down by default (`--feed face-down`: the back is scanned first); use
-  `--feed face-up` if yours are loaded the other way. `--simplex` scans fronts only.
+- `scan` scans the document feeder (both sides, 600 dpi) and processes the pages. Load photos
+  face up, top edge first, as the loading label on the scanner says (the back is scanned first);
+  with `--feed face-down` the front is scanned first. `--simplex` scans fronts only.
 - Before each USB scan `scan` checks that the scanner answers (it says "Checking the scanner…" in
   the app, and "Waiting for the scanner to answer…" on the terminal if that takes over 2 seconds;
   a scanner that is waking up is given about 15 seconds). A scanner that a failed send left

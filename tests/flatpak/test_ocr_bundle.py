@@ -34,7 +34,8 @@ def archive(name: str) -> dict[str, Any]:
 def test_leptonica_and_tesseract_are_built_after_the_shim_and_before_the_python_wheels() -> None:
     order = names()
     assert order.index("usb-gap-shim") < order.index("leptonica") < order.index("tesseract")
-    assert order.index("tesseract") < order.index(RUNTIME_MODULE.name)  # so Python edits reuse it
+    assert order.index("tesseract") < order.index("tessdata")
+    assert order.index("tessdata") < order.index(RUNTIME_MODULE.name)  # so Python edits reuse it
 
 
 def test_both_are_cmake_builds_of_a_hashed_release_archive_that_a_checker_can_bump() -> None:
@@ -56,7 +57,7 @@ def test_tesseract_is_built_lean_without_the_training_tools_or_a_network_library
 
 
 def test_the_data_is_english_and_orientation_from_tessdata_fast_as_single_files() -> None:
-    sources = module("tesseract")["sources"]
+    sources = module("tessdata")["sources"]
     assert not [s for s in sources if s["type"] == "git"]  # the repository is about 340 MB
     data = {s["url"].rsplit("/", 1)[-1]: s for s in sources if s["url"].endswith(".traineddata")}
     assert {name: s["sha256"] for name, s in data.items()} == TESSDATA_SHA256
@@ -67,7 +68,7 @@ def test_the_data_is_english_and_orientation_from_tessdata_fast_as_single_files(
 
 
 def test_the_data_is_installed_into_the_tessdata_folder_tesseract_reads() -> None:
-    steps = commands(module("tesseract")).replace("${FLATPAK_DEST}", "/app")
+    steps = commands(module("tessdata")).replace("${FLATPAK_DEST}", "/app")
     for name in TESSDATA_SHA256:
         assert re.search(rf"install\b.*{name}.*{TESSDATA}", steps), name
     assert "-DTESSDATA_PREFIX" not in " ".join(module("tesseract")["config-opts"])

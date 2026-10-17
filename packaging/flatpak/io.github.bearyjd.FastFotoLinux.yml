@@ -119,6 +119,7 @@ modules:
   # Leptonica is BSD-2-Clause; Tesseract and its data are Apache-2.0.
   - name: leptonica
     buildsystem: cmake-ninja
+    builddir: true  # its CMakeLists refuses to run inside the source folder
     config-opts:
       - -DCMAKE_BUILD_TYPE=Release
       - -DBUILD_SHARED_LIBS=ON
@@ -135,6 +136,7 @@ modules:
 
   - name: tesseract
     buildsystem: cmake-ninja
+    builddir: true
     config-opts:
       - -DCMAKE_BUILD_TYPE=Release
       - -DBUILD_SHARED_LIBS=ON
@@ -153,18 +155,23 @@ modules:
           project-id: 4954
           stable-only: true
           url-template: https://github.com/tesseract-ocr/tesseract/archive/refs/tags/$version.tar.gz
-      # tessdata_fast 4.1.0, single files (the whole repository is about 340 MB): English, and the
-      # orientation data that `--rotate-pages` needs. Other languages are not bundled.
+    post-install:
+      - test -x /app/bin/tesseract
+
+  # tessdata_fast 4.1.0, single files (the whole repository is about 340 MB): English, and the
+  # orientation data that `--rotate-pages` needs. Other languages are not bundled.
+  - name: tessdata
+    buildsystem: simple
+    build-commands:
+      - install -Dm644 eng.traineddata ${FLATPAK_DEST}/share/tessdata/eng.traineddata
+      - install -Dm644 osd.traineddata ${FLATPAK_DEST}/share/tessdata/osd.traineddata
+    sources:
       - type: file
         url: https://github.com/tesseract-ocr/tessdata_fast/raw/4.1.0/eng.traineddata
         sha256: 7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2
       - type: file
         url: https://github.com/tesseract-ocr/tessdata_fast/raw/4.1.0/osd.traineddata
         sha256: 9cf5d576fcc47564f11265841e5ca839001e7e6f38ff7f7aacf46d15a96b00ff
-    post-install:
-      - install -Dm644 ${FLATPAK_BUILDER_BUILDDIR}/eng.traineddata ${FLATPAK_DEST}/share/tessdata/eng.traineddata
-      - install -Dm644 ${FLATPAK_BUILDER_BUILDDIR}/osd.traineddata ${FLATPAK_DEST}/share/tessdata/osd.traineddata
-      - test -x /app/bin/tesseract
 
   # The desktop's wheels (numpy, opencv-python-headless, pillow, ...) and OCRmyPDF's, from the
   # hashed wheels of uv.lock (packaging/requirements-ocr.txt), and the build backend (installed

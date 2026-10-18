@@ -45,8 +45,15 @@ def test_the_readme_says_the_flatpak_brings_ocr_with_english_and_orientation_dat
     assert "English" in section
 
 
-def test_the_readme_says_other_languages_are_not_in_the_flatpak() -> None:
-    assert "other languages" in flatpak_section().lower()
+def test_the_readme_says_additional_languages_need_explicit_download_then_work_offline() -> None:
+    section = flatpak_section().lower()
+    assert "english remains bundled" in section
+    assert "additional languages" in section
+    assert "checkbox picker" in section
+    assert "explicitly download the selected missing models" in section
+    assert "recognition then works offline" in section
+    assert "`--lang eng+deu` works after german has been downloaded" in section
+    assert "does not download models during installation or ocr" in section
 
 
 def test_the_readme_gives_the_flatpak_hint_the_app_shows_when_the_bundle_is_broken() -> None:

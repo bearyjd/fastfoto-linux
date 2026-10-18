@@ -1,0 +1,210 @@
+# FastFoto Linux as a Flatpak: the desktop app (`fastfoto`) and the developer CLI (`ffscan`, run
+# with `--command=ffscan`), scanning over USB with the epsonds backend plus the USB gap shim, and
+# searchable text: Tesseract (English and page-orientation data) with OCRmyPDF.
+# Build and install instructions are in README.md ("Flatpak").
+#
+# This is the copy for the Flathub submission (docs/flathub-submission.md): it builds the tagged
+# release from git instead of a local checkout, and must stay in step with ../io.github.bearyjd.FastFotoLinux.yml
+# (tests/flatpak/test_flathub_variant.py checks that). Fill in every TODO(release) before submitting.
+app-id: io.github.bearyjd.FastFotoLinux
+runtime: org.kde.Platform
+runtime-version: "6.11"
+sdk: org.kde.Sdk
+base: io.qt.PySide.BaseApp
+base-version: "6.11"
+command: fastfoto
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  # USB scanning: libusb (and so sane) opens /dev/bus/usb/BBB/DDD itself and does not use the USB
+  # portal, so every device node is exposed. This includes the GPU nodes (--device=dri).
+  - --device=all
+  # The Wi-Fi fallback (`ffscan scan --net HOST`) talks to the scanner over TCP.
+  - --share=network
+  # With this grant the user can type or pick any folder under Pictures and the app writes there
+  # directly, with file locks. A folder elsewhere is chosen in the portal's folder picker and works
+  # too, but the portal's file system has no file locks, so two writers in one such folder are
+  # not serialised.
+  - --filesystem=xdg-pictures
+  # Always the shim built into this Flatpak, never one built on the host under ~/.local.
+  - --env=FF680W_SHIM=/app/lib/fastfoto-linux/ff680w_usb_gap.so
+  # Since Tesseract 4 this is the folder that holds the .traineddata files themselves.
+  - --env=TESSDATA_PREFIX=/app/share/tessdata
+
+build-options:
+  env:
+    # The base app ships Qt WebEngine; this app does not use it.
+    BASEAPP_REMOVE_WEBENGINE: "1"
+
+cleanup-commands:
+  - /app/cleanup-BaseApp.sh
+  # LLVM, clang and the binding generator come with the base app; PySide6 does not need them to
+  # run. (`cleanup:` below only sees files that this manifest installed, not the base app's.)
+  - find /app/lib -maxdepth 1 -name 'libLLVM*' -delete
+  - find /app/lib -maxdepth 1 -name 'libclang*' -delete
+  - >-
+    find /app/lib/python3.13/site-packages -maxdepth 1 -name 'shiboken6_generator*'
+    -exec rm -r {} +
+  # Their scripts start the generator that was just removed.
+  - rm -f /app/bin/shiboken6 /app/bin/shiboken6-genpyi
+  # These PySide6 modules link libQt6Pdf and libQt6PdfWidgets, which the runtime does not have;
+  # the app imports neither.
+  - find /app/lib/python3.13/site-packages/PySide6 -maxdepth 1 -name 'QtPdf*' -delete
+
+cleanup:
+  - /build-backend
+  - /etc/sane.d/saned.conf
+  - /include
+  - /lib/cmake
+  - /lib/pkgconfig
+  - /sbin
+  - /bin/gamma4scanimage
+  - /share/man
+  - /share/doc
+  - /share/aclocal
+  - "*.la"
+  - "*.a"
+
+modules:
+  # The same sane-backends version the host runs (Fedora's 1.4.0). Fedora's patches are
+  # packaging (udev rules, library names, multilib, gphoto2) or concern sanei_thread, which
+  # epsonds does not use, so the pristine tarball is what works on the host too.
+  - name: sane-backends
+    buildsystem: autotools
+    config-opts:
+      - BACKENDS=epsonds
+      # /var/lock is not writable in the sandbox (the Fedora package builds this way too).
+      - --disable-locking
+      - --disable-rpath
+      - --with-usb
+      - --enable-pthread
+      - --without-avahi
+      - --without-snmp
+      - --without-systemd
+    sources:
+      - type: archive
+        url: https://gitlab.com/-/project/429008/uploads/843c156420e211859e974f78f64c3ea3/sane-backends-1.4.0.tar.gz
+        sha256: f99205c903dfe2fb8990f0c531232c9a00ec9c2c66ac7cb0ce50b4af9f407a72
+      # A USB scan removes SANE_CONFIG_DIR, so these are the files in the compiled-in folder
+      # (/app/etc/sane.d) that SANE reads.
+      - type: inline
+        dest-filename: dll.conf
+        contents: |
+          epsonds
+      - type: inline
+        dest-filename: epsonds.conf
+        contents: |
+          usb
+    post-install:
+      - install -Dm644 dll.conf /app/etc/sane.d/dll.conf
+      - install -Dm644 epsonds.conf /app/etc/sane.d/epsonds.conf
+      # configure only warns and drops epsonds when the JPEG library is missing.
+      - test -e /app/lib/sane/libsane-epsonds.so.1
+
+  # Works around the FF-680W firmware ignoring a command sent right after its reply; the app
+  # preloads it into scanimage. Built here from source: a prebuilt .so is never taken.
+  - name: usb-gap-shim
+    buildsystem: simple
+    build-commands:
+      - make -C tools/usb-gap-shim CC=gcc
+      - install -Dm755 tools/usb-gap-shim/ff680w_usb_gap.so /app/lib/fastfoto-linux/ff680w_usb_gap.so
+    sources:
+      - type: git
+        url: https://github.com/bearyjd/fastfoto-linux.git
+        tag: v0.0.1  # TODO(release): the tag that is cut for the submission (same as the app's)
+        commit: TODO(release)  # the 40-hex commit that tag points to (git rev-parse v0.0.1^{commit})
+        x-checker-data:
+          type: git
+          tag-pattern: ^v(\d+\.\d+\.\d+)$
+
+  # Searchable text. The KDE runtime has no Tesseract and no PDF rasterizer; OCRmyPDF needs only
+  # Tesseract (>= 4.1.1) and pdfium (a wheel) when it writes a plain PDF, so nothing else is built.
+  # Built from the same release archives as Flathub's org.kde.skanpage, with no training tools.
+  # Placed before the Python modules so that editing the app does not rebuild them.
+  # Leptonica is BSD-2-Clause; Tesseract and its data are Apache-2.0.
+  - name: leptonica
+    buildsystem: cmake-ninja
+    builddir: true  # its CMakeLists refuses to run inside the source folder
+    license-files: [leptonica-license.txt]  # BSD-2-Clause wants its text in a binary distribution
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_SHARED_LIBS=ON
+      - -DSW_BUILD=OFF
+    sources:
+      - type: archive
+        url: https://github.com/DanBloomberg/leptonica/releases/download/1.87.0/leptonica-1.87.0.tar.gz
+        sha256: c73363397f96eb1295602bf44d708a994ad42046c791bf03ea0505d829bdb6a7
+        x-checker-data:
+          type: anitya
+          project-id: 1549
+          stable-only: true
+          url-template: https://github.com/DanBloomberg/leptonica/releases/download/$version/leptonica-$version.tar.gz
+
+  - name: tesseract
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_SHARED_LIBS=ON
+      - -DSW_BUILD=OFF
+      - -DBUILD_TRAINING_TOOLS=OFF
+      # No network or archive support: nothing here downloads data or reads archives.
+      - -DDISABLE_CURL=ON
+      - -DDISABLE_ARCHIVE=ON
+      - -DGRAPHICS_DISABLED=ON
+    sources:
+      - type: archive
+        url: https://github.com/tesseract-ocr/tesseract/archive/refs/tags/5.5.3.tar.gz
+        sha256: 9218e62793116d42a9f6d14cd9348518b27f382096eea3d0f2d1a24616bb5884
+        x-checker-data:
+          type: anitya
+          project-id: 4954
+          stable-only: true
+          url-template: https://github.com/tesseract-ocr/tesseract/archive/refs/tags/$version.tar.gz
+    post-install:
+      - test -x /app/bin/tesseract
+
+  # tessdata_fast 4.1.0, single files (the whole repository is about 340 MB): English, and the
+  # orientation data that `--rotate-pages` needs. Other languages are not bundled.
+  - name: tessdata
+    buildsystem: simple
+    license-files: [LICENSE]
+    build-commands:
+      - install -Dm644 eng.traineddata ${FLATPAK_DEST}/share/tessdata/eng.traineddata
+      - install -Dm644 osd.traineddata ${FLATPAK_DEST}/share/tessdata/osd.traineddata
+    sources:
+      - type: file
+        url: https://github.com/tesseract-ocr/tessdata_fast/raw/4.1.0/eng.traineddata
+        sha256: 7d4322bd2a7749724879683fc3912cb542f19906c83bcc1a52132556427170b2
+      - type: file
+        url: https://github.com/tesseract-ocr/tessdata_fast/raw/4.1.0/osd.traineddata
+        sha256: 9cf5d576fcc47564f11265841e5ca839001e7e6f38ff7f7aacf46d15a96b00ff
+      - type: file
+        url: https://github.com/tesseract-ocr/tessdata_fast/raw/4.1.0/LICENSE
+        sha256: cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30
+
+  # The desktop's wheels (numpy, opencv-python-headless, pillow, ...) and OCRmyPDF's, from the
+  # hashed wheels of uv.lock (packaging/requirements-ocr.txt), and the build backend (installed
+  # apart, not shipped); both files are written by tools/flatpak/gen_wheel_sources.py.
+  - python-deps.json
+  - python-build-deps.json
+
+  - name: fastfoto-linux
+    buildsystem: simple
+    build-commands:
+      - >-
+        PYTHONPATH=${FLATPAK_DEST}/build-backend pip3 install --verbose --no-index
+        --no-build-isolation --no-deps --prefix=${FLATPAK_DEST} .
+      - install -Dm644 packaging/io.github.bearyjd.FastFotoLinux.desktop ${FLATPAK_DEST}/share/applications/io.github.bearyjd.FastFotoLinux.desktop
+      - install -Dm644 packaging/io.github.bearyjd.FastFotoLinux.metainfo.xml ${FLATPAK_DEST}/share/metainfo/io.github.bearyjd.FastFotoLinux.metainfo.xml
+      - install -Dm644 packaging/io.github.bearyjd.FastFotoLinux.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/io.github.bearyjd.FastFotoLinux.svg
+    sources:
+      - type: git
+        url: https://github.com/bearyjd/fastfoto-linux.git
+        tag: v0.0.1  # TODO(release): the tag that is cut for the submission (same as the shim's)
+        commit: TODO(release)  # the 40-hex commit that tag points to (git rev-parse v0.0.1^{commit})
+        x-checker-data:
+          type: git
+          tag-pattern: ^v(\d+\.\d+\.\d+)$

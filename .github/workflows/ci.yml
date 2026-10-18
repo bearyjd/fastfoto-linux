@@ -141,3 +141,12 @@ jobs:
       - name: OCR inside the sandbox
         timeout-minutes: 5
         run: tools/ci/flatpak-ocr-smoke.sh
+      # What Flathub's reviewers would run on the metadata. Informational for now (a first look at
+      # the findings); not a required check. flatpak-builder-lint is not run here: it needs the
+      # org.flatpak.Builder app and the 26.08 SDK, several GB (see docs/flathub-submission.md).
+      - name: Metadata lint (informational)
+        continue-on-error: true
+        timeout-minutes: 3
+        run: |
+          appstreamcli validate --pedantic --explain --no-net packaging/io.github.bearyjd.FastFotoLinux.metainfo.xml
+          desktop-file-validate packaging/io.github.bearyjd.FastFotoLinux.desktop

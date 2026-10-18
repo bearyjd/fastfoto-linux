@@ -1,12 +1,6 @@
 """Scanned paper documents to one searchable PDF."""
 
-from fastfoto_linux.documents.build import (
-    DEFAULT_NAME,
-    DocumentResult,
-    DocumentSettings,
-    build_document,
-    check_settings,
-)
+from fastfoto_linux.documents.build import build_document
 from fastfoto_linux.documents.errors import (
     AllPagesBlankError,
     DocumentCancelledError,
@@ -26,6 +20,8 @@ from fastfoto_linux.documents.ocr import (
     find_ocrmypdf,
     validate_langs,
 )
+from fastfoto_linux.documents.settings import DEFAULT_NAME, DocumentSettings, check_settings
+from fastfoto_linux.documents.write import DocumentResult
 
 __all__ = [
     "DEFAULT_LANGS",

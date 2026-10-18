@@ -13,7 +13,7 @@ from fastfoto_linux.documents import (
     OcrCancelledError,
     OcrMode,
     UnsupportedPageError,
-    build,
+    analyse,
     build_document,
 )
 from fastfoto_linux.documents.modes import ColourMode
@@ -57,7 +57,7 @@ def test_a_truncated_page_stops_everything_before_any_page_is_processed(
     def refuse(*args: Any, **kwargs: Any) -> Any:
         raise AssertionError("a page was processed before every page was checked")
 
-    monkeypatch.setattr(build, "trim_page", refuse)
+    monkeypatch.setattr(analyse, "trim_page", refuse)
     with pytest.raises(UnsupportedPageError, match=r"page-03\.png"):
         build_document(pages, settings(out))
     assert list(out.iterdir()) == []
@@ -71,14 +71,14 @@ def test_cancelling_between_pages_stops_before_the_next_page(
 ) -> None:
     cancel = threading.Event()
     loaded: list[Path] = []
-    real = build.load_page
+    real = analyse.load_page
 
     def load_then_cancel(path: Path, **kwargs: Any) -> Any:
         loaded.append(path)
         cancel.set()
         return real(path, **kwargs)
 
-    monkeypatch.setattr(build, "load_page", load_then_cancel)
+    monkeypatch.setattr(analyse, "load_page", load_then_cancel)
     pages = write_pages(raw, [text_scene(n) for n in range(4)])
     with pytest.raises(DocumentCancelledError):
         build_document(pages, settings(out), cancel=cancel)
@@ -92,14 +92,14 @@ def test_cancelling_during_the_checks_stops_before_the_next_page_is_decoded(
 ) -> None:
     cancel = threading.Event()
     checked: list[Path] = []
-    real = build.inspect_page
+    real = analyse.inspect_page
 
     def check_then_cancel(path: Path, **kwargs: Any) -> Any:
         checked.append(path)
         cancel.set()
         return real(path, **kwargs)
 
-    monkeypatch.setattr(build, "inspect_page", check_then_cancel)
+    monkeypatch.setattr(analyse, "inspect_page", check_then_cancel)
     pages = write_pages(raw, [text_scene(n) for n in range(4)])
     with pytest.raises(DocumentCancelledError):
         build_document(pages, settings(out), cancel=cancel)
@@ -113,7 +113,7 @@ def test_a_cancel_that_is_already_set_processes_no_page(
     def refuse(*args: Any, **kwargs: Any) -> Any:
         raise AssertionError("a page was loaded after the cancel")
 
-    monkeypatch.setattr(build, "load_page", refuse)
+    monkeypatch.setattr(analyse, "load_page", refuse)
     cancel = threading.Event()
     cancel.set()
     with pytest.raises(DocumentCancelledError):

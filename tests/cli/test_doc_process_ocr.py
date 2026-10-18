@@ -52,8 +52,8 @@ def test_required_ocr_without_ocrmypdf_is_exit_3_before_any_work(
     def refuse(*args, **kwargs):
         raise AssertionError("a page was read before the OCR check")
 
-    monkeypatch.setattr("fastfoto_linux.documents.build.inspect_page", refuse)
-    monkeypatch.setattr("fastfoto_linux.documents.build.load_page", refuse)
+    monkeypatch.setattr("fastfoto_linux.documents.analyse.inspect_page", refuse)
+    monkeypatch.setattr("fastfoto_linux.documents.analyse.load_page", refuse)
     target = tmp_path / "fresh"
     code = main(
         ["doc", "process", *map(str, pages), "--out", str(target), "--mkdir", "--ocr", "on"]

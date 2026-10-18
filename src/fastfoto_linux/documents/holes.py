@@ -69,7 +69,7 @@ import cv2
 import numpy as np
 
 from fastfoto_linux.documents.loader import WHITE, LoadedPage
-from fastfoto_linux.documents.marks import Mark
+from fastfoto_linux.documents.marks import Mark, darkest_channel
 from fastfoto_linux.documents.trim import Trimmed
 from fastfoto_linux.documents.units import MM_PER_INCH, mm_to_px
 from fastfoto_linux.imaging import RGB_NDIM
@@ -130,8 +130,7 @@ class _Shape:
 
 
 def _dark(pixels: np.ndarray) -> np.ndarray:
-    grey = pixels.min(axis=2) if pixels.ndim == RGB_NDIM else pixels
-    return grey < HOLE_TONE
+    return darkest_channel(pixels) < HOLE_TONE
 
 
 def _tone_of(pixels: np.ndarray, where: np.ndarray) -> _Tone:
@@ -302,22 +301,47 @@ def _share_one_registration(offsets: Sequence[_Offset], dpi: int) -> bool:
     return bool((spread <= mm_to_px(OFFSET_SPREAD_MM, dpi)).all())
 
 
-def all_are_holes(marks: Sequence[Mark], side: Trimmed, partner: Trimmed) -> bool:
-    """Whether every mark of ``side`` is a hole through the paper that ``partner``, the other
-    side of the same sheet, shows too (see the module's text). No marks is not a hole: the
-    caller has already called that page blank."""
+@dataclass(frozen=True)
+class HoleReport:
+    """How the marks of a page fare as holes: how many could be one (``candidates``: a hole's
+    size, shape, grey and place), how many of those the other side shows too (``matched``), and
+    whether every mark is such a hole (``all_matched``)."""
+
+    matched: int
+    candidates: int
+    all_matched: bool
+
+
+def all_could_be_holes(marks: Sequence[Mark], side: Trimmed) -> bool:
+    """Whether every mark is small enough, and near enough to an edge, to be a hole."""
+    return all(_could_be_hole(mark, side.page) for mark in marks)
+
+
+def hole_report(marks: Sequence[Mark], side: Trimmed, partner: Trimmed) -> HoleReport:
+    """Weigh every mark of ``side`` against ``partner``, the other side of the same sheet (see the
+    module's text): ``all_matched`` is whether every mark is a hole through the paper that
+    ``partner`` shows too. No marks is not a hole: the caller has already called that page
+    blank."""
     page = side.page
-    if not marks or not _comparable(side, partner):
-        return False
-    if not all(_could_be_hole(mark, page) for mark in marks):
-        return False
+    comparable = _comparable(side, partner)
     taken: set[_Key] = set()
     offsets: list[_Offset] = []
+    candidates = 0
     for mark in marks:
-        shape = _shape_of(page, mark)
-        found = None if shape is None else _counterpart(shape, side, partner, taken)
-        if found is None:
-            return False
-        taken.add(found.key)
-        offsets.append(found.offset)
-    return _share_one_registration(offsets, page.dpi)
+        shape = _shape_of(page, mark) if _could_be_hole(mark, page) else None
+        if shape is None:
+            continue
+        candidates += 1
+        found = _counterpart(shape, side, partner, taken) if comparable else None
+        if found is not None:
+            taken.add(found.key)
+            offsets.append(found.offset)
+    matched = len(offsets)
+    every = bool(marks) and comparable and matched == len(marks)
+    return HoleReport(matched, candidates, every and _share_one_registration(offsets, page.dpi))
+
+
+def all_are_holes(marks: Sequence[Mark], side: Trimmed, partner: Trimmed) -> bool:
+    """Whether every mark of ``side`` is a hole through the paper that ``partner``, the other
+    side of the same sheet, shows too (see the module's text and ``hole_report``)."""
+    return hole_report(marks, side, partner).all_matched

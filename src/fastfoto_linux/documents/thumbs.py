@@ -1,0 +1,4 @@
+"""STUB (red)."""
+
+THUMB_MAX_PX = 480
+THUMB_QUALITY = 80

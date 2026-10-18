@@ -27,6 +27,7 @@ from fastfoto_linux.documents.trim import Trimmed, trim_page
 logger = logging.getLogger(__name__)
 
 SIDES_PER_SHEET = 2
+ANALYSIS_VERSION = 1  # bump when a change makes an old analysis wrong (see ``draft_store``)
 
 
 def _load_sheet(
@@ -122,13 +123,14 @@ def _common_folder(pages: Sequence[Path]) -> Path | None:
     return folders.pop() if len(folders) == 1 else None
 
 
-def analyse_document(
+def analyse_document(  # noqa: PLR0913 - the hooks are the interface
     pages: Sequence[Path],
     settings: DocumentSettings,
     *,
     cancel: threading.Event | None = None,
     on_page: Callable[[int, int], None] | None = None,
     encode: bool = True,
+    thumbs: Path | None = None,
 ) -> DocumentDraft:
     """Check every page file, then judge each page and keep the verdicts in a draft.
 

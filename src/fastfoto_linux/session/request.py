@@ -82,6 +82,7 @@ class DocumentScanRequest:
     duplex: bool = True
     raw_policy: RawPolicy = RawPolicy.AUTO
     raw_parent: Path | None = None
+    review: bool = False
 
     def __post_init__(self) -> None:
         if self.dpi not in DOCUMENT_DPI:

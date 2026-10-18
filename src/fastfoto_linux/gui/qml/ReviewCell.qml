@@ -103,11 +103,13 @@ Item {
         RowLayout {
             spacing: 2
             QQC2.Button {
+                objectName: "reviewKeepButton"
                 text: cell.included ? qsTr("Remove") : qsTr("Keep")
                 Accessible.name: cell.included ? qsTr("Remove") : qsTr("Keep")
                 onClicked: { cell.activated(); bridge.review.toggle(cell.number); }
             }
             QQC2.ToolButton {
+                objectName: "reviewRotateButton"
                 icon.name: "object-rotate-right"
                 Accessible.name: qsTr("Rotate clockwise")
                 QQC2.ToolTip.text: qsTr("Rotate clockwise")
@@ -115,6 +117,7 @@ Item {
                 onClicked: { cell.activated(); bridge.review.rotate(cell.number, 1); }
             }
             QQC2.ToolButton {
+                objectName: "reviewSplitButton"
                 icon.name: "edit-cut"
                 Accessible.name: qsTr("Start new PDF")
                 QQC2.ToolTip.text: qsTr("Start new PDF")
@@ -122,6 +125,7 @@ Item {
                 onClicked: { cell.activated(); bridge.review.toggleSplit(cell.number); }
             }
             QQC2.ToolButton {
+                objectName: "reviewPreviewButton"
                 icon.name: "zoom-in"
                 Accessible.name: qsTr("Preview")
                 onClicked: { cell.activated(); cell.previewRequested(); }

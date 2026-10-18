@@ -8,12 +8,35 @@ Kirigami.ScrollablePage {
     objectName: "reviewPage"
     title: qsTr("Review documents")
 
+    property int editingPart: 0
+    property string editedName: ""
+    property bool nameValid: true
+
+    function commitName(number, name) {
+        editingPart = 0;
+        nameValid = bridge.review.setPartName(number, name);
+        return nameValid;
+    }
+
+    function commitPendingName() {
+        return editingPart ? commitName(editingPart, editedName) : nameValid;
+    }
+
+    function saveReview() {
+        if (commitPendingName() && bridge.review.canSave) bridge.review.save();
+    }
+
+    function backReview() {
+        if (commitPendingName()) bridge.review.back();
+    }
+
     function showPreview(number) {
         bridge.review.preview(number);
         previewDialog.open();
     }
 
     header: ColumnLayout {
+        enabled: !bridge.busy
         spacing: Kirigami.Units.smallSpacing
 
         Kirigami.InlineMessage {
@@ -42,6 +65,7 @@ Kirigami.ScrollablePage {
         }
 
         Repeater {
+            id: names
             objectName: "reviewPartNames"
             model: bridge.review.parts
             delegate: RowLayout {
@@ -57,7 +81,14 @@ Kirigami.ScrollablePage {
                     text: modelData.name
                     placeholderText: qsTr("Document name")
                     Accessible.name: qsTr("Document name")
-                    onTextEdited: bridge.review.setPartName(modelData.number, text)
+                    onActiveFocusChanged: {
+                        if (activeFocus) {
+                            page.editingPart = modelData.number;
+                            page.editedName = text;
+                        }
+                    }
+                    onTextEdited: page.editedName = text
+                    onEditingFinished: page.commitName(modelData.number, text)
                 }
             }
         }
@@ -66,6 +97,7 @@ Kirigami.ScrollablePage {
     GridView {
         id: grid
         objectName: "reviewGrid"
+        enabled: !bridge.busy
         model: bridge.review.items
         cellWidth: Math.max(220, Math.floor(width / Math.max(1, Math.floor(width / 250))))
         cellHeight: 330
@@ -122,7 +154,7 @@ Kirigami.ScrollablePage {
             objectName: "reviewBackButton"
             text: qsTr("Back")
             Accessible.name: qsTr("Back")
-            onClicked: bridge.review.back()
+            onClicked: page.backReview()
         }
         Item { Layout.fillWidth: true }
         QQC2.Button {
@@ -131,19 +163,19 @@ Kirigami.ScrollablePage {
             Accessible.name: qsTr("Save PDFs")
             icon.name: "document-save"
             enabled: bridge.review.canSave && !bridge.busy
-            onClicked: bridge.review.save()
+            onClicked: page.saveReview()
         }
     }
 
     Shortcut {
         sequence: "Ctrl+S"
         enabled: bridge.review.active && bridge.review.canSave && !bridge.busy
-        onActivated: bridge.review.save()
+        onActivated: page.saveReview()
     }
     Shortcut {
         sequence: "Escape"
         enabled: bridge.review.active && !previewDialog.visible
-        onActivated: bridge.review.back()
+        onActivated: page.backReview()
     }
     PreviewDialog { id: previewDialog }
 }

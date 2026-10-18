@@ -38,7 +38,8 @@ Kirigami.ApplicationWindow {
     // A scan in progress is cancelled first (after asking); the window closes by itself once
     // it has stopped. Closing while it is already being cancelled just waits for that.
     onClosing: close => {
-        if (bridge.review.active && !bridge.running && !bridge.review.flush()) {
+        if (bridge.review.active && !bridge.running &&
+                ((reviewPage !== null && !reviewPage.commitPendingName()) || !bridge.review.flush())) {
             close.accepted = false;
             return;
         }

@@ -82,3 +82,24 @@ def test_desktop_file_validate_accepts_the_launcher() -> None:
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert result.stdout == "" and result.stderr == ""
+
+
+def test_the_metainfo_has_branding_colours_and_keywords_for_the_store() -> None:
+    root = metainfo()
+    colours = root.findall("branding/color")
+    assert {c.get("scheme_preference") for c in colours} == {"light", "dark"}
+    assert all(re.fullmatch(r"#[0-9a-fA-F]{6}", c.text or "") for c in colours)
+    assert root.findall("keywords/keyword")
+
+
+def test_the_metainfo_leaves_screenshots_to_the_maintainer_without_fake_urls() -> None:
+    root = metainfo()
+    assert root.find("screenshots/screenshot") is None
+    text = METAINFO.read_text()
+    assert "TODO(release)" in text
+
+
+def test_the_metainfo_states_the_screens_the_app_is_made_for() -> None:
+    root = metainfo()
+    assert root.find("requires/display_length") is not None
+    assert root.find("recommends/control") is not None or root.find("supports/control") is not None

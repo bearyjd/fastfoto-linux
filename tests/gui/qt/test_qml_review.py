@@ -31,6 +31,7 @@ QML = Path(__file__).resolve().parents[3] / "src/fastfoto_linux/gui/qml"
 
 class Pages(QAbstractListModel):
     roles = (
+        "orderIndex",
         "number",
         "thumbUrl",
         "included",
@@ -47,6 +48,7 @@ class Pages(QAbstractListModel):
         super().__init__()
         self.rows = [
             dict(
+                orderIndex=n - 1,
                 number=n,
                 thumbUrl="",
                 included=n != 2,
@@ -166,12 +168,12 @@ def screen(messages: list[str]) -> Iterator[tuple[Any, Review, list[str]]]:
     warnings = []
     engine.warnings.connect(lambda values: warnings.extend(v.toString() for v in values))
     engine.rootContext().setContextProperty("bridge", backend)
-    harness = f'''import QtQuick
-import QtQuick.Controls
-import "{QML.as_uri()}"
-ApplicationWindow {{ visible: true; width: 1000; height: 750
-    ReviewPage {{ anchors.fill: parent }}
-}}'''
+    harness = """import QtQuick
+import org.kde.kirigami as Kirigami
+import "."
+Kirigami.ApplicationWindow { visible: true; width: 1000; height: 750
+    pageStack.initialPage: ReviewPage {}
+}"""
     engine.loadData(harness.encode(), QUrl.fromLocalFile(str(QML / "ReviewHarness.qml")))
     assert engine.rootObjects(), warnings
     window = engine.rootObjects()[0]
@@ -191,7 +193,7 @@ def test_review_grid_summary_parts_and_buttons(screen):
     assert child(window, "reviewPartNames").property("count") == 2
     click(child(window, "reviewSaveButton"))
     click(child(window, "reviewBackButton"))
-    assert review.calls == [("save",), ("back",)]
+    assert [c for c in review.calls if c[0] != "focus"] == [("save",), ("back",)]
     assert warnings == []
 
 

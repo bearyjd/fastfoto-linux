@@ -23,6 +23,9 @@ QML_FILES = (
     "ModeSwitch.qml",
     "DocumentFormPanel.qml",
     "DocumentsView.qml",
+    "ReviewPage.qml",
+    "ReviewCell.qml",
+    "PreviewDialog.qml",
 )
 QML_DIR = ROOT / "src" / "fastfoto_linux" / "gui" / "qml"
 CI = ROOT / ".github" / "workflows" / "ci.yml"

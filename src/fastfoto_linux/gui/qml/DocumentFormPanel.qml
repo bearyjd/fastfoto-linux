@@ -95,6 +95,15 @@ QQC2.ScrollView {
             font: Kirigami.Theme.smallFont
         }
 
+        QQC2.Button {
+            objectName: "openPastScanButton"
+            text: qsTr("Open a past scan…")
+            Accessible.name: qsTr("Open a past scan…")
+            enabled: panel.editable
+            icon.name: "folder-open"
+            onClicked: pastScanDialog.open()
+        }
+
         Item {
             Kirigami.FormData.isSection: true
             Kirigami.FormData.label: qsTr("Scanning")
@@ -213,6 +222,14 @@ QQC2.ScrollView {
             wrapMode: Text.WordWrap
             color: Kirigami.Theme.negativeTextColor
         }
+    }
+
+    FolderDialog {
+        id: pastScanDialog
+        objectName: "pastScanDialog"
+        title: qsTr("Open a past scan")
+        currentFolder: bridge.review.rawRootUrl
+        onAccepted: bridge.review.openFolder(selectedFolder)
     }
 
     FolderDialog {

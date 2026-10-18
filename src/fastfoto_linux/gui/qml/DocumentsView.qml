@@ -33,6 +33,36 @@ ColumnLayout {
         }
     }
 
+    RowLayout {
+        Layout.fillWidth: true
+        visible: bridge.review.canReopen || bridge.review.canDeleteOriginals
+        QQC2.Button {
+            objectName: "reviewAgainButton"
+            text: qsTr("Review again")
+            Accessible.name: qsTr("Review again")
+            visible: bridge.review.canReopen
+            onClicked: bridge.review.reopen()
+        }
+        QQC2.Button {
+            objectName: "deleteOriginalPagesButton"
+            text: qsTr("Delete original pages")
+            Accessible.name: qsTr("Delete original pages")
+            visible: bridge.review.canDeleteOriginals
+            onClicked: deleteOriginalsDialog.open()
+        }
+    }
+
+    Kirigami.PromptDialog {
+        id: deleteOriginalsDialog
+        objectName: "deleteOriginalPagesDialog"
+        title: qsTr("Delete original pages?")
+        subtitle: qsTr("The saved PDFs stay. The original pages and review edits will be deleted, so you cannot review this scan again.")
+        standardButtons: QQC2.Dialog.Yes | QQC2.Dialog.No
+        onAccepted: {
+            if (bridge.review.canDeleteOriginals) bridge.review.deleteOriginals(true);
+        }
+    }
+
     Item {
         Layout.fillWidth: true
         Layout.fillHeight: true

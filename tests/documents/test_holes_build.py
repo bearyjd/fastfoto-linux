@@ -13,7 +13,7 @@ from fastfoto_linux.documents import (
     DocumentResult,
     DocumentSettings,
     OcrMode,
-    build,
+    analyse,
     build_document,
 )
 from tests.doc_synth import Scene
@@ -105,7 +105,7 @@ def test_a_duplex_document_is_loaded_and_encoded_a_sheet_at_a_time(
     tmp_path: Path, out: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     events: list[str] = []
-    real_load, real_encode = build.load_page, build.encode_page
+    real_load, real_encode = analyse.load_page, analyse.encode_page
 
     def load(*args: Any, **kwargs: Any) -> Any:
         events.append("load")
@@ -115,8 +115,8 @@ def test_a_duplex_document_is_loaded_and_encoded_a_sheet_at_a_time(
         events.append("encode")
         return real_encode(*args, **kwargs)
 
-    monkeypatch.setattr(build, "load_page", load)
-    monkeypatch.setattr(build, "encode_page", encode)
+    monkeypatch.setattr(analyse, "load_page", load)
+    monkeypatch.setattr(analyse, "encode_page", encode)
     scenes = [text(sheet(DPI, seed=n)[0]) for n in range(4)]
     run(tmp_path, out, scenes)
     assert events == ["load", "load", "encode", "encode"] * 2
@@ -127,7 +127,7 @@ def test_at_most_two_pages_are_in_memory_at_once(
 ) -> None:
     alive: list[weakref.ref] = []
     seen_alive: list[int] = []
-    real_load = build.load_page
+    real_load = analyse.load_page
 
     def load(*args: Any, **kwargs: Any) -> Any:
         seen_alive.append(sum(ref() is not None for ref in alive))
@@ -135,7 +135,7 @@ def test_at_most_two_pages_are_in_memory_at_once(
         alive.append(weakref.ref(page.pixels))
         return page
 
-    monkeypatch.setattr(build, "load_page", load)
+    monkeypatch.setattr(analyse, "load_page", load)
     run(tmp_path, out, [text(sheet(DPI, seed=n)[0]) for n in range(6)])
     assert seen_alive == [0, 1, 0, 1, 0, 1]
 
@@ -146,13 +146,13 @@ def test_progress_is_reported_for_each_page_just_before_it_is_encoded(
     """In page order, though a sheet's two pages are loaded together to be judged by each other:
     the progress of page 2 does not come before page 1 is encoded."""
     events: list[object] = []
-    real_encode = build.encode_page
+    real_encode = analyse.encode_page
 
     def encode(*args: Any, **kwargs: Any) -> Any:
         events.append("encode")
         return real_encode(*args, **kwargs)
 
-    monkeypatch.setattr(build, "encode_page", encode)
+    monkeypatch.setattr(analyse, "encode_page", encode)
     pages = write_pages(tmp_path / "raw", [text(sheet(DPI, seed=n)[0]) for n in range(4)])
     settings = DocumentSettings(output_root=out, ocr=OcrMode.OFF)
     build_document(pages, settings, on_page=lambda number, total: events.append(number))
@@ -166,13 +166,13 @@ def test_a_cancel_seen_with_the_first_page_of_a_sheet_stops_before_its_second(
     names page 2, not a page that nothing had begun."""
     cancel = threading.Event()
     encoded: list[str] = []
-    real_encode = build.encode_page
+    real_encode = analyse.encode_page
 
     def encode(*args: Any, **kwargs: Any) -> Any:
         encoded.append("page")
         return real_encode(*args, **kwargs)
 
-    monkeypatch.setattr(build, "encode_page", encode)
+    monkeypatch.setattr(analyse, "encode_page", encode)
     pages = write_pages(tmp_path / "raw", [text(sheet(DPI, seed=n)[0]) for n in range(4)])
     settings = DocumentSettings(output_root=out, ocr=OcrMode.OFF)
     with pytest.raises(DocumentCancelledError, match="stopped before page 2 of 4 was processed"):

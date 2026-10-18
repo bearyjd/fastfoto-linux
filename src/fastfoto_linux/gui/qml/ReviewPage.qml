@@ -35,8 +35,10 @@ Kirigami.ScrollablePage {
         previewDialog.open();
     }
 
-    header: ColumnLayout {
+    header: QQC2.Pane {
+        padding: Kirigami.Units.smallSpacing
         enabled: !bridge.busy
+        contentItem: ColumnLayout {
         spacing: Kirigami.Units.smallSpacing
 
         Kirigami.InlineMessage {
@@ -91,6 +93,7 @@ Kirigami.ScrollablePage {
                     onEditingFinished: page.commitName(modelData.number, text)
                 }
             }
+        }
         }
     }
 
@@ -149,7 +152,9 @@ Kirigami.ScrollablePage {
         }
     }
 
-    footer: RowLayout {
+    footer: QQC2.Pane {
+        padding: Kirigami.Units.smallSpacing
+        contentItem: RowLayout {
         QQC2.Button {
             objectName: "reviewBackButton"
             text: qsTr("Back")
@@ -164,6 +169,7 @@ Kirigami.ScrollablePage {
             icon.name: "document-save"
             enabled: bridge.review.canSave && !bridge.busy
             onClicked: page.saveReview()
+        }
         }
     }
 

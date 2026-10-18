@@ -110,36 +110,36 @@ Item {
             }
             QQC2.ToolButton {
                 objectName: "reviewRotateButton"
-                icon.name: "object-rotate-right"
-                Accessible.name: qsTr("Rotate clockwise")
+                text: qsTr("Rotate")
+                Accessible.name: qsTr("Rotate")
                 QQC2.ToolTip.text: qsTr("Rotate clockwise")
                 QQC2.ToolTip.visible: hovered
                 onClicked: { cell.activated(); bridge.review.rotate(cell.number, 1); }
             }
             QQC2.ToolButton {
                 objectName: "reviewSplitButton"
-                icon.name: "edit-cut"
-                Accessible.name: qsTr("Start new PDF")
+                text: qsTr("Split")
+                Accessible.name: qsTr("Split")
                 QQC2.ToolTip.text: qsTr("Start new PDF")
                 QQC2.ToolTip.visible: hovered
                 onClicked: { cell.activated(); bridge.review.toggleSplit(cell.number); }
             }
             QQC2.ToolButton {
                 objectName: "reviewPreviewButton"
-                icon.name: "zoom-in"
+                text: qsTr("Preview")
                 Accessible.name: qsTr("Preview")
                 onClicked: { cell.activated(); cell.previewRequested(); }
             }
         }
         RowLayout {
             QQC2.ToolButton {
-                icon.name: "go-previous"
+                text: "←"
                 Accessible.name: qsTr("Move earlier")
                 enabled: cell.previousOrderIndex >= 0
                 onClicked: { cell.activated(); bridge.review.move(cell.number, cell.previousOrderIndex); }
             }
             QQC2.ToolButton {
-                icon.name: "go-next"
+                text: "→"
                 Accessible.name: qsTr("Move later")
                 enabled: cell.nextOrderIndex >= 0
                 onClicked: { cell.activated(); bridge.review.move(cell.number, cell.nextOrderIndex); }

@@ -237,16 +237,11 @@ def test_review_flagged_filter(screen):
     assert warnings == []
 
 
-def descendants(item, name):
-    found = [item] if item.objectName() == name else []
-    for descendant in item.childItems():
-        found.extend(descendants(descendant, name))
-    return found
-
-
 def test_part_name_typing_does_not_run_page_shortcuts(screen):
     window, review, warnings = screen
-    field = descendants(window.contentItem(), "reviewPartName")[0]
+    names = child(window, "reviewPartNames")
+    row = QMetaObject.invokeMethod(names, "itemAt", Q_RETURN_ARG(QQuickItem), Q_ARG(int, 0))
+    field = child(row, "reviewPartName")
     invoke(field, "forceActiveFocus")
     QTest.keyClick(window, Qt.Key.Key_A, Qt.KeyboardModifier.ControlModifier)
     for letter in "receipts and reports":
@@ -294,7 +289,7 @@ def test_cell_buttons_keep_rotate_split_and_preview(screen):
         "reviewSplitButton",
         "reviewPreviewButton",
     ]:
-        click(descendants(row, name)[0])
+        click(child(row, name))
     assert ("toggle", 2) in review.calls
     assert ("rotate", 2, 1) in review.calls
     assert ("split", 2) in review.calls

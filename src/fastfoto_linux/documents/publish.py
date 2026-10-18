@@ -1,5 +1,6 @@
 """Publish a finished PDF into the output folder without overwriting anything."""
 
+from collections.abc import Sequence
 from pathlib import Path
 
 from fastfoto_linux.documents.errors import OutputFolderMissingError
@@ -43,3 +44,7 @@ def publish_pdf(data: bytes, directory: Path, name: str) -> Path:
     raise OutputCollisionError(
         f"no free number for {prefix!r} in {directory} after {MAX_INDEX_ATTEMPTS} attempts"
     ) from collision
+
+
+def publish_pdfs(parts_data: Sequence[tuple[str, bytes]], directory: Path) -> tuple[Path, ...]:
+    raise NotImplementedError

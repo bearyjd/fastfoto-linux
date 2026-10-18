@@ -68,3 +68,7 @@ def item_from_document(result: DocumentResult) -> DocumentItem:
         ocr=result.ocr.status,
         ocr_detail=result.ocr.detail,
     )
+
+
+def items_from_document(result: DocumentResult) -> tuple[DocumentItem, ...]:
+    raise NotImplementedError

@@ -29,6 +29,17 @@ logger = logging.getLogger(__name__)
 
 OCR_BASE_S = 120.0  # the OCR time limit: this plus ...
 OCR_PER_PAGE_S = 60.0  # ... this for every page
+PART_NAME_TEMPLATE = "{name} (part {number})"  # the name of a part nobody named, among several
+
+
+@dataclass(frozen=True)
+class PartResult:
+    """One PDF made: its file, its name (also its title), its pages and how its OCR went."""
+
+    pdf: Path
+    name: str
+    pages: int
+    ocr: OcrOutcome
 
 
 @dataclass(frozen=True)
@@ -126,10 +137,10 @@ def write_document(  # noqa: PLR0913 - the hooks are the interface
     text is made. Both run on the calling thread.
     """
     checked = check_settings(settings)
-    part = OutputPart(draft.kept)
+    part = OutputPart(tuple((page, 0) for page in draft.kept))
     if not part.pages:
         raise AllPagesBlankError(f"all {len(draft.pages)} pages look blank, so no PDF was written")
-    encoded = [_encoded(page, draft, settings, cancel, on_page) for page in part.pages]
+    encoded = [_encoded(page, draft, settings, cancel, on_page) for page, _ in part.pages]
     plain = assemble_pdf(encoded, title=checked.name, created=(clock or _now)())
     outcome = _searchable(
         plain, checked.ocr_executable, settings, len(encoded), cancel=cancel, on_ocr=on_ocr

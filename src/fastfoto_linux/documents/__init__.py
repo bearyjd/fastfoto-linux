@@ -6,6 +6,7 @@ from fastfoto_linux.documents.errors import (
     DocumentCancelledError,
     DocumentError,
     DocumentSettingsError,
+    NothingSelectedError,
     OcrCancelledError,
     OcrMissingError,
     OutputFolderMissingError,
@@ -21,7 +22,7 @@ from fastfoto_linux.documents.ocr import (
     validate_langs,
 )
 from fastfoto_linux.documents.settings import DEFAULT_NAME, DocumentSettings, check_settings
-from fastfoto_linux.documents.write import DocumentResult
+from fastfoto_linux.documents.write import DocumentResult, PartResult
 
 __all__ = [
     "DEFAULT_LANGS",
@@ -33,12 +34,14 @@ __all__ = [
     "DocumentResult",
     "DocumentSettings",
     "DocumentSettingsError",
+    "NothingSelectedError",
     "OcrCancelledError",
     "OcrMissingError",
     "OcrMode",
     "OcrOutcome",
     "OcrStatus",
     "OutputFolderMissingError",
+    "PartResult",
     "UnsupportedPageError",
     "build_document",
     "check_settings",

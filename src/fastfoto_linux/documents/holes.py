@@ -302,6 +302,20 @@ def _share_one_registration(offsets: Sequence[_Offset], dpi: int) -> bool:
     return bool((spread <= mm_to_px(OFFSET_SPREAD_MM, dpi)).all())
 
 
+@dataclass(frozen=True)
+class HoleReport:
+    """How the marks of a page fare as holes: how many could be (``candidates``), how many have
+    a counterpart on the other side (``matched``), and whether every mark is a hole."""
+
+    matched: int
+    candidates: int
+    all_matched: bool
+
+
+def hole_report(marks: Sequence[Mark], side: Trimmed, partner: Trimmed) -> HoleReport:
+    raise NotImplementedError
+
+
 def all_are_holes(marks: Sequence[Mark], side: Trimmed, partner: Trimmed) -> bool:
     """Whether every mark of ``side`` is a hole through the paper that ``partner``, the other
     side of the same sheet, shows too (see the module's text). No marks is not a hole: the

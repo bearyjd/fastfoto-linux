@@ -15,13 +15,23 @@ Kirigami.ApplicationWindow {
 
     pageStack.initialPage: ScanPage {}
     property var reviewPage: null
+    property bool syncingReview: false
 
     function syncReview() {
-        if (bridge.review.active && reviewPage === null) {
-            reviewPage = pageStack.push(reviewComponent);
-        } else if (!bridge.review.active && reviewPage !== null) {
-            pageStack.pop();
-            reviewPage = null;
+        if (syncingReview) return;
+        syncingReview = true;
+        try {
+            if (bridge.review.active && reviewPage === null) {
+                reviewPage = reviewComponent.createObject(root.pageStack);
+                pageStack.push(reviewPage);
+            } else if (!bridge.review.active && reviewPage !== null) {
+                const previous = reviewPage;
+                pageStack.pop();
+                reviewPage = null;
+                previous.destroy();
+            }
+        } finally {
+            syncingReview = false;
         }
     }
 

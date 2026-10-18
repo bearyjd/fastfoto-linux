@@ -815,7 +815,26 @@ What the third review pull request settled where the plan left room.
   analysis keeps no encoded bytes, so a fresh and a re-opened draft behave alike.
 - **What is deleted.** nothing is deleted automatically. A clean run that left pages out, as blank
   or in a review, keeps the raw pages (the fix for pages removed in a review); after a Save the
-  desktop app will offer "Delete the original pages", and the user decides.
+  desktop app offers "Delete the original pages", and the user decides.
 - **A raw folder as the input.** `ffscan doc process RAWDIR` takes a folder with `list_pages`
   (counted from 1). The saved edits apply first and the command-line edits on top; `--fresh`
   ignores the sidecar. The command never writes into the folder.
+
+
+## Desktop review screen (parts E1 and E2)
+
+The desktop Documents workflow analyses the retained originals, then enters REVIEWING before any
+PDF is written. The review grid includes keep/remove, clockwise rotation, reorder, split anchors,
+flag filtering, mark overlays and per-part names. Reordering filtered rows uses each page's position
+in the full draft order. A bounded asynchronous preview decodes one page on demand.
+
+The review coordinator keeps edits through failed or cancelled Saves. Part names remain local while
+typing and are committed before Save, Back or window close; invalid names veto Save. Autosave is
+flushed at those boundaries, and a failed flush vetoes closing the window. Open a past scan uses the
+same analysis and sidecar validation as the CLI, and Review again reopens the last saved originals.
+
+Successful Save offers "Delete the original pages" with explicit confirmation. Declining leaves the
+originals and review edits available; nothing is deleted automatically. Deletion uses the backend's
+validated snapshot and never runs from an automatic state transition. The QML components are wheel
+package data and the real-window offscreen tests exercise the review actions and deletion choice
+using generated synthetic pages.

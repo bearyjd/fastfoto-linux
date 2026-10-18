@@ -112,8 +112,8 @@ Kirigami.ScrollablePage {
             width: grid.cellWidth
             height: grid.cellHeight
             selected: GridView.isCurrentItem
-            previousOrderIndex: index > 0 ? bridge.review.items.get(index - 1).orderIndex : -1
-            nextOrderIndex: index + 1 < grid.count ? bridge.review.items.get(index + 1).orderIndex : -1
+            previousOrderIndex: index > 0 ? (bridge.review.items.get(index - 1).orderIndex ?? -1) : -1
+            nextOrderIndex: index + 1 < grid.count ? (bridge.review.items.get(index + 1).orderIndex ?? -1) : -1
             onActivated: {
                 grid.currentIndex = index;
                 grid.forceActiveFocus();

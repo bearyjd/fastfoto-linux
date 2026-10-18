@@ -45,8 +45,8 @@ ColumnLayout {
         }
         QQC2.Button {
             objectName: "deleteOriginalPagesButton"
-            text: qsTr("Delete original pages")
-            Accessible.name: qsTr("Delete original pages")
+            text: qsTr("Delete the original pages")
+            Accessible.name: qsTr("Delete the original pages")
             visible: bridge.review.canDeleteOriginals
             onClicked: deleteOriginalsDialog.open()
         }
@@ -55,7 +55,7 @@ ColumnLayout {
     Kirigami.PromptDialog {
         id: deleteOriginalsDialog
         objectName: "deleteOriginalPagesDialog"
-        title: qsTr("Delete original pages?")
+        title: qsTr("Delete the original pages?")
         subtitle: qsTr("The saved PDFs stay. The original pages and review edits will be deleted, so you cannot review this scan again.")
         standardButtons: QQC2.Dialog.Yes | QQC2.Dialog.No
         onAccepted: {

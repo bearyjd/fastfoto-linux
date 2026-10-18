@@ -1,11 +1,12 @@
-"""Write a document: assemble the PDF from an analysed draft, add searchable text, publish.
+"""Write a document: assemble the PDFs from an analysed draft, add searchable text, publish.
 
-The pages that stay are put in one PDF as the draft holds them: a page that carries its encoded
-bytes is used as it is, any other is read again from the raw pages, cut with its trim box and
-encoded, one decoded page at a time. The OCR runs on the finished plain PDF *before* the output
-folder is locked (it can take minutes; the lock is for numbering and writing only), and a failed
-or timed-out OCR falls back to publishing the plain PDF. A cancel at any point, up to the
-publishing, publishes nothing.
+The pages that stay are put in one PDF for each part of the draft as it holds them: a page that
+carries its encoded bytes (and is not turned) is used as it is, any other is read again from the
+raw pages, cut with its trim box, turned and encoded, one decoded page at a time. The OCR runs
+on each finished plain PDF *before* the output folder is locked (it can take minutes; the lock
+is for numbering and writing only), with a limit that grows with that part's page count, and a
+failed or timed-out OCR falls back to publishing the plain PDF. Every part is made before any is
+published: a cancel or an error at any point up to the publishing publishes nothing.
 """
 
 import logging
@@ -15,33 +16,80 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 
+import numpy as np
+
 from fastfoto_linux.documents.draft import DocumentDraft, OutputPart, PageAnalysis
+from fastfoto_linux.documents.draft_edit import parts
 from fastfoto_linux.documents.encode import EncodedPage, encode_page
-from fastfoto_linux.documents.errors import AllPagesBlankError, DocumentError, stop_if_cancelled
-from fastfoto_linux.documents.loader import load_page
+from fastfoto_linux.documents.errors import (
+    AllPagesBlankError,
+    DocumentError,
+    NothingSelectedError,
+    stop_if_cancelled,
+)
+from fastfoto_linux.documents.loader import LoadedPage, load_page
 from fastfoto_linux.documents.ocr import OcrMode, OcrOutcome, OcrStatus, run_ocr
 from fastfoto_linux.documents.ocr_tools import ocr_missing_text
 from fastfoto_linux.documents.pdf import assemble_pdf
-from fastfoto_linux.documents.publish import publish_pdf
+from fastfoto_linux.documents.publish import publish_pdfs
 from fastfoto_linux.documents.settings import DocumentSettings, check_settings
 
 logger = logging.getLogger(__name__)
 
 OCR_BASE_S = 120.0  # the OCR time limit: this plus ...
 OCR_PER_PAGE_S = 60.0  # ... this for every page
+PART_NAME_TEMPLATE = "{name} (part {number})"  # the name of a part nobody named, among several
+
+
+@dataclass(frozen=True)
+class PartResult:
+    """One PDF made: its file, its name (also its title), its pages and how its OCR went."""
+
+    pdf: Path
+    name: str
+    pages: int
+    ocr: OcrOutcome
+
+
+# From the worst outcome to the best: what the document's OCR outcome says when its parts differ.
+_OCR_SEVERITY = (
+    OcrStatus.FAILED,
+    OcrStatus.TIMED_OUT,
+    OcrStatus.UNAVAILABLE,
+    OcrStatus.SKIPPED,
+    OcrStatus.DONE,
+)
 
 
 @dataclass(frozen=True)
 class DocumentResult:
-    pdf: Path
+    """What a run made: one ``PartResult`` per PDF. ``dropped`` are the 1-based numbers of the
+    pages left out as blank, ``removed`` those the reviewer left out. ``pdf``, ``pages_in_pdf``,
+    ``ocr`` and ``ok`` are the first PDF, the pages in all of them, the worst OCR outcome and
+    "no part's OCR failed"."""
+
     pages_read: int
-    dropped: tuple[int, ...]  # 1-based numbers of the pages left out as blank
-    pages_in_pdf: int
-    ocr: OcrOutcome
+    dropped: tuple[int, ...]
+    parts: tuple[PartResult, ...]
+    removed: tuple[int, ...] = ()
+
+    @property
+    def pdf(self) -> Path:
+        return self.parts[0].pdf
+
+    @property
+    def pages_in_pdf(self) -> int:
+        return sum(part.pages for part in self.parts)
+
+    @property
+    def ocr(self) -> OcrOutcome:
+        return min((part.ocr for part in self.parts), key=lambda o: _OCR_SEVERITY.index(o.status))
 
     @property
     def ok(self) -> bool:
-        return self.ocr.status not in (OcrStatus.FAILED, OcrStatus.TIMED_OUT)
+        return all(
+            part.ocr.status not in (OcrStatus.FAILED, OcrStatus.TIMED_OUT) for part in self.parts
+        )
 
 
 def _now() -> datetime:
@@ -80,29 +128,73 @@ def _searchable(  # noqa: PLR0913 - what OCR needs, and the one hook, in one pla
     return outcome
 
 
-def _encoded(
-    page: PageAnalysis,
-    draft: DocumentDraft,
-    settings: DocumentSettings,
-    cancel: threading.Event | None,
-    on_page: Callable[[int, int], None] | None,
-) -> EncodedPage:
-    """The page as it goes into the PDF: the bytes it carries, or the raw page read again, cut
-    and encoded (one decoded page at a time; a cancel is honoured before each such page)."""
-    if page.encoded is not None:
-        return page.encoded
+def _turned(page: LoadedPage, turns: int) -> LoadedPage:
+    """``page`` turned ``turns`` quarter turns clockwise, exactly (no resampling)."""
+    if turns == 0:
+        return page
+    return replace(page, pixels=np.ascontiguousarray(np.rot90(page.pixels, -turns)))
+
+
+def _read_page(
+    page: PageAnalysis, turns: int, draft: DocumentDraft, settings: DocumentSettings
+) -> LoadedPage:
+    """The raw page read, cut with its trim box and turned. The raw pixels are released on
+    return when the page is turned, so one decoded page is held while it is encoded."""
     raw_dir = draft.raw_dir
     if raw_dir is None:
         raise DocumentError(
             f"page {page.number} ({page.name}) has no encoded bytes, and the draft has no "
             "folder of raw pages to read it from"
         )
-    total = len(draft.pages)
-    stop_if_cancelled(cancel, f"page {page.number} of {total} was written")
-    if on_page is not None:
-        on_page(page.number, total)
     loaded = load_page(raw_dir / page.name, fallback_dpi=settings.fallback_dpi)
-    return encode_page(page.trim.apply(loaded), settings.colour)
+    return _turned(page.trim.apply(loaded), turns)
+
+
+@dataclass(frozen=True)
+class _Run:
+    """What making every part of one document needs."""
+
+    draft: DocumentDraft
+    settings: DocumentSettings
+    executable: str | None
+    cancel: threading.Event | None
+    clock: Callable[[], datetime] | None
+    on_page: Callable[[int, int], None] | None
+    on_ocr: Callable[[], None] | None
+
+
+def _encoded(run: "_Run", page: PageAnalysis, turns: int) -> EncodedPage:
+    """The page as it goes into the PDF: the bytes it carries (when it is not turned), or the
+    raw page read again, cut, turned and encoded (one decoded page at a time; a cancel is
+    honoured before each such page)."""
+    if page.encoded is not None and turns == 0:
+        return page.encoded
+    total = len(run.draft.pages)
+    stop_if_cancelled(run.cancel, f"page {page.number} of {total} was written")
+    if run.on_page is not None:
+        run.on_page(page.number, total)
+    return encode_page(_read_page(page, turns, run.draft, run.settings), run.settings.colour)
+
+
+def _make_part(run: _Run, part: OutputPart, name: str) -> tuple[str, bytes, int, OcrOutcome]:
+    """The PDF of one part, with searchable text when it can have it: its name, the bytes to
+    publish, its page count and how the OCR went."""
+    encoded = [_encoded(run, page, turns) for page, turns in part.pages]
+    plain = assemble_pdf(encoded, title=name, created=(run.clock or _now)())
+    outcome = _searchable(
+        plain, run.executable, run.settings, len(encoded), cancel=run.cancel, on_ocr=run.on_ocr
+    )
+    return name, outcome.pdf if outcome.pdf is not None else plain, len(encoded), outcome
+
+
+def _part_name(part: OutputPart, number: int, count: int, document_name: str) -> str:
+    """The name the reviewer gave the part, else the document's (with the part's number when
+    there are several parts)."""
+    if part.name:
+        return part.name
+    if count == 1:
+        return document_name
+    return PART_NAME_TEMPLATE.format(name=document_name, number=number)
 
 
 def write_document(  # noqa: PLR0913 - the hooks are the interface
@@ -114,31 +206,39 @@ def write_document(  # noqa: PLR0913 - the hooks are the interface
     on_page: Callable[[int, int], None] | None = None,
     on_ocr: Callable[[], None] | None = None,
 ) -> DocumentResult:
-    """Make one PDF in ``settings.output_root`` from the pages of ``draft`` that stay.
+    """Make the PDFs in ``settings.output_root`` from the pages of ``draft`` that stay: one
+    PDF, or one for each part the draft's splits make (see ``draft_edit.parts``).
 
     The settings are checked again (the folder may be gone by now). Raises AllPagesBlankError
-    when no page stays. A failed or timed-out OCR still publishes the plain PDF (``result.ok``
-    is then False). When ``cancel`` is set DocumentCancelledError (OcrCancelledError during OCR)
-    is raised and nothing is published.
+    when no page stays and nothing was edited, NothingSelectedError when the edits left no page.
+    A failed or timed-out OCR still publishes the plain PDF (``result.ok`` is then False). Every
+    part is made before any is published, so when ``cancel`` is set DocumentCancelledError
+    (OcrCancelledError during OCR) is raised, or anything else fails, nothing is published.
 
     ``on_page(number, total)`` is called before each page that is read again from the raw pages
-    (a page that carries its bytes needs no work) and ``on_ocr()`` once before the searchable
-    text is made. Both run on the calling thread.
+    (a page that carries its bytes and is not turned needs no work) and ``on_ocr()`` before the
+    searchable text of each part is made. Both run on the calling thread.
     """
     checked = check_settings(settings)
-    part = OutputPart(draft.kept)
-    if not part.pages:
-        raise AllPagesBlankError(f"all {len(draft.pages)} pages look blank, so no PDF was written")
-    encoded = [_encoded(page, draft, settings, cancel, on_page) for page in part.pages]
-    plain = assemble_pdf(encoded, title=checked.name, created=(clock or _now)())
-    outcome = _searchable(
-        plain, checked.ocr_executable, settings, len(encoded), cancel=cancel, on_ocr=on_ocr
-    )
+    output = parts(draft)
+    if not output:
+        if not draft.has_edits:
+            raise AllPagesBlankError(
+                f"all {len(draft.pages)} pages look blank, so no PDF was written"
+            )
+        raise NothingSelectedError(
+            f"no page is left to write: all {len(draft.pages)} pages were left out"
+        )
+    run = _Run(draft, settings, checked.ocr_executable, cancel, clock, on_page, on_ocr)
+    made = [
+        _make_part(run, part, _part_name(part, number, len(output), checked.name))
+        for number, part in enumerate(output, start=1)
+    ]
     stop_if_cancelled(cancel, "the PDF was published")
-    published = publish_pdf(
-        outcome.pdf if outcome.pdf is not None else plain, settings.output_root, checked.name
-    )
+    published = publish_pdfs([(name, data) for name, data, _, _ in made], settings.output_root)
     # The searchable bytes are published; the result only needs to say how OCR went.
-    return DocumentResult(
-        published, len(draft.pages), draft.dropped, len(encoded), replace(outcome, pdf=None)
+    results = tuple(
+        PartResult(path, name, pages, replace(outcome, pdf=None))
+        for path, (name, _, pages, outcome) in zip(published, made, strict=True)
     )
+    return DocumentResult(len(draft.pages), draft.dropped, results, draft.removed)

@@ -23,6 +23,7 @@ class DocumentItem:
     dropped: tuple[int, ...]
     ocr: OcrStatus
     ocr_detail: str = ""
+    removed: tuple[int, ...] = ()
 
     @property
     def file_name(self) -> str:
@@ -45,6 +46,13 @@ class DocumentItem:
         return f"Blank {noun} left out: {', '.join(map(str, self.dropped))}"
 
     @property
+    def removed_text(self) -> str:
+        """The pages the reviewer left out, by number ("Pages you removed: 2, 4"), or empty."""
+        if not self.removed:
+            return ""
+        return f"Pages you removed: {', '.join(map(str, self.removed))}"
+
+    @property
     def ocr_warning(self) -> bool:
         """True when searchable text was wanted and could not be added."""
         return self.ocr in _OCR_PROBLEMS
@@ -60,11 +68,21 @@ class DocumentItem:
         return _SEARCHABLE_LINES[self.ocr]
 
 
-def item_from_document(result: DocumentResult) -> DocumentItem:
-    return DocumentItem(
-        pdf=result.pdf,
-        pages=result.pages_in_pdf,
-        dropped=result.dropped,
-        ocr=result.ocr.status,
-        ocr_detail=result.ocr.detail,
+def items_from_document(result: DocumentResult) -> tuple[DocumentItem, ...]:
+    """One item for each PDF made. The pages left out are told with the first, once."""
+    return tuple(
+        DocumentItem(
+            pdf=part.pdf,
+            pages=part.pages,
+            dropped=result.dropped if first else (),
+            ocr=part.ocr.status,
+            ocr_detail=part.ocr.detail,
+            removed=result.removed if first else (),
+        )
+        for first, part in ((index == 0, p) for index, p in enumerate(result.parts))
     )
+
+
+def item_from_document(result: DocumentResult) -> DocumentItem:
+    """The item of the first PDF made."""
+    return items_from_document(result)[0]

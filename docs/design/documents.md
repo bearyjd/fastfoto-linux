@@ -746,3 +746,40 @@ What the third pull request settled where the specification left room.
 ### Needs real hardware
 A document scan through the app on the FF-680W, the Open button on a PDF in a Flatpak (it goes
 through the desktop portal), and OCRmyPDF on real letters.
+
+
+## Decisions in editing and several PDFs (review, part C)
+What the third review pull request settled where the plan left room.
+
+- **Edits are data, keyed by raw number.** A `DocumentDraft` carries `edits` (a page left out or
+  brought back, its turns), `order`, `splits` and `part_names`; `documents/draft_edit.py` changes
+  them with pure functions that return a new draft, and `parts(draft)` gives the PDFs. A page is
+  named by its raw number, which survives a move of the files.
+- **Splits are anchored on a page.** "Page n starts a new PDF". A left-out anchor passes to the
+  next page that stays, an empty part disappears, a split on the first page that stays does
+  nothing, and a split travels with its page when the order changes.
+- **A name for each part.** The plan's one name with consecutive numbers was replaced on the
+  maintainer's word: every part has its own name, `NAME (part N)` when there are several and none
+  was given (`NAME (part N)` is `PART_NAME_TEMPLATE`), cleaned like an album name, and it is
+  the PDF's title. `publish_pdfs` takes the folder lock once and gives each part its own next
+  number for its name (two parts of one name get consecutive numbers); it is all parts or none:
+  the files are written together or not at all.
+- **Writing.** `write_document` reads a page again only when it is turned or carries no bytes: cut
+  with its `TrimBox`, turned with `numpy.rot90` (clockwise 90, 180 or 270; exact) and encoded,
+  with one decoded page held at a time. Every part is built, with its OCR, before anything is
+  published, so a cancel or an error publishes all parts or none. The OCR limit of a part is
+  `OCR_BASE_S + OCR_PER_PAGE_S` times that part's pages.
+- **Nothing selected.** No page left after edits is `NothingSelectedError`; with no edits all
+  pages blank is `AllPagesBlankError` as before.
+- **The result.** `DocumentResult` holds `parts` (`PartResult(pdf, name, pages, ocr)`) and
+  `removed`; `pdf`, `pages_in_pdf`, `ocr` (the worst outcome) and `ok` are derived. The summary and
+  the banner of the app name each PDF.
+- **Command line.** `--drop`, `--keep`, `--rotate`, `--split`, `--order`, `--part-name` and
+  `--dry-run` belong to `ffscan doc process` only, are checked before any page is read where the
+  page count is enough, and `--drop` wins over `--keep-blank`. A raw folder as the input is left
+  for a later pull request.
+- **Limits.** The page files are left as they were. A page that is turned or brought back is read
+  again from its file, so `--rotate` and `--keep` need the pages in one folder (`raw_dir`), and
+  are refused with a usage error otherwise. Searchable text uses OCRmyPDF's
+  `--rotate-pages`, which may turn a page back that was turned on purpose; checking that with the
+  real tool is left to the maintainer.

@@ -6,10 +6,11 @@ counting from 1, in the list the document was made from), which does not change 
 move.
 """
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
+from types import MappingProxyType
 
 from fastfoto_linux.documents.encode import EncodedPage
 from fastfoto_linux.documents.loader import LoadedPage
@@ -135,30 +136,79 @@ class PageAnalysis:
         return text + "".join(f" {name}" for name in self.detail)
 
 
+QUARTER_TURNS = 4  # a page turned four quarter turns is back where it was
+
+
+@dataclass(frozen=True)
+class PageEdit:
+    """What the reviewer did to one page. ``include`` None follows the verdict (a page that
+    looks blank is left out, any other stays); True or False overrides it. ``quarter_turns`` are
+    clockwise turns of 90 degrees, 0 to 3."""
+
+    include: bool | None = None
+    quarter_turns: int = 0
+
+    def __post_init__(self) -> None:
+        if not 0 <= self.quarter_turns < QUARTER_TURNS:
+            raise ValueError(f"quarter turns must be 0 to 3, got {self.quarter_turns}")
+
+
+_NO_EDITS: Mapping[int, PageEdit] = MappingProxyType({})
+_NO_NAMES: Mapping[int, str] = MappingProxyType({})
+
+
 @dataclass(frozen=True)
 class DocumentDraft:
-    """The pages of a document in order. ``raw_dir`` is the folder that holds all the page files
-    (None: they are not in one folder)."""
+    """The pages of a document in raw order. ``raw_dir`` is the folder that holds all the page
+    files (None: they are not in one folder).
+
+    The reviewer's edits are all keyed by raw number: ``edits`` (a page left out or brought
+    back, turned), ``order`` (a permutation of the raw numbers; empty is raw order), ``splits``
+    (pages that start a new PDF) and ``part_names`` (the name of PDF number k, counting from 1
+    in output order). Use ``draft_edit`` to change them; the maps are read only.
+    """
 
     pages: tuple[PageAnalysis, ...]
     raw_dir: Path | None
     duplex: bool
     keep_blank: bool
+    edits: Mapping[int, PageEdit] = _NO_EDITS
+    order: tuple[int, ...] = ()
+    splits: frozenset[int] = frozenset()
+    part_names: Mapping[int, str] = _NO_NAMES
+
+    @property
+    def has_edits(self) -> bool:
+        """True when the reviewer changed which pages stay, their order or the parts."""
+        return bool(self.edits or self.order or self.splits)
+
+    def is_included(self, page: PageAnalysis) -> bool:
+        """True when ``page`` goes into a PDF: the reviewer's word, else the verdict."""
+        edit = self.edits.get(page.number)
+        if edit is not None and edit.include is not None:
+            return edit.include
+        return self.keep_blank or not page.blank
 
     @property
     def kept(self) -> tuple[PageAnalysis, ...]:
-        """The pages that go into the PDF: all of them with ``keep_blank``, else the ones that
-        do not look blank."""
-        return tuple(page for page in self.pages if self.keep_blank or not page.blank)
+        """The pages that go into a PDF, in raw order."""
+        return tuple(page for page in self.pages if self.is_included(page))
 
     @property
     def dropped(self) -> tuple[int, ...]:
-        """The raw numbers of the pages left out as blank."""
-        return tuple(page.number for page in self.pages if page.blank and not self.keep_blank)
+        """The raw numbers of the pages that look blank and are left out."""
+        return tuple(p.number for p in self.pages if p.blank and not self.is_included(p))
+
+    @property
+    def removed(self) -> tuple[int, ...]:
+        """The raw numbers of the pages that do not look blank and the reviewer left out."""
+        return tuple(p.number for p in self.pages if not p.blank and not self.is_included(p))
 
 
 @dataclass(frozen=True)
 class OutputPart:
-    """The pages of one PDF, in order."""
+    """One PDF: its pages in output order, each with its clockwise quarter turns, and the name
+    the reviewer gave it (None: the document's name)."""
 
-    pages: tuple[PageAnalysis, ...]
+    pages: tuple[tuple[PageAnalysis, int], ...]
+    name: str | None = None

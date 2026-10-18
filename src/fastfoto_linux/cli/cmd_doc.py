@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import NoReturn
 
 from fastfoto_linux.cli.cmd_process import existing_pages
+from fastfoto_linux.cli.doc_dry_run import dry_run_lines
+from fastfoto_linux.cli.doc_edit_options import add_edit_options, edits_from_args
 from fastfoto_linux.cli.doc_options import (
     add_document_options,
     add_document_scan_options,
@@ -37,13 +39,18 @@ from fastfoto_linux.documents import (
     ColourMode,
     DocumentSettings,
     DocumentSettingsError,
+    NothingSelectedError,
     OcrMissingError,
     OcrMode,
     OutputFolderMissingError,
     build_document,
     find_ocrmypdf,
 )
+from fastfoto_linux.documents.analyse import analyse_document
+from fastfoto_linux.documents.draft_edit import PageEdits, parts, with_edits
+from fastfoto_linux.documents.errors import DocumentEditError
 from fastfoto_linux.documents.ocr_tools import ocr_fix_hint
+from fastfoto_linux.documents.write import DocumentResult, write_document
 from fastfoto_linux.scanner import ScannerError, resolve_target, run_scan
 from fastfoto_linux.scanner.shim_trust import inside_flatpak
 from fastfoto_linux.session import (
@@ -79,12 +86,15 @@ def add_parser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]"
         description="Trim, drop blank pages, and write raw scanner pages (PNG) as one PDF. "
         "Pages are taken in natural filename order (page-2 before page-10) and counted from 1 in "
         "that order. Unless --simplex they are paired as the two sides of sheets, 1+2, 3+4 and so "
-        "on, so they must start with a front. The page files are never changed or deleted.",
+        "on, so they must start with a front. The page files are never changed or deleted. "
+        "--drop, --keep, --rotate, --split, --order and --part-name change what the PDFs hold "
+        "(see their help); --dry-run shows what would happen and writes nothing.",
     )
     process.add_argument("pages", nargs="+", type=Path, metavar="PAGE.png", help="raw page files")
     add_document_options(process)
     add_fallback_dpi_option(process)
     add_pairing_option(process)
+    add_edit_options(process)
     process.set_defaults(handler=run_process)
 
 
@@ -104,6 +114,8 @@ def document_failure(error: Exception) -> Exception:
     """The error to raise for a failed document run: the ones a user can act on become one line."""
     if isinstance(error, AllPagesBlankError):
         return CliError(f"{error}; --keep-blank keeps blank pages", EXIT_PROCESSING_ERROR)
+    if isinstance(error, NothingSelectedError):
+        return CliError(f"{error}; --keep brings back a page", EXIT_PROCESSING_ERROR)
     if isinstance(error, OcrMissingError):  # it vanished between the check and the run
         return CliError(str(error), EXIT_TOOL_MISSING)
     if isinstance(error, OutputFolderMissingError):  # it was there when the options were checked
@@ -120,15 +132,48 @@ def _raise_failure(error: Exception) -> NoReturn:
     raise failure from error
 
 
+def _edited(
+    pages: Sequence[Path], settings: DocumentSettings, edits: PageEdits, *, dry_run: bool
+) -> DocumentResult | None:
+    """Analyse the pages, make the edits and write the PDFs (None for a dry run, which prints
+    what would happen instead). An edit that cannot be made is a usage error."""
+    draft = analyse_document(pages, settings)
+    try:
+        draft = with_edits(draft, edits)
+    except DocumentEditError as error:
+        raise CliError(str(error), EXIT_USAGE) from error
+    if dry_run:
+        print("\n".join(dry_run_lines(draft)))
+        return None
+    if draft.raw_dir is None and any(
+        page.encoded is None or turns for part in parts(draft) for page, turns in part.pages
+    ):
+        raise CliError(  # a page to turn or bring back is read again from its file
+            "--rotate and --keep need the pages in one folder, which these are not",
+            EXIT_USAGE,
+        )
+    return write_document(draft, settings)
+
+
 def run_process(args: argparse.Namespace) -> int:
     pages = existing_pages(args.pages)
     settings = build_settings(args)
+    edits = edits_from_args(args, len(pages))
     _require_ocr_if_asked(settings)
-    prepare_output_root(args)
+    if args.dry_run:  # nothing is made, not even the folder
+        if not args.out.is_dir():
+            raise CliError(f"--dry-run needs the output folder {args.out}", EXIT_USAGE)
+    else:
+        prepare_output_root(args)
     try:
-        result = build_document(pages, settings)
-    except (AllPagesBlankError, OcrMissingError) as error:
+        if edits == PageEdits() and not args.dry_run:
+            result: DocumentResult | None = build_document(pages, settings)
+        else:
+            result = _edited(pages, settings, edits, dry_run=args.dry_run)
+    except (AllPagesBlankError, NothingSelectedError, OcrMissingError) as error:
         _raise_failure(error)
+    if result is None:
+        return EXIT_OK
     print_document_summary(result, install_hint=ocr_fix_hint())
     return EXIT_OK if result.ok else EXIT_PROCESSING_ERROR
 

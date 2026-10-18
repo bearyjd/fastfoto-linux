@@ -14,7 +14,7 @@ from fastfoto_linux.gui.docreport import (
     offers_kept,
 )
 from fastfoto_linux.gui.doctools import DocumentSetup
-from fastfoto_linux.gui.documents import DocumentItem, item_from_document
+from fastfoto_linux.gui.documents import DocumentItem, items_from_document
 from fastfoto_linux.gui.form import ScanForm
 from fastfoto_linux.gui.modes import CLOSE_SCAN_TEXT, CLOSE_SCAN_TITLE, WorkerPort
 from fastfoto_linux.gui.report import Banner
@@ -100,7 +100,7 @@ class DocumentsSide:
         """The PDFs listed once ``result`` is in: one more when it made a PDF."""
         if result.document is None:
             return shown
-        return (*shown, item_from_document(result.document))
+        return (*shown, *items_from_document(result.document))
 
     def result_banner(self, final: State, result: DocumentSessionResult) -> Banner | None:
         return document_result_banner(final, result)

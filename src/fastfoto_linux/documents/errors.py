@@ -17,6 +17,15 @@ class AllPagesBlankError(DocumentError):
     """Every page looked blank, so there is nothing to put in a PDF."""
 
 
+class NothingSelectedError(DocumentError):
+    """The reviewer left out every page, so there is nothing to put in a PDF."""
+
+
+class DocumentEditError(DocumentError, ValueError):
+    """An edit that cannot be made: a page that is not there, a bad order, a part that does not
+    exist."""
+
+
 class OcrMissingError(DocumentError):
     """Searchable text was required (``--ocr on``) but OCR is not available: OCRmyPDF,
     Tesseract or both is missing."""

@@ -12,15 +12,15 @@ honoured before each page, in the checks as well as in the processing.
 import logging
 import threading
 from collections.abc import Callable, Sequence
-from dataclasses import replace
 from pathlib import Path
 
-from fastfoto_linux.documents.assess import MAX_BOXES, PageAssessment, assess_page
-from fastfoto_linux.documents.bleed import set_off
-from fastfoto_linux.documents.draft import DocumentDraft, Flag, PageAnalysis, TrimBox
+from fastfoto_linux.documents.assess import PageAssessment, assess_page
+from fastfoto_linux.documents.draft import DocumentDraft, PageAnalysis, TrimBox
 from fastfoto_linux.documents.encode import EncodedPage, encode_page
 from fastfoto_linux.documents.errors import DocumentError, stop_if_cancelled
+from fastfoto_linux.documents.inkmap import ink_map
 from fastfoto_linux.documents.loader import inspect_page, load_page
+from fastfoto_linux.documents.neighbours import with_neighbour_flags
 from fastfoto_linux.documents.settings import DocumentSettings, check_settings
 from fastfoto_linux.documents.trim import Trimmed, trim_page
 
@@ -66,6 +66,7 @@ def _analysis(  # noqa: PLR0913 - the fields of one page
         partner=partner,
         flags=frozenset() if assessment is None else assessment.flags,
         marks=() if assessment is None else assessment.marks,
+        ink=None if assessment is None else ink_map(trimmed),
         encoded=encoded,
     )
 
@@ -116,26 +117,6 @@ def _analyse_sheet(  # noqa: PLR0913 - what a sheet needs, and the hooks, in one
     return analysed
 
 
-def _set_off_by(page: PageAnalysis, by_number: dict[int, PageAnalysis]) -> bool:
-    """Whether ``page`` is a kept back whose mark boxes mirror those of the printed side (the
-    front) of the previous or of the next sheet."""
-    is_back = page.partner is not None and page.partner < page.number
-    if not is_back or page.blank or not 0 < len(page.marks) < MAX_BOXES:
-        return False
-    fronts = (page.number - SIDES_PER_SHEET - 1, page.number + 1)
-    return set_off(page.marks, [by_number[n].marks for n in fronts if n in by_number])
-
-
-def _with_set_off(pages: list[PageAnalysis]) -> list[PageAnalysis]:
-    """The pages, with ``SET_OFF`` where ``_set_off_by``. Boxes only: a back is settled once the
-    next sheet has been analysed, and no pixels are held for it."""
-    by_number = {page.number: page for page in pages}
-    return [
-        replace(page, flags=page.flags | {Flag.SET_OFF}) if _set_off_by(page, by_number) else page
-        for page in pages
-    ]
-
-
 def _common_folder(pages: Sequence[Path]) -> Path | None:
     folders = {page.parent for page in pages}
     return folders.pop() if len(folders) == 1 else None
@@ -174,7 +155,7 @@ def analyse_document(
             _analyse_sheet(pages, numbers, settings, cancel=cancel, on_page=on_page, encode=encode)
         )
     return DocumentDraft(
-        pages=tuple(_with_set_off(analysed)),
+        pages=tuple(with_neighbour_flags(analysed)),
         raw_dir=_common_folder(pages),
         duplex=settings.duplex,
         keep_blank=settings.keep_blank,

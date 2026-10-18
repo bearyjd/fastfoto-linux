@@ -13,8 +13,7 @@ from typing import Any
 import pypdf
 import pytest
 
-from fastfoto_linux.documents import OcrStatus, build_document, find_ocrmypdf
-from fastfoto_linux.documents import build as build_module
+from fastfoto_linux.documents import OcrStatus, build_document, find_ocrmypdf, write
 from fastfoto_linux.gui.controller import Controller
 from fastfoto_linux.gui.doctools import DocumentSetup, DocumentTools
 from fastfoto_linux.gui.form import ScanForm
@@ -108,7 +107,7 @@ def no_real_ocr(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.Mo
 
 def disk_full_once(monkeypatch: pytest.MonkeyPatch) -> None:
     """The first PDF to be saved meets a full disk, the next one does not."""
-    real = build_module.publish_pdf
+    real = write.publish_pdf
     calls: list[int] = []
 
     def publish(data: bytes, root: Path, name: str) -> Path:
@@ -117,7 +116,7 @@ def disk_full_once(monkeypatch: pytest.MonkeyPatch) -> None:
             raise OSError(errno.ENOSPC, "No space left on device", str(root / f".{name}.4a.tmp"))
         return real(data, root, name)
 
-    monkeypatch.setattr(build_module, "publish_pdf", publish)
+    monkeypatch.setattr(write, "publish_pdf", publish)
 
 
 def test_ocrmypdf_that_vanished_since_the_scan_still_gives_a_plain_pdf(

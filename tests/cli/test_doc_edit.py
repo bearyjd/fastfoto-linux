@@ -37,10 +37,10 @@ def sizes(pdf: Path) -> list[tuple[float, float]]:
     return [page_size_pt(data, n) for n in range(len(data.pages))]
 
 
-@pytest.fixture
-def four(tmp_path: Path) -> list[Path]:
+@pytest.fixture(scope="module")
+def four(tmp_path_factory: pytest.TempPathFactory) -> list[Path]:
     scenes = [text_scene(1), blank_scene(2), text_scene(3), text_scene(4)]
-    return write_pages(tmp_path / "raw", scenes)
+    return write_pages(tmp_path_factory.mktemp("raw"), scenes)
 
 
 def test_drop_removes_a_page_and_the_summary_says_so(four, out, capsys) -> None:

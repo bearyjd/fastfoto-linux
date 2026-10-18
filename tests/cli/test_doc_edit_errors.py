@@ -15,6 +15,11 @@ def no_real_ocr(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.Mo
     fake.no_ocr_on_path(tmp_path_factory.mktemp("no-ocr"), monkeypatch)
 
 
+@pytest.fixture(scope="module")
+def four(tmp_path_factory: pytest.TempPathFactory) -> list[Path]:
+    return write_pages(tmp_path_factory.mktemp("raw"), [text_scene(n) for n in range(1, 5)])
+
+
 @pytest.mark.parametrize(
     ("options", "message"),
     [

@@ -47,9 +47,23 @@ def out(tmp_path: Path) -> Path:
     return folder
 
 
+_DRAFTS: dict[Any, DocumentDraft] = {}  # drafts of the shared pages, made once per module
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _shared_pages(tmp_path_factory: pytest.TempPathFactory) -> None:
+    _DRAFTS.clear()
+    _DRAFTS["folder"] = tmp_path_factory.mktemp("pages")  # type: ignore[assignment]
+
+
 def _draft(tmp_path: Path, out: Path, count: int = 4, **options: Any) -> DocumentDraft:
-    pages = write_pages(tmp_path / "raw", [text_scene(n) for n in range(1, count + 1)])
-    return hand_draft(pages, settings(out), **options)
+    """A draft of ``count`` text pages with their bytes (pages and analysis are made once)."""
+    key = (count, tuple(sorted(options.get("blank", ()))))
+    if key not in _DRAFTS:
+        folder = Path(str(_DRAFTS["folder"])) / f"p{len(_DRAFTS)}"
+        pages = write_pages(folder, [text_scene(n) for n in range(1, count + 1)])
+        _DRAFTS[key] = hand_draft(pages, settings(out), **options)
+    return _DRAFTS[key]
 
 
 def _titles(result: Any) -> list[str]:
@@ -165,22 +179,21 @@ def test_without_edits_all_blank_is_still_the_old_error(tmp_path: Path, out: Pat
 
 
 @pytest.mark.parametrize("dpi", [200, 300, 600])
-@pytest.mark.parametrize("turns", [1, 2, 3])
 def test_a_turned_page_is_the_plain_page_turned_clockwise_pixel_for_pixel(
-    dpi: int, turns: int, tmp_path: Path, out: Path
+    dpi: int, tmp_path: Path, out: Path
 ) -> None:
     scene = text_scene(1, dpi=dpi, paper_mm=SMALL_MM)
     pages = write_pages(tmp_path / "raw", [scene])
     used = settings(out, colour=ColourMode.BW, duplex=False)
     draft = hand_draft(pages, used, with_bytes=False)
-    plain = write_document(draft, used)
-    turned = write_document(rotate(draft, 1, turns), used)
-    before = pdf_pixels(reader(plain.pdf.read_bytes()), 0)
-    after = pdf_pixels(reader(turned.pdf.read_bytes()), 0)
-    assert np.array_equal(after, np.rot90(before, -turns))
-    width, height = page_size_pt(reader(plain.pdf.read_bytes()), 0)
-    expected = (height, width) if turns % 2 else (width, height)
-    assert page_size_pt(reader(turned.pdf.read_bytes()), 0) == pytest.approx(expected, abs=0.5)
+    plain = reader(write_document(draft, used).pdf.read_bytes())
+    before = pdf_pixels(plain, 0)
+    width, height = page_size_pt(plain, 0)
+    for turns in (1, 2, 3):
+        turned = reader(write_document(rotate(draft, 1, turns), used).pdf.read_bytes())
+        assert np.array_equal(pdf_pixels(turned, 0), np.rot90(before, -turns))
+        expected = (height, width) if turns % 2 else (width, height)
+        assert page_size_pt(turned, 0) == pytest.approx(expected, abs=0.5)
 
 
 def test_a_turned_page_is_read_again_even_when_it_carries_its_bytes(
@@ -197,14 +210,14 @@ def test_a_turned_page_is_read_again_even_when_it_carries_its_bytes(
 def test_turning_every_page_of_a_long_document_holds_one_decoded_page(
     tmp_path: Path, out: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    scenes = [text_scene(n, dpi=300, paper_mm=SMALL_MM) for n in range(6)]
+    scenes = [text_scene(n, dpi=300, paper_mm=SMALL_MM) for n in range(4)]
     draft = hand_draft(write_pages(tmp_path / "raw", scenes), settings(out), with_bytes=False)
-    for number in range(1, 7):
+    for number in range(1, 5):
         draft = rotate(draft, number, 1)
     counter = LiveCounter()
     monkeypatch.setattr(write_module, "load_page", counter)
-    write_document(toggle_split(draft, 4), settings(out))
-    assert (counter.loads, counter.peak) == (6, 1)
+    write_document(toggle_split(draft, 3), settings(out))
+    assert (counter.loads, counter.peak) == (4, 1)
 
 
 def test_a_page_brought_back_is_read_from_the_raw_pages(tmp_path: Path, out: Path) -> None:

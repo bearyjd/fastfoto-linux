@@ -544,6 +544,8 @@ other lines go to stderr, as Qt's default handler does when it is not logging to
 
 ### Flatpak
 
+Preparing a Flathub submission: see [docs/flathub-submission.md](docs/flathub-submission.md).
+
 The Flatpak brings its own Qt and Kirigami, so it needs no distribution packages, and carries
 the SANE `epsonds` backend and the USB gap shim, built from this checkout (x86_64 only). The
 manifest is `packaging/flatpak/io.github.bearyjd.FastFotoLinux.yml`. You need `flatpak` and

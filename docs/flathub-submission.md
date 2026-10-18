@@ -22,14 +22,29 @@ reviewer will want for each permission. Requirements pages:
 
 ## Known linter finding: the app ID and the repository name
 
-`flatpak-builder-lint manifest` reports `appid-url-not-reachable`: for an `io.github.<user>.<App>`
-ID it opens `https://github.com/<user>/<app>` with the last part lower-cased and without hyphens,
-that is `https://github.com/bearyjd/fastfotolinux`, which does not exist (the repository is
-`fastfoto-linux`). The maintainer has to choose before submitting: rename the repository to
-`fastfotolinux` (GitHub redirects the old name; update the URLs in the metainfo, the manifest and
-the README), ask the Flathub reviewers for an exception in the submission PR, or change the app ID
-(which renames every file that carries it). Decide this first, because the app ID cannot change
-after publication.
+`flatpak-builder-lint manifest` reports `appid-url-not-reachable`. Its message, verbatim from the
+run on this manifest: `Tried https://github.com/bearyjd/fastfotolinux | Status: 404`. The
+repository is `github.com/bearyjd/fastfoto-linux`, so the URL the linter tried does not exist.
+(Flathub's requirements page describes the URL as derived from the ID; recheck the message with
+the current linter before submitting.)
+
+Decision: the repository stays `github.com/bearyjd/fastfoto-linux` and the ID stays
+`io.github.bearyjd.FastFotoLinux`; request an exception in the submission PR (Flathub says one can
+be granted after a manual check). Fallbacks if refused: rename the repository to `FastFotoLinux`
+(GitHub redirects the old name; update the URLs in the metainfo, manifest and README), or change
+the ID to `io.github.bearyjd.fastfoto-linux` (a dash is allowed in the last component; the ID is
+permanent once published).
+
+Paragraph to paste into the submission PR:
+
+> The linter reports `appid-url-not-reachable` for `io.github.bearyjd.FastFotoLinux`. The project
+> lives at https://github.com/bearyjd/fastfoto-linux (the name with a hyphen), owned by the same
+> account `bearyjd` that the ID names, and the metainfo, the manifest sources and the release tags
+> all point there. We would like to keep this repository name and ID; could you check this
+> manually and grant the exception?
+
+Pedantic appstream note (not an error; validation succeeds): `cid-contains-uppercase-letter`, the
+ID has capitals. It cannot be fixed without changing the ID, which is the decision above.
 
 ## Placeholders to fill (search for `TODO(release)`)
 
@@ -94,7 +109,7 @@ flatpak run --command=flatpak-builder-lint org.flatpak.Builder repo repo
 
 ## Submitting (by hand)
 
-1. Fork `flathub/flathub` (all branches, not only master).
+1. Fork `flathub/flathub` and uncheck "Copy the master branch only" (the submission page's wording), so that the `new-pr` branch is copied too.
 2. Create a branch from `new-pr`, copy the contents of `packaging/flatpak/flathub/` into the
    branch root, and open a PR against the `new-pr` base branch titled
    `Add io.github.bearyjd.FastFotoLinux`.

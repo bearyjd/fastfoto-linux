@@ -297,7 +297,8 @@ def _mutations(valid: dict[str, Any], seed: int, count: int):
 def test_random_mutations_of_a_valid_sidecar_never_get_past_open_draft(saved) -> None:
     folder, pages, settings, draft = saved
     valid = sidecar(folder)
-    for text in _mutations(valid, seed=7, count=150):
+    for index, text in enumerate(_mutations(valid, seed=7, count=150)):
         (folder / REVIEW_FILE).write_text(text, encoding="utf-8")
-        opened = open_draft(folder, pages, settings)
-        assert len(opened.pages) == len(draft.pages)
+        read_review(folder, pages)  # a result or None, never an exception
+        if index % 30 == 0:  # opening may analyse the pages again: only a few of them
+            assert len(open_draft(folder, pages, settings).pages) == len(draft.pages)

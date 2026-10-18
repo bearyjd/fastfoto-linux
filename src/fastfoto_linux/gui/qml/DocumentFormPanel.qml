@@ -12,7 +12,7 @@ QQC2.ScrollView {
     objectName: "documentsForm"
 
     // The settings can be changed again once the scan is over.
-    readonly property bool editable: !bridge.busy
+    readonly property bool editable: !bridge.busy && !bridge.documents.languages.busy
 
     function error(field) {
         const message = bridge.errors[field];
@@ -201,16 +201,10 @@ QQC2.ScrollView {
             font: Kirigami.Theme.smallFont
         }
 
-        QQC2.TextField {
-            objectName: "docLangsField"
-            implicitWidth: Kirigami.Units.gridUnit * 16
-            Kirigami.FormData.label: qsTr("Text language:")
+        OcrLanguagePicker {
+            Kirigami.FormData.label: qsTr("Text languages:")
             Layout.fillWidth: true
-            text: bridge.documents.form.langs
-            placeholderText: qsTr("eng, or eng+deu for two languages")
-            enabled: panel.editable
-            Accessible.name: qsTr("Text language")
-            onTextEdited: bridge.setDocumentField("langs", text)
+            editable: panel.editable
         }
 
         QQC2.Label {

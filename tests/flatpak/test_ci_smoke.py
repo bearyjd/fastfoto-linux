@@ -87,3 +87,15 @@ def test_the_script_installs_nothing_and_removes_only_its_own_folder() -> None:
     for forbidden in ("sudo", "brew", "dnf", "apt", "pip install", "rm -rf", "--system"):
         assert forbidden not in text, forbidden
     assert "mktemp -d" in text
+
+
+def test_the_script_checks_offline_catalogue_and_actual_sandbox_cache_namespace() -> None:
+    text = script()
+    assert "--unshare=network --command=python3" in text
+    assert "_cache_root(catalog, create=True)" in text
+    assert 'Path(os.environ["XDG_DATA_HOME"]).resolve()' in text
+    assert "expected / catalog.revision" in text
+    assert "tempfile.TemporaryFile(dir=root)" in text
+    assert "inventory = discover_languages()" in text
+    assert "assert not inventory.error" in text
+    assert "0o700" in text

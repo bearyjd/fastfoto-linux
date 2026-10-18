@@ -11,6 +11,7 @@ from PySide6.QtCore import Property, QObject, Signal
 from fastfoto_linux.gui.controller import Controller
 from fastfoto_linux.gui.docform import DOCUMENT_COLOURS
 from fastfoto_linux.gui.qt.documents_model import DocumentsModel
+from fastfoto_linux.gui.qt.languages_view import LanguagesView
 from fastfoto_linux.session import DOCUMENT_DPI
 
 HEADING = "Documents"
@@ -23,11 +24,17 @@ class DocumentsView(QObject):
         super().__init__(parent)
         self._controller = controller
         self._items = DocumentsModel(self)
+        self._languages = LanguagesView(controller, self)
 
     def refresh(self) -> None:
         """The page changed: show the PDFs it has now and tell QML to read everything again."""
         self._items.set_items(self._controller.documents)
+        self._languages.changed.emit()
         self.changed.emit()
+
+    @Property(QObject, constant=True)
+    def languages(self) -> LanguagesView:
+        return self._languages
 
     @Property("QVariantMap", notify=changed)
     def form(self) -> dict[str, Any]:

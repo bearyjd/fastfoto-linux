@@ -34,6 +34,7 @@ class DocumentTools:
     preview_review: Callable[[DocumentDraft, int, Event], Path] | None = None
     find_ocr: Callable[[], str | None] = find_ocrmypdf
     in_flatpak: Callable[[], bool] = inside_flatpak
+    check_languages: Callable[[str], None] | None = None
 
     @property
     def ocr_available(self) -> bool:

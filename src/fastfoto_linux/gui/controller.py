@@ -295,6 +295,8 @@ class Controller:
     def set_document_field(self, name: str, value: object) -> None:
         """Change one field of the Documents form (the folder is the Photos form's)."""
         self._docs.set_field(name, value)
+        if name == "langs":
+            self._remember(self._docs.save_form, self._docs.form)
         self._changed()
 
     def set_field(self, name: str, value: object) -> None:

@@ -217,6 +217,7 @@ def test_each_mode_is_remembered_in_the_one_file(
     )
     bridge = Bridge(discover=lambda: ScanTarget(device=DEVICE), documents=tools)
     try:
+        wait_until(lambda: not bridge.documents.languages.busy, "initial language inventory")
         bridge.setMode("documents")
         bridge.setField("output_folder", str(out))
         bridge.setDocumentField("name", "Lease")

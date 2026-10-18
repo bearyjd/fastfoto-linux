@@ -139,13 +139,19 @@ def test_outside_a_flatpak_the_hints_are_unchanged(
 
 
 @pytest.mark.parametrize("langs", ["deu", "eng+deu", "fra+spa"])
-def test_a_language_that_is_not_bundled_says_only_english_comes_with_the_flatpak(
+def test_missing_flatpak_languages_offer_the_picker_and_bundled_english_fallback(
     sandbox: Path, langs: str
 ) -> None:
     text = describe_exit(MISSING_DEPENDENCY, langs)
     assert "English" in text
     assert "eng" in text
     assert "Flatpak" in text
+    assert "Documents" in text
+    assert "language picker" in text
+    assert "download" in text
+    assert "ask for eng" not in text
+    for code in langs.split("+"):
+        assert code in text
     for command in (*OUTSIDE_COMMANDS, "langpack"):
         assert command.lower() not in text.lower()
 

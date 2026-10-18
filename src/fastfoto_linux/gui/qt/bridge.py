@@ -12,6 +12,7 @@ from typing import Any
 
 from PySide6.QtCore import Property, QObject, Qt, QUrl, Signal, Slot
 
+from fastfoto_linux.documents import OcrMissingError
 from fastfoto_linux.gui.controller import Controller, disk_key
 from fastfoto_linux.gui.docform import DocumentForm
 from fastfoto_linux.gui.doctools import DocumentSetup, DocumentTools
@@ -139,6 +140,7 @@ class Bridge(QObject):
             ),
         )
         self._documents = DocumentsView(self.controller, self)
+        self._languages = self._documents.languages
         self._review = ReviewView(self)
         self.on_review_preview = lambda answer: self._send("on_review_preview", answer)
         self._close_signalled = False
@@ -153,6 +155,8 @@ class Bridge(QObject):
         self._event.connect(self._dispatch, Qt.ConnectionType.QueuedConnection)
         self._disk.connect(self._disk_answered, Qt.ConnectionType.QueuedConnection)
         self.checkDisk()  # the folder of the remembered form, looked at off the GUI thread
+        self._languages.changed.connect(self.changed)
+        self._languages.reload()
 
     # -- the worker's sink (called on the worker's thread) ----------------------------------
 
@@ -275,7 +279,8 @@ class Bridge(QObject):
 
     @Property(bool, notify=changed)
     def canScan(self) -> bool:
-        return self.controller.can_scan
+        needs_models = self.controller.mode is Mode.DOCUMENTS and self.controller.searchable_checked
+        return self.controller.can_scan and (not needs_models or self._languages.ready)
 
     @Property(bool, notify=changed)
     def canCancel(self) -> bool:
@@ -403,6 +408,8 @@ class Bridge(QObject):
     @Slot(str, "QVariant")
     @_guarded(None)
     def setDocumentField(self, name: str, value: Any) -> None:
+        if self.controller.busy or self._languages.busy:
+            raise ActionBlockedError("Wait for the current job before changing document settings.")
         self.controller.set_document_field(name, value)
 
     @Slot()
@@ -425,6 +432,9 @@ class Bridge(QObject):
     @Slot()
     @_guarded(None)
     def startScan(self) -> None:
+        needs_models = self.controller.mode is Mode.DOCUMENTS and self.controller.searchable_checked
+        if needs_models and not self._languages.ready:
+            raise OcrMissingError(self._languages.scanMessage)
         self.controller.start_scan()
 
     @Slot()
@@ -484,6 +494,7 @@ class Bridge(QObject):
         if self._shut_down:
             return
         self._shut_down = True
+        self._languages.stop()
         self._review.stop()
         self._close_events()
         self._worker.cancel()

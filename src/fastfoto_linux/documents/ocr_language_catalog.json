@@ -1,0 +1,763 @@
+{
+  "revision": "87416418657359cb625c412a48b6e1d6d41c29bd",
+  "languages": [
+    {
+      "code": "afr",
+      "name": "Afrikaans",
+      "size": 2652786,
+      "git_blob_sha1": "09e69cf5478cd6a0fb3ec5e7e7fa95a04f5cafb3"
+    },
+    {
+      "code": "sqi",
+      "name": "Albanian",
+      "size": 1874705,
+      "git_blob_sha1": "9624fbf33452a95dd5a0a3a93fe9876108104895"
+    },
+    {
+      "code": "amh",
+      "name": "Amharic",
+      "size": 5470094,
+      "git_blob_sha1": "7a302b2bf6306c34177f594e0824eafc48906965"
+    },
+    {
+      "code": "ara",
+      "name": "Arabic",
+      "size": 1432056,
+      "git_blob_sha1": "c8d129c67821c1592cac46836686b057ecc203dc"
+    },
+    {
+      "code": "hye",
+      "name": "Armenian",
+      "size": 3463717,
+      "git_blob_sha1": "ec2e2f3adea785e8964b9771871c44349a6e1b40"
+    },
+    {
+      "code": "asm",
+      "name": "Assamese",
+      "size": 2045427,
+      "git_blob_sha1": "086035c6eacd5788c1f06d58c250023cee2aeb28"
+    },
+    {
+      "code": "aze",
+      "name": "Azerbaijani",
+      "size": 3524799,
+      "git_blob_sha1": "27bc73edf08e5e5f0c3e43c315c5c6d965c2f075"
+    },
+    {
+      "code": "aze_cyrl",
+      "name": "Azerbaijani - Cyrillic",
+      "size": 1943672,
+      "git_blob_sha1": "e2b1b953a5b8db9247c6ddfcb58f062dc0b3b574"
+    },
+    {
+      "code": "eus",
+      "name": "Basque",
+      "size": 5175921,
+      "git_blob_sha1": "6247f975443ec82c219c39e0b5ea76b4833c82fe"
+    },
+    {
+      "code": "bel",
+      "name": "Belarusian",
+      "size": 3692098,
+      "git_blob_sha1": "65d83dad535f876de31847f5fa2ff1bdd57c7bab"
+    },
+    {
+      "code": "ben",
+      "name": "Bengali",
+      "size": 855841,
+      "git_blob_sha1": "7e9054d1de309714009a85555f5276168d41af9c"
+    },
+    {
+      "code": "bos",
+      "name": "Bosnian",
+      "size": 2498242,
+      "git_blob_sha1": "95bed5c32e3759347db0471569303f06e3485f42"
+    },
+    {
+      "code": "bre",
+      "name": "Breton",
+      "size": 6335007,
+      "git_blob_sha1": "c01691329561938fb7d491ea7611c591202952dd"
+    },
+    {
+      "code": "bul",
+      "name": "Bulgarian",
+      "size": 1675212,
+      "git_blob_sha1": "1e65588d127d918ef3ba95b785b446f15827d60f"
+    },
+    {
+      "code": "mya",
+      "name": "Burmese",
+      "size": 4640561,
+      "git_blob_sha1": "cf28ddca604dc7f46bc34f2f4c6a193a0706c03b"
+    },
+    {
+      "code": "cat",
+      "name": "Catalan; Valencian",
+      "size": 1146012,
+      "git_blob_sha1": "3fcd350dd2bb76503de90249111fff4e3c6aa0f0"
+    },
+    {
+      "code": "ceb",
+      "name": "Cebuano",
+      "size": 716214,
+      "git_blob_sha1": "5a1b96928e54b175db96f00d2aa84b5878d301b9"
+    },
+    {
+      "code": "khm",
+      "name": "Central Khmer",
+      "size": 1446926,
+      "git_blob_sha1": "d466dc2a7e35bf90cb7b54364985703728398687"
+    },
+    {
+      "code": "chr",
+      "name": "Cherokee",
+      "size": 374944,
+      "git_blob_sha1": "e0799a2b888466e5bc2ca60f1f2fb4a7ff4c6990"
+    },
+    {
+      "code": "chi_sim",
+      "name": "Chinese - Simplified",
+      "size": 2469156,
+      "git_blob_sha1": "388bac276d033d06e5ed5ba7a7ad14ae58f97dab"
+    },
+    {
+      "code": "chi_sim_vert",
+      "name": "Chinese - Simplified (vertical)",
+      "size": 1927902,
+      "git_blob_sha1": "f9898e91068a9d04bcacf6d2a244da40e9f30c0c"
+    },
+    {
+      "code": "chi_tra",
+      "name": "Chinese - Traditional",
+      "size": 2366642,
+      "git_blob_sha1": "1955cd8b8d076b898616e9c2c1ace65b43105356"
+    },
+    {
+      "code": "chi_tra_vert",
+      "name": "Chinese - Traditional (vertical)",
+      "size": 1824756,
+      "git_blob_sha1": "94bc5dbd7fa25dd89ac9c5bd18f3fc6d8409aa0e"
+    },
+    {
+      "code": "cos",
+      "name": "Corsican",
+      "size": 2299099,
+      "git_blob_sha1": "3105b7fb0cd6c26f4fb144ec5d594430e88927cb"
+    },
+    {
+      "code": "hrv",
+      "name": "Croatian",
+      "size": 4103348,
+      "git_blob_sha1": "6dd4f8638a58eb0663e8f9a80a355c505dcf01a6"
+    },
+    {
+      "code": "ces",
+      "name": "Czech",
+      "size": 3795684,
+      "git_blob_sha1": "dd6fc79a62f9fcd1c7c6da06b31bb4fdb10dc173"
+    },
+    {
+      "code": "dan",
+      "name": "Danish",
+      "size": 2580059,
+      "git_blob_sha1": "85501b582937493f9ae6a64ccd0a6bb0a2ea33d5"
+    },
+    {
+      "code": "div",
+      "name": "Dhivehi",
+      "size": 1774535,
+      "git_blob_sha1": "53b46df7d6ae94f75913d6377182867ea09d950b"
+    },
+    {
+      "code": "nld",
+      "name": "Dutch; Flemish",
+      "size": 6050296,
+      "git_blob_sha1": "53ce95a9c2488a9a0228939944a184157373d0ae"
+    },
+    {
+      "code": "dzo",
+      "name": "Dzongkha",
+      "size": 449596,
+      "git_blob_sha1": "3c31175be56ab4db42af614f384ea52ce949082c"
+    },
+    {
+      "code": "eng",
+      "name": "English",
+      "size": 4113088,
+      "git_blob_sha1": "bbef4675053b5b468cdb477053e28b1c698ba08e"
+    },
+    {
+      "code": "enm",
+      "name": "English, Middle (1100-1500)",
+      "size": 3101551,
+      "git_blob_sha1": "e49b5b86da60f2e728ff2b7f4357692ac32b6a6d"
+    },
+    {
+      "code": "epo",
+      "name": "Esperanto",
+      "size": 4728393,
+      "git_blob_sha1": "235fc67adf52f43d34b409d44d426d560aefc8e3"
+    },
+    {
+      "code": "est",
+      "name": "Estonian",
+      "size": 4458101,
+      "git_blob_sha1": "a2b52c3388358e6dfc4eb8d64d8fc6afbb3630ea"
+    },
+    {
+      "code": "fao",
+      "name": "Faroese",
+      "size": 3439772,
+      "git_blob_sha1": "1b845e73759785908aef57161ae4c86a70cce622"
+    },
+    {
+      "code": "fil",
+      "name": "Filipino (old - Tagalog)",
+      "size": 1841715,
+      "git_blob_sha1": "785f80decce6ddb6b50bd99f4840414359c806ff"
+    },
+    {
+      "code": "fin",
+      "name": "Finnish",
+      "size": 7865732,
+      "git_blob_sha1": "73f92402f1891b9066e0e145f245145a2402105c"
+    },
+    {
+      "code": "fra",
+      "name": "French",
+      "size": 1130365,
+      "git_blob_sha1": "d9e2b2160be0d1ca3b8f1bf2730fae476ef3b4a6"
+    },
+    {
+      "code": "frm",
+      "name": "French, Middle (ca.1400-1600)",
+      "size": 2024948,
+      "git_blob_sha1": "ed06039efef821b78f22c86abb6c5aea7f02461e"
+    },
+    {
+      "code": "glg",
+      "name": "Galician",
+      "size": 2554555,
+      "git_blob_sha1": "7bc00b38f40f8de1575397f7d05387e5fbbacca4"
+    },
+    {
+      "code": "kat",
+      "name": "Georgian",
+      "size": 2524769,
+      "git_blob_sha1": "1a3ae11fdd248891dd3fc74f156a0ce246ec1a15"
+    },
+    {
+      "code": "kat_old",
+      "name": "Georgian - Old",
+      "size": 423167,
+      "git_blob_sha1": "f4ae5ab4b3fe4bb3226639d9b23fa71513a40ec8"
+    },
+    {
+      "code": "deu",
+      "name": "German",
+      "size": 1525436,
+      "git_blob_sha1": "97ed7b2b60f2771c07040660ef0f6daf596dc7bf"
+    },
+    {
+      "code": "deu_latf",
+      "name": "German (Fraktur Latin)",
+      "size": 6423052,
+      "git_blob_sha1": "11a641044a93413454f75fbb8e05b085bd0b9d8d"
+    },
+    {
+      "code": "frk",
+      "name": "German - Fraktur (now deu_latf)",
+      "size": 20,
+      "git_blob_sha1": "d473893bcabcef536ed36480f976fcce482bd87c"
+    },
+    {
+      "code": "grc",
+      "name": "Greek, Ancient (to 1453) (contrib)",
+      "size": 2246328,
+      "git_blob_sha1": "e94990006fc18e88ab120e7ca6681cc3b290269b"
+    },
+    {
+      "code": "ell",
+      "name": "Greek, Modern (1453-)",
+      "size": 1419514,
+      "git_blob_sha1": "ed98ae1a88d84414da316e6eeab3232f2c68639b"
+    },
+    {
+      "code": "guj",
+      "name": "Gujarati",
+      "size": 1418394,
+      "git_blob_sha1": "151b9aad2945e3103118e5d36eee288f631d985a"
+    },
+    {
+      "code": "hat",
+      "name": "Haitian; Haitian Creole",
+      "size": 1976902,
+      "git_blob_sha1": "30d3baeaeef791781d782e58feb415b25921df3f"
+    },
+    {
+      "code": "heb",
+      "name": "Hebrew",
+      "size": 961404,
+      "git_blob_sha1": "7356caf3cddc9c867fe6727e17726727b8284608"
+    },
+    {
+      "code": "hin",
+      "name": "Hindi",
+      "size": 1122751,
+      "git_blob_sha1": "a8f0aaec09378115b12a2c6287c57695d082aea2"
+    },
+    {
+      "code": "hun",
+      "name": "Hungarian",
+      "size": 5296273,
+      "git_blob_sha1": "5d24fa8e922d6b57853dcb0cc490060c76643cab"
+    },
+    {
+      "code": "isl",
+      "name": "Icelandic",
+      "size": 2278973,
+      "git_blob_sha1": "20d3bdf8cb8f2289a1f45aa9cdf4ddf2a22e7462"
+    },
+    {
+      "code": "ind",
+      "name": "Indonesian",
+      "size": 1122661,
+      "git_blob_sha1": "3013f50cd2af9aceca00e865ed889144865f0848"
+    },
+    {
+      "code": "iku",
+      "name": "Inuktitut",
+      "size": 2802266,
+      "git_blob_sha1": "6eab87ffe818b5f89baa869c458cb0a6dbed6b2d"
+    },
+    {
+      "code": "gle",
+      "name": "Irish",
+      "size": 1181824,
+      "git_blob_sha1": "a7abc7be9aadc862b31ab7c7bc672051cd0245fb"
+    },
+    {
+      "code": "ita",
+      "name": "Italian",
+      "size": 2701314,
+      "git_blob_sha1": "edbffbe0e51892b240630b5eeabededa7e7c9c4f"
+    },
+    {
+      "code": "ita_old",
+      "name": "Italian - Old",
+      "size": 3286123,
+      "git_blob_sha1": "c8a2c3c3d8c82a2d953b0fc64b949c1aa0918c09"
+    },
+    {
+      "code": "jpn",
+      "name": "Japanese",
+      "size": 2471260,
+      "git_blob_sha1": "c4178f89991bde90b7fdc647e3e1901868423bd0"
+    },
+    {
+      "code": "jpn_vert",
+      "name": "Japanese (vertical)",
+      "size": 3037480,
+      "git_blob_sha1": "43f38defe4b83588876d0d7a6dee928be1b73af0"
+    },
+    {
+      "code": "jav",
+      "name": "Javanese",
+      "size": 2982741,
+      "git_blob_sha1": "3155b8184d50af28dbf8dcbd972e26b388ab1581"
+    },
+    {
+      "code": "kan",
+      "name": "Kannada",
+      "size": 3608331,
+      "git_blob_sha1": "78252baeed24bcf327e62226c321c60242108a24"
+    },
+    {
+      "code": "kaz",
+      "name": "Kazakh",
+      "size": 4734644,
+      "git_blob_sha1": "f889e2b8ffd093d4f2dff8ffca2fa0b73296c028"
+    },
+    {
+      "code": "kir",
+      "name": "Kirghiz; Kyrgyz",
+      "size": 9928497,
+      "git_blob_sha1": "3e04f2954f33dd021b95de4befffb68904d9e142"
+    },
+    {
+      "code": "kor",
+      "name": "Korean",
+      "size": 1677415,
+      "git_blob_sha1": "60986d44497689f3abace0b148199476d93292e1"
+    },
+    {
+      "code": "kor_vert",
+      "name": "Korean (vertical)",
+      "size": 1113715,
+      "git_blob_sha1": "ea0a4963591f153a21c8f237de2a1c644b57f2b9"
+    },
+    {
+      "code": "kmr",
+      "name": "Kurmanji (Kurdish - Latin Script)",
+      "size": 3568615,
+      "git_blob_sha1": "d1afefb7c5a67e273c6612aba77753021506b557"
+    },
+    {
+      "code": "lao",
+      "name": "Lao",
+      "size": 6386744,
+      "git_blob_sha1": "10bd41ae9352889f85a489eb3183eb0cbebc2516"
+    },
+    {
+      "code": "lat",
+      "name": "Latin",
+      "size": 3187463,
+      "git_blob_sha1": "30dab6a24339f262d1eb21a3ee272d16c46aeba3"
+    },
+    {
+      "code": "lav",
+      "name": "Latvian",
+      "size": 2717247,
+      "git_blob_sha1": "71d925c8b6c73980157fd0128412b46e6e8396b5"
+    },
+    {
+      "code": "lit",
+      "name": "Lithuanian",
+      "size": 3154896,
+      "git_blob_sha1": "af9e2b3cd6a65650206b7d89f1b93b51683b9692"
+    },
+    {
+      "code": "ltz",
+      "name": "Luxembourgish",
+      "size": 2606426,
+      "git_blob_sha1": "c1ac5b922bbcad34b2654ba471c0a752c0397404"
+    },
+    {
+      "code": "mkd",
+      "name": "Macedonian",
+      "size": 1600188,
+      "git_blob_sha1": "fb0b245fb9ec61696e818887a70d8413b2914905"
+    },
+    {
+      "code": "msa",
+      "name": "Malay",
+      "size": 1747801,
+      "git_blob_sha1": "f0e2b8bef0a681f09baac99a418529205ee80201"
+    },
+    {
+      "code": "mal",
+      "name": "Malayalam",
+      "size": 5275996,
+      "git_blob_sha1": "70e96f02cbc2f26630225112cd323a7f0b6ccdf3"
+    },
+    {
+      "code": "mlt",
+      "name": "Maltese",
+      "size": 2308796,
+      "git_blob_sha1": "4242f9cd016987f16feb06973e988eced9604787"
+    },
+    {
+      "code": "mri",
+      "name": "Maori",
+      "size": 862973,
+      "git_blob_sha1": "eab6b1a98e4b6ed510d6443a5e3d14519da3b338"
+    },
+    {
+      "code": "mar",
+      "name": "Marathi",
+      "size": 2118233,
+      "git_blob_sha1": "79138fadcdb256ec7b59e3bf9df18bd5fb492bee"
+    },
+    {
+      "code": "mon",
+      "name": "Mongolian",
+      "size": 2137042,
+      "git_blob_sha1": "2ef212c519edc66ff2508f48dbe1bb836a4ea274"
+    },
+    {
+      "code": "nep",
+      "name": "Nepali",
+      "size": 1002911,
+      "git_blob_sha1": "948e365b55f9fe8179dde2ff0134feffb210496e"
+    },
+    {
+      "code": "nor",
+      "name": "Norwegian",
+      "size": 3610079,
+      "git_blob_sha1": "9209df2c9904c127437c07e16c287cdefd024e7c"
+    },
+    {
+      "code": "oci",
+      "name": "Occitan (post 1500)",
+      "size": 6322087,
+      "git_blob_sha1": "4017d4405b09333f22a3de2a4d30cf009bdb4a9b"
+    },
+    {
+      "code": "ori",
+      "name": "Oriya",
+      "size": 1480066,
+      "git_blob_sha1": "ae0f9ed13d5c9ad4a4de57c7266c434b83a9f583"
+    },
+    {
+      "code": "pan",
+      "name": "Panjabi; Punjabi",
+      "size": 497721,
+      "git_blob_sha1": "d4f00533a6c76ce4045aa6ad40b39f47eeaa333f"
+    },
+    {
+      "code": "fas",
+      "name": "Persian",
+      "size": 431500,
+      "git_blob_sha1": "1a17ee02076107e73abd15d2038389150c8f824f"
+    },
+    {
+      "code": "pol",
+      "name": "Polish",
+      "size": 4765518,
+      "git_blob_sha1": "2382f568f0ce0c4c0a7f4380a291255514e5e97f"
+    },
+    {
+      "code": "por",
+      "name": "Portuguese",
+      "size": 1982756,
+      "git_blob_sha1": "e9f373e95c66b4bf557c263721ef31f78e5bc301"
+    },
+    {
+      "code": "pus",
+      "name": "Pushto; Pashto",
+      "size": 1772087,
+      "git_blob_sha1": "220cdf92efdc76a227439c0b8734196af9743b98"
+    },
+    {
+      "code": "que",
+      "name": "Quechua",
+      "size": 5026336,
+      "git_blob_sha1": "d80c1f308973b3129183843759f23fdcb1c5c2be"
+    },
+    {
+      "code": "ron",
+      "name": "Romanian; Moldavian; Moldovan",
+      "size": 2376323,
+      "git_blob_sha1": "04cd2bc7b471431354e9446e973f3472f442e189"
+    },
+    {
+      "code": "rus",
+      "name": "Russian",
+      "size": 3861738,
+      "git_blob_sha1": "b146cb2263acbc6383f8e92ea0ce759537687bb8"
+    },
+    {
+      "code": "san",
+      "name": "Sanskrit",
+      "size": 12404677,
+      "git_blob_sha1": "3df043f3247fd41a21ac47c3b199bc87643e984b"
+    },
+    {
+      "code": "gla",
+      "name": "Scottish Gaelic",
+      "size": 3068307,
+      "git_blob_sha1": "e8bae7f1863dd1872ab7d2b2e7f319874c480e60"
+    },
+    {
+      "code": "srp",
+      "name": "Serbian",
+      "size": 2149931,
+      "git_blob_sha1": "530fb4b1cb27f369bbee7eb0add89bfd73d6f15c"
+    },
+    {
+      "code": "srp_latn",
+      "name": "Serbian - Latin",
+      "size": 3281787,
+      "git_blob_sha1": "5f81e591adad58a179a2d371aacccaf0801f93a2"
+    },
+    {
+      "code": "snd",
+      "name": "Sindhi",
+      "size": 1694035,
+      "git_blob_sha1": "1ef6548d22977dc1f236be879dce3a62ac6a47ed"
+    },
+    {
+      "code": "sin",
+      "name": "Sinhala; Sinhalese",
+      "size": 1727413,
+      "git_blob_sha1": "d0c8584e78c44666efcd7fbd47940a8a1121550d"
+    },
+    {
+      "code": "slk",
+      "name": "Slovak",
+      "size": 4427661,
+      "git_blob_sha1": "ca99e3e82f69a0e16b48cdfec3c4e706758269f2"
+    },
+    {
+      "code": "slv",
+      "name": "Slovenian",
+      "size": 3003829,
+      "git_blob_sha1": "835954e891897d3c8b63db48cb5c2712ef2e6b11"
+    },
+    {
+      "code": "spa",
+      "name": "Spanish; Castilian",
+      "size": 2294433,
+      "git_blob_sha1": "72e901f13ca52cfe34cf239a368b9ed3c0ddaf26"
+    },
+    {
+      "code": "spa_old",
+      "name": "Spanish; Castilian - Old",
+      "size": 2894755,
+      "git_blob_sha1": "42b281f55736b2f714598accfc2a78f409db1f0c"
+    },
+    {
+      "code": "sun",
+      "name": "Sundanese",
+      "size": 1369500,
+      "git_blob_sha1": "894891425c1fe302ce1d8f115a3c00967c6c2832"
+    },
+    {
+      "code": "swa",
+      "name": "Swahili",
+      "size": 2167651,
+      "git_blob_sha1": "633d73b35869600452eec58dcd9036cc702c3e48"
+    },
+    {
+      "code": "swe",
+      "name": "Swedish",
+      "size": 4167034,
+      "git_blob_sha1": "684e1fa66e4a55b983febf5f9ed04f26ad946e59"
+    },
+    {
+      "code": "syr",
+      "name": "Syriac",
+      "size": 2207208,
+      "git_blob_sha1": "462aefc8a1485ae4c38db82f7f50fd105bf30195"
+    },
+    {
+      "code": "tgk",
+      "name": "Tajik",
+      "size": 2602685,
+      "git_blob_sha1": "044766728ce9cb2cc73976175b970a4cea9a870a"
+    },
+    {
+      "code": "tam",
+      "name": "Tamil",
+      "size": 3237963,
+      "git_blob_sha1": "fa1793d68f9aba8bf191e8ff1036e2271d288e44"
+    },
+    {
+      "code": "tat",
+      "name": "Tatar",
+      "size": 1072896,
+      "git_blob_sha1": "9485ca27d48bb161a47584f8381420462ef6fa27"
+    },
+    {
+      "code": "tel",
+      "name": "Telugu",
+      "size": 2769654,
+      "git_blob_sha1": "ee8a33b0f658fc75b8cbfe8c10413eac4f41e6ad"
+    },
+    {
+      "code": "tha",
+      "name": "Thai",
+      "size": 1072600,
+      "git_blob_sha1": "ea28de3985668cac00d261c5b91f023ea66e19cd"
+    },
+    {
+      "code": "bod",
+      "name": "Tibetan",
+      "size": 1966440,
+      "git_blob_sha1": "7bb5029466eaef46aad59fc23b96648df0e4f176"
+    },
+    {
+      "code": "tir",
+      "name": "Tigrinya",
+      "size": 378822,
+      "git_blob_sha1": "55e62eb0297e07360db5e9dc5dd86aab8e0a1e9c"
+    },
+    {
+      "code": "ton",
+      "name": "Tonga",
+      "size": 947249,
+      "git_blob_sha1": "9eff0fd002798089f5f7d8307be968a36f1ce433"
+    },
+    {
+      "code": "tur",
+      "name": "Turkish",
+      "size": 4550554,
+      "git_blob_sha1": "1f0b331ef29f50ceb7c44da58e38c7ec42314d0a"
+    },
+    {
+      "code": "uig",
+      "name": "Uighur; Uyghur",
+      "size": 2794272,
+      "git_blob_sha1": "36124d6b0ed1c2654a13551203c25b44b4013978"
+    },
+    {
+      "code": "ukr",
+      "name": "Ukrainian",
+      "size": 3825102,
+      "git_blob_sha1": "d02cf90b2911a3da66dac6ae380bcefb18dd7663"
+    },
+    {
+      "code": "urd",
+      "name": "Urdu",
+      "size": 1398718,
+      "git_blob_sha1": "715a159d4abea25294c82971be28be215b3d1c4a"
+    },
+    {
+      "code": "uzb",
+      "name": "Uzbek",
+      "size": 6470703,
+      "git_blob_sha1": "109abc765273b2c9eabd55781f0a619320c80007"
+    },
+    {
+      "code": "uzb_cyrl",
+      "name": "Uzbek - Cyrillic",
+      "size": 1563501,
+      "git_blob_sha1": "c2ff8b9c282a9712b5f24970927377bc18dea7cf"
+    },
+    {
+      "code": "vie",
+      "name": "Vietnamese",
+      "size": 531275,
+      "git_blob_sha1": "e54a5912fb634c581c4a45ae9f37cbc021ec7140"
+    },
+    {
+      "code": "cym",
+      "name": "Welsh",
+      "size": 2208919,
+      "git_blob_sha1": "900cf17f74514934f87e9a8df3b29cb16b5606fe"
+    },
+    {
+      "code": "fry",
+      "name": "Western Frisian",
+      "size": 1906018,
+      "git_blob_sha1": "17199d2c33e201d6ad4003a6c86db5f8f273ddc1"
+    },
+    {
+      "code": "yid",
+      "name": "Yiddish",
+      "size": 545606,
+      "git_blob_sha1": "6349588bbabf99f8a812e8231c98c015ea7b60c6"
+    },
+    {
+      "code": "yor",
+      "name": "Yoruba",
+      "size": 963400,
+      "git_blob_sha1": "3e0cd582f65f17844039173057dfc015bf19f61d"
+    }
+  ],
+  "auxiliaries": [
+    {
+      "code": "equ",
+      "name": "Math / equation detection module",
+      "size": 2251950,
+      "git_blob_sha1": "27b470378dc8718f1dc5a93931fefa3340336e4d"
+    },
+    {
+      "code": "osd",
+      "name": "Orientation and script detection module",
+      "size": 10562727,
+      "git_blob_sha1": "527457ca8f8fe1fda7c2f88bce3c0e4be12be9d0"
+    }
+  ]
+}

@@ -293,6 +293,13 @@ def test_a_scan_remembers_the_documents_form_and_the_shared_folder(page: Page) -
     assert [form.output_folder for form in page.photo_saves] == [str(page.out)]
 
 
+def test_language_selection_is_saved_before_any_scan_or_download(page: Page) -> None:
+    page.controller.set_document_field("langs", "spa+custom+eng")
+    assert [form.langs for form in page.document_saves] == ["spa+custom+eng"]
+    assert page.worker.calls == []
+    assert page.photo_saves == []
+
+
 def test_the_stages_read_in_the_words_of_the_brief(page: Page) -> None:
     controller = page.scanning()
     assert controller.progress_text == "Scanning page 1"

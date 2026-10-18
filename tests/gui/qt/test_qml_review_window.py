@@ -126,6 +126,7 @@ def test_failed_or_cancelled_save_returns_to_the_grid_with_edits(
 
 def test_preview_arrives_asynchronously_and_back_reopens_past_folder(review_window, messages):
     window, bridge, worker, source, warnings = review_window
+    bridge.review.rotate(1, 1)
     grid = child(window, "reviewGrid")
     invoke(grid, "forceActiveFocus")
     QTest.keyClick(window, Qt.Key.Key_Return)
@@ -133,10 +134,15 @@ def test_preview_arrives_asynchronously_and_back_reopens_past_folder(review_wind
     preview = source.raw_dir / "previews" / "page-0001.jpg"
     preview.parent.mkdir()
     Image.new("RGB", (40, 60), "white").save(preview)
-    bridge.controller.review.preview_ready((source, 1, preview, ""))
+    bridge.controller.review.preview_ready((worker.calls[-1][1][0], 1, preview, ""))
     settle()
     assert child(window, "reviewPreviewImage").property("source").toLocalFile() == str(preview)
-    invoke(child(window, "reviewPreviewDialog"), "close")
+    frame = child(window, "reviewPreviewFrame")
+    dialog = child(window, "reviewPreviewDialog")
+    assert frame.property("rotation") == 90
+    assert frame.width() <= dialog.property("availableHeight")
+    assert frame.height() <= dialog.property("availableWidth")
+    invoke(dialog, "close")
     click(child(window, "reviewBackButton"))
     assert not bridge.review.active
     bridge.controller.on_scanner(None)
@@ -226,5 +232,49 @@ def test_failed_ocr_save_has_no_original_deletion_offer(review_window, out, mess
     assert not bridge.review.canDeleteOriginals
     assert not child(window, "deleteOriginalPagesButton").property("visible")
     assert all((source.raw_dir / p.name).exists() for p in source.pages)
+    assert warnings == []
+    assert messages == []
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_standard_back_navigation_flushes_or_preserves_review(review_window, monkeypatch, fail):
+    window, bridge, _worker, _source, warnings = review_window
+    saved = []
+
+    def store(*args):
+        if fail:
+            raise OSError("synthetic full disk")
+        saved.append(args[0])
+
+    monkeypatch.setattr(reviewside, "save_draft", store)
+    bridge.review.rotate(3, 1)
+    QTest.keyClick(window, Qt.Key.Key_Left, Qt.KeyboardModifier.AltModifier)
+    settle()
+    current = QQmlExpression(qmlContext(window), window, "pageStack.currentIndex").evaluate()[0]
+    if fail:
+        assert bridge.review.active
+        assert current == 1
+        assert bridge.bannerKind == "error"
+    else:
+        assert saved
+        assert not bridge.review.active
+        assert current == 0
+    assert warnings == []
+    monkeypatch.setattr(reviewside, "save_draft", lambda *args: None)
+
+
+def test_preview_failure_dismisses_spinner_and_exposes_error_banner(review_window, messages):
+    window, bridge, worker, _source, warnings = review_window
+    grid = child(window, "reviewGrid")
+    invoke(grid, "forceActiveFocus")
+    QTest.keyClick(window, Qt.Key.Key_Return)
+    snapshot = worker.calls[-1][1][0]
+    dialog = child(window, "reviewPreviewDialog")
+    assert dialog.property("visible")
+    bridge.controller.review.preview_ready((snapshot, 1, None, "synthetic decode failure"))
+    wait_until(lambda: not dialog.property("visible"), "failed preview to close")
+    assert bridge.bannerKind == "error"
+    assert "synthetic decode failure" in bridge.bannerText
+    assert bridge.review.active
     assert warnings == []
     assert messages == []

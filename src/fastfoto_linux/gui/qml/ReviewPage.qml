@@ -7,6 +7,10 @@ Kirigami.ScrollablePage {
     id: page
     objectName: "reviewPage"
     title: qsTr("Review documents")
+    onBackRequested: event => {
+        event.accepted = true;
+        page.backReview();
+    }
 
     property int editingPart: 0
     property string editedName: ""
@@ -31,6 +35,10 @@ Kirigami.ScrollablePage {
     }
 
     function showPreview(number) {
+        for (let row = 0; row < grid.count; ++row) {
+            const item = bridge.review.items.get(row);
+            if (item.number === number) previewDialog.turns = item.turns;
+        }
         bridge.review.preview(number);
         previewDialog.open();
     }
@@ -39,61 +47,61 @@ Kirigami.ScrollablePage {
         padding: Kirigami.Units.smallSpacing
         enabled: !bridge.busy
         contentItem: ColumnLayout {
-        spacing: Kirigami.Units.smallSpacing
+            spacing: Kirigami.Units.smallSpacing
 
-        Kirigami.InlineMessage {
-            Layout.fillWidth: true
-            visible: bridge.bannerKind === "error"
-            type: Kirigami.MessageType.Error
-            text: bridge.bannerHtml
-        }
-
-        RowLayout {
-            Layout.fillWidth: true
-            QQC2.Label {
-                objectName: "reviewSummary"
+            Kirigami.InlineMessage {
                 Layout.fillWidth: true
-                text: bridge.review.summary
-                textFormat: Text.PlainText
-                wrapMode: Text.WordWrap
+                visible: bridge.bannerKind === "error"
+                type: Kirigami.MessageType.Error
+                text: bridge.bannerHtml
             }
-            QQC2.CheckBox {
-                objectName: "reviewFlaggedOnly"
-                text: qsTr("Only pages to check")
-                Accessible.name: qsTr("Only pages to check")
-                checked: bridge.review.flaggedOnly
-                onToggled: bridge.review.setFlaggedOnly(checked)
-            }
-        }
 
-        Repeater {
-            id: names
-            objectName: "reviewPartNames"
-            model: bridge.review.parts
-            delegate: RowLayout {
-                required property var modelData
+            RowLayout {
                 Layout.fillWidth: true
                 QQC2.Label {
-                    text: qsTr("PDF %1 · %2 pages").arg(modelData.number).arg(modelData.pages)
-                    textFormat: Text.PlainText
-                }
-                QQC2.TextField {
-                    objectName: "reviewPartName"
+                    objectName: "reviewSummary"
                     Layout.fillWidth: true
-                    text: modelData.name
-                    placeholderText: qsTr("Document name")
-                    Accessible.name: qsTr("Document name")
-                    onActiveFocusChanged: {
-                        if (activeFocus) {
-                            page.editingPart = modelData.number;
-                            page.editedName = text;
-                        }
-                    }
-                    onTextEdited: page.editedName = text
-                    onEditingFinished: page.commitName(modelData.number, text)
+                    text: bridge.review.summary
+                    textFormat: Text.PlainText
+                    wrapMode: Text.WordWrap
+                }
+                QQC2.CheckBox {
+                    objectName: "reviewFlaggedOnly"
+                    text: qsTr("Only pages to check")
+                    Accessible.name: qsTr("Only pages to check")
+                    checked: bridge.review.flaggedOnly
+                    onToggled: bridge.review.setFlaggedOnly(checked)
                 }
             }
-        }
+
+            Repeater {
+                id: names
+                objectName: "reviewPartNames"
+                model: bridge.review.parts
+                delegate: RowLayout {
+                    required property var modelData
+                    Layout.fillWidth: true
+                    QQC2.Label {
+                        text: qsTr("PDF %1 · %2 pages").arg(modelData.number).arg(modelData.pages)
+                        textFormat: Text.PlainText
+                    }
+                    QQC2.TextField {
+                        objectName: "reviewPartName"
+                        Layout.fillWidth: true
+                        text: modelData.name
+                        placeholderText: qsTr("Document name")
+                        Accessible.name: qsTr("Document name")
+                        onActiveFocusChanged: {
+                            if (activeFocus) {
+                                page.editingPart = modelData.number;
+                                page.editedName = text;
+                            }
+                        }
+                        onTextEdited: page.editedName = text
+                        onEditingFinished: page.commitName(modelData.number, text)
+                    }
+                }
+            }
         }
     }
 
@@ -154,22 +162,22 @@ Kirigami.ScrollablePage {
 
     footer: QQC2.Pane {
         padding: Kirigami.Units.smallSpacing
-        contentItem: RowLayout {
-        QQC2.Button {
-            objectName: "reviewBackButton"
-            text: qsTr("Back")
-            Accessible.name: qsTr("Back")
-            onClicked: page.backReview()
-        }
-        Item { Layout.fillWidth: true }
-        QQC2.Button {
-            objectName: "reviewSaveButton"
-            text: qsTr("Save PDFs")
-            Accessible.name: qsTr("Save PDFs")
-            icon.name: "document-save"
-            enabled: bridge.review.canSave && !bridge.busy
-            onClicked: page.saveReview()
-        }
+            contentItem: RowLayout {
+            QQC2.Button {
+                objectName: "reviewBackButton"
+                text: qsTr("Back")
+                Accessible.name: qsTr("Back")
+                onClicked: page.backReview()
+            }
+            Item { Layout.fillWidth: true }
+            QQC2.Button {
+                objectName: "reviewSaveButton"
+                text: qsTr("Save PDFs")
+                Accessible.name: qsTr("Save PDFs")
+                icon.name: "document-save"
+                enabled: bridge.review.canSave && !bridge.busy
+                onClicked: page.saveReview()
+            }
         }
     }
 

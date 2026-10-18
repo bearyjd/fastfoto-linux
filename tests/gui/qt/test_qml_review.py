@@ -18,6 +18,8 @@ from PySide6.QtCore import (
     QMetaObject,
     QModelIndex,
     QObject,
+    QPoint,
+    QPointF,
     Qt,
     QUrl,
     Signal,
@@ -294,4 +296,21 @@ def test_cell_buttons_keep_rotate_split_and_preview(screen):
     assert ("rotate", 2, 1) in review.calls
     assert ("split", 2) in review.calls
     assert ("preview", 2) in review.calls
+    assert warnings == []
+
+
+def test_real_drag_handle_gesture_moves_to_the_target_page(screen):
+    window, review, warnings = screen
+    grid = child(window, "reviewGrid")
+    origin = QMetaObject.invokeMethod(grid, "itemAtIndex", Q_RETURN_ARG(QQuickItem), Q_ARG(int, 0))
+    target = QMetaObject.invokeMethod(grid, "itemAtIndex", Q_RETURN_ARG(QQuickItem), Q_ARG(int, 2))
+    handle = child(origin, "reviewDragHandle")
+    start = handle.mapToScene(QPointF(handle.width() / 2, handle.height() / 2)).toPoint()
+    finish = target.mapToScene(QPointF(target.width() / 2, target.height() / 2)).toPoint()
+    QTest.mousePress(window, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, start)
+    QTest.mouseMove(window, start + QPoint(30, 0), 50)
+    QTest.mouseMove(window, finish, 50)
+    QTest.mouseRelease(window, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, finish)
+    settle()
+    assert ("move", 1, 2) in review.calls
     assert warnings == []

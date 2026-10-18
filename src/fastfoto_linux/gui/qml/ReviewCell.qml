@@ -40,7 +40,7 @@ Item {
         spacing: Kirigami.Units.smallSpacing
         QQC2.Label {
             Layout.fillWidth: true
-            text: cell.startsPart ? qsTr("New PDF · %1").arg(cell.part) : qsTr("Page %1").arg(cell.number)
+            text: cell.startsPart ? qsTr("Page %1 · New PDF %2").arg(cell.number).arg(cell.part) : qsTr("Page %1").arg(cell.number)
             textFormat: Text.PlainText
             font.bold: cell.startsPart
         }
@@ -149,9 +149,15 @@ Item {
                 textFormat: Text.PlainText
                 MouseArea {
                     id: dragHandle
+                    objectName: "reviewDragHandle"
                     anchors.fill: parent
                     drag.target: dragToken
-                    onPressed: cell.activated()
+                    onPressed: mouse => {
+                        cell.activated();
+                        const point = mapToItem(cell, mouse.x, mouse.y);
+                        dragToken.x = point.x - dragToken.width / 2;
+                        dragToken.y = point.y - dragToken.height / 2;
+                    }
                     onReleased: { dragToken.Drag.drop(); dragToken.x = 0; dragToken.y = 0; }
                 }
             }

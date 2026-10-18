@@ -333,11 +333,13 @@ uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr o
   that option and is run without it. `--ocr auto` (default) uses OCR
   when it is all there and otherwise writes the plain PDF and says so; `--ocr on` refuses to start
   without it (exit 3); `--ocr off` never runs it. `--lang` takes Tesseract codes (`eng`,
-  `eng+deu`). If OCR fails or times out the plain PDF is still written, with one warning and exit
-  code 1; the warning says why from `ocrmypdf`'s exit code (for a missing language it names what
-  to install: `brew install tesseract-lang`, or the `tesseract-langpack-*` packages). OCR works in
-  a private temporary folder, not in the output folder. The Flatpak brings Tesseract and OCRmyPDF
-  itself (English only; see "Flatpak").
+  `eng+deu`). Download additional language models first with the desktop app's language picker,
+  or install the system language packs above. For example, `--lang eng+deu` uses English and German
+  models already available locally; the CLI never downloads models. If OCR fails or times out the
+  plain PDF is still written, with one warning and exit code 1; a missing-language warning names
+  the models needed. OCR works in a private temporary folder, not in the output folder. The
+  Flatpak brings Tesseract and OCRmyPDF itself, with English and page-orientation data bundled;
+  additional language downloads are available in its desktop app too (see "Flatpak").
 - Exit codes are those of `ffscan`: 0 ok, 1 a processing problem (an unusable page stops the run
   before anything is written, and a file that is cut off or corrupt counts as unusable), 2 usage,
   3 a required tool is missing (`doc scan`: also the scanner or its shim, which is missing, not
@@ -502,8 +504,22 @@ a scan asks to cancel first, and the settings you used are remembered for next t
 A **Photos | Documents** switch at the top of the form chooses what the feeder holds. **Documents**
 reviews the scanned stack before saving PDFs: a name, Colour / Grey / Black and white,
 200 / 300 / 600 dpi (300 is the default), **Both sides (drop blank pages)** (off scans one side),
-**Keep blank pages**, and **Searchable text** with its language (`eng`, or `eng+deu`). The output
-folder is the same as in Photos mode; every other setting is remembered separately for each mode.
+**Keep blank pages**, and **Searchable text** with a searchable checkbox picker for 124 OCR
+languages. Choose one or more languages by name; the picker shows which models are installed,
+which need downloading, and their download sizes. The output folder is the same as in Photos mode;
+every other setting is remembered separately for each mode.
+
+Use the explicit download action to fetch the missing models for the selected languages before
+scanning. If page-orientation data is missing, it is shown separately and must also be explicitly
+downloaded. Opening the picker, selecting a language, installing the app, or starting OCR never
+starts a model download. Downloads use pinned official `tessdata_fast` models, checked against
+expected sizes and Git blob identities before installation in the app's private data directory
+under `$XDG_DATA_HOME/fastfoto-linux/tessdata/<revision>/` (`$XDG_DATA_HOME` normally defaults
+to `~/.local/share`; Flatpak uses its own app data directory).
+Once the required models are installed, recognition works offline. Bundled or system models can
+be combined with downloaded models in native and Flatpak installs; downloaded models are also
+available to `ffscan doc scan` and `ffscan doc process` in the same installation.
+
 The window says what it is doing ("Checking the scanner…", "Scanning page 3", "Making the PDF
 (page 2 of 5)", "Adding searchable text…") and **Cancel** works at every one of those steps. The
 results list shows each PDF with its page count, the blank pages left out (by number), whether it
@@ -601,13 +617,19 @@ flatpak uninstall --user io.github.bearyjd.FastFotoLinux      # remove it again
 The Flatpak also brings **searchable text**, so the Documents box needs nothing installed:
 Tesseract and its Leptonica library are built from source, with the English (`eng`) and
 page-orientation (`osd`, which page rotation needs) data from tessdata_fast; OCRmyPDF is installed
-from the same hashed wheels as the native install (`packaging/requirements-ocr.txt`). Other
-languages are not bundled: `--lang deu` says that only English comes with the Flatpak. The bundle
-carries these components under their own licences, all compatible with this project's GPL-3.0:
+from the same hashed wheels as the native install (`packaging/requirements-ocr.txt`). English
+remains bundled. To use additional languages, select them in the desktop app's searchable
+checkbox picker and explicitly download the selected missing models once; recognition then works
+offline. The CLI uses those installed models too: `--lang eng+deu` works after German has been
+downloaded in the Flatpak desktop app. The app does not download models during installation or
+OCR. The bundle carries these components under their own licences, all compatible with this
+project's GPL-3.0:
 Tesseract (Apache-2.0), Leptonica (BSD-2-Clause) and the tessdata_fast data (Apache-2.0); OCRmyPDF
 (MPL-2.0) and its wheels keep theirs; the texts of the three built components' licences are in
-the bundle under `/app/share/licenses`. The app finds Tesseract in `/app/bin`, the data through
-`TESSDATA_PREFIX=/app/share/tessdata`, and never looks for Homebrew in the sandbox.
+the bundle under `/app/share/licenses`. The app finds Tesseract in `/app/bin` and bundled models
+in `/app/share/tessdata`, and never looks for Homebrew in the sandbox. When selected models come
+from both bundled and downloaded data, OCR runs with a temporary combined data directory passed
+only to its child processes; the bundled data and the parent process environment stay unchanged.
 
 The CI job `flatpak` builds the same bundle, uploads it as an artifact, installs it, and runs
 `tools/ci/flatpak-ocr-smoke.sh` inside the sandbox (Tesseract lists `eng` and `osd`, OCRmyPDF 17

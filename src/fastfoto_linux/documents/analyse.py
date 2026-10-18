@@ -14,11 +14,13 @@ import threading
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
-from fastfoto_linux.documents.blank import is_blank_beside
+from fastfoto_linux.documents.assess import PageAssessment, assess_page
 from fastfoto_linux.documents.draft import DocumentDraft, PageAnalysis, TrimBox
 from fastfoto_linux.documents.encode import EncodedPage, encode_page
 from fastfoto_linux.documents.errors import DocumentError, stop_if_cancelled
+from fastfoto_linux.documents.inkmap import ink_map
 from fastfoto_linux.documents.loader import inspect_page, load_page
+from fastfoto_linux.documents.neighbours import with_neighbour_flags
 from fastfoto_linux.documents.settings import DocumentSettings, check_settings
 from fastfoto_linux.documents.trim import Trimmed, trim_page
 
@@ -49,6 +51,7 @@ def _analysis(  # noqa: PLR0913 - the fields of one page
     *,
     partner: int | None,
     blank: bool,
+    assessment: PageAssessment | None,
     encoded: EncodedPage | None,
 ) -> PageAnalysis:
     info = path.stat()
@@ -61,6 +64,9 @@ def _analysis(  # noqa: PLR0913 - the fields of one page
         trim=TrimBox.from_trimmed(trimmed),
         blank=blank,
         partner=partner,
+        flags=frozenset() if assessment is None else assessment.flags,
+        marks=() if assessment is None else assessment.marks,
+        ink=None if assessment is None else ink_map(trimmed),
         encoded=encoded,
     )
 
@@ -87,16 +93,25 @@ def _analyse_sheet(  # noqa: PLR0913 - what a sheet needs, and the hooks, in one
         if on_page is not None:
             on_page(number, len(pages))
         paired = len(sheet) > 1
-        blank = not settings.keep_blank and is_blank_beside(
-            trimmed, sheet[1 - index] if paired else None
+        assessment = (
+            None
+            if settings.keep_blank
+            else assess_page(trimmed, sheet[1 - index] if paired else None)
         )
+        blank = assessment is not None and assessment.verdict.blank
+        partner = numbers[1 - index] if paired else None
         if blank:
             logger.info("page %d (%s) is blank and left out", number, pages[number - 1].name)
         encoded = encode_page(trimmed.page, settings.colour) if encode and not blank else None
-        partner = numbers[1 - index] if paired else None
         analysed.append(
             _analysis(
-                pages[number - 1], number, trimmed, partner=partner, blank=blank, encoded=encoded
+                pages[number - 1],
+                number,
+                trimmed,
+                partner=partner,
+                blank=blank,
+                assessment=assessment,
+                encoded=encoded,
             )
         )
     return analysed
@@ -140,7 +155,7 @@ def analyse_document(
             _analyse_sheet(pages, numbers, settings, cancel=cancel, on_page=on_page, encode=encode)
         )
     return DocumentDraft(
-        pages=tuple(analysed),
+        pages=tuple(with_neighbour_flags(analysed)),
         raw_dir=_common_folder(pages),
         duplex=settings.duplex,
         keep_blank=settings.keep_blank,

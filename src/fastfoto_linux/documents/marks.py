@@ -36,6 +36,7 @@ BACKGROUND_KERNEL_MM = 8.0  # dark features thinner than this are ink, not paper
 LOCAL_CONTRAST = 45  # grey levels darker than the paper around it
 PAGE_CONTRAST = 80  # grey levels darker than the page's usual paper tone (big flat areas)
 VERY_DARK = 96  # a pixel this dark is a mark whatever is around it
+BLANK_MARGIN_MM = 5.0  # scanner shadows and edge marks live here; a blank page's margin is ignored
 MARK_MIN_MM = 1.0  # the longer side of a mark is at least this: a letter, not a speck
 MARK_MIN_AREA_MM2 = 0.3
 # A fold crease is a straight, thin, faint line, and a blank back must not be kept for it. Real
@@ -75,9 +76,16 @@ class Mark:
     y1: int
 
 
-def _darkest_channel(pixels: np.ndarray) -> np.ndarray:
-    """The darkest of the colour channels, so coloured ink and highlighter count as ink."""
-    return pixels.min(axis=2) if pixels.ndim == RGB_NDIM else pixels
+def darkest_channel(pixels: np.ndarray) -> np.ndarray:
+    """The darkest of the colour channels, so coloured ink and highlighter count as ink. (For an
+    8-bit colour page ``cv2`` takes the minimum of the split channels, 20 times faster than
+    ``min(axis=2)`` and the same result.)"""
+    if pixels.ndim != RGB_NDIM:
+        return pixels
+    if pixels.dtype == np.uint8:
+        red, green, blue = cv2.split(pixels)
+        return cv2.min(cv2.min(red, green), blue)
+    return pixels.min(axis=2)
 
 
 def shrink_keeping_darkest(grey: np.ndarray, factor: int) -> np.ndarray:
@@ -335,7 +343,7 @@ def find_marks(
     require_size(page.pixels.shape[1], page.pixels.shape[0], page.dpi)
     factor = max(1, int(page.dpi // WORK_DPI))
     work_dpi = page.dpi / factor
-    grey = shrink_keeping_darkest(_darkest_channel(page.pixels), factor)
+    grey = shrink_keeping_darkest(darkest_channel(page.pixels), factor)
     margin = mm_to_px(margin_mm, work_dpi) if margin_mm > 0 else 0
     bottom = max(0, margin - trimmed_bottom // factor)
     rows, columns = slice(margin, grey.shape[0] - bottom), slice(margin, grey.shape[1] - margin)

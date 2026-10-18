@@ -382,6 +382,30 @@ uv run ffscan doc process page-*.png --out ~/Documents/Scans --order 1,3,2,4 --d
   sideways; a page turned on purpose can therefore come out turned again in a searchable PDF (not
   yet checked with the real tool).
 
+### Reviewing a scan later: `review.json` and a raw folder as the input
+
+```sh
+uv run ffscan doc process ~/Documents/Scans/.raw/20261013T230000Z --out ~/Documents/Scans
+uv run ffscan doc process ~/Documents/Scans/.raw/20261013T230000Z --out ~/Documents/Scans --fresh
+```
+
+- `ffscan doc process RAWDIR` takes a raw folder (`DIR/.raw/<UTC time>/`) in place of page files;
+  the pages are the folder's `page-NNNN.png`, counted from 1. A folder with no pages is a usage
+  error, and a folder cannot be mixed with page files.
+- A raw folder can hold a `review.json`, which the review mode of a scan writes beside the pages
+  (owner-only, written atomically), with a thumbnail of every page in `thumbs/page-NNNN.jpg` (480 px
+  at most, owner-only). It holds the analysis of the pages and what was edited. The edits in it
+  apply first and the options of the command line (`--drop`, `--rotate`, ...) on top of them;
+  `--fresh` ignores the file. The saved analysis is used only while the pages and the analysis are
+  the ones it was made from; otherwise the pages are analysed again and the edits are put back.
+- `ffscan doc process` never writes into the raw folder: no `review.json`, no thumbnails.
+- `review.json` is untrusted input: it is read only from a regular file of at most 8 MiB and
+  checked completely (names must be the folder's page names, numbers in range, turns 0 to 3, an
+  `--order` that is a permutation). If anything is wrong it is ignored with a warning and the
+  folder is analysed afresh.
+- The raw pages are kept after a review, and nothing is deleted automatically: the desktop app will
+  offer "Delete the original pages" after a Save, and only then.
+
 ### Scanning with `ffscan doc scan`
 
 - Load the stack face down, top edge first: the printed side is then scanned first and comes out

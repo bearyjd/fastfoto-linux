@@ -16,7 +16,16 @@ from fastfoto_linux.output.naming import sanitise_prefix
 
 ANGLES = (90, 180, 270)  # clockwise
 DEGREES_PER_TURN = 90
-EDIT_OPTIONS = ("--drop", "--keep", "--rotate", "--split", "--order", "--part-name", "--dry-run")
+EDIT_OPTIONS = (
+    "--drop",
+    "--keep",
+    "--rotate",
+    "--split",
+    "--order",
+    "--part-name",
+    "--dry-run",
+    "--fresh",
+)
 _ANGLE_WORDS = "90, 180 or 270 (clockwise)"
 
 
@@ -53,6 +62,11 @@ def add_edit_options(parser: argparse.ArgumentParser) -> None:
         "--dry-run",
         action="store_true",
         help="print what each page would become and write nothing",
+    )
+    group.add_argument(
+        "--fresh",
+        action="store_true",
+        help="for a raw folder: ignore the edits and the analysis saved in its review.json",
     )
 
 

@@ -26,6 +26,7 @@ def test_the_raw_reasons_are_these() -> None:
         "ocr_failed",
         "requested",
         "pages_dropped",
+        "review",
         "not_deleted",
     }
 

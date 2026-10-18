@@ -21,6 +21,7 @@ _KEPT_BECAUSE = {
         "a page was dropped as blank; --discard-raw deletes them after a clean run"
     ),
     DocumentRawReason.NOT_DELETED: "they could not be deleted",
+    DocumentRawReason.REVIEW: "they wait for a review; nothing deletes them",
 }
 
 

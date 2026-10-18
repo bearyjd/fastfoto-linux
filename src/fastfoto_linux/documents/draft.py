@@ -111,7 +111,8 @@ class PageAnalysis:
     the page as it goes into the PDF, held in memory only and only for a page that stays; it is
     not part of the page's identity (two analyses of a page are equal whether or not they carry
     it). ``flags`` explain the verdict (see ``Flag``) and ``marks`` are the boxes of the page's
-    marks, the largest 24 at most.
+    marks, the largest 24 at most. ``thumb`` is the file name of the page's thumbnail in the
+    thumbnails folder (None: it has none).
     """
 
     number: int
@@ -125,6 +126,7 @@ class PageAnalysis:
     flags: frozenset[Flag] = frozenset()
     marks: tuple[BoxN, ...] = ()
     detail: tuple[str, ...] = ()
+    thumb: str | None = field(default=None, compare=False)
     ink: InkMap | None = field(default=None, repr=False, compare=False)
     encoded: EncodedPage | None = field(default=None, repr=False, compare=False)
 

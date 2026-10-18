@@ -5,6 +5,7 @@ from enum import StrEnum, auto
 from pathlib import Path
 
 from fastfoto_linux.documents import DocumentResult
+from fastfoto_linux.documents.draft import DocumentDraft
 from fastfoto_linux.pipeline.process import ProcessResult
 
 
@@ -81,6 +82,7 @@ class DocumentRawReason(StrEnum):
     REQUESTED = auto()  # the raw policy is KEEP
     PAGES_DROPPED = auto()  # blank pages were left out of the PDF (policy AUTO)
     NOT_DELETED = auto()  # nothing asked for them, but they could not be deleted
+    REVIEW = auto()  # the pages wait for a review (they are never deleted then)
 
 
 @dataclass(frozen=True)
@@ -94,13 +96,14 @@ class DocumentSessionResult:
     error: Exception | None = None
     cancelled: bool = False
     kept_pages: tuple[Path, ...] = ()
+    draft: DocumentDraft | None = None  # a review: the analysed pages, no PDF yet
 
     @property
     def ok(self) -> bool:
-        """True when the PDF was made without a problem (searchable text included)."""
-        return (
-            self.error is None
-            and not self.cancelled
-            and self.document is not None
-            and self.document.ok
-        )
+        """True when the PDF was made without a problem (searchable text included), or, in a
+        review, when the draft was made."""
+        if self.error is not None or self.cancelled:
+            return False
+        if self.draft is not None:
+            return True
+        return self.document is not None and self.document.ok

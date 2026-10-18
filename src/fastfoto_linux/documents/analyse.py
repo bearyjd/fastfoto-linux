@@ -22,11 +22,13 @@ from fastfoto_linux.documents.inkmap import ink_map
 from fastfoto_linux.documents.loader import inspect_page, load_page
 from fastfoto_linux.documents.neighbours import with_neighbour_flags
 from fastfoto_linux.documents.settings import DocumentSettings, check_settings
+from fastfoto_linux.documents.thumbs import write_thumbnail
 from fastfoto_linux.documents.trim import Trimmed, trim_page
 
 logger = logging.getLogger(__name__)
 
 SIDES_PER_SHEET = 2
+ANALYSIS_VERSION = 1  # bump when a change makes an old analysis wrong (see ``draft_store``)
 
 
 def _load_sheet(
@@ -44,6 +46,18 @@ def _load_sheet(
     return sheet
 
 
+def _thumbnail(thumbs: Path | None, number: int, trimmed: Trimmed) -> str | None:
+    """The file name of the page's thumbnail, made from the pixels in hand; a thumbnail that
+    cannot be written is logged and the page has none (the analysis goes on)."""
+    if thumbs is None:
+        return None
+    try:
+        return write_thumbnail(trimmed.page.pixels, thumbs, number)
+    except OSError as error:
+        logger.warning("the thumbnail of page %d was not written: %s", number, error)
+        return None
+
+
 def _analysis(  # noqa: PLR0913 - the fields of one page
     path: Path,
     number: int,
@@ -53,6 +67,7 @@ def _analysis(  # noqa: PLR0913 - the fields of one page
     blank: bool,
     assessment: PageAssessment | None,
     encoded: EncodedPage | None,
+    thumb: str | None,
 ) -> PageAnalysis:
     info = path.stat()
     return PageAnalysis(
@@ -66,6 +81,7 @@ def _analysis(  # noqa: PLR0913 - the fields of one page
         partner=partner,
         flags=frozenset() if assessment is None else assessment.flags,
         marks=() if assessment is None else assessment.marks,
+        thumb=thumb,
         ink=None if assessment is None else ink_map(trimmed),
         encoded=encoded,
     )
@@ -79,6 +95,7 @@ def _analyse_sheet(  # noqa: PLR0913 - what a sheet needs, and the hooks, in one
     cancel: threading.Event | None,
     on_page: Callable[[int, int], None] | None,
     encode: bool,
+    thumbs: Path | None,
 ) -> list[PageAnalysis]:
     """Judge the pages of one sheet and encode the ones that stay in the PDF.
 
@@ -112,6 +129,7 @@ def _analyse_sheet(  # noqa: PLR0913 - what a sheet needs, and the hooks, in one
                 blank=blank,
                 assessment=assessment,
                 encoded=encoded,
+                thumb=_thumbnail(thumbs, number, trimmed),
             )
         )
     return analysed
@@ -122,21 +140,23 @@ def _common_folder(pages: Sequence[Path]) -> Path | None:
     return folders.pop() if len(folders) == 1 else None
 
 
-def analyse_document(
+def analyse_document(  # noqa: PLR0913 - the hooks are the interface
     pages: Sequence[Path],
     settings: DocumentSettings,
     *,
     cancel: threading.Event | None = None,
     on_page: Callable[[int, int], None] | None = None,
     encode: bool = True,
+    thumbs: Path | None = None,
 ) -> DocumentDraft:
     """Check every page file, then judge each page and keep the verdicts in a draft.
 
     The settings are refused first (``check_settings``) and so is any page file that is unusable
     (a full decode, so a truncated PNG is found now); nothing is processed in either case. With
     ``encode`` the pages that stay are encoded while their sheet is decoded and the draft carries
-    the bytes; without it the writer reads the raw pages again. A document of blank pages is not
-    an error here: the draft says so, and the writer refuses it.
+    the bytes; without it the writer reads the raw pages again. With ``thumbs`` (a folder) a
+    private thumbnail of every trimmed page is written there, from the pixels in hand. A
+    document of blank pages is not an error here: the draft says so, and the writer refuses it.
 
     ``on_page(number, total)`` is called before each page is judged, a blank one included, on
     the calling thread. When ``cancel`` is set DocumentCancelledError is raised.
@@ -152,7 +172,15 @@ def analyse_document(
     for first in range(1, len(pages) + 1, step):
         numbers = range(first, min(first + step, len(pages) + 1))
         analysed.extend(
-            _analyse_sheet(pages, numbers, settings, cancel=cancel, on_page=on_page, encode=encode)
+            _analyse_sheet(
+                pages,
+                numbers,
+                settings,
+                cancel=cancel,
+                on_page=on_page,
+                encode=encode,
+                thumbs=thumbs,
+            )
         )
     return DocumentDraft(
         pages=tuple(with_neighbour_flags(analysed)),

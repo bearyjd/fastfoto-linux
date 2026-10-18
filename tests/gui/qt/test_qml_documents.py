@@ -11,6 +11,7 @@ from tests.gui.qt import require_qt
 require_qt()
 
 
+from PIL import Image
 from PySide6.QtCore import Q_ARG, Q_RETURN_ARG, QMetaObject, QObject, Slot
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtQuick import QQuickItem
@@ -94,12 +95,21 @@ def in_row(window: Any, name: str, row: int = 0) -> Any:
     return found
 
 
+def original_pages(out: Path) -> None:
+    """The fake cancelled session's originals, used when its retry now opens review."""
+    raw = out / ".raw" / "stamp"
+    raw.mkdir(parents=True, mode=0o700)
+    for number in range(1, 4):
+        Image.new("RGB", (200, 300), "white").save(raw / f"page-{number:04d}.png", dpi=(300, 300))
+
+
 # -- the window loads and stays quiet --------------------------------------------------------
 
 
 def test_the_window_loads_in_documents_mode_with_no_warnings_through_every_state(
     make_doc_bridge: Any, open_window: Any, messages: list[str], out: Path
 ) -> None:
+    original_pages(out)
     session = ScriptedDocumentSession(out, hold=True)
     bridge = make_doc_bridge(session=session)
     _, warnings = open_window(bridge)
@@ -114,8 +124,13 @@ def test_the_window_loads_in_documents_mode_with_no_warnings_through_every_state
     wait_until(lambda: bridge.state == "cancelled", "the cancel")
     settle()
     bridge.processKept()
-    wait_until(lambda: bridge.state == "done", "the kept pages to be made into a PDF")
+    wait_until(
+        lambda: bridge.review.active or bridge.state in {"failed", "done"}, "kept-page review"
+    )
+    assert bridge.review.active, bridge.bannerText
     settle()
+    bridge.review.back()
+    wait_until(lambda: bridge.canScan, "the scanner after leaving review")
     session.hold = False
     session.result = stopped_document(out / ".raw" / "s", ScanError("the paper jammed"))
     bridge.startScan()
@@ -390,6 +405,7 @@ def test_the_open_folder_button_opens_the_output_folder_in_documents_mode_too(
 def test_the_banner_and_the_offer_to_process_kept_pages_work_for_documents(
     make_doc_bridge: Any, open_window: Any, out: Path
 ) -> None:
+    original_pages(out)
     session = ScriptedDocumentSession(out, hold=True)
     bridge = make_doc_bridge(session=session)
     window, _ = open_window(bridge)
@@ -402,9 +418,13 @@ def test_the_banner_and_the_offer_to_process_kept_pages_work_for_documents(
     assert child(window, "processKeptButton").property("visible") is True
     assert child(window, "processKeptButton").property("text") == "Process them now"
     click(child(window, "processKeptButton"))
-    wait_until(lambda: bridge.state == "done", "the kept pages to be made into a PDF")
+    wait_until(
+        lambda: bridge.review.active or bridge.state in {"failed", "done"}, "kept-page review"
+    )
+    assert bridge.review.active, bridge.bannerText
     settle()
-    assert child(window, "documentsList").property("count") == 1
+    assert child(window, "reviewGrid").property("count") == 3
+    assert child(window, "documentsList").property("count") == 0
 
 
 def test_the_page_is_titled_for_the_mode(make_doc_bridge: Any, open_window: Any) -> None:

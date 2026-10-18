@@ -403,8 +403,8 @@ uv run ffscan doc process ~/Documents/Scans/.raw/20261013T230000Z --out ~/Docume
   checked completely (names must be the folder's page names, numbers in range, turns 0 to 3, an
   `--order` that is a permutation). If anything is wrong it is ignored with a warning and the
   folder is analysed afresh.
-- The raw pages are kept after a review, and nothing is deleted automatically: the desktop app will
-  offer "Delete the original pages" after a Save, and only then.
+- The raw pages are kept after a review, and nothing is deleted automatically: the desktop app
+  offers "Delete the original pages" after a Save, and only then.
 
 ### Scanning with `ffscan doc scan`
 
@@ -500,7 +500,7 @@ so far are kept and **Process them now** turns them into photos later. Closing t
 a scan asks to cancel first, and the settings you used are remembered for next time.
 
 A **Photos | Documents** switch at the top of the form chooses what the feeder holds. **Documents**
-makes one PDF of the stack, like `ffscan doc scan`: a name, Colour / Grey / Black and white,
+reviews the scanned stack before saving PDFs: a name, Colour / Grey / Black and white,
 200 / 300 / 600 dpi (300 is the default), **Both sides (drop blank pages)** (off scans one side),
 **Keep blank pages**, and **Searchable text** with its language (`eng`, or `eng+deu`). The output
 folder is the same as in Photos mode; every other setting is remembered separately for each mode.
@@ -508,8 +508,8 @@ The window says what it is doing ("Checking the scanner…", "Scanning page 3", 
 (page 2 of 5)", "Adding searchable text…") and **Cancel** works at every one of those steps. The
 results list shows each PDF with its page count, the blank pages left out (by number), whether it
 has searchable text (or why not), and an **Open** button. If the scan stops part-way, or you cancel,
-no PDF is made on its own from part of the stack: the pages are kept and **Process them now** makes
-the PDF from just those pages with the same settings (it is offered again after a full disk or a
+no PDF is made on its own from part of the stack: the pages are kept and **Process them now** opens
+the review of those pages with the same settings (it is offered again after a full disk or a
 folder that cannot be written to, once that is fixed). Each form says how to load the feeder, as
 the label on the scanner does. **Searchable text** needs Tesseract (OCRmyPDF comes with the app);
 without it the box is off and says `Install Tesseract: sudo dnf install tesseract tesseract-osd`,
@@ -522,6 +522,18 @@ gives both, Tesseract's first; the command line says the same in its message. In
 is built in, so the box is on; if it is off there the installation is damaged, and the box says
 `The OCR that comes with this Flatpak is missing, so the installation is broken: reinstall the
 Flatpak` (it never suggests `brew`, `rpm-ostree` or `dnf`, which do not reach into the sandbox).
+
+After scanning, the review grid lets you keep or remove pages, rotate clockwise, reorder, and split
+into several PDFs with a name for each part. **Only pages to check** filters the warning flags;
+**Preview** opens one larger page. **Save PDFs** writes the selected parts, while **Back** keeps the
+review edits for later. **Open a past scan…** reopens an original-page folder, including saved edits.
+Edits are autosaved and flushed on Save, Back and close; a failed save keeps the review open.
+After a successful Save, **Review again** and **Delete the original pages** are offered. Deletion
+requires confirmation; declining keeps the originals. Nothing is deleted automatically.
+
+In the grid, arrows focus pages, Space/Delete keep or remove, R/Shift+R rotate clockwise/back,
+Ctrl+Left/Right move, S starts a new PDF, and Enter previews. Ctrl+S saves; Esc goes back. Page-edit
+keys do not apply while typing a part name.
 
 Install it for your user (no root; nothing to do with `uv` or pip):
 

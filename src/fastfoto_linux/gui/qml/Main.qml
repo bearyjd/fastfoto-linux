@@ -14,10 +14,45 @@ Kirigami.ApplicationWindow {
     visible: true
 
     pageStack.initialPage: ScanPage {}
+    property var reviewPage: null
+    property bool syncingReview: false
+
+    function syncReview() {
+        if (syncingReview) return;
+        syncingReview = true;
+        try {
+            if (bridge.review.active && reviewPage === null) {
+                reviewPage = reviewComponent.createObject(root.pageStack);
+                pageStack.push(reviewPage);
+            } else if (!bridge.review.active && reviewPage !== null) {
+                const previous = reviewPage;
+                pageStack.pop();
+                reviewPage = null;
+                previous.destroy();
+            }
+        } finally {
+            syncingReview = false;
+        }
+    }
+
+    Component.onCompleted: {
+        bridge.review.enable();
+        syncReview();
+    }
+    Component { id: reviewComponent; ReviewPage {} }
+    Connections {
+        target: bridge.review
+        function onChanged() { root.syncReview(); }
+    }
 
     // A scan in progress is cancelled first (after asking); the window closes by itself once
     // it has stopped. Closing while it is already being cancelled just waits for that.
     onClosing: close => {
+        if (bridge.review.active && !bridge.running &&
+                ((reviewPage !== null && !reviewPage.commitPendingName()) || !bridge.review.flush())) {
+            close.accepted = false;
+            return;
+        }
         if (bridge.running) {
             close.accepted = false;
             if (bridge.canCancel) {

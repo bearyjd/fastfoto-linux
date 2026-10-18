@@ -21,16 +21,21 @@ mark is a hole the other side shows too). Only a page that stays has its marks' 
 
 from dataclasses import dataclass
 
-from fastfoto_linux.documents.blank import BLANK_MARGIN_MM
 from fastfoto_linux.documents.bleed import show_through
 from fastfoto_linux.documents.draft import BoxN, Flag
-from fastfoto_linux.documents.holes import EDGE_ZONE_MM, HoleReport, hole_report
-from fastfoto_linux.documents.marks import FAINT_DARKEST, Mark, find_marks
+from fastfoto_linux.documents.holes import (
+    EDGE_ZONE_MM,
+    HoleReport,
+    all_could_be_holes,
+    hole_report,
+)
+from fastfoto_linux.documents.marks import BLANK_MARGIN_MM, FAINT_DARKEST, Mark, find_marks
 from fastfoto_linux.documents.trim import Trimmed
 from fastfoto_linux.documents.units import MM_PER_INCH
 
 FEW_MARKS_MAX = 3  # a page with this many marks or fewer, and little ink, has few marks
 FEW_MARKS_MM2 = 200.0  # ... their boxes together cover under this area (2 cm2)
+HOLE_REPORT_MAX_MARKS = 12  # beyond this many marks a page is only weighed as holes if all could be
 MAX_BOXES = 24  # a page keeps the boxes of its largest marks, no more
 
 
@@ -62,6 +67,18 @@ def _crease_ignored(page: Trimmed, marks: tuple[Mark, ...]) -> bool:
     return bool(set(plain) - set(marks))
 
 
+def _weigh_holes(
+    marks: tuple[Mark, ...], page: Trimmed, partner: Trimmed | None
+) -> HoleReport | None:
+    """The hole report, when it can matter: the verdict needs it only if every mark could be a
+    hole, and the HOLE_LIKE flag only on a page with few marks (a dense page is print)."""
+    if not marks or partner is None:
+        return None
+    if len(marks) > HOLE_REPORT_MAX_MARKS and not all_could_be_holes(marks, page):
+        return None
+    return hole_report(marks, page, partner)
+
+
 def blank_verdict(page: Trimmed, partner: Trimmed | None) -> BlankVerdict:
     """Whether ``page`` is blank, its sheet's other side being ``partner`` (None: it has none).
     The rule is that of ``blank.is_blank_beside``."""
@@ -71,7 +88,7 @@ def blank_verdict(page: Trimmed, partner: Trimmed | None) -> BlankVerdict:
         trimmed_bottom=page.tail_rows,
         ignore_faint_lines=True,
     )
-    report = hole_report(marks, page, partner) if marks and partner is not None else None
+    report = _weigh_holes(marks, page, partner)
     blank = not marks or (report is not None and report.all_matched)
     return BlankVerdict(blank, marks, report, blank and _crease_ignored(page, marks))
 

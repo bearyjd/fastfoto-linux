@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from fastfoto_linux.documents.assess import assess_page, blank_verdict
+from fastfoto_linux.documents.assess import HOLE_REPORT_MAX_MARKS, assess_page, blank_verdict
 from fastfoto_linux.documents.blank import is_blank_beside
 from fastfoto_linux.documents.holes import all_are_holes, hole_report
 from fastfoto_linux.documents.marks import find_marks
@@ -49,8 +49,11 @@ def test_a_verdict_keeps_the_marks_it_judged() -> None:
     assert verdict.marks == find_marks(
         front.page, margin_mm=5.0, trimmed_bottom=front.tail_rows, ignore_faint_lines=True
     )
-    assert verdict.holes is not None
-    assert not verdict.holes.all_matched
+    assert len(verdict.marks) > HOLE_REPORT_MAX_MARKS
+    assert verdict.holes is None  # print: the hole report is left out where it cannot matter
+    stapled = blank_verdict(back, front)
+    assert stapled.holes is not None
+    assert stapled.holes.all_matched
 
 
 def test_a_blank_page_has_no_marks_and_no_hole_report() -> None:

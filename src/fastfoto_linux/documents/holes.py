@@ -69,7 +69,7 @@ import cv2
 import numpy as np
 
 from fastfoto_linux.documents.loader import WHITE, LoadedPage
-from fastfoto_linux.documents.marks import Mark
+from fastfoto_linux.documents.marks import Mark, darkest_channel
 from fastfoto_linux.documents.trim import Trimmed
 from fastfoto_linux.documents.units import MM_PER_INCH, mm_to_px
 from fastfoto_linux.imaging import RGB_NDIM
@@ -130,8 +130,7 @@ class _Shape:
 
 
 def _dark(pixels: np.ndarray) -> np.ndarray:
-    grey = pixels.min(axis=2) if pixels.ndim == RGB_NDIM else pixels
-    return grey < HOLE_TONE
+    return darkest_channel(pixels) < HOLE_TONE
 
 
 def _tone_of(pixels: np.ndarray, where: np.ndarray) -> _Tone:
@@ -311,6 +310,11 @@ class HoleReport:
     matched: int
     candidates: int
     all_matched: bool
+
+
+def all_could_be_holes(marks: Sequence[Mark], side: Trimmed) -> bool:
+    """Whether every mark is small enough, and near enough to an edge, to be a hole."""
+    return all(_could_be_hole(mark, side.page) for mark in marks)
 
 
 def hole_report(marks: Sequence[Mark], side: Trimmed, partner: Trimmed) -> HoleReport:

@@ -27,9 +27,9 @@ import cv2
 import numpy as np
 
 from fastfoto_linux.documents.draft import BoxN, InkMap
+from fastfoto_linux.documents.marks import darkest_channel
 from fastfoto_linux.documents.trim import Trimmed
 from fastfoto_linux.documents.units import MM_PER_INCH
-from fastfoto_linux.imaging import RGB_NDIM
 
 MAP_DPI = 20  # one cell is 1.27 mm square
 INK_TONE = 120  # a pixel darker than this (darkest colour channel) is ink
@@ -45,8 +45,7 @@ def ink_map(page: Trimmed) -> InkMap:
     pixels = page.page.pixels
     height, width = pixels.shape[:2]
     dpi = page.page.dpi
-    grey = pixels.min(axis=2) if pixels.ndim == RGB_NDIM else pixels
-    dark = (grey < INK_TONE).astype(np.float32)
+    dark = (darkest_channel(pixels) < INK_TONE).astype(np.float32)
     step = dpi / MAP_DPI
     cols, rows = math.ceil(width / step), math.ceil(height / step)
     cells = cv2.resize(dark, (cols, rows), interpolation=cv2.INTER_AREA) > 0

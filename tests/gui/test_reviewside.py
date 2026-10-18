@@ -23,6 +23,8 @@ def opened(out):
     page = Page(out)
     controller = page.processing()
     side = ReviewSide(controller)
+    controller.review = side
+    controller.on_review_preview = side.preview_ready
     side.enable()
     result = DocumentSessionResult(
         draft=draft(out), raw_dir=out, raw_reason=DocumentRawReason.REVIEW
@@ -134,7 +136,7 @@ def test_preview_answer_is_delivered_without_leaving_review(out):
     side, page = opened(out)
     page.worker.preview_page = lambda *args: None
     assert side.preview(3) == ""
-    side.preview_ready((3, out / "previews" / "page-0003.jpg", ""))
+    side.preview_ready((side.state.draft, 3, out / "previews" / "page-0003.jpg", ""))
     assert side.preview_number == 3
     assert side.preview_path.name == "page-0003.jpg"
     assert page.controller.state.value == "reviewing"

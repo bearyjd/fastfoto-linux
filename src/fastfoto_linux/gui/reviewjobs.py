@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 PREVIEW_DIR = "previews"
 PREVIEW_MAX_PX = 1600
 PREVIEW_QUALITY = 90
-PreviewResult = tuple[int, Path | None, str]
+PreviewResult = tuple[DocumentDraft, int, Path | None, str]
 Job = Callable[[threading.Event], Callable[[], None]]
 
 
@@ -131,7 +131,7 @@ class ReviewJobs:
         self, draft: DocumentDraft, number: int, cancel: threading.Event
     ) -> Callable[[], None]:
         try:
-            answer = (number, self._preview(draft, number, cancel), "")
+            answer = (draft, number, self._preview(draft, number, cancel), "")
         except (DocumentError, OSError, ValueError) as error:
-            answer = (number, None, str(error))
+            answer = (draft, number, None, str(error))
         return functools.partial(self._sink.on_review_preview, answer)

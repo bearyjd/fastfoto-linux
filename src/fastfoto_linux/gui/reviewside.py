@@ -13,7 +13,7 @@ from fastfoto_linux.gui.docreport import document_error_banner
 from fastfoto_linux.gui.report import Banner
 from fastfoto_linux.gui.review import ReviewState
 from fastfoto_linux.gui.reviewdelete import SavedOriginals, capture_originals, delete_originals
-from fastfoto_linux.gui.reviewjobs import PreviewResult
+from fastfoto_linux.gui.reviewjobs import PREVIEW_DIR, PreviewResult
 from fastfoto_linux.gui.state import ActionBlockedError, Mode, State, transition
 from fastfoto_linux.session import DocumentSessionResult, SessionResult
 
@@ -34,13 +34,14 @@ class ReviewSide:
         self.state: ReviewState | None = None
         self.dirty = False
         self._settings: DocumentSettings | None = None
+        self._opening_settings: DocumentSettings | None = None
         self._pending = ""
         self._saved: DocumentDraft | None = None
         self._originals: SavedOriginals | None = None
         self._saving_originals: SavedOriginals | None = None
         self.preview_path: Path | None = None
         self.preview_number = 0
-        self._preview_requested: tuple[Path | None, int] | None = None
+        self._preview_requested: tuple[DocumentDraft, int] | None = None
 
     @property
     def active(self) -> bool:
@@ -107,8 +108,8 @@ class ReviewSide:
         if not self.leaving():
             return False
         c.set_mode(Mode.DOCUMENTS)
-        self._settings = self._current_settings()
-        c._worker.analyse_folder(folder, self._settings)
+        self._opening_settings = self._current_settings()
+        c._worker.analyse_folder(folder, self._opening_settings)
         self._pending = "open"
         self._preview_requested = None
         self.preview_path = None
@@ -148,18 +149,7 @@ class ReviewSide:
         if not isinstance(result, DocumentSessionResult):
             return False
         if self._pending == "save":
-            self._pending = ""
-            if result.error is not None or result.cancelled or result.document is None:
-                self._set(
-                    State.REVIEWING,
-                    document_error_banner(result.error)
-                    if result.error
-                    else Banner("information", "Save cancelled. Your edits are kept."),
-                )
-                return True
-            assert self.state is not None
-            self._saved, self._originals = self.state.draft, self._saving_originals
-            return False
+            return self._finish_save(result)
         if result.draft is not None and result.error is None and not result.cancelled:
             self._accept(result.draft)
             return True
@@ -172,8 +162,28 @@ class ReviewSide:
         self._pending = ""
         return False
 
+    def _finish_save(self, result: DocumentSessionResult) -> bool:
+        self._pending = ""
+        if result.error is not None or result.cancelled or result.document is None:
+            self._set(
+                State.REVIEWING,
+                document_error_banner(result.error)
+                if result.error
+                else Banner("info", "Save cancelled. Your edits are kept."),
+            )
+            return True
+        if not result.document.ok:
+            self._originals = None
+            self._set(State.REVIEWING, self._controller._docs.result_banner(State.DONE, result))
+            return True
+        assert self.state is not None
+        self._saved, self._originals = self.state.draft, self._saving_originals
+        return False
+
     def _accept(self, draft: DocumentDraft) -> None:
-        if self._pending != "open":
+        if self._pending == "open":
+            self._settings = self._opening_settings
+        else:
             self._settings = self._controller._docs.review_settings or self._current_settings()
         assert self._settings is not None
         self._settings = replace(self._settings, duplex=draft.duplex, keep_blank=draft.keep_blank)
@@ -198,15 +208,24 @@ class ReviewSide:
         self.state.focused(number)  # validate the raw number before starting a job
         if self.preview_number == number and self.preview_path is not None:
             return self.preview_path.as_uri()
-        self._preview_requested = self.state.draft.raw_dir, number
+        self._preview_requested = self.state.draft, number
+        self.preview_path, self.preview_number = None, 0
         self._controller._worker.preview_page(self.state.draft, number)
         return ""
 
     def preview_ready(self, answer: PreviewResult) -> None:
-        number, path, error = answer
+        source, number, path, error = answer
         if not self.active or self.state is None:
             return
-        if self._preview_requested != (self.state.draft.raw_dir, number):
+        request = self._preview_requested
+        if (
+            source is not self.state.draft
+            or request is None
+            or request[0] is not source
+            or request[1] != number
+        ):
+            return
+        if path is not None and path != source.raw_dir / PREVIEW_DIR / f"page-{number:04d}.jpg":
             return
         self._preview_requested = None
         if error:
@@ -223,7 +242,7 @@ class ReviewSide:
         delete_originals(self._originals)
         self._saved, self._originals = None, None
         self.state = None
-        self._controller._banner = Banner("information", "The original pages were deleted.")
+        self._controller._banner = Banner("info", "The original pages were deleted.")
         self._controller._changed()
 
     def _set(self, state: State, banner: Banner | None = None) -> None:

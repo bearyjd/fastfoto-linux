@@ -1,12 +1,16 @@
 """Folder review jobs preserve raw pages and map write failures to review results."""
 
+import stat
 import threading
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
+from PIL import Image
 
 from fastfoto_linux.documents import DocumentCancelledError, DocumentSettings, OcrMode
-from fastfoto_linux.gui.reviewjobs import ReviewJobs
+from fastfoto_linux.documents.draft import TrimBox
+from fastfoto_linux.gui.reviewjobs import PREVIEW_MAX_PX, ReviewJobs, make_preview
 from fastfoto_linux.session import DocumentRawReason
 from tests.gui.doc_helpers import DocRecordingSink, clean_document
 from tests.gui.review_helpers import draft
@@ -63,3 +67,29 @@ def test_successful_write_still_retains_the_original_pages(out):
     assert result.draft is original
     assert result.raw_reason is DocumentRawReason.REVIEW
     assert result.raw_dir == out
+
+
+def test_generated_preview_is_bounded_private_and_leaves_raw_bytes_untouched(out):
+    path = out / "page-0001.png"
+    Image.new("RGB", (1800, 2400), "white").save(path, dpi=(300, 300))
+    original = path.read_bytes()
+    page = replace(draft(out).pages[0], trim=TrimBox(0, 0, 0, 0, False))
+    source = replace(draft(out), pages=(page,))
+    preview = make_preview(source, 1, threading.Event())
+    with Image.open(preview) as image:
+        assert max(image.size) == PREVIEW_MAX_PX
+    assert stat.S_IMODE(preview.stat().st_mode) == 0o600
+    assert path.read_bytes() == original
+
+
+def test_preview_cancel_publishes_nothing(out):
+    cancel = threading.Event()
+    cancel.set()
+    with pytest.raises(DocumentCancelledError):
+        make_preview(draft(out), 1, cancel)
+    assert not (out / "previews").exists()
+
+
+def test_preview_refuses_unknown_page_before_reading_anything(out):
+    with pytest.raises(ValueError):
+        make_preview(draft(out), 99, threading.Event())

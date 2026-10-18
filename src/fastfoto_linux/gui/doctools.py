@@ -2,8 +2,11 @@
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
+from threading import Event
 
 from fastfoto_linux.documents import DocumentResult, find_ocrmypdf
+from fastfoto_linux.documents.draft import DocumentDraft
 from fastfoto_linux.documents.ocr_tools import (
     DNF_INSTALL_HINT,
     FLATPAK_BROKEN_HINT,
@@ -26,9 +29,9 @@ class DocumentTools:
 
     session: Callable[..., DocumentSessionResult] | None = None
     build: Callable[..., DocumentResult] | None = None
-    open_review: Callable | None = None
-    write_review: Callable | None = None
-    preview_review: Callable | None = None
+    open_review: Callable[..., DocumentDraft] | None = None
+    write_review: Callable[..., DocumentResult] | None = None
+    preview_review: Callable[[DocumentDraft, int, Event], Path] | None = None
     find_ocr: Callable[[], str | None] = find_ocrmypdf
     in_flatpak: Callable[[], bool] = inside_flatpak
 

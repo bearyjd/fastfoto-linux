@@ -1,5 +1,6 @@
 """The ``ocr`` extra: ocrmypdf is optional for a source install, and the native installer gets it
-from its own hashed file, which is what uv.lock says (the Flatpak installs the other file)."""
+from its own hashed file, which is what uv.lock says. The Flatpak installs that same file, which
+holds the desktop's pins as well, so it gets OCR too."""
 
 import re
 import shutil
@@ -55,7 +56,7 @@ def test_the_ocr_requirements_pin_ocrmypdf_and_every_desktop_pin_the_same_way() 
     assert desktop.items() <= ocr.items()
 
 
-def test_the_desktop_requirements_stay_free_of_ocr_because_the_flatpak_installs_them() -> None:
+def test_the_desktop_requirements_stay_free_of_ocr_because_the_ocr_file_adds_it() -> None:
     assert "ocrmypdf" not in pins(DESKTOP)
 
 

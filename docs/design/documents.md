@@ -17,8 +17,8 @@ CLI and the desktop app. This replaces the document scanning done in the Windows
 4. Never lose a scan: raw pages are kept whenever a page was dropped, a step failed or the run stopped.
 
 ## Non-goals (this round)
-Splitting one batch into several PDFs; PDF/A; page editing; OCR inside the Flatpak (no Tesseract in the
-runtime yet); the scanner's hardware auto-crop (`--adf-crp`: the epsonds backend ignores it, checked in the
+Splitting one batch into several PDFs; PDF/A; page editing; OCR languages other than English in the
+Flatpak (only `eng` and `osd` are bundled); the scanner's hardware auto-crop (`--adf-crp`: the epsonds backend ignores it, checked in the
 transport PR); software deskew (the scanner's own deskew stays on).
 
 ## Command line
@@ -87,7 +87,8 @@ when it is OCRmyPDF that is missing, or both, Tesseract's first). Results list e
 dropped pages and an Open button. Settings are remembered per mode.
 
 ## Flatpak
-No OCR this round; the app says searchable text needs the native install. Later: bundle Tesseract + OCRmyPDF.
+Searchable text works in the Flatpak (see "Where the OCR programs are" and "OCR in the Flatpak" below);
+the form's box is on there, and if the bundle were broken it says so (reinstall) instead of naming a command.
 
 ## PR plan
 - **D1** core + `ffscan doc process`: package `fastfoto_linux.documents` (loader, trim, blank, black-and-white,
@@ -95,7 +96,7 @@ No OCR this round; the app says searchable text needs the native install. Later:
 - **D2** `ffscan doc scan`: scan request gains colour mode and length; a document session (raw pages,
   cancel, keep-raw rules) over the existing scanner runner.
 - **D3** desktop app Documents mode.
-- Later: Flatpak OCR, batch splitting on separator pages, PDF/A.
+- Later: batch splitting on separator pages, PDF/A.
 
 ## Needs real hardware (the user)
 Trim on real pages (backing colour, tail), blank detection on real backs, what scanimage writes for Gray,
@@ -579,8 +580,8 @@ What the first pull request settled where the specification left room.
   the same name, with the same retry on collision as photos.
 
 ### Where the OCR programs are
-`ocrmypdf` is the `ocr` extra of the package (`packaging/requirements-ocr.txt` holds its hashed wheels; the
-Flatpak does not install it yet), so the native install has it whatever the distribution packages. It
+`ocrmypdf` is the `ocr` extra of the package (`packaging/requirements-ocr.txt` holds its hashed wheels, and
+the Flatpak installs that same file), so the native install has it whatever the distribution packages. It
 is run as `python -P -m ocrmypdf` of the app's own interpreter when that can import it (`-P`, safe-path
 mode, so that the folder `ffscan` is run in is never searched for modules), else the
 `ocrmypdf` on PATH, else the one in Homebrew's folder. Tesseract is a program: on PATH, else in
@@ -599,7 +600,28 @@ reboot) on an immutable system (`/run/ostree-booted` exists) where `brew` is not
 `sudo dnf install tesseract tesseract-osd` on classic Fedora. `ocrmypdf` is not installed from
 Homebrew: its formula pulls in Ghostscript and its own Python. Without the orientation data
 OCRmyPDF's rotation step can fail the whole run, which here falls back to the plain PDF. Read from
-the documentation, run only against stand-ins (CI has no Tesseract).
+the documentation, run only against stand-ins (CI has no Tesseract, except the real one the Flatpak
+job runs in its own sandbox).
+
+### OCR in the Flatpak
+The KDE 6.11 runtime has no Tesseract, so the manifest builds Leptonica and Tesseract from the same release
+archives as Flathub's `org.kde.skanpage` (hashed, with `x-checker-data`, cmake-ninja, no training tools, no
+curl or archive support), before the Python modules so that editing the app reuses their build. The data
+is two single files of tessdata_fast 4.1.0: `eng.traineddata` and `osd.traineddata` (the whole data
+repository is about 340 MB), installed to `/app/share/tessdata`, which `TESSDATA_PREFIX` names in
+`finish-args` (since Tesseract 4 it is the folder of the `.traineddata` files itself). OCRmyPDF 17 needs
+Tesseract 4.1.1 or newer and pdfium (a wheel), and `--output-type pdf --rasterizer pypdfium` needs no other
+program, so nothing else is built. Its wheels come from `packaging/requirements-ocr.txt`, which the
+`python-deps` module installs (it holds the desktop's pins as well);
+`tools/flatpak/gen_wheel_sources.py` resolves the environment markers of that closure for CPython 3.13 on
+Linux x86_64 and still refuses a marker it cannot decide.
+
+In the sandbox `ocr_tools` looks in `/app/bin` first (the PATH of a Flatpak has it too, but a launcher may
+not), never in Homebrew's folder, and runs OCRmyPDF as the module of the app's interpreter. A part that is
+missing there is a broken bundle, so the one hint is "reinstall the Flatpak" and no message names brew,
+rpm-ostree, dnf or pip. Only English comes with the Flatpak: for another `--lang` the exit-code hint says
+so. "In a Flatpak" is `inside_flatpak()` (`/.flatpak-info`), as in the shim code, not `FLATPAK_ID`. The CI
+job installs the built bundle and runs `tools/ci/flatpak-ocr-smoke.sh` in its sandbox.
 
 ### Needs real hardware or native tools
 Trim on real pages (backing colour, tail tone), blank detection on real backs, what `scanimage`
@@ -697,7 +719,7 @@ What the third pull request settled where the specification left room.
 - **Searchable text.** The box asks for `OcrMode.ON` only when it is ticked and `ocrmypdf` was
   found (looked for at start, at "Check again" and at a mode switch), so a tool that vanished
   since is refused before the stack is scanned. Missing, the box is off with the install hint
-  (native) or "Searchable text needs the native install" (Flatpak), and the PDF is made without.
+  (native) or the "reinstall the Flatpak" text (Flatpak, where the OCR comes with it), and the PDF is made without.
 - **Kept pages.** After a cancel, a scanner that stopped part-way, or a PDF that could not be
   saved for a reason the user can fix (a full disk, a folder that cannot be written to or is
   gone), "Process them now" builds the PDF from `kept_pages` with the run's settings and the scan

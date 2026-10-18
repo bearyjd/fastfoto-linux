@@ -4,14 +4,19 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from fastfoto_linux.documents import DocumentResult, find_ocrmypdf
-from fastfoto_linux.documents.ocr_tools import DNF_INSTALL_HINT, TESSERACT_NAME, ocr_fixes
+from fastfoto_linux.documents.ocr_tools import (
+    DNF_INSTALL_HINT,
+    FLATPAK_BROKEN_HINT,
+    TESSERACT_NAME,
+    ocr_fixes,
+)
 from fastfoto_linux.gui.docform import DocumentForm
 from fastfoto_linux.gui.state import Mode
 from fastfoto_linux.scanner.shim_trust import inside_flatpak
 from fastfoto_linux.session import DocumentSessionResult
 
 NATIVE_OCR_HINT = f"Install {TESSERACT_NAME}: {DNF_INSTALL_HINT}"  # classic system, only it missing
-FLATPAK_OCR_HINT = "Searchable text needs the native install"
+FLATPAK_OCR_HINT = FLATPAK_BROKEN_HINT  # the Flatpak brings OCR; missing means a broken bundle
 
 
 @dataclass(frozen=True)

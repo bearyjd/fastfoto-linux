@@ -3,6 +3,7 @@
 import sys
 
 from fastfoto_linux.documents import DocumentResult, OcrStatus
+from fastfoto_linux.scanner.shim_trust import inside_flatpak
 from fastfoto_linux.session import DocumentRawReason, DocumentSessionResult
 
 RAW_UNTOUCHED = "raw pages: left as they were"
@@ -33,6 +34,8 @@ def _searchable_line(result: DocumentResult, install_hint: str) -> str:
         return "searchable text: yes"
     if status is OcrStatus.SKIPPED:
         return "searchable text: no (off)"
+    if status is OcrStatus.UNAVAILABLE and inside_flatpak():  # the hint is a sentence of its own
+        return f"searchable text: no (OCR is not available). {install_hint}"
     if status is OcrStatus.UNAVAILABLE:
         return f"searchable text: no (OCR is not available; to add it: {install_hint})"
     return f"searchable text: no ({status.value})"

@@ -1,4 +1,4 @@
-"""The CI job that builds the Flatpak bundle (not a required check; that is a repo setting)."""
+"""The CI job that builds the Flatpak bundle (a required check, set in the branch protection)."""
 
 import re
 from typing import Any

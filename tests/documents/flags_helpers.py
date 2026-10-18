@@ -3,9 +3,11 @@
 from collections.abc import Sequence
 from dataclasses import replace
 
+import numpy as np
+
 from fastfoto_linux.documents.assess import PageAssessment, assess_page
 from fastfoto_linux.documents.trim import Trimmed, trim_page
-from tests.doc_synth import INK_TONE, Scene, paper_scene, with_solid_block, with_text
+from tests.doc_synth import INK_TONE, Scene, paper_scene, px, with_solid_block, with_text
 from tests.doc_synth_holes import SMALL_MM, Painter, sheet
 from tests.documents.helpers import colour_page
 
@@ -29,7 +31,12 @@ def block(x_mm: float, y_mm: float, size_mm: float) -> Painter:
 
 
 def ghost_of(
-    painters: Sequence[Painter], dpi: int, tone: int = GHOST_TONE, *, upside_down: bool = False
+    painters: Sequence[Painter],
+    dpi: int,
+    tone: int = GHOST_TONE,
+    *,
+    upside_down: bool = False,
+    shift_mm: tuple[float, float] = (0.0, 0.0),
 ) -> Painter:
     """The ink of ``painters`` as the other side of the paper shows it, in ``tone``: flipped left
     to right (or, for a near miss, top to bottom, where it is NOT on the other side)."""
@@ -38,6 +45,8 @@ def ghost_of(
         source = paint(source)
     ink = source.image.min(axis=2) < INK_TONE * 2
     ink = ink[::-1, :] if upside_down else ink[:, ::-1]
+    if shift_mm != (0.0, 0.0):
+        ink = np.roll(ink, (px(shift_mm[1], dpi), px(shift_mm[0], dpi)), axis=(0, 1))
 
     def paint_ghost(scene: Scene) -> Scene:
         image = scene.image.copy()

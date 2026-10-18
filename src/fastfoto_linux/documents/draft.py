@@ -76,6 +76,24 @@ class BoxN:
     y1: float
 
 
+@dataclass(frozen=True)
+class InkMap:
+    """A coarse map of where a page is dark: one bit per cell (row by row, packed), the cells
+    ``cell_mm`` square, from the page's top left corner. The page lies ``left_mm`` and ``top_mm``
+    from the corner of the scanner's frame, which is ``frame_mm`` wide; ``width_mm`` and
+    ``height_mm`` are the page's. Small (about 5 KB for Letter) and never persisted."""
+
+    bits: bytes
+    cols: int
+    rows: int
+    cell_mm: float
+    left_mm: float
+    top_mm: float
+    width_mm: float
+    height_mm: float
+    frame_mm: float
+
+
 def sorted_flags(flags: Iterable[Flag]) -> tuple[Flag, ...]:
     """The flags in a stable order (by name), to print or compare."""
     return tuple(sorted(flags))
@@ -104,13 +122,16 @@ class PageAnalysis:
     partner: int | None = None
     flags: frozenset[Flag] = frozenset()
     marks: tuple[BoxN, ...] = ()
+    detail: tuple[str, ...] = ()
+    ink: InkMap | None = field(default=None, repr=False, compare=False)
     encoded: EncodedPage | None = field(default=None, repr=False, compare=False)
 
     def describe(self) -> str:
         """Numbers and flag names only, stably ordered: ``page 3 kept flags=few_marks marks=2``."""
         verdict = "blank" if self.blank else "kept"
         names = ",".join(sorted_flags(self.flags)) or "-"
-        return f"page {self.number} {verdict} flags={names} marks={len(self.marks)}"
+        text = f"page {self.number} {verdict} flags={names} marks={len(self.marks)}"
+        return text + "".join(f" {name}" for name in self.detail)
 
 
 @dataclass(frozen=True)

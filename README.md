@@ -375,7 +375,9 @@ uv run ffscan doc process page-*.png --out ~/Documents/Scans --order 1,3,2,4 --d
   that is not a permutation or a `--part-name` for a PDF that does not exist is a usage error
   (exit 2), found before any page is read where the page count is enough. If every page is left out
   nothing is written and the exit code is 1.
-- Limits: the page files are left as they were. `ffscan doc scan` has no edit options. Searchable text
+- Limits: the page files are left as they were. `--rotate` and `--keep` read a page again from
+  its file, so they need all the pages in one folder (the other edits do not). `ffscan doc scan`
+  has no edit options. Searchable text
   runs afterwards with OCRmyPDF's `--rotate-pages`, which may turn a page back if its text reads
   sideways; a page turned on purpose can therefore come out turned again in a searchable PDF (not
   yet checked with the real tool).

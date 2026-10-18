@@ -778,6 +778,8 @@ What the third review pull request settled where the plan left room.
   `--dry-run` belong to `ffscan doc process` only, are checked before any page is read where the
   page count is enough, and `--drop` wins over `--keep-blank`. A raw folder as the input is left
   for a later pull request.
-- **Limits.** The page files are left as they were. Searchable text uses OCRmyPDF's
+- **Limits.** The page files are left as they were. A page that is turned or brought back is read
+  again from its file, so `--rotate` and `--keep` need the pages in one folder (`raw_dir`), and
+  are refused with a usage error otherwise. Searchable text uses OCRmyPDF's
   `--rotate-pages`, which may turn a page back that was turned on purpose; checking that with the
   real tool is left to the maintainer.

@@ -22,8 +22,9 @@ from fastfoto_linux.documents import (
     OcrMode,
     OcrStatus,
     UnsupportedPageError,
-    build,
+    analyse,
     build_document,
+    write,
 )
 from fastfoto_linux.output.files import LOCK_NAME
 from tests import _fake_ocrmypdf as fake
@@ -180,13 +181,13 @@ def test_an_unusable_page_stops_everything_before_any_page_is_processed(
     pages = write_pages(raw, [text_scene(1), text_scene(2), text_scene(3)])
     Image.new("RGBA", (50, 50)).save(pages[1], "PNG", dpi=(DPI, DPI))
     loaded: list[Path] = []
-    real = build.load_page
+    real = analyse.load_page
 
     def spy(path: Path, **kwargs: Any) -> Any:
         loaded.append(path)
         return real(path, **kwargs)
 
-    monkeypatch.setattr(build, "load_page", spy)
+    monkeypatch.setattr(analyse, "load_page", spy)
     with pytest.raises(UnsupportedPageError, match=r"page-02\.png"):
         build_document(pages, settings(out))
     assert loaded == []
@@ -197,7 +198,7 @@ def test_pages_that_are_not_paired_are_loaded_and_encoded_one_at_a_time(
     raw: Path, out: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     events: list[str] = []
-    real_load, real_encode = build.load_page, build.encode_page
+    real_load, real_encode = analyse.load_page, analyse.encode_page
 
     def load(*args: Any, **kwargs: Any) -> Any:
         events.append("load")
@@ -207,8 +208,8 @@ def test_pages_that_are_not_paired_are_loaded_and_encoded_one_at_a_time(
         events.append("encode")
         return real_encode(*args, **kwargs)
 
-    monkeypatch.setattr(build, "load_page", load)
-    monkeypatch.setattr(build, "encode_page", encode)
+    monkeypatch.setattr(analyse, "load_page", load)
+    monkeypatch.setattr(analyse, "encode_page", encode)
     pages = write_pages(raw, [text_scene(n) for n in range(4)])
     build_document(pages, settings(out, duplex=False))
     assert events == ["load", "encode"] * 4
@@ -223,8 +224,8 @@ def test_required_ocr_that_is_missing_stops_before_a_single_page_is_read(
     def refuse(*args: Any, **kwargs: Any) -> Any:
         raise AssertionError("a page was read before the OCR check")
 
-    monkeypatch.setattr(build, "inspect_page", refuse)
-    monkeypatch.setattr(build, "load_page", refuse)
+    monkeypatch.setattr(analyse, "inspect_page", refuse)
+    monkeypatch.setattr(analyse, "load_page", refuse)
     pages = write_pages(raw, [text_scene(1)])
     with pytest.raises(OcrMissingError, match="OCRmyPDF"):
         build_document(pages, settings(out, ocr=OcrMode.ON))
@@ -315,7 +316,7 @@ def test_ocr_off_never_starts_ocrmypdf(
 def test_the_folder_lock_is_free_while_ocr_runs(
     raw: Path, out: Path, monkeypatch: pytest.MonkeyPatch, fake_on_path: Path
 ) -> None:
-    real = build.run_ocr
+    real = write.run_ocr
     probed: list[bool] = []
 
     def probe(*args: Any, **kwargs: Any) -> Any:
@@ -327,7 +328,7 @@ def test_the_folder_lock_is_free_while_ocr_runs(
             os.close(fd)
         return real(*args, **kwargs)
 
-    monkeypatch.setattr(build, "run_ocr", probe)
+    monkeypatch.setattr(write, "run_ocr", probe)
     build_document(write_pages(raw, [text_scene(1)]), settings(out, ocr=OcrMode.ON))
     assert probed == [True]
 

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from fastfoto_linux.documents import DocumentResult, OcrOutcome, OcrStatus
+from fastfoto_linux.documents import DocumentResult, OcrOutcome, OcrStatus, PartResult
 from fastfoto_linux.gui.docform import DocumentForm
 from fastfoto_linux.session import DocumentRawReason, DocumentSessionResult, Stage
 from tests.gui.helpers import FakeWorker, RecordingSink
@@ -22,11 +22,9 @@ def document(
     detail: str = "",
 ) -> DocumentResult:
     return DocumentResult(
-        pdf=out / PDF_NAME,
         pages_read=pages + len(dropped),
         dropped=dropped,
-        pages_in_pdf=pages,
-        ocr=OcrOutcome(ocr, detail),
+        parts=(PartResult(out / PDF_NAME, "Document", pages, OcrOutcome(ocr, detail)),),
     )
 
 

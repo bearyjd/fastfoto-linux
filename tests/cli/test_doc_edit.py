@@ -158,6 +158,4 @@ def test_dry_run_says_when_no_pdf_would_be_written(four, out, capsys) -> None:
 
 
 def test_doc_scan_has_no_edit_options(out) -> None:
-    with pytest.raises(SystemExit) as stop:
-        main(["doc", "scan", "--out", str(out), "--drop", "1"])
-    assert stop.value.code == 2
+    assert main(["doc", "scan", "--out", str(out), "--drop", "1"]) == 2

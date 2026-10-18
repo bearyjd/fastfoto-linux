@@ -344,6 +344,42 @@ uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr o
   answering or in use), 4 the feeder is empty (`doc scan` only), 130 stopped (Ctrl-C, SIGTERM or
   SIGHUP).
 
+### Editing before saving with `ffscan doc process`
+
+Page numbers are counted from 1 in the order the pages are read (the numbers "blank pages
+dropped" reports). Without these options nothing changes.
+
+```sh
+uv run ffscan doc process page-*.png --out ~/Documents/Scans --drop 2,4,6 --rotate 3:90,5:180
+uv run ffscan doc process page-*.png --out ~/Documents/Scans --split 5,9 \
+  --part-name "1=Tax return,2=Receipts,3=Letters"
+uv run ffscan doc process page-*.png --out ~/Documents/Scans --order 1,3,2,4 --dry-run
+```
+
+- `--drop 2,4,6` leaves pages out. `--keep 3` brings back a page that was dropped as blank
+  (`--keep-blank` with `--drop` on the same page: the page is left out). A page in both is a usage
+  error. `--rotate 3:90,5:180` turns a page clockwise 90, 180 or 270 degrees (the pixels move,
+  nothing is resampled). `--order 1,3,2,4` puts the pages in that order and must name every page
+  once.
+- `--split 5,9` starts a new PDF at pages 5 and 9. If a split page is left out, the next page that
+  stays starts the new PDF; a split on the first page that stays does nothing, and a PDF whose
+  pages are all left out is not made.
+- Every PDF has a name. `--part-name "1=Tax return,2=Receipts"` names the PDFs counted from 1 in
+  output order (a name has no comma; it is cleaned like an album name). An unnamed PDF is called
+  `NAME` (`--name`), or `NAME (part N)` when there are several. Each is published as
+  `<name>_NNNN.pdf` with its own next number for that name, all under one lock on the folder,
+  and the name is the PDF's title. It is all parts or none: a cancel or an error before the end
+  publishes nothing. OCR runs for each part, with a limit set by that part's page count.
+- `--dry-run` prints a table (page, verdict, flags, part, what happens) and writes nothing; the
+  output folder must exist. A bad number, an unknown angle, a page given twice, an `--order`
+  that is not a permutation or a `--part-name` for a PDF that does not exist is a usage error
+  (exit 2), found before any page is read where the page count is enough. If every page is left out
+  nothing is written and the exit code is 1.
+- Limits: the page files are left as they were. `ffscan doc scan` has no edit options. Searchable text
+  runs afterwards with OCRmyPDF's `--rotate-pages`, which may turn a page back if its text reads
+  sideways; a page turned on purpose can therefore come out turned again in a searchable PDF (not
+  yet checked with the real tool).
+
 ### Scanning with `ffscan doc scan`
 
 - Load the stack face down, top edge first: the printed side is then scanned first and comes out

@@ -6,7 +6,7 @@ import functools
 import os
 import queue
 import stat
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -107,16 +107,17 @@ def no_real_ocr(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.Mo
 
 def disk_full_once(monkeypatch: pytest.MonkeyPatch) -> None:
     """The first PDF to be saved meets a full disk, the next one does not."""
-    real = write.publish_pdf
+    real = write.publish_pdfs
     calls: list[int] = []
 
-    def publish(data: bytes, root: Path, name: str) -> Path:
+    def publish(parts: Sequence[tuple[str, bytes]], root: Path) -> tuple[Path, ...]:
         if not calls:
             calls.append(1)
+            name = parts[0][0]
             raise OSError(errno.ENOSPC, "No space left on device", str(root / f".{name}.4a.tmp"))
-        return real(data, root, name)
+        return real(parts, root)
 
-    monkeypatch.setattr(write, "publish_pdf", publish)
+    monkeypatch.setattr(write, "publish_pdfs", publish)
 
 
 def test_ocrmypdf_that_vanished_since_the_scan_still_gives_a_plain_pdf(

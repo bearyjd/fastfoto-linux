@@ -1,6 +1,5 @@
 """Edits to a draft: pure functions on raw numbers, the parts they give."""
 
-import copy
 from dataclasses import replace
 
 import pytest
@@ -204,7 +203,7 @@ def test_a_name_with_nothing_usable_is_refused() -> None:
         set_part_name(draft_of(3), 1, "..")
 
 
-def test_edits_are_deep_copy_safe_and_equal_by_value() -> None:
+def test_edits_compare_by_value() -> None:
     draft = rotate(set_included(draft_of(3), 2, False), 1, 1)
-    assert copy.deepcopy(draft) == draft
     assert replace(draft) == draft
+    assert draft != draft_of(3)

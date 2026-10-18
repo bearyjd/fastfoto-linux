@@ -14,7 +14,7 @@ from fastfoto_linux.documents import (
 )
 from fastfoto_linux.documents.errors import OutputFolderMissingError
 from fastfoto_linux.documents.ocr_tools import OCR_UNAVAILABLE_TEXT
-from fastfoto_linux.gui.documents import item_from_document
+from fastfoto_linux.gui.documents import DocumentItem, items_from_document
 from fastfoto_linux.gui.report import (
     CHECKING_SCANNER_TEXT,
     Banner,
@@ -184,11 +184,32 @@ def document_result_banner(state: State, result: DocumentSessionResult) -> Banne
     return None
 
 
+def _saved_several(items: tuple[DocumentItem, ...], note: str) -> Banner:
+    """The banner of a document made into several PDFs: each one named, with its pages."""
+    names = ", ".join(f"{item.file_name} ({item.pages_text})" for item in items)
+    where = f"{len(items)} PDFs saved to {items[0].folder}: {names}"
+    stray = [
+        item.file_name for item in items if item.ocr_warning or item.ocr is OcrStatus.UNAVAILABLE
+    ]
+    if stray:
+        return Banner(
+            "warning", f"{where}. Searchable text was not added to {', '.join(stray)}.{note}"
+        )
+    return Banner("positive", f"{where}.{_left_out(items[0])}{note}")
+
+
+def _left_out(item: DocumentItem) -> str:
+    return "".join(f" {text}." for text in (item.dropped_text, item.removed_text) if text)
+
+
 def _saved(document: DocumentResult, result: DocumentSessionResult) -> Banner:
-    item = item_from_document(document)
+    items = items_from_document(document)
+    item = items[0]
     # An error that is behind us (the PDF was made on a second try) is not a reason to name now.
     reason = None if result.raw_reason is DocumentRawReason.ERROR else result.raw_reason
     note = _raw_note(result.raw_dir, reason)
+    if len(items) > 1:
+        return _saved_several(items, note)
     where = f"{item.file_name} saved to {item.folder}"
     if item.ocr_warning:
         said = item.searchable_text
@@ -197,5 +218,4 @@ def _saved(document: DocumentResult, result: DocumentSessionResult) -> Banner:
     if item.ocr is OcrStatus.UNAVAILABLE:  # asked for, and the tool was gone when the PDF was made
         reason = item.ocr_detail or OCR_UNAVAILABLE_TEXT  # it names what is missing
         return Banner("warning", f"{where}, but searchable text was not added ({reason}).{note}")
-    dropped = f" {item.dropped_text}." if item.dropped else ""
-    return Banner("positive", f"{where}: {item.pages_text}.{dropped}{note}")
+    return Banner("positive", f"{where}: {item.pages_text}.{_left_out(item)}{note}")

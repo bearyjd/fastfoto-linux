@@ -48,6 +48,10 @@ def raw_pages_line(session: DocumentSessionResult) -> str:
     return f"raw pages: kept in {session.raw_dir} ({_KEPT_BECAUSE[session.raw_reason]})"
 
 
+def _page_count(count: int) -> str:
+    return f"{count} page" if count == 1 else f"{count} pages"
+
+
 def print_document_summary(
     result: DocumentResult,
     *,
@@ -55,17 +59,22 @@ def print_document_summary(
     pages_label: str = PAGES_READ,
     raw_line: str = RAW_UNTOUCHED,
 ) -> None:
-    """Counts and the file on stdout; an OCR problem on stderr."""
+    """Counts and the file or files on stdout; an OCR problem on stderr."""
     dropped = f" ({_pages(result.dropped)})" if result.dropped else ""
     print(f"{pages_label}: {result.pages_read}")
     print(f"blank pages dropped: {len(result.dropped)}{dropped}")
-    print(f"pages in the PDF: {result.pages_in_pdf}")
+    if result.removed:
+        print(f"pages removed: {len(result.removed)} ({_pages(result.removed)})")
+    several = len(result.parts) > 1
+    print(f"pages in the PDF{'s' if several else ''}: {result.pages_in_pdf}")
     print(_searchable_line(result, install_hint))
-    print(f"file written: {result.pdf}")
+    for part in result.parts:
+        count = f" ({_page_count(part.pages)})" if several else ""
+        print(f"file written: {part.pdf}{count}")
     print(raw_line)
     if not result.ok:
         print(
             f"warning: searchable text could not be added ({result.ocr.detail}); "
-            "the plain PDF was written instead",
+            f"the plain PDF{'s were' if several else ' was'} written instead",
             file=sys.stderr,
         )

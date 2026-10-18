@@ -136,7 +136,7 @@ def test_the_pages_of_each_part_are_the_ones_in_the_edit(tmp_path: Path, out: Pa
     draft = _draft(tmp_path, out, 5, blank={4})
     draft = toggle_split(set_included(draft, 1, False), 3)
     result = write_document(draft, settings(out))
-    assert [p.pages for p in result.parts] == [1, 1]
+    assert [p.pages for p in result.parts] == [1, 2]
     assert (result.dropped, result.removed) == ((4,), (1,))
 
 

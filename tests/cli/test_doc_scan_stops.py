@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from fastfoto_linux.documents import build
+from fastfoto_linux.documents import analyse
 from fastfoto_linux.scanner import (
     NoDocumentsError,
     ScanCancelledError,
@@ -241,7 +241,7 @@ def test_a_signal_while_the_pdf_is_made_is_exit_130_with_nothing_published(
     out, doc_transport, monkeypatch, capsys, signum
 ) -> None:
     three_pages(doc_transport)
-    real_trim = build.trim_page
+    real_trim = analyse.trim_page
     seen: list[int] = []
 
     def trim_then_signal(page):
@@ -250,7 +250,7 @@ def test_a_signal_while_the_pdf_is_made_is_exit_130_with_nothing_published(
             signal.raise_signal(signum)
         return real_trim(page)
 
-    monkeypatch.setattr(build, "trim_page", trim_then_signal)
+    monkeypatch.setattr(analyse, "trim_page", trim_then_signal)
     assert doc_scan(out, "--discard-raw") == 130
     err = capsys.readouterr().err
     assert "interrupted" in err

@@ -1,5 +1,7 @@
 """Exceptions raised by the documents-to-PDF package."""
 
+import threading
+
 from fastfoto_linux.output.errors import OutputRootMissingError
 
 
@@ -39,3 +41,9 @@ class OutputFolderMissingError(DocumentSettingsError, OutputRootMissingError):
     It is a settings error (what a front end catches, and shows as it is) and still the
     ``OutputRootMissingError`` that the photo writer raises for the same condition.
     """
+
+
+def stop_if_cancelled(cancel: threading.Event | None, before: str) -> None:
+    """Raise ``DocumentCancelledError`` ("stopped before ``before``") once ``cancel`` is set."""
+    if cancel is not None and cancel.is_set():
+        raise DocumentCancelledError(f"stopped before {before}")

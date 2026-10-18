@@ -125,7 +125,7 @@ def test_an_unusable_page_is_an_error_and_the_pages_stay(out, doc_transport) -> 
     assert isinstance(result.error, UnsupportedPageError)
     assert (result.draft, result.raw_reason) == (None, DocumentRawReason.ERROR)
     assert not result.ok
-    assert len(result.kept_pages) == 2
+    assert len(list(result.raw_dir.glob("page-*.png"))) == 2
 
 
 @pytest.mark.parametrize(

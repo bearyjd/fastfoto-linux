@@ -9,6 +9,7 @@ import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 
+from fastfoto_linux.documents.private_io import PRIVATE_DIR_MODE, make_private_dir
 from fastfoto_linux.output.files import sync_folders
 from fastfoto_linux.scanner.job import DEFAULT_FILE_PREFIX
 
@@ -18,7 +19,6 @@ KEPT_DIR_NAME = ".raw"
 TEMP_PREFIX = ".ffscan-raw-"
 # No ':' in the stamp: FAT and exFAT drives refuse it in a folder name.
 STAMP_FORMAT = "%Y%m%dT%H%M%SZ"
-PRIVATE_DIR_MODE = 0o700  # owner only: the raw pages of a document may be a letter or a bill
 # Every PNG ends with this IEND chunk (empty data, fixed CRC).
 _PNG_END = b"\x00\x00\x00\x00IEND\xaeB`\x82"
 _PAGE = re.compile(rf"{re.escape(DEFAULT_FILE_PREFIX)}-([0-9]{{4,}})\.png")
@@ -71,31 +71,11 @@ def create_raw_dir(root: Path, *, keep: bool, private: bool = False) -> Path:
         kept = _kept_dir(root)
         if private:
             kept.mkdir(mode=PRIVATE_DIR_MODE, parents=True, exist_ok=True)
-            _make_private(kept)
+            make_private_dir(kept)
         else:
             kept.mkdir(parents=True, exist_ok=True)
         return kept
     return Path(tempfile.mkdtemp(prefix=TEMP_PREFIX, dir=root))
-
-
-def _make_private(folder: Path) -> None:
-    """Set the owner-only mode on ``folder`` itself, never on what a link there points to.
-
-    ``mkdir`` leaves the mode of a folder that already exists alone, and ``chmod`` follows a
-    link, so a link planted as ``.raw/<stamp>`` would have the mode of its target changed (and
-    the pages written there). ``O_NOFOLLOW`` refuses a link, with no gap between the check and
-    the change.
-    """
-    try:
-        descriptor = os.open(folder, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-    except OSError as error:
-        raise OSError(
-            error.errno, f"{folder} is not a folder of its own (a link?): {error.strerror}"
-        ) from error
-    try:
-        os.fchmod(descriptor, PRIVATE_DIR_MODE)
-    finally:
-        os.close(descriptor)
 
 
 def settle_raw_dir(raw: Path, root: Path, *, keep: bool, album: Path | None = None) -> Path | None:

@@ -776,10 +776,46 @@ What the third review pull request settled where the plan left room.
   the banner of the app name each PDF.
 - **Command line.** `--drop`, `--keep`, `--rotate`, `--split`, `--order`, `--part-name` and
   `--dry-run` belong to `ffscan doc process` only, are checked before any page is read where the
-  page count is enough, and `--drop` wins over `--keep-blank`. A raw folder as the input is left
-  for a later pull request.
+  page count is enough, and `--drop` wins over `--keep-blank`. A raw folder as the input is part D.
 - **Limits.** The page files are left as they were. A page that is turned or brought back is read
   again from its file, so `--rotate` and `--keep` need the pages in one folder (`raw_dir`), and
   are refused with a usage error otherwise. Searchable text uses OCRmyPDF's
   `--rotate-pages`, which may turn a page back that was turned on purpose; checking that with the
   real tool is left to the maintainer.
+
+## Decisions in the review sidecar and a raw folder as input (review, part D)
+- **The sidecar.** `draft_store.save_draft` writes `review.json` into the raw folder
+  (`.raw/<UTC time>/`, mode 0700) with mode 0600, through a temporary file and `os.replace`, so a
+  crash leaves the old file. It holds, for each page, its file name, size and modification time,
+  resolution, trim box, verdict, flags, marks (as shares of the page), partner and detail, and the
+  document's `duplex`, `keep_blank`, name, colour, OCR mode and languages, the reviewer's edits,
+  order, splits and part names, and the `ANALYSIS_VERSION`. Not the pixels and not the ink maps
+  (the neighbour flags are settled before it is saved). `list_pages` finds neither the file nor
+  the thumbnails.
+- **Thumbnails.** `analyse_document(..., thumbs=dir)` writes `thumbs/page-NNNN.jpg` (NNNN is the
+  raw number) from the trimmed page it already decoded: 480 px on the long side at most, JPEG
+  quality 80, mode 0600 in a 0700 folder, the same bytes every time. A thumbnail that cannot be
+  written is logged and the page has none.
+- **The sidecar is untrusted input.** The file may be damaged, from another version or planted.
+  `draft_json.decode_review` reads at most 8 MiB, only from a regular file that is not a link
+  (a pipe cannot hang it), checks each value by type (a bool is no number), range and meaning,
+  bounds every list, and refuses the whole file at the first fault: a page name that is not the
+  name `list_pages` gives at that place (so no path, `..` or other file can be named), a number
+  out of range, turns outside 0 to 3, an `order` that is not a permutation, NaN, unknown flags, a
+  part name that is not a clean name. Then it is logged as a warning and the folder is analysed
+  afresh; the pages are never changed.
+- **When the analysis is reused.** Only when the `ANALYSIS_VERSION`, the pairing and blank rule
+  (`duplex`, `keep_blank`) and every page's (name, size, modification time) are the ones now.
+  Otherwise the pages are analysed again and the edits are put back by raw number
+  (`open_draft`, `restore_edits`).
+- **Review mode of the session.** `DocumentScanRequest.review` makes `run_document_session` keep
+  the raw folder, private from the start, analyse instead of building, save the sidecar and return
+  the draft (`DocumentSessionResult.draft`, reason `DocumentRawReason.REVIEW`). The policy
+  DISCARD cannot be combined with it. Saving is the separate job `write_document(draft)`. The
+  analysis keeps no encoded bytes, so a fresh and a re-opened draft behave alike.
+- **What is deleted.** nothing is deleted automatically. A clean run that left pages out, as blank
+  or in a review, keeps the raw pages (the fix for pages removed in a review); after a Save the
+  desktop app will offer "Delete the original pages", and the user decides.
+- **A raw folder as the input.** `ffscan doc process RAWDIR` takes a folder with `list_pages`
+  (counted from 1). The saved edits apply first and the command-line edits on top; `--fresh`
+  ignores the sidecar. The command never writes into the folder.

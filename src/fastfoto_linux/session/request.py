@@ -73,7 +73,9 @@ class DocumentScanRequest:
     request. ``raw_parent`` and ``raw_policy`` are those of :class:`ScanRequest`; the pages are
     taken at ``dpi`` when the scanner's file does not say its own resolution. ``duplex`` says
     whether the feeder scans both sides; it must agree with ``settings.duplex``, which says
-    whether the pages are paired as the two sides of sheets.
+    whether the pages are paired as the two sides of sheets. With ``review`` the pages are not
+    made into a PDF: the session keeps them (private, from the start, whatever ``raw_policy`` says
+    short of DISCARD, which cannot be asked for) and returns the analysed draft to review.
     """
 
     target: ScanTarget
@@ -93,6 +95,11 @@ class DocumentScanRequest:
             raise ValueError(
                 f"the scan is duplex={self.duplex} but the document settings are "
                 f"duplex={self.settings.duplex}; the pages would be paired wrongly"
+            )
+        if self.review and self.raw_policy is RawPolicy.DISCARD:
+            raise ValueError(
+                "a review keeps the raw pages until the user decides; "
+                "the DISCARD policy contradicts it"
             )
 
     @property

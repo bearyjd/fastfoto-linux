@@ -96,14 +96,14 @@ class DocumentSessionResult:
     error: Exception | None = None
     cancelled: bool = False
     kept_pages: tuple[Path, ...] = ()
-    draft: DocumentDraft | None = None
+    draft: DocumentDraft | None = None  # a review: the analysed pages, no PDF yet
 
     @property
     def ok(self) -> bool:
-        """True when the PDF was made without a problem (searchable text included)."""
-        return (
-            self.error is None
-            and not self.cancelled
-            and self.document is not None
-            and self.document.ok
-        )
+        """True when the PDF was made without a problem (searchable text included), or, in a
+        review, when the draft was made."""
+        if self.error is not None or self.cancelled:
+            return False
+        if self.draft is not None:
+            return True
+        return self.document is not None and self.document.ok

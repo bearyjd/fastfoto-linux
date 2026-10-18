@@ -18,6 +18,7 @@ from fastfoto_linux.cli.doc_options import (
     add_pairing_option,
     build_settings,
 )
+from fastfoto_linux.cli.doc_rawdir import folder_pages, raw_folder
 from fastfoto_linux.cli.doc_summary import (
     PAGES_SCANNED,
     print_document_summary,
@@ -47,7 +48,9 @@ from fastfoto_linux.documents import (
     find_ocrmypdf,
 )
 from fastfoto_linux.documents.analyse import analyse_document
+from fastfoto_linux.documents.draft import DocumentDraft
 from fastfoto_linux.documents.draft_edit import PageEdits, parts, with_edits
+from fastfoto_linux.documents.draft_store import open_draft
 from fastfoto_linux.documents.errors import DocumentEditError
 from fastfoto_linux.documents.ocr_tools import ocr_fix_hint
 from fastfoto_linux.documents.write import DocumentResult, write_document
@@ -90,7 +93,14 @@ def add_parser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]"
         "--drop, --keep, --rotate, --split, --order and --part-name change what the PDFs hold "
         "(see their help); --dry-run shows what would happen and writes nothing.",
     )
-    process.add_argument("pages", nargs="+", type=Path, metavar="PAGE.png", help="raw page files")
+    process.add_argument(
+        "pages",
+        nargs="+",
+        type=Path,
+        metavar="PAGE.png|RAWDIR",
+        help="raw page files, or one raw folder (.raw/<time>/) with the edits saved in its "
+        "review.json; the command never writes into it",
+    )
     add_document_options(process)
     add_fallback_dpi_option(process)
     add_pairing_option(process)
@@ -133,11 +143,10 @@ def _raise_failure(error: Exception) -> NoReturn:
 
 
 def _edited(
-    pages: Sequence[Path], settings: DocumentSettings, edits: PageEdits, *, dry_run: bool
+    draft: DocumentDraft, settings: DocumentSettings, edits: PageEdits, *, dry_run: bool
 ) -> DocumentResult | None:
-    """Analyse the pages, make the edits and write the PDFs (None for a dry run, which prints
-    what would happen instead). An edit that cannot be made is a usage error."""
-    draft = analyse_document(pages, settings)
+    """Make the edits to the analysed draft and write the PDFs (None for a dry run, which
+    prints what would happen instead). An edit that cannot be made is a usage error."""
     try:
         draft = with_edits(draft, edits)
     except DocumentEditError as error:
@@ -155,8 +164,16 @@ def _edited(
     return write_document(draft, settings)
 
 
+def _process_pages(args: argparse.Namespace) -> tuple[Path | None, list[Path]]:
+    """The raw folder, if the input is one, and the pages to process."""
+    folder = raw_folder(args.pages)
+    if folder is None and args.fresh:
+        raise CliError("--fresh applies to a raw folder, which was not given", EXIT_USAGE)
+    return folder, folder_pages(folder) if folder is not None else existing_pages(args.pages)
+
+
 def run_process(args: argparse.Namespace) -> int:
-    pages = existing_pages(args.pages)
+    folder, pages = _process_pages(args)
     settings = build_settings(args)
     edits = edits_from_args(args, len(pages))
     _require_ocr_if_asked(settings)
@@ -166,10 +183,15 @@ def run_process(args: argparse.Namespace) -> int:
     else:
         prepare_output_root(args)
     try:
-        if edits == PageEdits() and not args.dry_run:
-            result: DocumentResult | None = build_document(pages, settings)
+        if folder is not None:
+            draft = open_draft(folder, pages, settings, fresh=args.fresh)
+            result: DocumentResult | None = _edited(draft, settings, edits, dry_run=args.dry_run)
+        elif edits == PageEdits() and not args.dry_run:
+            result = build_document(pages, settings)
         else:
-            result = _edited(pages, settings, edits, dry_run=args.dry_run)
+            result = _edited(
+                analyse_document(pages, settings), settings, edits, dry_run=args.dry_run
+            )
     except (AllPagesBlankError, NothingSelectedError, OcrMissingError) as error:
         _raise_failure(error)
     if result is None:

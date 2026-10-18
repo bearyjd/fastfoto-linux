@@ -14,9 +14,13 @@ from pathlib import Path
 from fastfoto_linux.documents import (
     DocumentCancelledError,
     DocumentResult,
+    DocumentSettings,
     build_document,
     check_settings,
 )
+from fastfoto_linux.documents.analyse import analyse_document
+from fastfoto_linux.documents.draft import DocumentDraft
+from fastfoto_linux.documents.draft_store import THUMBS_DIR, save_draft
 from fastfoto_linux.scanner import ScannerError, run_scan
 from fastfoto_linux.scanner.precheck import check_scanner
 from fastfoto_linux.session.raw import create_raw_dir, settle_raw_dir
@@ -36,11 +40,14 @@ logger = logging.getLogger(__name__)
 
 BuildFn = Callable[..., DocumentResult]
 """``build_document``'s call shape: ``(pages, settings, *, cancel) -> DocumentResult``."""
+AnalyseFn = Callable[..., DocumentDraft]
+"""``analyse_document``'s call shape: ``(pages, settings, *, cancel, thumbs, encode) -> draft``."""
 
 
 @dataclass(frozen=True)
 class _Hooks(SessionHooks):
     build: BuildFn
+    analyse: AnalyseFn
 
 
 @dataclass(frozen=True)
@@ -49,6 +56,7 @@ class _Outcome:
 
     pages: tuple[Path, ...] = ()
     document: DocumentResult | None = None
+    draft: DocumentDraft | None = None
     error: Exception | None = None
     cancelled: bool = False
 
@@ -61,6 +69,7 @@ def run_document_session(  # noqa: PLR0913 - the callbacks are the interface; sc
     cancel: threading.Event | None = None,
     scan: ScanFn | None = None,
     build: BuildFn | None = None,
+    analyse: AnalyseFn | None = None,
     precheck: PrecheckFn | None = None,
 ) -> DocumentSessionResult:
     """Scan the document feeder, make one PDF of the pages and settle the raw pages.
@@ -86,8 +95,15 @@ def run_document_session(  # noqa: PLR0913 - the callbacks are the interface; sc
     of a stack** (a PDF with its last pages missing is too easy to take for the whole): the
     result carries the error, the pages are kept (``kept_pages``) and ``ffscan doc process``
     can make a PDF from them. A page the scanned file does not give a resolution for is taken
-    at ``request.dpi``, the resolution that was asked for. ``scan`` and ``build`` replace
-    ``run_scan`` and ``build_document`` (for tests, or a front end that must wrap them).
+    at ``request.dpi``, the resolution that was asked for. ``scan``, ``build`` and ``analyse``
+    replace ``run_scan``, ``build_document`` and ``analyse_document`` (for tests, or a front end
+    that must wrap them).
+
+    With ``request.review`` no PDF is made. The raw folder is ``.raw/<stamp>/`` and owner-only
+    from the start; the pages are analysed (thumbnails in its ``thumbs/``), the draft is saved
+    beside them as ``review.json`` and comes back as ``result.draft`` with the raw reason REVIEW.
+    The pages are never deleted: saving is ``write_document(draft)``, a job of its own. A cancel
+    or an error while analysing is mapped as one while building is.
     """
     hooks = _Hooks(
         scan=run_scan if scan is None else scan,
@@ -96,9 +112,11 @@ def run_document_session(  # noqa: PLR0913 - the callbacks are the interface; sc
         on_stage=on_stage,
         cancel=cancel,
         build=build_document if build is None else build,
+        analyse=analyse_document if analyse is None else analyse,
     )
     check_settings(request.settings)
-    raw = create_raw_dir(request.raw_root, keep=request.raw_policy is RawPolicy.KEEP, private=True)
+    keep = request.review or request.raw_policy is RawPolicy.KEEP
+    raw = create_raw_dir(request.raw_root, keep=keep, private=True)
     try:
         outcome = _work(request, raw, hooks)
     except BaseException as abort:  # not an Exception: it cannot come back as a result
@@ -124,6 +142,8 @@ def _work(request: DocumentScanRequest, raw: Path, hooks: _Hooks) -> _Outcome:
             return _Outcome(pages, error=scanned.error)
         hooks.stage(Stage.PROCESSING)
         settings = replace(request.settings, fallback_dpi=request.dpi)
+        if request.review:
+            return _Outcome(pages, draft=_analysed(pages, settings, raw, hooks))
         document = hooks.build(pages, settings, cancel=hooks.cancel)
     except (KeyboardInterrupt, DocumentCancelledError):  # the front end's signal handler: stop
         logger.debug("the session was stopped", exc_info=True)
@@ -132,6 +152,21 @@ def _work(request: DocumentScanRequest, raw: Path, hooks: _Hooks) -> _Outcome:
         logger.debug("the session ended by an exception", exc_info=True)
         return _Outcome(pages, error=error)
     return _Outcome(pages, document)
+
+
+def _analysed(
+    pages: tuple[Path, ...], settings: DocumentSettings, raw: Path, hooks: _Hooks
+) -> DocumentDraft:
+    """Analyse the pages (thumbnails in ``raw/thumbs``) and save the draft beside them. A draft
+    that cannot be saved is still returned: the review can go on and save again."""
+    draft = hooks.analyse(
+        pages, settings, cancel=hooks.cancel, thumbs=raw / THUMBS_DIR, encode=False
+    )
+    try:
+        save_draft(draft, settings)
+    except (OSError, ValueError) as error:
+        logger.warning("the review of %s was not saved: %s", raw, error)
+    return draft
 
 
 def _settle(request: DocumentScanRequest, raw: Path, outcome: _Outcome) -> DocumentSessionResult:
@@ -147,6 +182,7 @@ def _settle(request: DocumentScanRequest, raw: Path, outcome: _Outcome) -> Docum
     )
     return DocumentSessionResult(
         document=outcome.document,
+        draft=outcome.draft,
         pages_scanned=len(outcome.pages),
         raw_dir=settled.raw_dir,
         raw_reason=settled.reason,
@@ -159,7 +195,11 @@ def _settle(request: DocumentScanRequest, raw: Path, outcome: _Outcome) -> Docum
 def _keep_reason(policy: RawPolicy, outcome: _Outcome) -> DocumentRawReason | None:
     """Why the raw pages must stay, or None when they may go: only a clean run lets them go."""
     reason = _failure_reason(outcome)
-    return reason if reason is not None else _policy_reason(policy, outcome.document)
+    if reason is not None:
+        return reason
+    if outcome.draft is not None:  # a review: the pages wait for the user, nothing deletes them
+        return DocumentRawReason.REVIEW
+    return _policy_reason(policy, outcome.document)
 
 
 def _failure_reason(outcome: _Outcome) -> DocumentRawReason | None:
@@ -170,19 +210,22 @@ def _failure_reason(outcome: _Outcome) -> DocumentRawReason | None:
     if outcome.error is not None:
         is_scanner = isinstance(outcome.error, ScannerError)
         return DocumentRawReason.SCAN_ERROR if is_scanner else DocumentRawReason.ERROR
+    if outcome.draft is not None:
+        return None
     if document is None:  # no result and no known cause: the run ended early, the pages stay
         return DocumentRawReason.ERROR
     return None if document.ok else DocumentRawReason.OCR_FAILED
 
 
 def _policy_reason(policy: RawPolicy, document: DocumentResult | None) -> DocumentRawReason | None:
-    """The reason when the run was clean: asked for, or a blank page was dropped.
+    """The reason when the run was clean: asked for, or a page was left out.
 
-    A dropped page keeps the pages too (unless the policy is DISCARD), so that a page with
-    faint pencil that was taken for blank is never lost for good.
+    A page left out, as blank or by a reviewer, keeps the pages too (unless the policy is
+    DISCARD), so that a page with faint pencil that was taken for blank is never lost for good.
     """
     if policy is RawPolicy.KEEP:
         return DocumentRawReason.REQUESTED
-    if document is not None and document.dropped and policy is not RawPolicy.DISCARD:
+    left_out = document is not None and (document.dropped or document.removed)
+    if left_out and policy is not RawPolicy.DISCARD:
         return DocumentRawReason.PAGES_DROPPED
     return None

@@ -34,6 +34,7 @@ _RAW_REASONS = {
     DocumentRawReason.REQUESTED: "you asked to keep them",
     DocumentRawReason.PAGES_DROPPED: "blank pages were left out",
     DocumentRawReason.NOT_DELETED: "they could not be deleted",
+    DocumentRawReason.REVIEW: "they wait for your review",
 }
 _PLAIN_WORD = re.compile(r"[a-z]+(?=\s|$)")  # not "page-1.png:", "scan.png" or "page:"
 _TOOL_NAMES = frozenset({"ocrmypdf", "tesseract", "scanimage"})

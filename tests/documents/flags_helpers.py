@@ -70,3 +70,34 @@ def assess_sides(
 
 def assess_alone(scene: Scene) -> PageAssessment:
     return assess_page(trim_page(colour_page(scene)), None)
+
+
+def frame_ghost_of(  # noqa: PLR0913
+    painters: Sequence[Painter],
+    dpi: int,
+    tone: int = GHOST_TONE,
+    *,
+    frame_extra_mm: float,
+    gap_mm: float,
+    shift_mm: tuple[float, float] = (0.0, 0.0),
+) -> Painter:
+    """The ink of a FRONT whose paper lay ``gap_mm`` from the left of a frame ``frame_extra_mm``
+    wider than the paper (see ``sheet``), as a ghost on a back: flipped left to right across the
+    whole frame, which is where a mirror in the scanner's frame puts it."""
+    source = paper_scene(
+        dpi=dpi,
+        paper_mm=SMALL_MM,
+        scan_mm=(SMALL_MM[0] + frame_extra_mm, SMALL_MM[1]),
+        offset_mm=gap_mm,
+    )
+    for paint in painters:
+        source = paint(source)
+    ink = (source.image.min(axis=2) < INK_TONE * 2)[:, ::-1]
+    ink = np.roll(ink, (px(shift_mm[1], dpi), px(shift_mm[0], dpi)), axis=(0, 1))
+
+    def paint_ghost(scene: Scene) -> Scene:
+        image = scene.image.copy()
+        image[ink] = tone
+        return replace(scene, image=image)
+
+    return paint_ghost

@@ -123,7 +123,10 @@ def _is_fresh(
     if stored.analysis_version != ANALYSIS_VERSION:
         return False
     if settings is not None and (
-        stored.draft.duplex != settings.duplex or stored.draft.keep_blank != settings.keep_blank
+        stored.draft.duplex != settings.duplex
+        or stored.draft.keep_blank != settings.keep_blank
+        or not stored.fallback_dpi_known
+        or stored.fallback_dpi != settings.fallback_dpi
     ):
         return False
     try:

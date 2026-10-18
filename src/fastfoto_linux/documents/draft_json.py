@@ -68,6 +68,8 @@ class StoredReview:
     draft: DocumentDraft
     analysis_version: int
     options: StoredOptions | None
+    fallback_dpi: int | None = None
+    fallback_dpi_known: bool = False
 
 
 # --- writing -------------------------------------------------------------------------------
@@ -121,6 +123,8 @@ def encode_review(
         "splits": sorted(draft.splits),
         "part_names": {str(number): name for number, name in sorted(draft.part_names.items())},
     }
+    if settings is not None:
+        data["fallback_dpi"] = settings.fallback_dpi
     options = None if settings is None else _options_json(settings)
     if options is not None:
         data["options"] = options
@@ -331,4 +335,7 @@ def _decode(data: bytes, names: Sequence[str]) -> StoredReview:
         part_names=_part_names(top.get("part_names", {}), count),
     )
     version = _whole(top.get("analysis_version"), "analysis_version", 0, MAX_VERSION)
-    return StoredReview(draft, version, _options(top.get("options")))
+    dpi = top.get("fallback_dpi")
+    if dpi is not None:
+        dpi = _whole(dpi, "fallback_dpi", MIN_DPI, MAX_DPI)
+    return StoredReview(draft, version, _options(top.get("options")), dpi, "fallback_dpi" in top)

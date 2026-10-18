@@ -13,8 +13,8 @@
           +-------------+--------------+
           v                            v
    pipeline/process_pages         documents/build_document
-   (crop, sides, orient,          (load, trim, blank, encode,
-    enhance/, output/)             pdf, ocr, publish)
+   (crop, sides, orient,          (analyse: load, trim, blank,
+    enhance/, output/)             encode; write: pdf, ocr, publish)
           v                            v
    album JPEGs (+EXIF/XMP)        searchable PDF in output folder
           \________ session settles raw pages (settle_raw_dir) ________/

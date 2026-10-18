@@ -28,7 +28,8 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
-from fastfoto_linux.documents.errors import OcrCancelledError
+from fastfoto_linux.documents import ocr_languages
+from fastfoto_linux.documents.errors import OcrCancelledError, OcrMissingError
 from fastfoto_linux.documents.ocr_codes import TOOL, describe_exit
 from fastfoto_linux.documents.ocr_tools import find_ocrmypdf, ocr_environment  # noqa: F401 - re-exported
 from fastfoto_linux.documents.ocr_version import accepts_rasterizer, ocrmypdf_version
@@ -174,7 +175,7 @@ def _run(  # noqa: PLR0913
         stdin=devnull,
         stdout=devnull,
         stderr=devnull,
-        env=ocr_environment(),
+        env=ocr_languages.prepare_tessdata(langs, folder, ocr_environment()),
         start_new_session=True,
     )
     status = _wait(process, timeout_s, grace_s, cancel)
@@ -225,6 +226,8 @@ def run_ocr(  # noqa: PLR0913
                 grace_s=grace_s,
                 cancel=cancel,
             )
+    except OcrMissingError as error:
+        return OcrOutcome(OcrStatus.FAILED, str(error))
     except OSError as error:  # the caller reports the outcome once; this is only for --debug
         logger.debug("could not run %s: %s", TOOL, error)
         return OcrOutcome(OcrStatus.FAILED, f"could not run ocrmypdf: {error.strerror or error}")

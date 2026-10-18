@@ -77,7 +77,7 @@ def fake_download(monkeypatch: pytest.MonkeyPatch, data: bytes) -> list[str]:
         response.geturl = lambda: urls[-1]
         return response
 
-    monkeypatch.setattr(urllib.request, "urlopen", open_url)
+    monkeypatch.setattr(ocr_downloads, "_open_url", open_url)
     return urls
 
 
@@ -86,7 +86,9 @@ def test_discovery_combines_system_and_verified_managed_models_without_network(
 ) -> None:
     install_managed(models, "spa")
     calls = fake_tesseract(tmp_path / "system", monkeypatch, "eng", "osd", "custom")
-    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: pytest.fail("network discovery"))
+    monkeypatch.setattr(
+        ocr_downloads, "_open_url", lambda *a, **k: pytest.fail("network discovery")
+    )
     inventory = ocr_languages.discover_languages()
     assert {item.code for item in inventory.installed} == {"eng", "spa", "custom"}
     assert {item.code for item in inventory.available} == {"deu"}
@@ -143,7 +145,7 @@ def test_explicit_download_uses_pinned_official_object_and_reports_progress(
 def test_invalid_or_unknown_codes_never_open_the_network(
     models: Path, monkeypatch: pytest.MonkeyPatch, code: str
 ) -> None:
-    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: pytest.fail("unsafe request"))
+    monkeypatch.setattr(ocr_downloads, "_open_url", lambda *a, **k: pytest.fail("unsafe request"))
     with pytest.raises(ValueError):
         ocr_downloads.download_languages([code])
     assert not models.exists()
@@ -164,7 +166,7 @@ def test_already_verified_model_is_reused_offline(
     models: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     install_managed(models, "spa")
-    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: pytest.fail("redownload"))
+    monkeypatch.setattr(ocr_downloads, "_open_url", lambda *a, **k: pytest.fail("redownload"))
     ocr_downloads.download_languages(["spa"])
     assert (models / "spa.traineddata").read_bytes() == MODELS["spa"]
 
@@ -188,7 +190,9 @@ def test_pre_cancelled_download_never_requests_network(
 ) -> None:
     cancel = threading.Event()
     cancel.set()
-    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: pytest.fail("cancelled request"))
+    monkeypatch.setattr(
+        ocr_downloads, "_open_url", lambda *a, **k: pytest.fail("cancelled request")
+    )
     with pytest.raises(OcrCancelledError):
         ocr_downloads.download_languages(["spa"], cancel=cancel)
     assert not models.exists()
@@ -270,7 +274,7 @@ def test_explicit_orientation_download_is_verified(
 def test_all_requested_codes_are_validated_before_first_download(
     models: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: pytest.fail("unsafe batch"))
+    monkeypatch.setattr(ocr_downloads, "_open_url", lambda *a, **k: pytest.fail("unsafe batch"))
     with pytest.raises(ValueError):
         ocr_downloads.download_languages(["spa", "../eng"])
     assert not models.exists()
@@ -284,7 +288,7 @@ def test_redirect_to_another_host_is_rejected(
         response.geturl = lambda: "https://untrusted.example/spa.traineddata"
         return response
 
-    monkeypatch.setattr(urllib.request, "urlopen", redirected)
+    monkeypatch.setattr(ocr_downloads, "_open_url", redirected)
     with pytest.raises(OSError, match=r"(redirect|host|URL)"):
         ocr_downloads.download_languages(["spa"])
     assert not (models / "spa.traineddata").exists()

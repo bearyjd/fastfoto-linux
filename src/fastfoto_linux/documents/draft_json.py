@@ -41,6 +41,7 @@ MAX_MTIME_NS = 1 << 63
 MAX_TRIM_PX = 100_000
 MAX_VERSION = 1_000_000
 MAX_DETAIL = 8
+MAX_KEY_CHARS = len(str(MAX_PAGES))  # a page number as a key
 MAX_TEXT = 255
 _WORD = re.compile(r"[a-z0-9_]{1,40}")
 
@@ -175,7 +176,7 @@ def _clean_name(value: Any, what: str) -> str:
 
 
 def _number_key(key: str, what: str, count: int) -> int:
-    if not key.isascii() or not key.isdecimal() or str(int(key)) != key:
+    if len(key) > MAX_KEY_CHARS or not key.isascii() or not key.isdecimal() or str(int(key)) != key:
         raise ReviewFormatError(f"{what} has the key {key[:20]!r}, which is no page number")
     return _whole(int(key), f"{what} key", 1, count)
 
@@ -291,7 +292,17 @@ def _options(value: Any) -> StoredOptions | None:
 
 
 def decode_review(data: bytes, names: Sequence[str]) -> StoredReview:
-    """The sidecar in ``data`` for pages with these file names, or ReviewFormatError."""
+    """The sidecar in ``data`` for pages with these file names, or ReviewFormatError (also for
+    any other failure of reading it: whatever the input does, it never raises anything else)."""
+    try:
+        return _decode(data, names)
+    except ReviewFormatError:
+        raise
+    except (ValueError, OverflowError, RecursionError, MemoryError, TypeError, KeyError) as error:
+        raise ReviewFormatError(f"cannot be decoded ({type(error).__name__})") from error
+
+
+def _decode(data: bytes, names: Sequence[str]) -> StoredReview:
     try:
         loaded = json.loads(data, parse_constant=_reject_constant)
     except (ValueError, RecursionError) as error:  # not JSON, not UTF-8, nested without end

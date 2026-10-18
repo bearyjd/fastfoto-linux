@@ -76,13 +76,16 @@ def _read_file(path: Path) -> bytes | None:
         return None
     except OSError as error:  # a link (ELOOP) or a folder that cannot be read
         raise ReviewFormatError(f"cannot be opened ({error.strerror})") from error
-    with os.fdopen(descriptor, "rb") as file:
-        info = os.fstat(file.fileno())
-        if not stat.S_ISREG(info.st_mode):
+    try:
+        info = os.fstat(descriptor)
+        if not stat.S_ISREG(info.st_mode):  # a folder, a pipe, a device: before anything reads it
             raise ReviewFormatError("is not a regular file")
         if info.st_size > MAX_REVIEW_BYTES:
             raise ReviewFormatError(f"is bigger than {MAX_REVIEW_BYTES} bytes")
-        data = file.read(MAX_REVIEW_BYTES + 1)
+        with os.fdopen(descriptor, "rb", closefd=False) as file:
+            data = file.read(MAX_REVIEW_BYTES + 1)
+    finally:
+        os.close(descriptor)
     if len(data) > MAX_REVIEW_BYTES:
         raise ReviewFormatError(f"is bigger than {MAX_REVIEW_BYTES} bytes")
     return data
@@ -107,7 +110,7 @@ def read_review(folder: Path, pages: Sequence[Path]) -> StoredReview | None:
         if data is None:
             return None
         stored = decode_review(data, [page.name for page in pages])
-    except ReviewFormatError as error:
+    except (ReviewFormatError, OSError) as error:
         logger.warning("%s %s and is ignored; the pages are analysed afresh", path, error)
         return None
     return replace(stored, draft=_with_thumbs(stored.draft, folder))

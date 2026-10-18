@@ -1,4 +1,5 @@
 <!-- Generated: 2026-10-17 | Files scanned: 28 | Token estimate: ~800 -->
+<!-- AUTO-GENERATED -->
 # Photo pipeline (src/fastfoto_linux/)
 
 Entry: `pipeline/process.py:process_pages(pages, settings, ...)` with `ProcessSettings` -> `ProcessResult`. One sheet at a time; a bad sheet is recorded, never raised.
@@ -26,3 +27,4 @@ Stages in order:
 - `output/writer.py`: `MIN_QUALITY`, `MAX_QUALITY`; `output/metadata.py`: `MAX_NOTES_CHARS`
 
 Errors: `pipeline/batch_errors.py` (`BatchError`, `NoPhotoOnSheetError`, `UnreadablePageError`, `PageResolutionError`).
+<!-- /AUTO-GENERATED -->

@@ -1,4 +1,5 @@
 <!-- Generated: 2026-10-17 | Files scanned: 33 | Token estimate: ~850 -->
+<!-- AUTO-GENERATED -->
 # Desktop app (src/fastfoto_linux/gui/)
 
 Three layers; only `qt/` imports PySide6 (excluded from the main coverage run, tested in the `gui (fedora)` CI job).
@@ -28,3 +29,4 @@ IDLE -> CHECKING -> READY | NO_SCANNER; READY -> SCANNING -> PROCESSING -> DONE;
 - The shared folder belongs to the Photos form in both modes.
 - `ScanPage.qml` switches panels and results with `bridge.mode === "photos" | "documents"`.
 - Documents scans run `Worker.scan_documents` -> `session.run_document_session`; Photos run `Worker.scan` -> `session.run_session`.
+<!-- /AUTO-GENERATED -->

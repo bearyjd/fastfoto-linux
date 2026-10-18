@@ -1,4 +1,5 @@
 <!-- Generated: 2026-10-17 | Files scanned: 24 | Token estimate: ~950 -->
+<!-- AUTO-GENERATED -->
 # Documents pipeline (src/fastfoto_linux/documents/)
 
 Entry: `build.py:build_document(pages, settings, ...)` = `write_document(analyse_document(...))` -> `DocumentResult`.
@@ -24,3 +25,4 @@ Support: `units.py:mm_to_px`; errors `errors.py` (`DocumentError`, `AllPagesBlan
 - CLI: `cli/cmd_doc.py` (`ffscan doc process|scan`: `run_process`, `run_scan_command`, `process_command`); options `cli/doc_options.py` (`add_document_options`, `add_document_scan_options`, `build_settings`); summaries `cli/doc_summary.py`
 - GUI: `gui/docform.py`, `gui/docside.py`, `gui/docreport.py`, `gui/documents.py`
 - Design notes: `docs/design/documents.md`
+<!-- /AUTO-GENERATED -->

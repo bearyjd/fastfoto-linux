@@ -1,4 +1,5 @@
 <!-- Generated: 2026-10-17 | Files scanned: 122 | Token estimate: ~950 -->
+<!-- AUTO-GENERATED -->
 # Architecture
 
 ```
@@ -33,3 +34,4 @@ Flatpak (`packaging/flatpak/*.yml`) bundles app, SANE, shim, tesseract. `tools/i
 - `library/` existing-library tools for `ffscan library`: `plan`, `decide`, `apply`, `jpeg_exif`, `tiff`, `safety`, `confine`, `walk`, `manifest`, `fdio`
 - `cli/` `app` (parser, exit codes), `cmd_*`, `options`, `doc_options`, `*_summary`, `errors`
 - `gui/` see gui.md; `models/` YuNet ONNX + licence; `imaging.py` shared image helpers
+<!-- /AUTO-GENERATED -->

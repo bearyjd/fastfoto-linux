@@ -1,4 +1,5 @@
 <!-- Generated: 2026-10-17 | Files scanned: 12 | Token estimate: ~700 -->
+<!-- AUTO-GENERATED -->
 # Dependencies and packaging
 
 ## Python (pyproject.toml, uv.lock; Python >=3.13)
@@ -20,8 +21,9 @@
 - Flatpak: `packaging/flatpak/io.github.bearyjd.FastFotoLinux.yml` (org.kde.Platform, command `fastfoto`; modules sane-backends, usb-gap-shim, leptonica, tesseract, tessdata, Python wheels from `python-deps.json`); `tools/flatpak/gen_wheel_sources.py`
 - Desktop files: `packaging/io.github.bearyjd.FastFotoLinux.{desktop,metainfo.xml,svg}`
 
-## CI (.github/workflows/ci.yml): 5 jobs
+## CI (.github/workflows/ci.yml): 5 required checks (lint, test on 3.13 and 3.14, gui (fedora), flatpak)
 - `lint`: no committed scans/captures, `ruff check`, `ruff format --check`, requirements files match `uv export`
 - `test` (py3.13, py3.14): `pytest -n auto --cov` (80%), gui plain modules 85%, wheel contents checks
 - `gui (fedora)`: Qt/QML tests with system PySide6 + Kirigami (`tools/ci/coveragerc-gui-qt`)
 - `flatpak`: build bundle, install, `tools/ci/flatpak-ocr-smoke.sh`
+<!-- /AUTO-GENERATED -->

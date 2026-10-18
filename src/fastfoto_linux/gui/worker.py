@@ -25,6 +25,7 @@ from fastfoto_linux.gui.form import (
     validate,
     validate_syntax,
 )
+from fastfoto_linux.gui.reviewjobs import PreviewResult, ReviewJobs
 from fastfoto_linux.output import WrittenFiles
 from fastfoto_linux.pipeline.process import ProcessResult, process_pages
 from fastfoto_linux.scanner import ScanTarget, default_shim_candidates, resolve_target
@@ -62,6 +63,7 @@ class WorkerSink(Protocol):
     def on_photo(self, files: WrittenFiles) -> None: ...
     def on_finished(self, result: SessionResult | DocumentSessionResult) -> None: ...
     def on_error(self, error: Exception) -> None: ...
+    def on_review_preview(self, answer: PreviewResult) -> None: ...
 
 
 def default_discover() -> ScanTarget:
@@ -95,6 +97,10 @@ class Worker:
         tools = documents or DocumentTools()
         self._document_session = run_document_session if tools.session is None else tools.session
         self._build = build_document if tools.build is None else tools.build
+        self._review_jobs = ReviewJobs(sink, self._start, tools)
+        self.analyse_folder = self._review_jobs.analyse_folder
+        self.write_draft = self._review_jobs.write_draft
+        self.preview_page = self._review_jobs.preview_page
 
     @property
     def busy(self) -> bool:
@@ -126,7 +132,13 @@ class Worker:
         self._start(lambda cancel: self._scan(form, cancel))
 
     def scan_documents(
-        self, form: DocumentForm, folder: str, *, ocr_available: bool, checked: bool = False
+        self,
+        form: DocumentForm,
+        folder: str,
+        *,
+        ocr_available: bool,
+        checked: bool = False,
+        review: bool = False,
     ) -> None:
         """Scan a document with the form's settings. Raises FormInvalidError before it starts.
 
@@ -137,7 +149,9 @@ class Worker:
         errors = document_errors(form, folder, disk=not checked)
         if errors:
             raise FormInvalidError(errors)
-        self._start(lambda cancel: self._scan_documents(form, folder, ocr_available, cancel))
+        self._start(
+            lambda cancel: self._scan_documents(form, folder, ocr_available, cancel, review=review)
+        )
 
     def process_kept(self, kept: SessionResult | DocumentSessionResult) -> None:
         """Process the raw pages a cancelled scan kept, with the settings of the last scan."""
@@ -221,11 +235,18 @@ class Worker:
         return functools.partial(self._sink.on_finished, result)
 
     def _scan_documents(
-        self, form: DocumentForm, folder: str, ocr_available: bool, cancel: threading.Event
+        self,
+        form: DocumentForm,
+        folder: str,
+        ocr_available: bool,
+        cancel: threading.Event,
+        *,
+        review: bool = False,
     ) -> Callable[[], None]:
         request = to_document_request(
             form, folder, self._discover(), ocr_available=ocr_available, check_disk=False
         )
+        request = replace(request, review=review)
         self._document_request = request
         result = self._document_session(
             request,
@@ -257,6 +278,8 @@ class Worker:
         self._sink.on_stage(Stage.PROCESSING)
         ocr = OcrMode.AUTO if request.settings.ocr is OcrMode.ON else request.settings.ocr
         settings = replace(request.settings, fallback_dpi=request.dpi, ocr=ocr)
+        if request.review and kept.raw_dir is not None:
+            return self._review_jobs._analyse(kept.raw_dir, settings, cancel)
         again = replace(kept, document=None, error=None, cancelled=False)
         try:
             document = self._reporting_build()(kept.kept_pages, settings, cancel=cancel)

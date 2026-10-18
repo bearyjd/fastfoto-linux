@@ -64,8 +64,15 @@ class DocFakeWorker(FakeWorker):
     """A FakeWorker that also records the document calls."""
 
     def scan_documents(
-        self, form: DocumentForm, folder: str, *, ocr_available: bool, checked: bool = False
+        self,
+        form: DocumentForm,
+        folder: str,
+        *,
+        ocr_available: bool,
+        checked: bool = False,
+        review: bool = False,
     ) -> None:
+        self.review = review
         self.calls.append(("scan_documents", (form, folder, ocr_available, checked)))
 
 

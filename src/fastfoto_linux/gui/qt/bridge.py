@@ -31,6 +31,7 @@ from fastfoto_linux.gui.prefs import (
 )
 from fastfoto_linux.gui.qt.documents_view import DocumentsView
 from fastfoto_linux.gui.qt.photos_model import PhotosModel, file_url
+from fastfoto_linux.gui.qt.review_view import ReviewView
 from fastfoto_linux.gui.report import photos_heading
 from fastfoto_linux.gui.state import ActionBlockedError, Mode
 from fastfoto_linux.gui.worker import DiscoverFn, ProcessFn, SessionFn, Worker
@@ -138,6 +139,8 @@ class Bridge(QObject):
             ),
         )
         self._documents = DocumentsView(self.controller, self)
+        self._review = ReviewView(self)
+        self.on_review_preview = lambda answer: self._send("on_review_preview", answer)
         self._close_signalled = False
         self._closed = False
         # Guards ``_closed`` and every emit from a thread. Not re-entrant, on purpose: that is safe
@@ -234,6 +237,7 @@ class Bridge(QObject):
     def _on_change(self) -> None:
         self._photos.set_items(self.controller.photos)
         self._documents.refresh()
+        self._review.refresh()
         self.changed.emit()
         if self.controller.close_ready and not self._close_signalled:
             self._close_signalled = True
@@ -372,6 +376,10 @@ class Bridge(QObject):
     def documents(self) -> DocumentsView:
         return self._documents
 
+    @Property(QObject, constant=True)
+    def review(self) -> ReviewView:
+        return self._review
+
     @Property("QVariantList", constant=True)
     def dpiChoices(self) -> list[int]:
         return list(SUPPORTED_DPI)
@@ -476,6 +484,7 @@ class Bridge(QObject):
         if self._shut_down:
             return
         self._shut_down = True
+        self._review.stop()
         self._close_events()
         self._worker.cancel()
         deadline = time.monotonic() + SHUTDOWN_WAIT

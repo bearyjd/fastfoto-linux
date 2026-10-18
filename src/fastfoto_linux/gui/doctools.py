@@ -26,6 +26,9 @@ class DocumentTools:
 
     session: Callable[..., DocumentSessionResult] | None = None
     build: Callable[..., DocumentResult] | None = None
+    open_review: Callable | None = None
+    write_review: Callable | None = None
+    preview_review: Callable | None = None
     find_ocr: Callable[[], str | None] = find_ocrmypdf
     in_flatpak: Callable[[], bool] = inside_flatpak
 

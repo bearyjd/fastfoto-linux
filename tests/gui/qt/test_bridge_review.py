@@ -5,7 +5,6 @@ from tests.gui.qt import require_qt
 require_qt()
 
 from fastfoto_linux.gui import reviewside
-from fastfoto_linux.gui.qt.review_view import ReviewView
 from fastfoto_linux.gui.state import Mode
 from fastfoto_linux.session import DocumentRawReason, DocumentSessionResult, Stage
 from tests.gui.doc_helpers import DocFakeWorker
@@ -16,7 +15,8 @@ from tests.gui.review_helpers import draft
 def open_review(make_bridge, out):
     bridge = make_bridge(mode=Mode.DOCUMENTS)
     bridge.controller._worker = DocFakeWorker()
-    view = ReviewView(bridge)
+    bridge.controller._disk_check = None
+    view = bridge.review
     view.enable()
     bridge.controller.check_scanner()
     bridge.controller.on_scanner(None)

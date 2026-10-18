@@ -37,6 +37,7 @@ from fastfoto_linux.gui.report import (
     error_text,
     scanner_lost,
 )
+from fastfoto_linux.gui.reviewside import ReviewSide
 from fastfoto_linux.gui.state import (
     ActionBlockedError,
     Mode,
@@ -96,6 +97,8 @@ class Controller:
         self._photos_side, self._docs = PhotosSide(), DocumentsSide(setup)
         self._documents: tuple[DocumentItem, ...] = ()
         self._other_views: dict[Mode, View] = {}
+        self.review = ReviewSide(self)
+        self.on_review_preview = self.review.preview_ready
         self._set_form(form or ScanForm(), disk=disk_check is None)
 
     # -- what the page shows -------------------------------------------------------------
@@ -276,12 +279,14 @@ class Controller:
             raise ValueError(f"unknown mode {mode!r}; use one of {choices}") from None
         if wanted is self._mode:
             return
+        if not self.review.leaving():
+            return
         if self.busy:
             raise ActionBlockedError(f"cannot change the mode while {self._state.value}")
         self._other_views[self._mode] = self._view()
         self._mode = wanted
         self._show(self._other_views.pop(wanted, View()))
-        if self._state in (State.DONE, State.FAILED, State.CANCELLED):
+        if self._state in (State.DONE, State.FAILED, State.CANCELLED, State.REVIEWING):
             self._state = State.READY if self._scanner_ready else State.NO_SCANNER
         self._docs.look_for_ocr()
         self._remember(self._save_mode, wanted)
@@ -313,6 +318,8 @@ class Controller:
         self._changed()
 
     def check_scanner(self) -> None:
+        if not self.review.leaving():
+            return
         if not self.can_check:
             raise ActionBlockedError(f"cannot look for the scanner while {self._state.value}")
         try:
@@ -409,6 +416,8 @@ class Controller:
 
     def request_close(self) -> bool:
         """True when the window may close now; otherwise cancels and waits (``close_ready``)."""
+        if not self.review.leaving():
+            return False
         if self._state in _RUNNING:
             self.cancel()
         elif self._state is not State.CANCELLING:
@@ -482,6 +491,8 @@ class Controller:
     def on_finished(self, result: SessionResult | DocumentSessionResult) -> None:
         if self._state not in _REPORTING:
             return self._drop("result")
+        if self.review.finished(result):
+            return
         final = final_state(result)
         self._checking_scanner = False
         self._state = transition(self._state, final)
@@ -496,6 +507,8 @@ class Controller:
     def on_error(self, error: Exception) -> None:
         if self._state not in (State.CHECKING, *_REPORTING):
             return self._drop("error")
+        if self.review.error(error):
+            return
         lost = scanner_lost(error)
         self._checking_scanner = False
         if self._state is State.CHECKING or (lost and self._state is State.SCANNING):

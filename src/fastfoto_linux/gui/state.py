@@ -21,6 +21,7 @@ class State(StrEnum):
     NO_SCANNER = auto()
     SCANNING = auto()
     PROCESSING = auto()
+    REVIEWING = auto()
     CANCELLING = auto()
     DONE = auto()
     FAILED = auto()
@@ -35,20 +36,21 @@ class ActionBlockedError(InvalidTransitionError):
     """The user asked for something that cannot be done right now; nothing has changed."""
 
 
-_AFTER_A_SESSION = frozenset({State.CHECKING, State.SCANNING})
+_AFTER_A_SESSION = frozenset({State.CHECKING, State.SCANNING, State.PROCESSING, State.REVIEWING})
 _TRANSITIONS: Mapping[State, frozenset[State]] = MappingProxyType(
     {
         State.IDLE: frozenset({State.CHECKING}),
         State.CHECKING: frozenset({State.READY, State.NO_SCANNER}),
         # The pages a cancelled scan kept can be processed once the scanner has been checked
         # again, and processing needs no scanner.
-        State.READY: frozenset({State.CHECKING, State.SCANNING, State.PROCESSING}),
-        State.NO_SCANNER: frozenset({State.CHECKING, State.PROCESSING}),
+        State.READY: frozenset({State.CHECKING, State.SCANNING, State.PROCESSING, State.REVIEWING}),
+        State.NO_SCANNER: frozenset({State.CHECKING, State.PROCESSING, State.REVIEWING}),
         State.SCANNING: frozenset(
             {State.PROCESSING, State.CANCELLING, State.FAILED, State.CANCELLED, State.NO_SCANNER}
         ),
-        State.PROCESSING: frozenset({State.CANCELLING, State.DONE, State.FAILED}),
-        State.CANCELLING: frozenset({State.CANCELLED, State.DONE, State.FAILED}),
+        State.PROCESSING: frozenset({State.CANCELLING, State.DONE, State.FAILED, State.REVIEWING}),
+        State.CANCELLING: frozenset({State.CANCELLED, State.DONE, State.FAILED, State.REVIEWING}),
+        State.REVIEWING: frozenset({State.PROCESSING, State.CHECKING}),
         State.DONE: _AFTER_A_SESSION,
         State.FAILED: _AFTER_A_SESSION | {State.PROCESSING},
         State.CANCELLED: _AFTER_A_SESSION | {State.PROCESSING},

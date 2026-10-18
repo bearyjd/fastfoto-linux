@@ -40,6 +40,16 @@ ALLOWED = [
     (State.CANCELLED, State.CHECKING),
     (State.CANCELLED, State.SCANNING),
     (State.CANCELLED, State.PROCESSING),
+    (State.PROCESSING, State.REVIEWING),
+    (State.CANCELLING, State.REVIEWING),
+    (State.REVIEWING, State.PROCESSING),
+    (State.REVIEWING, State.CHECKING),
+    (State.READY, State.REVIEWING),
+    (State.NO_SCANNER, State.REVIEWING),
+    (State.DONE, State.REVIEWING),
+    (State.DONE, State.PROCESSING),
+    (State.FAILED, State.REVIEWING),
+    (State.CANCELLED, State.REVIEWING),
 ]
 
 

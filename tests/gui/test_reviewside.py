@@ -1,5 +1,6 @@
 """Save, cancel, failure and autosave preserve the review and original pages."""
 
+import os
 from dataclasses import replace
 
 import pytest
@@ -15,6 +16,10 @@ from tests.gui.test_controller_documents import Page
 
 
 def opened(out):
+    for n in range(1, 4):
+        path = out / f"page-{n:04d}.png"
+        path.write_bytes(b"synthetic!")
+        os.utime(path, ns=(1, 1))
     page = Page(out)
     controller = page.processing()
     side = ReviewSide(controller)

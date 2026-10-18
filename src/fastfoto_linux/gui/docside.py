@@ -1,8 +1,13 @@
 """Documents mode on the scan page: its form, its searchable-text tool, its progress and words."""
 
+from dataclasses import replace
+from pathlib import Path
+
+from fastfoto_linux.documents import DocumentSettings
 from fastfoto_linux.gui.docform import (
     FOLDER_FIELD,
     document_destination,
+    to_document_settings,
     update_document_field,
     validate_document_form,
 )
@@ -38,6 +43,8 @@ class DocumentsSide:
     mode = Mode.DOCUMENTS
 
     def __init__(self, setup: DocumentSetup) -> None:
+        self.review_enabled = False
+        self.review_settings: DocumentSettings | None = None
         self.form = setup.form
         self.tools = setup.tools
         self.save_form = setup.save_form
@@ -84,8 +91,18 @@ class DocumentsSide:
         )
 
     def begin_scan(self, worker: WorkerPort, form: ScanForm) -> None:
+        self.review_settings = replace(
+            to_document_settings(
+                self.form, Path(form.output_folder).expanduser(), ocr_available=self.ocr_available
+            ),
+            fallback_dpi=self.form.dpi,
+        )
         worker.scan_documents(
-            self.form, form.output_folder, ocr_available=self.ocr_available, checked=True
+            self.form,
+            form.output_folder,
+            ocr_available=self.ocr_available,
+            checked=True,
+            **({"review": True} if self.review_enabled else {}),
         )
 
     def close_title(self, state: State) -> str:

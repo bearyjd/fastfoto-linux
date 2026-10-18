@@ -12,10 +12,12 @@ honoured before each page, in the checks as well as in the processing.
 import logging
 import threading
 from collections.abc import Callable, Sequence
+from dataclasses import replace
 from pathlib import Path
 
-from fastfoto_linux.documents.blank import is_blank_beside
-from fastfoto_linux.documents.draft import DocumentDraft, PageAnalysis, TrimBox
+from fastfoto_linux.documents.assess import MAX_BOXES, PageAssessment, assess_page
+from fastfoto_linux.documents.bleed import set_off
+from fastfoto_linux.documents.draft import DocumentDraft, Flag, PageAnalysis, TrimBox
 from fastfoto_linux.documents.encode import EncodedPage, encode_page
 from fastfoto_linux.documents.errors import DocumentError, stop_if_cancelled
 from fastfoto_linux.documents.loader import inspect_page, load_page
@@ -49,6 +51,7 @@ def _analysis(  # noqa: PLR0913 - the fields of one page
     *,
     partner: int | None,
     blank: bool,
+    assessment: PageAssessment | None,
     encoded: EncodedPage | None,
 ) -> PageAnalysis:
     info = path.stat()
@@ -61,6 +64,8 @@ def _analysis(  # noqa: PLR0913 - the fields of one page
         trim=TrimBox.from_trimmed(trimmed),
         blank=blank,
         partner=partner,
+        flags=frozenset() if assessment is None else assessment.flags,
+        marks=() if assessment is None else assessment.marks,
         encoded=encoded,
     )
 
@@ -87,19 +92,48 @@ def _analyse_sheet(  # noqa: PLR0913 - what a sheet needs, and the hooks, in one
         if on_page is not None:
             on_page(number, len(pages))
         paired = len(sheet) > 1
-        blank = not settings.keep_blank and is_blank_beside(
-            trimmed, sheet[1 - index] if paired else None
+        assessment = (
+            None
+            if settings.keep_blank
+            else assess_page(trimmed, sheet[1 - index] if paired else None)
         )
+        blank = assessment is not None and assessment.verdict.blank
+        partner = numbers[1 - index] if paired else None
         if blank:
             logger.info("page %d (%s) is blank and left out", number, pages[number - 1].name)
         encoded = encode_page(trimmed.page, settings.colour) if encode and not blank else None
-        partner = numbers[1 - index] if paired else None
         analysed.append(
             _analysis(
-                pages[number - 1], number, trimmed, partner=partner, blank=blank, encoded=encoded
+                pages[number - 1],
+                number,
+                trimmed,
+                partner=partner,
+                blank=blank,
+                assessment=assessment,
+                encoded=encoded,
             )
         )
     return analysed
+
+
+def _set_off_by(page: PageAnalysis, by_number: dict[int, PageAnalysis]) -> bool:
+    """Whether ``page`` is a kept back whose mark boxes mirror those of the printed side (the
+    front) of the previous or of the next sheet."""
+    is_back = page.partner is not None and page.partner < page.number
+    if not is_back or page.blank or not 0 < len(page.marks) < MAX_BOXES:
+        return False
+    fronts = (page.number - SIDES_PER_SHEET - 1, page.number + 1)
+    return set_off(page.marks, [by_number[n].marks for n in fronts if n in by_number])
+
+
+def _with_set_off(pages: list[PageAnalysis]) -> list[PageAnalysis]:
+    """The pages, with ``SET_OFF`` where ``_set_off_by``. Boxes only: a back is settled once the
+    next sheet has been analysed, and no pixels are held for it."""
+    by_number = {page.number: page for page in pages}
+    return [
+        replace(page, flags=page.flags | {Flag.SET_OFF}) if _set_off_by(page, by_number) else page
+        for page in pages
+    ]
 
 
 def _common_folder(pages: Sequence[Path]) -> Path | None:
@@ -140,7 +174,7 @@ def analyse_document(
             _analyse_sheet(pages, numbers, settings, cancel=cancel, on_page=on_page, encode=encode)
         )
     return DocumentDraft(
-        pages=tuple(analysed),
+        pages=tuple(_with_set_off(analysed)),
         raw_dir=_common_folder(pages),
         duplex=settings.duplex,
         keep_blank=settings.keep_blank,

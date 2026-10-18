@@ -134,6 +134,7 @@ def test_the_previous_and_the_next_sheet_both_count() -> None:
 
 PAGE_A = [fh.glyphs(15, 20, 8), fh.glyphs(15, 30, 8)]  # print of one sheet's front
 PAGE_B = [fh.glyphs(15, 70, 6), fh.glyphs(15, 80, 6)]  # print of another sheet's front
+PAGE_C = [fh.glyphs(45, 100, 3)]  # and of a third
 
 
 def settings(out: Path, **changes: Any) -> DocumentSettings:
@@ -142,7 +143,7 @@ def settings(out: Path, **changes: Any) -> DocumentSettings:
 
 def _document(raw: Path, backs: list[list], dpi: int = 200) -> list[Path]:
     """A duplex stack of sheets: every front has print; ``backs`` are what each back shows."""
-    fronts = [PAGE_A, PAGE_B, PAGE_A]
+    fronts = [PAGE_A, PAGE_B, PAGE_C]
     paths: list[Path] = []
     for index, back in enumerate(backs):
         first, second = sheet(dpi, fronts[index], back, seed=index)
@@ -184,5 +185,5 @@ def test_without_duplex_nothing_is_set_off(tmp_path: Path) -> None:
     raw = tmp_path / "raw"
     raw.mkdir()
     pages = _document(raw, [[fh.ghost_of(PAGE_B, 200)], [fh.glyphs(40, 55, 5)]])
-    draft = analyse_document(pages, settings(tmp_path))
+    draft = analyse_document(pages, settings(tmp_path, duplex=False))
     assert all(Flag.SET_OFF not in page.flags for page in draft.pages)

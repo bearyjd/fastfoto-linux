@@ -1,6 +1,5 @@
 """Decide whether a page is blank (a duplex back with nothing on it)."""
 
-from fastfoto_linux.documents.holes import all_are_holes
 from fastfoto_linux.documents.loader import LoadedPage
 from fastfoto_linux.documents.marks import find_marks
 from fastfoto_linux.documents.trim import Trimmed
@@ -43,10 +42,6 @@ def is_blank_beside(page: Trimmed, partner: Trimmed | None) -> bool:
     hole). Without a partner nothing is a hole, and the answer is that of ``is_blank``.
     A mark that is not a hole keeps the page, as ever; when in doubt the answer is False.
     """
-    marks = find_marks(
-        page.page,
-        margin_mm=BLANK_MARGIN_MM,
-        trimmed_bottom=page.tail_rows,
-        ignore_faint_lines=True,
-    )
-    return not marks or (partner is not None and all_are_holes(marks, page, partner))
+    from fastfoto_linux.documents.assess import blank_verdict  # noqa: PLC0415 - assess needs this module
+
+    return blank_verdict(page, partner).blank

@@ -7,7 +7,7 @@ import pytest
 from fastfoto_linux.cli import main
 from fastfoto_linux.documents import analyse as analyse_module
 from tests import _fake_ocrmypdf as fake
-from tests.documents.helpers import text_scene, write_pages
+from tests.documents.helpers import blank_scene, text_scene, write_pages
 
 
 @pytest.fixture(autouse=True)
@@ -82,3 +82,22 @@ def test_a_bad_edit_is_found_before_any_page_is_read(
     argv = ["doc", "process", *map(str, pages), "--out", str(out), "--ocr", "off", "--drop", "7"]
     assert main(argv) == 2
     assert reads == []
+
+
+@pytest.mark.parametrize("options", [["--rotate", "1:90"], ["--keep", "2"]])
+def test_turning_or_bringing_back_needs_the_pages_in_one_folder(
+    options: list[str], tmp_path: Path, out: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    first = write_pages(tmp_path / "a", [text_scene(1)])
+    second = write_pages(tmp_path / "b", [blank_scene(2)])
+    argv = ["doc", "process", *map(str, [*first, *second]), "--out", str(out), "--ocr", "off"]
+    assert main([*argv, "--simplex", *options]) == 2
+    assert "one folder" in capsys.readouterr().err
+    assert [p.name for p in out.iterdir() if not p.name.startswith(".")] == []
+
+
+def test_dropping_pages_from_several_folders_works(tmp_path: Path, out: Path) -> None:
+    first = write_pages(tmp_path / "a", [text_scene(1)])
+    second = write_pages(tmp_path / "b", [text_scene(2)])
+    argv = ["doc", "process", *map(str, [*first, *second]), "--out", str(out), "--ocr", "off"]
+    assert main([*argv, "--simplex", "--drop", "2"]) == 0

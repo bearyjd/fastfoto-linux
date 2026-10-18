@@ -47,7 +47,7 @@ from fastfoto_linux.documents import (
     find_ocrmypdf,
 )
 from fastfoto_linux.documents.analyse import analyse_document
-from fastfoto_linux.documents.draft_edit import PageEdits, with_edits
+from fastfoto_linux.documents.draft_edit import PageEdits, parts, with_edits
 from fastfoto_linux.documents.errors import DocumentEditError
 from fastfoto_linux.documents.ocr_tools import ocr_fix_hint
 from fastfoto_linux.documents.write import DocumentResult, write_document
@@ -145,6 +145,13 @@ def _edited(
     if dry_run:
         print("\n".join(dry_run_lines(draft)))
         return None
+    if draft.raw_dir is None and any(
+        page.encoded is None or turns for part in parts(draft) for page, turns in part.pages
+    ):
+        raise CliError(  # a page to turn or bring back is read again from its file
+            "--rotate and --keep need the pages in one folder, which these are not",
+            EXIT_USAGE,
+        )
     return write_document(draft, settings)
 
 

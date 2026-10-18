@@ -1,7 +1,7 @@
 # Environment variables
 
-Every environment variable the code, the shim and the install script read. Nothing here is
-required: all have a default.
+Every environment variable the code, the shim and the install script read. Nothing here needs to be set
+by you except that the install script stops if `HOME` is unset; everything else has a default.
 
 <!-- AUTO-GENERATED: collected from src/, tools/ and tests/ (grep environ, getenv, "${...}") -->
 ## App and `ffscan`
@@ -13,8 +13,9 @@ required: all have a default.
 | `FF680W_FORCE_UNSTICK` | no | `1` sends the padding that frees a stuck scanner even without a note about an unclean end. Last resort. | unset |
 | `XDG_STATE_HOME` | no | Base folder for the `scanner-unclean` note (`$XDG_STATE_HOME/fastfoto-linux`). Ignored if not absolute. | `~/.local/state` |
 | `XDG_CONFIG_HOME` | no | Base folder for the desktop app's settings (`fastfoto-linux/gui.json`). Ignored if not absolute. | `~/.config` |
-| `HOME` | yes (by the OS) | Home folder, used for the defaults above. | set by the login |
+| `HOME` | no | Home folder, used for the defaults above; the app falls back to the account's home folder without it. | set by the login |
 | `PATH` | no | Searched for `scanimage`, Tesseract and `brew`; OCR also adds the Flatpak's own folder, the interpreter's folder and Homebrew's. | the system's |
+| `TESSDATA_PREFIX` | no | Not read by the app's code. The Flatpak manifest sets it to `/app/share/tessdata`, and it reaches Tesseract through the inherited environment. | set by the Flatpak only |
 | `QT_QUICK_CONTROLS_STYLE` | no | If set, the app keeps that Qt Quick Controls style; otherwise it selects `org.kde.desktop`. | unset |
 
 Set by the app for `scanimage` (not for you to set): `LC_ALL=C`, `LANGUAGE` removed,

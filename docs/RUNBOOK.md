@@ -13,15 +13,14 @@ Symptom: `ffscan scan` or `ffscan doc scan` exits with code 3, or the app says n
    and never talks to the scanner. It lists USB scanners and whether the USB gap shim was found.
 2. If the scanner shows up but the shim is missing, build or reinstall it (next section).
 3. If `ffscan devices` shows no scanner at all, it may have switched itself off (see "Observed on
-   the FF-680W" below): press the power button. Also try a USB port directly on the machine's
-   back or motherboard instead of a hub or front-panel port.
+   the FF-680W" below): press the power button. Also see the USB port observation in that section.
 4. If it is silent, switch it off and on, wait for it to wake, and try again. The USB address
    (bus and device number) changes when it is switched off and on; that is expected.
 5. Over Wi-Fi use `--net HOST`. A scanner that is busy with another device over Wi-Fi also stays
    silent: close the other program.
 
 Exit codes: 0 ok, 1 processing error, 2 usage, 3 scanner not found, shim missing, scanner not
-answering or in use by another program, 4 no documents in the feeder.
+answering or in use by another program, 4 no documents in the feeder, 130 stopped with Ctrl-C.
 
 ## Observed on the FF-680W (not from the manufacturer)
 
@@ -62,7 +61,7 @@ A failed send can leave the scanner half-way through a command, so that it swall
   `-v` then says "scanner was stuck; freed it". The note is ignored after a reboot or after 24 hours,
   and a scanner that answers clears it.
 - Silent with no note: nothing is sent, because another device may be using it. The message is
-  "The scanner isn't answering. It may be busy with another device, or stuck - switch it off and on,
+  "The scanner isn't answering. It may be busy with another device, or stuck — switch it off and on,
   then try again." (exit 3). Switch it off and on.
 - Last resort, when you know nothing else uses the scanner: `FF680W_FORCE_UNSTICK=1` sends the
   padding without a note.

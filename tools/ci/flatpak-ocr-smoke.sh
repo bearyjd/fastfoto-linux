@@ -31,6 +31,29 @@ version=$(inside --command=python3 "$APP" -I -m ocrmypdf --version)
 echo "ocrmypdf $version"
 printf '%s\n' "$version" | grep -q '^17\.'
 
+echo "== Offline catalogue and writable model cache inside the sandbox"
+inside --unshare=network --command=python3 "$APP" -I -c '
+import os
+import stat
+import tempfile
+from pathlib import Path
+from fastfoto_linux.documents.ocr_languages import _cache_root, _catalog, discover_languages
+
+catalog = _catalog()
+root = _cache_root(catalog, create=True)
+expected = Path(os.environ["XDG_DATA_HOME"]).resolve() / "fastfoto-linux" / "tessdata"
+assert root == expected / catalog.revision
+assert root.stat().st_uid == os.getuid()
+assert stat.S_IMODE(root.stat().st_mode) == 0o700
+with tempfile.TemporaryFile(dir=root) as probe:
+    probe.write(b"offline cache write check")
+    probe.flush()
+inventory = discover_languages()
+assert not inventory.error, inventory.error
+assert "eng" in {language.code for language in inventory.installed}
+assert inventory.orientation is not None and inventory.orientation.installed
+'
+
 echo "== A page of text through the app"
 inside --command=python3 "$APP" -I -c '
 import sys

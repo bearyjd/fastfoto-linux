@@ -102,12 +102,12 @@ def _trusted_base(base: Path) -> Path:
             info = parent.stat()
         except FileNotFoundError:
             continue
+        readonly = bool(os.statvfs(parent).f_flag & os.ST_RDONLY)
         trusted_owner = info.st_uid in (0, os.getuid())
         shared_sticky = trusted_owner and info.st_mode & stat.S_ISVTX
-        if (
-            not stat.S_ISDIR(info.st_mode)
-            or not trusted_owner
-            or (info.st_mode & _UNSAFE_WRITE_BITS and not shared_sticky)
+        if not stat.S_ISDIR(info.st_mode) or (
+            not readonly
+            and (not trusted_owner or (info.st_mode & _UNSAFE_WRITE_BITS and not shared_sticky))
         ):
             raise OSError("OCR model cache needs a safe, trusted data directory")
     return resolved

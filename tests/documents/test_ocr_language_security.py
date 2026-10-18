@@ -2,9 +2,12 @@
 
 import hashlib
 import io
+import os
+import stat
 import threading
 import urllib.request
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -127,3 +130,53 @@ def test_overlay_copies_verified_bytes_even_if_managed_cache_changes_after_valid
     overlay = Path(environment["TESSDATA_PREFIX"])
     assert (overlay / "spa.traineddata").read_bytes() == MODELS["spa"]
     assert (models / "spa.traineddata").read_bytes() != MODELS["spa"]
+
+
+@pytest.mark.parametrize("readonly", [False, True])
+@pytest.mark.parametrize("sticky", [False, True])
+def test_foreign_ancestor_is_trusted_only_on_a_readonly_mount(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, readonly: bool, sticky: bool
+) -> None:
+    original_stat, original_statvfs = Path.stat, os.statvfs
+
+    def directory_info(path: Path, **kwargs: object) -> os.stat_result:
+        info = original_stat(path, **kwargs)
+        if path != tmp_path:
+            return info
+        fields = list(info)
+        fields[4] = 65534
+        fields[0] = stat.S_IFDIR | (0o1777 if sticky else 0o755)
+        return os.stat_result(fields)
+
+    def mount_info(path: Path) -> os.statvfs_result | SimpleNamespace:
+        if path == tmp_path:
+            return SimpleNamespace(f_flag=os.ST_RDONLY if readonly else 0)
+        return original_statvfs(path)
+
+    monkeypatch.setattr(Path, "stat", directory_info)
+    monkeypatch.setattr(os, "statvfs", mount_info)
+    if readonly:
+        assert ocr_languages._trusted_base(tmp_path / "data") == tmp_path / "data"
+    else:
+        with pytest.raises(OSError, match=r"(safe|trusted)"):
+            ocr_languages._trusted_base(tmp_path / "data")
+
+
+def test_readonly_mount_does_not_relax_managed_cache_owner_requirement(
+    models: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    install_managed(models, "spa")
+    original = Path.lstat
+
+    def foreign_cache(path: Path) -> os.stat_result:
+        info = original(path)
+        if path != models:
+            return info
+        fields = list(info)
+        fields[4] = 65534
+        return os.stat_result(fields)
+
+    monkeypatch.setattr(Path, "lstat", foreign_cache)
+    monkeypatch.setattr(os, "statvfs", lambda path: SimpleNamespace(f_flag=os.ST_RDONLY))
+    with pytest.raises(OSError, match=r"(safe|owned)"):
+        ocr_languages._cache_root(ocr_languages._catalog())

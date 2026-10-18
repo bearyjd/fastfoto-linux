@@ -156,3 +156,18 @@ def test_fresh_needs_a_folder(raw, out, capsys) -> None:
     assert main(["doc", "process", *pages, "--out", str(out), *OFF, "--fresh"]) == 2
     assert "--fresh" in capsys.readouterr().err
     assert not os.listdir(out)
+
+
+@pytest.mark.parametrize("kind", ["directory", "device_link", "pipe", "huge_key"])
+def test_an_unusable_sidecar_of_any_kind_means_a_normal_run(raw, out, kind) -> None:
+    target = raw / REVIEW_FILE
+    if kind == "directory":
+        target.mkdir()
+    elif kind == "device_link":
+        target.symlink_to("/dev/zero")
+    elif kind == "pipe":
+        os.mkfifo(target)
+    else:
+        target.write_text('{"version": 1, "edits": {"' + "9" * 5000 + '": {}}}', encoding="utf-8")
+    assert process(out, raw) == 0
+    assert len(pdf_pages(out)) == 3

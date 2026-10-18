@@ -1,9 +1,11 @@
 """``review.json`` is untrusted input: whatever is wrong with it, it is ignored with a logged
 warning and the folder is analysed afresh. Nothing in it can name a file outside the folder."""
 
+import copy
 import json
 import logging
 import os
+import random
 import threading
 from collections.abc import Callable
 from pathlib import Path
@@ -173,3 +175,129 @@ def test_the_valid_sidecar_of_these_tests_is_accepted(saved) -> None:
     assert load_draft(folder, pages, settings) is not None
     assert json.loads((folder / REVIEW_FILE).read_text())["version"] == 1
     assert store.MAX_REVIEW_BYTES == MAX_REVIEW_BYTES
+
+
+# --- round 1: hostile input that crashed, and guards that must each be tested -----------------
+
+HUGE_KEY = "9" * 5000  # more digits than int() will convert
+
+ROUND_ONE: dict[str, Tamper] = {
+    "huge edits key": lambda d: d.update(edits={HUGE_KEY: {"turns": 1}}) or d,
+    "huge part_names key": lambda d: d.update(part_names={HUGE_KEY: "x"}) or d,
+    "long edits key": lambda d: d.update(edits={"1" * 8: {"turns": 1}}) or d,
+    "duplicate split": lambda d: d.update(splits=[1, 1]) or d,
+}
+
+
+@pytest.mark.parametrize("name", list(ROUND_ONE))
+def test_round_one_tamperings_are_ignored(saved, caplog, name) -> None:
+    folder, pages, settings, draft = saved
+    (folder / REVIEW_FILE).write_text(
+        json.dumps(ROUND_ONE[name](sidecar(folder))),
+        encoding="utf-8",
+    )
+    _ignored(folder, pages, settings, draft, caplog)
+
+
+def test_a_folder_named_review_json_is_ignored(saved, caplog) -> None:
+    folder, pages, settings, draft = saved
+    (folder / REVIEW_FILE).unlink()
+    (folder / REVIEW_FILE).mkdir()
+    _ignored(folder, pages, settings, draft, caplog)
+
+
+def test_a_link_to_a_device_is_ignored(saved, caplog) -> None:
+    folder, pages, settings, draft = saved
+    (folder / REVIEW_FILE).unlink()
+    (folder / REVIEW_FILE).symlink_to("/dev/zero")
+    _ignored(folder, pages, settings, draft, caplog)
+
+
+def test_a_pipe_with_a_valid_sidecar_in_it_is_still_refused(saved) -> None:
+    """Only the regular-file check stops this one: the pipe really delivers a valid sidecar."""
+    folder, pages, _, _ = saved
+    valid = (folder / REVIEW_FILE).read_bytes()
+    (folder / REVIEW_FILE).unlink()
+    fifo = folder / REVIEW_FILE
+    os.mkfifo(fifo)
+
+    def feed() -> None:
+        try:
+            with fifo.open("wb") as pipe:
+                pipe.write(valid)
+        except OSError:
+            pass
+
+    writer = threading.Thread(target=feed, daemon=True)
+    writer.start()
+    try:
+        assert read_review(folder, pages) is None
+    finally:
+        descriptor = os.open(fifo, os.O_RDONLY | os.O_NONBLOCK)  # let the writer finish
+        os.close(descriptor)
+        writer.join(timeout=5)
+
+
+def _lying_fstat(monkeypatch: pytest.MonkeyPatch, size: int) -> None:
+    real = os.fstat
+
+    def fstat(descriptor: int):
+        info = real(descriptor)
+        fields = list(info)
+        fields[6] = size  # st_size
+        return os.stat_result(fields)
+
+    monkeypatch.setattr(store.os, "fstat", fstat)
+
+
+def test_the_size_in_the_stat_is_checked_before_reading(saved, monkeypatch) -> None:
+    folder, pages, _, _ = saved
+    _lying_fstat(monkeypatch, MAX_REVIEW_BYTES + 1)  # the content is small and valid
+    assert read_review(folder, pages) is None
+
+
+def test_the_read_is_capped_even_if_the_stat_says_small(saved, monkeypatch) -> None:
+    folder, pages, _, _ = saved
+    valid = (folder / REVIEW_FILE).read_bytes()
+    (folder / REVIEW_FILE).write_bytes(valid + b" " * (MAX_REVIEW_BYTES + 1 - len(valid)))
+    _lying_fstat(monkeypatch, 10)
+    assert read_review(folder, pages) is None
+
+
+def _mutations(valid: dict[str, Any], seed: int, count: int):
+    rng = random.Random(seed)
+    junk = [None, True, -1, 2**70, 1.5, "x", "9" * 5000, [], {}, [[]], "../x", float("1e999")]
+
+    def paths(node, here=()):
+        yield here
+        if isinstance(node, dict):
+            for key, child in node.items():
+                yield from paths(child, (*here, key))
+        elif isinstance(node, list):
+            for index, child in enumerate(node):
+                yield from paths(child, (*here, index))
+
+    for _ in range(count):
+        data = copy.deepcopy(valid)
+        for _ in range(rng.randint(1, 3)):
+            target = rng.choice([p for p in paths(data) if p])
+            parent = data
+            for step in target[:-1]:
+                parent = parent[step]
+            action = rng.choice(["set", "delete", "rename"])
+            if action == "set":
+                parent[target[-1]] = rng.choice(junk)
+            elif action == "delete":
+                del parent[target[-1]]
+            elif isinstance(parent, dict):
+                parent[rng.choice(["9" * 5000, "0", "-1", "99"])] = parent.pop(target[-1])
+        yield json.dumps(data)
+
+
+def test_random_mutations_of_a_valid_sidecar_never_get_past_open_draft(saved) -> None:
+    folder, pages, settings, draft = saved
+    valid = sidecar(folder)
+    for text in _mutations(valid, seed=7, count=150):
+        (folder / REVIEW_FILE).write_text(text, encoding="utf-8")
+        opened = open_draft(folder, pages, settings)
+        assert len(opened.pages) == len(draft.pages)

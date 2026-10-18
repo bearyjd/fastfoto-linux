@@ -2,16 +2,18 @@
 saved atomically and privately, comes back as it was, and is reused only while the pages and the
 analysis are the ones it was made from."""
 
+import json
 import os
 import stat
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
+from PIL import Image, ImageDraw
 
 from fastfoto_linux.documents import ColourMode, OcrMode
 from fastfoto_linux.documents import draft_store as store
-from fastfoto_linux.documents.draft_edit import set_part_name, toggle_split
+from fastfoto_linux.documents.draft_edit import rotate, set_part_name, toggle_split
 from fastfoto_linux.documents.draft_store import (
     REVIEW_FILE,
     THUMBS_DIR,
@@ -245,3 +247,36 @@ def test_a_different_set_of_pages_takes_no_edits(folder_and_pages, out) -> None:
     opened = open_draft(folder, list_pages(folder), settings)
     assert not opened.has_edits
     assert len(opened.pages) == 4
+
+
+def test_a_changed_fallback_dpi_reanalyses_and_preserves_edits(tmp_path, out) -> None:
+    folder = tmp_path / "raw"
+    folder.mkdir()
+    page = Image.new("RGB", (900, 1200), (240, 240, 240))
+    ImageDraw.Draw(page).rectangle((200, 100, 700, 800), fill=(30, 30, 30))
+    page.save(folder / "page-0001.png")
+    pages = list_pages(folder)
+    settings = store_settings(out, duplex=False, fallback_dpi=150)
+    draft = rotate(analysed(folder, pages, settings), 1, 1)
+    save_draft(draft, settings)
+    other = replace(settings, fallback_dpi=300)
+    assert load_draft(folder, pages, other) is None
+    opened = open_draft(folder, pages, other)
+    fresh = open_draft(folder, pages, other, fresh=True)
+    assert opened.pages == fresh.pages
+    assert opened.pages[0].dpi == 300
+    assert dict(opened.edits) == dict(draft.edits)
+
+
+def test_legacy_sidecar_without_fallback_dpi_is_reanalysed(folder_and_pages, out) -> None:
+    folder, pages = folder_and_pages
+    settings = store_settings(out)
+    draft = edited(analysed(folder, pages, settings))
+    save_draft(draft, settings)
+    path = folder / REVIEW_FILE
+    data = json.loads(path.read_text())
+    data.pop("fallback_dpi", None)
+    path.write_text(json.dumps(data))
+    assert load_draft(folder, pages, settings) is None
+    opened = open_draft(folder, pages, settings)
+    assert dict(opened.edits) == dict(draft.edits)

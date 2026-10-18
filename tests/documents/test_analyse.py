@@ -162,7 +162,7 @@ def test_keep_blank_judges_nothing_and_keeps_every_page(
     def refuse(*args: Any, **kwargs: Any) -> Any:
         raise AssertionError("a page was judged although every page stays")
 
-    monkeypatch.setattr(analyse_module, "is_blank_beside", refuse)
+    monkeypatch.setattr(analyse_module, "assess_page", refuse)
     pages = write_pages(raw, [text_scene(1), blank_scene(2)])
     draft = analyse_document(pages, settings(out, keep_blank=True))
     assert [page.blank for page in draft.pages] == [False, False]

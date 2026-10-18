@@ -54,7 +54,8 @@ class TrimBox:
 
 class Flag(StrEnum):
     """Why a verdict is what it is, for a reviewer. A flag explains; it never drops or keeps a
-    page. The first six come with a page that stays, the last two with a page left out."""
+    page. A flag is a hint to look at the page, never a verdict. The first six come with a page
+    that stays, the last two with a page left out."""
 
     FEW_MARKS = "few_marks"  # at most 3 marks, under 2 cm2 of them: a signature, a stray mark
     EDGE_ONLY = "edge_only"  # every mark lies near an edge of the page

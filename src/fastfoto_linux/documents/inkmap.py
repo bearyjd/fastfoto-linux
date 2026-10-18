@@ -12,6 +12,12 @@ left to right within the scanner's frame, each page's trim offset added back), f
 shifted ``CONTROL_SHIFT_MM`` in each direction (``control``: how often a mark would land on that
 page's print by chance, high on dense text). ``lies_on``: at least ``MARKS_MIN`` marks, ``hit``
 at least ``HIT_MIN`` and ``hit`` less ``control`` at least ``ADVANTAGE_MIN``.
+
+A flag from this is a hint to look at the page ("looks like bleed-through: check"); it never drops
+or keeps a page, so a false alarm is cheap and a miss is not. The accepted trade-offs: a short
+note that lies on dense print (hit 1.0, control 0.75) is flagged; and on very dense pages a
+control of 0.85 or more leaves less than ``ADVANTAGE_MIN`` whatever the hit, so a ghost there is
+not flagged.
 """
 
 import math
@@ -30,7 +36,7 @@ INK_TONE = 120  # a pixel darker than this (darkest colour channel) is ink
 REACH_MM = 3.0  # a mark is on print when a dark cell lies within this of its mirrored centre
 CONTROL_SHIFT_MM = 20.0  # the control looks this far off, up, down, left and right
 HIT_MIN = 0.9  # at least this share of the marks lies on print
-ADVANTAGE_MIN = 0.3  # ... and at least this much more than the control
+ADVANTAGE_MIN = 0.2  # ... and at least this much more than the control (a hint: see above)
 MARKS_MIN = 3  # fewer marks than this are left to the shape match of ``bleed``
 
 

@@ -12,7 +12,7 @@ import pytest
 from fastfoto_linux.documents import DocumentSettings, OcrMode
 from fastfoto_linux.documents.analyse import analyse_document
 from fastfoto_linux.documents.draft import Flag
-from fastfoto_linux.documents.inkmap import HIT_MIN, hit_rates, ink_map, lies_on
+from fastfoto_linux.documents.inkmap import ADVANTAGE_MIN, HIT_MIN, hit_rates, ink_map, lies_on
 from tests.doc_synth_holes import sheet
 from tests.documents import flags_helpers as fh
 from tests.documents.flags_helpers import FAST_DPIS
@@ -89,19 +89,42 @@ def test_handwriting_unrelated_to_either_front_is_not_flagged(tmp_path: Path, dp
 
 
 @pytest.mark.parametrize("dpi", FAST_DPIS)
-def test_dense_print_with_a_short_note_is_not_flagged(tmp_path: Path, dpi: int) -> None:
+def test_a_note_over_dense_print_is_flagged_as_a_hint_to_check(tmp_path: Path, dpi: int) -> None:
+    """The accepted trade-off: a flag is a hint and never drops a page, so a note that lies on
+    dense print (hit 1.0, control 0.75, advantage 0.25) is flagged "check", not missed."""
     note = [fh.glyphs(30, 46, 4)]
     draft = _analyse(tmp_path, dpi, [(DENSE, note), (DENSE, note)])
     for back in (draft.pages[1], draft.pages[3]):
-        assert not back.flags & {Flag.SET_OFF, Flag.SHOW_THROUGH}
+        assert not back.blank
+        assert back.flags & {Flag.SET_OFF, Flag.SHOW_THROUGH}
 
 
 @pytest.mark.parametrize("dpi", FAST_DPIS)
-def test_dense_print_hits_often_but_so_does_its_control(dpi: int) -> None:
-    """The numbers: a note over dense print hits it, but the shifted control does too."""
+def test_dense_print_hits_often_and_so_does_its_control(dpi: int) -> None:
     first, second = fh.trimmed_pair(*sheet(dpi, DENSE, [fh.glyphs(30, 46, 4)]))
     hit, control = hit_rates(_marks_of(second), ink_map(second), ink_map(first))
-    assert hit - control < 0.3 or hit < HIT_MIN
+    assert hit >= HIT_MIN
+    assert ADVANTAGE_MIN <= hit - control < 0.3
+
+
+def test_a_control_of_85_percent_can_never_reach_the_advantage() -> None:
+    """The documented false negative: on very dense pages the control is high, and a hit rate
+    of at most 1.0 leaves less than ``ADVANTAGE_MIN``."""
+    assert ADVANTAGE_MIN > 1.0 - 0.85
+
+
+@pytest.mark.parametrize("dpi", FAST_DPIS)
+def test_a_ghost_on_print_so_dense_that_the_control_is_high_is_not_flagged(dpi: int) -> None:
+    first, _ = fh.trimmed_pair(*sheet(dpi, DENSE, []))
+    ghost = fh.ghost_of(DENSE, dpi, 60, shift_mm=OFF_MM)
+    _, back = fh.trimmed_pair(*sheet(dpi, [], [ghost]))
+    marks = _marks_of(back)
+    hit, control = hit_rates(marks, ink_map(back), ink_map(first))
+    assert lies_on(marks, ink_map(back), ink_map(first)) is (
+        hit >= HIT_MIN and hit - control >= ADVANTAGE_MIN
+    )
+    if control >= 0.85:
+        assert not lies_on(marks, ink_map(back), ink_map(first))
 
 
 def _marks_of(page):

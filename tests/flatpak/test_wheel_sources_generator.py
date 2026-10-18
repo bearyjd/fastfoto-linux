@@ -97,7 +97,7 @@ def test_dependencies_of_dependencies_are_followed_and_the_dev_group_is_not() ->
     assert [wheel.name for wheel in generator().runtime_wheels(lock)] == ["deep", "lib"]
 
 
-def test_the_runtime_module_installs_offline_with_hashes_from_the_desktop_requirements() -> None:
+def test_the_runtime_module_installs_offline_with_hashes_from_the_ocr_requirements() -> None:
     plain = "lib-1.0-py3-none-any.whl"
     module = generator().runtime_module(lock_of(package("lib", wheels=(wheel_entry(plain, "c"),))))
     assert module["name"] == "python-deps"
@@ -105,8 +105,8 @@ def test_the_runtime_module_installs_offline_with_hashes_from_the_desktop_requir
     [command] = module["build-commands"]
     for flag in ("--no-index", "--require-hashes", "--no-deps", "--prefix=${FLATPAK_DEST}"):
         assert flag in command
-    assert "-r requirements-desktop.txt" in command
-    assert module["sources"][0] == {"type": "file", "path": "../requirements-desktop.txt"}
+    assert "-r requirements-ocr.txt" in command
+    assert module["sources"][0] == {"type": "file", "path": "../requirements-ocr.txt"}
     assert module["sources"][1:] == [
         {"type": "file", "url": f"https://files.example.org/packages/{plain}", "sha256": "c" * 64}
     ]
@@ -326,15 +326,113 @@ def test_the_parser_builds_when_python_runs_with_o_o_and_there_is_no_docstring(
     assert generator()._parser().prog
 
 
-def test_a_dependency_with_an_environment_marker_is_an_error_naming_who_needs_what() -> None:
+def with_dependency(marker: str | None) -> dict[str, Any]:
+    """A lock whose project needs ``lib`` only when ``marker`` holds (always, for None)."""
     lock = lock_of(package("lib", wheels=(wheel_entry("lib-1.0-py3-none-any.whl"),)))
-    lock["package"][0]["dependencies"] = [{"name": "lib", "marker": "sys_platform == 'win32'"}]
+    lock["package"][0]["dependencies"] = [{"name": "lib", **({"marker": marker} if marker else {})}]
+    return lock
+
+
+@pytest.mark.parametrize(
+    "marker",
+    [
+        "platform_python_implementation != 'PyPy'",
+        "implementation_name != 'PyPy'",
+        "implementation_name == 'cpython'",
+        "sys_platform == 'linux'",
+        "sys_platform == 'win32' or sys_platform == 'linux'",
+        "sys_platform == 'linux' and platform_machine == 'x86_64'",
+    ],
+)
+def test_a_dependency_whose_marker_holds_in_the_flatpak_is_followed(marker: str) -> None:
+    assert [w.name for w in generator().runtime_wheels(with_dependency(marker))] == ["lib"]
+
+
+@pytest.mark.parametrize(
+    "marker",
+    [
+        "sys_platform == 'win32'",
+        "platform_python_implementation == 'PyPy'",
+        "implementation_name == 'pypy'",
+        "sys_platform == 'linux' and implementation_name == 'pypy'",
+        "sys_platform == 'darwin' or sys_platform == 'win32'",
+    ],
+)
+def test_a_dependency_whose_marker_does_not_hold_in_the_flatpak_is_left_out(marker: str) -> None:
+    assert generator().runtime_wheels(with_dependency(marker)) == ()
+
+
+@pytest.mark.parametrize(
+    "marker",
+    [
+        "python_version >= '3.14'",
+        "sys_platform == 'linux' and (implementation_name == 'cpython')",
+        "extra == 'ocr'",
+        "os.name == 'posix'",
+        "sys_platform in 'linux'",
+    ],
+)
+def test_a_marker_that_cannot_be_decided_is_an_error_naming_who_needs_what(marker: str) -> None:
     with pytest.raises(generator().WheelSelectionError) as error:
-        generator().runtime_wheels(lock)
+        generator().runtime_wheels(with_dependency(marker))
     message = str(error.value)
     assert "app" in message  # the package that depends on it
     assert "lib" in message
-    assert "sys_platform == 'win32'" in message
+    assert marker in message
+
+
+def test_the_optional_dependencies_of_the_ocr_extra_are_part_of_the_closure() -> None:
+    plain = "-1.0-py3-none-any.whl"
+    lock = lock_of(
+        package("lib", wheels=(wheel_entry("lib" + plain),)),
+        package("ocr-tool", wheels=(wheel_entry("ocr-tool" + plain),), deps=("deep",)),
+        package("deep", wheels=(wheel_entry("deep" + plain),)),
+        package("other", wheels=(wheel_entry("other" + plain),)),
+    )
+    lock["package"][0]["optional-dependencies"] = {
+        "ocr": [{"name": "ocr-tool"}],
+        "other": [{"name": "other"}],
+    }
+    names = [wheel.name for wheel in generator().runtime_wheels(lock)]
+    assert names == ["deep", "lib", "ocr-tool"]  # not the extras the Flatpak does not offer
+
+
+def test_the_extras_a_dependency_asks_for_are_followed_like_pikepdf_pdfa() -> None:
+    plain = "-1.0-py3-none-any.whl"
+    lock = lock_of(
+        package("lib", wheels=(wheel_entry("lib" + plain),)),
+        package("pdfa-tool", wheels=(wheel_entry("pdfa-tool" + plain),)),
+        package("unused", wheels=(wheel_entry("unused" + plain),)),
+    )
+    lock["package"][0]["optional-dependencies"] = {"ocr": [{"name": "lib", "extra": ["pdfa"]}]}
+    lock["package"][1]["optional-dependencies"] = {
+        "pdfa": [{"name": "pdfa-tool"}],
+        "other": [{"name": "unused"}],
+    }
+    names = [wheel.name for wheel in generator().runtime_wheels(lock)]
+    assert names == ["lib", "pdfa-tool"]
+
+
+def test_a_wheel_for_every_python_3_only_the_platform_matters() -> None:
+    name = "lib-1.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"  # pypdfium2's shape
+    [chosen] = generator().runtime_wheels(lock_of(package("lib", wheels=(wheel_entry(name),))))
+    assert chosen.filename == name
+
+
+@pytest.mark.parametrize(
+    "filename",
+    [
+        "lib-1.0-py3-none-musllinux_1_2_x86_64.whl",
+        "lib-1.0-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl",
+        "lib-1.0-py3-none-macosx_13_0_x86_64.whl",
+        "lib-1.0-py3-none-win_amd64.whl",
+        "lib-1.0-py3-none-manylinux_2_43_x86_64.whl",  # newer than the runtime's glibc
+    ],
+)
+def test_a_py3_wheel_for_another_platform_or_a_newer_glibc_is_never_chosen(filename: str) -> None:
+    lock = lock_of(package("lib", wheels=(wheel_entry(filename),)))
+    with pytest.raises(generator().WheelSelectionError, match="lib"):
+        generator().runtime_wheels(lock)
 
 
 def test_a_marker_makes_main_fail_loudly_with_the_package_named(
@@ -343,7 +441,7 @@ def test_a_marker_makes_main_fail_loudly_with_the_package_named(
     lock = tmp_path / "uv.lock"
     lock.write_text(
         LOCK_TEXT.replace(
-            '{ name = "lib" }', '{ name = "lib", marker = "sys_platform == \'win32\'" }'
+            '{ name = "lib" }', '{ name = "lib", marker = "python_version >= \'3.14\'" }'
         )
     )
     code = generator().main(["runtime", "--lock", str(lock), "--output", str(tmp_path / "x.json")])

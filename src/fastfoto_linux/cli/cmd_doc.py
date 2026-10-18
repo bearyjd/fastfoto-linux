@@ -45,6 +45,7 @@ from fastfoto_linux.documents import (
 )
 from fastfoto_linux.documents.ocr_tools import ocr_fix_hint
 from fastfoto_linux.scanner import ScannerError, resolve_target, run_scan
+from fastfoto_linux.scanner.shim_trust import inside_flatpak
 from fastfoto_linux.session import (
     DocumentScanRequest,
     DocumentSessionResult,
@@ -87,13 +88,16 @@ def add_parser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]"
     process.set_defaults(handler=run_process)
 
 
+def _ocr_missing_message() -> str:
+    hint = ocr_fix_hint()
+    if inside_flatpak():  # the hint is a sentence about the bundle: it leads, as one
+        return f"{hint} (--ocr on needs OCR)"
+    return f"--ocr on needs OCR (ocrmypdf and Tesseract), which is not available ({hint})"
+
+
 def _require_ocr_if_asked(settings: DocumentSettings) -> None:
     if settings.ocr is OcrMode.ON and find_ocrmypdf() is None:
-        raise CliError(
-            "--ocr on needs OCR (ocrmypdf and Tesseract), which is not available "
-            f"({ocr_fix_hint()})",
-            EXIT_TOOL_MISSING,
-        )
+        raise CliError(_ocr_missing_message(), EXIT_TOOL_MISSING)
 
 
 def document_failure(error: Exception) -> Exception:

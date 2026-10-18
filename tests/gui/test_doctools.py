@@ -19,9 +19,15 @@ def tools(*, found: str | None, flatpak: bool) -> DocumentTools:
     return DocumentTools(find_ocr=lambda: found, in_flatpak=lambda: flatpak)
 
 
-def test_the_hints_say_what_to_install_or_that_the_native_install_is_needed() -> None:
+def test_the_hints_say_what_to_install_or_that_the_flatpak_is_broken() -> None:
     assert NATIVE_OCR_HINT == "Install Tesseract: sudo dnf install tesseract tesseract-osd"
-    assert FLATPAK_OCR_HINT == "Searchable text needs the native install"
+    assert FLATPAK_OCR_HINT == ocr_tools.FLATPAK_BROKEN_HINT
+    assert "reinstall" in FLATPAK_OCR_HINT.lower()
+
+
+@pytest.mark.parametrize("command", ["brew", "rpm-ostree", "dnf", "native install"])
+def test_the_flatpak_hint_sends_nobody_to_install_anything_from_outside(command: str) -> None:
+    assert command not in FLATPAK_OCR_HINT.lower()
 
 
 def test_missing_ocr_on_an_immutable_system_without_brew_says_rpm_ostree_or_homebrew(
@@ -59,7 +65,7 @@ def test_missing_ocr_on_the_desktop_says_how_to_install_it() -> None:
     assert missing.ocr_hint == NATIVE_OCR_HINT
 
 
-def test_missing_ocr_in_the_flatpak_says_it_needs_the_native_install() -> None:
+def test_missing_ocr_in_the_flatpak_says_the_bundle_is_broken() -> None:
     missing = tools(found=None, flatpak=True)
     assert missing.ocr_available is False
     assert missing.ocr_hint == FLATPAK_OCR_HINT

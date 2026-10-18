@@ -251,7 +251,7 @@ def test_the_hint_under_the_box_names_ocrmypdf_when_it_is_the_part_that_is_missi
     assert "Tesseract" not in page.controller.ocr_hint
 
 
-def test_inside_a_flatpak_the_hint_says_the_native_install_is_needed(out: Path) -> None:
+def test_inside_a_flatpak_the_hint_says_the_bundle_is_broken(out: Path) -> None:
     page = Page(out, ocr=None)
     page.flatpak = True
     page.controller.set_mode(Mode.PHOTOS)

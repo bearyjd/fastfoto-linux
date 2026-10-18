@@ -42,8 +42,9 @@ def test_the_readme_names_the_button_for_kept_pages() -> None:
     assert f"**{PROCESS_KEPT_TEXT}**" in desktop_section()
 
 
-def test_the_readme_says_the_flatpak_has_no_ocr() -> None:
-    assert "The Flatpak has no OCR yet" in desktop_section()
+def test_the_readme_says_the_flatpak_has_the_ocr_built_in() -> None:
+    assert "In the Flatpak the OCR is built in" in desktop_section()
+    assert "The Flatpak has no OCR yet" not in desktop_section()
 
 
 def test_the_design_note_has_the_decisions_of_the_desktop_app() -> None:

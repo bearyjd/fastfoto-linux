@@ -317,8 +317,8 @@ uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr o
   `eng+deu`). If OCR fails or times out the plain PDF is still written, with one warning and exit
   code 1; the warning says why from `ocrmypdf`'s exit code (for a missing language it names what
   to install: `brew install tesseract-lang`, or the `tesseract-langpack-*` packages). OCR works in
-  a private temporary folder, not in the output folder. The Flatpak will bundle OCR in a later
-  release.
+  a private temporary folder, not in the output folder. The Flatpak brings Tesseract and OCRmyPDF
+  itself (English only; see "Flatpak").
 - Exit codes are those of `ffscan`: 0 ok, 1 a processing problem (an unusable page stops the run
   before anything is written, and a file that is cut off or corrupt counts as unusable), 2 usage,
   3 a required tool is missing (`doc scan`: also the scanner or its shim, which is missing, not
@@ -437,8 +437,10 @@ or `Install Tesseract: brew install tesseract` on systems with Homebrew (Bazzite
 and run brew install tesseract` on an immutable system without it. If OCRmyPDF is the part that
 is missing (a checkout without the OCR extra), the box says `Install OCRmyPDF: run the installer again,
 or pip install 'fastfoto-linux[ocr]' for a development install` instead, and when both are missing it
-gives both, Tesseract's first; the command line says the same in its message. The Flatpak has no OCR yet (it will bundle it in a later release) and says that
-searchable text needs the native install; everything else in Documents mode works there.
+gives both, Tesseract's first; the command line says the same in its message. In the Flatpak the OCR
+is built in, so the box is on; if it is off there the installation is damaged, and the box says
+`The OCR that comes with this Flatpak is missing, so the installation is broken: reinstall the
+Flatpak` (it never suggests `brew`, `rpm-ostree` or `dnf`, which do not reach into the sandbox).
 
 Install it for your user (no root; nothing to do with `uv` or pip):
 
@@ -501,8 +503,21 @@ flatpak run --command=ffscan io.github.bearyjd.FastFotoLinux devices   # the dev
 flatpak uninstall --user io.github.bearyjd.FastFotoLinux      # remove it again
 ```
 
-The CI job `flatpak` builds the same bundle and uploads it as an artifact. What the sandbox may
-do:
+The Flatpak also brings **searchable text**, so the Documents box needs nothing installed:
+Tesseract and its Leptonica library are built from source, with the English (`eng`) and
+page-orientation (`osd`, which page rotation needs) data from tessdata_fast; OCRmyPDF is installed
+from the same hashed wheels as the native install (`packaging/requirements-ocr.txt`). Other
+languages are not bundled: `--lang deu` says that only English comes with the Flatpak. The bundle
+carries these components under their own licences, all compatible with this project's GPL-3.0:
+Tesseract (Apache-2.0), Leptonica (BSD-2-Clause) and the tessdata_fast data (Apache-2.0); OCRmyPDF
+(MPL-2.0) and its wheels keep theirs; the texts of the three built components' licences are in
+the bundle under `/app/share/licenses`. The app finds Tesseract in `/app/bin`, the data through
+`TESSDATA_PREFIX=/app/share/tessdata`, and never looks for Homebrew in the sandbox.
+
+The CI job `flatpak` builds the same bundle, uploads it as an artifact, installs it, and runs
+`tools/ci/flatpak-ocr-smoke.sh` inside the sandbox (Tesseract lists `eng` and `osd`, OCRmyPDF 17
+runs, and a generated page of text becomes a PDF whose text layer holds the words). What the
+sandbox may do:
 
 - **USB**: `--device=all`, which exposes all device nodes of the host to the app, not only the
   scanner's. It is needed because libusb and SANE open `/dev/bus/usb/...` themselves and do not

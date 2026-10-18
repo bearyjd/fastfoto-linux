@@ -66,6 +66,7 @@ def classic_machine_without_ocr(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(ocr_tools, "BREW_BIN", Path("/nonexistent/linuxbrew/bin"))
     monkeypatch.setattr(ocr_tools, "OSTREE_MARKER", Path("/nonexistent/ostree-booted"))
     monkeypatch.setattr(ocr_tools, "OCR_MODULE", "fastfoto_linux_no_such_module")
+    monkeypatch.setattr(ocr_tools, "FLATPAK_BIN", Path("/nonexistent/flatpak/bin"))
 
     def not_installed(name: str) -> str:
         raise importlib.metadata.PackageNotFoundError(name)

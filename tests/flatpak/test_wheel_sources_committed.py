@@ -62,8 +62,8 @@ def test_every_runtime_wheel_hash_is_the_hash_uv_lock_has_for_that_url() -> None
         assert in_lock.get(source["url"]) == source["sha256"], source["url"]
 
 
-def test_the_runtime_wheels_are_the_pinned_runtime_dependencies_and_nothing_else() -> None:
-    wanted = pins(PACKAGING / "requirements-desktop.txt")
+def test_the_runtime_wheels_are_the_pinned_dependencies_with_ocr_and_nothing_else() -> None:
+    wanted = pins(PACKAGING / "requirements-ocr.txt")
     names = {}
     for source in wheel_sources(load_json(RUNTIME_MODULE)):
         match = WHEEL_NAME.fullmatch(source["url"].rsplit("/", 1)[-1])
@@ -73,6 +73,7 @@ def test_the_runtime_wheels_are_the_pinned_runtime_dependencies_and_nothing_else
     assert not [n for n in names if re.match(r"(?i)(pyside|shiboken)", n)]
     assert "opencv-python" not in names  # the non-headless wheel would drag in a GUI stack
     assert "opencv-python-headless" in names
+    assert {"ocrmypdf", "pypdfium2", "cffi", "pycparser"} <= names.keys()  # markers resolved
 
 
 def accepted(filename: str) -> bool:
@@ -86,9 +87,10 @@ def accepted(filename: str) -> bool:
         return True
     cpython_313 = python == abi == "cp313"
     stable_abi = abi == "abi3" and STABLE_ABI_PYTHON.fullmatch(python) is not None
+    python_free = python in PURE_PYTHON_TAGS and abi == "none"  # a ctypes binding: pypdfium2
     tags = platform.split(".")
     linux = any("manylinux" in tag and "x86_64" in tag for tag in tags)
-    return (cpython_313 or stable_abi) and linux
+    return (cpython_313 or stable_abi or python_free) and linux
 
 
 def test_every_runtime_wheel_is_cpython_313_manylinux_x86_64_or_pure_python() -> None:
@@ -107,6 +109,9 @@ def test_every_runtime_wheel_is_cpython_313_manylinux_x86_64_or_pure_python() ->
         "x-1-py313-none-any.whl",
         "x-1-py312-none-any.whl",
         "x-1-py3-none-manylinux_2_28_x86_64.whl",
+        "x-1-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl",
+        "x-1-py3-none-musllinux_1_2_x86_64.whl",
+        "x-1-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl",
         "x-1-cp313-cp313-manylinux_2_28_x86_64.whl",
         "x-1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl",
         "x-1-cp312-cp312-manylinux_2_28_x86_64.whl",
@@ -131,9 +136,9 @@ def test_each_package_has_exactly_one_runtime_wheel() -> None:
 def test_the_runtime_hashes_pip_checks_come_from_the_file_ci_already_ties_to_uv_lock() -> None:
     module = load_json(RUNTIME_MODULE)
     [requirements] = [s for s in module["sources"] if "path" in s]
-    assert (FLATPAK_DIR / requirements["path"]).resolve() == PACKAGING / "requirements-desktop.txt"
+    assert (FLATPAK_DIR / requirements["path"]).resolve() == PACKAGING / "requirements-ocr.txt"
     # pip's hashes must admit the very wheels flatpak-builder downloads.
-    wanted = pins(PACKAGING / "requirements-desktop.txt")
+    wanted = pins(PACKAGING / "requirements-ocr.txt")
     for source in wheel_sources(module):
         name = source["url"].rsplit("/", 1)[-1].split("-")[0].lower().replace("_", "-")
         assert source["sha256"] in wanted[name][1], name

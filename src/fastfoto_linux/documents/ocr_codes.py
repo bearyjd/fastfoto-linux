@@ -5,10 +5,10 @@ wrong is how it ended. Each code of OCRmyPDF's "return code policy" has one fixe
 ("a required program is missing") also covers missing language data, which is the usual cause, so
 its hint names what to install: the Homebrew formulae where brew runs, else the Fedora packages
 (with rpm-ostree on an immutable system, dnf otherwise). Inside a Flatpak nothing is installed from
-outside: only English comes with it, so another language is named as not bundled, and for English
-the bundle is broken. Code 2 is both "the PDF cannot be read"
-and the way a command line parser reports options it does not know; the PDF is one this app has
-just written, so the hint leads with the options and the version that refused them.
+outside: only English comes with it, so missing languages point to the app's language picker
+for explicit downloads, and missing English means the bundle is broken. Code 2 is both "the PDF
+cannot be read" and the way a command line parser reports options it does not know; the PDF is
+one this app has just written, so the hint leads with the options and the version that refused them.
 """
 
 import signal
@@ -61,8 +61,9 @@ def _flatpak_missing_dependency(langs: str) -> str:
     others = [code for code in langs.split("+") if code not in _BUNDLED_DATA]
     if others:
         return (
-            f"language data for {', '.join(others)} is not bundled: the Flatpak brings English "
-            f"({_BUNDLED_LANG}) only, so ask for {_BUNDLED_LANG}"
+            f"language data for {', '.join(others)} is not bundled. In Documents, open the "
+            "language picker, select and download the missing languages; or use bundled "
+            f"English ({_BUNDLED_LANG}) in this Flatpak"
         )
     return FLATPAK_BROKEN_HINT[0].lower() + FLATPAK_BROKEN_HINT[1:]
 

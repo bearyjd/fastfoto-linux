@@ -35,6 +35,7 @@ Kirigami.ScrollablePage {
     }
 
     function showPreview(number) {
+        previewDialog.pageNumber = number;
         for (let row = 0; row < grid.count; ++row) {
             const item = bridge.review.items.get(row);
             if (item.number === number) previewDialog.turns = item.turns;

@@ -131,6 +131,7 @@ def test_preview_arrives_asynchronously_and_back_reopens_past_folder(review_wind
     invoke(grid, "forceActiveFocus")
     QTest.keyClick(window, Qt.Key.Key_Return)
     assert worker.names[-1] == "preview"
+    assert child(window, "reviewPreviewDialog").property("title") == "Page 1"
     preview = source.raw_dir / "previews" / "page-0001.jpg"
     preview.parent.mkdir()
     Image.new("RGB", (40, 60), "white").save(preview)

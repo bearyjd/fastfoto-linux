@@ -6,11 +6,12 @@ QQC2.Dialog {
     id: dialog
     objectName: "reviewPreviewDialog"
     property int turns: 0
+    property int pageNumber: 0
     parent: QQC2.Overlay.overlay
     anchors.centerIn: parent
     width: Math.min(parent ? parent.width - 32 : 800, 1100)
     height: Math.min(parent ? parent.height - 32 : 600, 900)
-    title: qsTr("Page %1").arg(bridge.review.previewNumber)
+    title: qsTr("Page %1").arg(dialog.pageNumber)
     modal: true
     standardButtons: QQC2.Dialog.Close
 

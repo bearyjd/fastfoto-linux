@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from fastfoto_linux.documents import OcrMode, build
+from fastfoto_linux.documents import OcrMode, analyse
 from fastfoto_linux.scanner import ScanCancelledError, ScanError
 from fastfoto_linux.session import DocumentRawReason, RawPolicy, Stage
 from tests import _fake_ocrmypdf as fake
@@ -111,7 +111,7 @@ def test_a_cancel_after_some_pages_were_made_publishes_nothing(
 ) -> None:
     three_pages(doc_transport)
     cancel = threading.Event()
-    real_trim = build.trim_page
+    real_trim = analyse.trim_page
     seen: list[int] = []
 
     def trim_then_cancel(page):
@@ -120,7 +120,7 @@ def test_a_cancel_after_some_pages_were_made_publishes_nothing(
             cancel.set()
         return real_trim(page)
 
-    monkeypatch.setattr(build, "trim_page", trim_then_cancel)
+    monkeypatch.setattr(analyse, "trim_page", trim_then_cancel)
     result = run_doc(make_doc_request(out), doc_transport, cancel=cancel)
     assert result.cancelled
     assert result.document is None

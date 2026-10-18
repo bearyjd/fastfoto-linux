@@ -12,13 +12,27 @@ Symptom: `ffscan scan` or `ffscan doc scan` exits with code 3, or the app says n
 1. Check the scanner is switched on and connected, then run `ffscan devices`. It only reads sysfs
    and never talks to the scanner. It lists USB scanners and whether the USB gap shim was found.
 2. If the scanner shows up but the shim is missing, build or reinstall it (next section).
-3. If it is silent, switch it off and on, wait for it to wake, and try again. The USB address
+3. If `ffscan devices` shows no scanner at all, it may have switched itself off (see "Observed on
+   the FF-680W" below): press the power button. Also try a USB port directly on the machine's
+   back or motherboard instead of a hub or front-panel port.
+4. If it is silent, switch it off and on, wait for it to wake, and try again. The USB address
    (bus and device number) changes when it is switched off and on; that is expected.
-4. Over Wi-Fi use `--net HOST`. A scanner that is busy with another device over Wi-Fi also stays
+5. Over Wi-Fi use `--net HOST`. A scanner that is busy with another device over Wi-Fi also stays
    silent: close the other program.
 
 Exit codes: 0 ok, 1 processing error, 2 usage, 3 scanner not found, shim missing, scanner not
 answering or in use by another program, 4 no documents in the feeder.
+
+## Observed on the FF-680W (not from the manufacturer)
+
+These are observations from testing one scanner, not documented behaviour.
+
+- Auto power-off: the scanner switched itself off after about an hour on with no scan. The kernel
+  log showed the USB connect and then a disconnect exactly 60 minutes later. Once off, it is gone
+  from USB: `ffscan devices` lists none, and only the power button brings it back. This is not
+  the same as sleep: a sleeping scanner stays on the USB bus and the app can wake it.
+- USB port: a front-panel USB 3 port dropped the link (kernel error -110) during testing. Use a
+  port directly on the back of the machine or the motherboard rather than a hub or front-panel port.
 
 ## USB gap shim
 

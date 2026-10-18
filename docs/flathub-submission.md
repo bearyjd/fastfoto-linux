@@ -17,7 +17,19 @@ reviewer will want for each permission. Requirements pages:
   rating, release entry, URLs, developer, branding colours, keywords, display requirement.
 - Python dependencies are hashed wheels listed as sources (no network at build time).
 - The app ID `io.github.bearyjd.FastFotoLinux` is on the code-hosting pattern
-  `io.github.<user>.<App>` that Flathub accepts for a repository owned by that user.
+  `io.github.<user>.<App>` that Flathub accepts for a repository owned by that user (but see the
+  linter finding below).
+
+## Known linter finding: the app ID and the repository name
+
+`flatpak-builder-lint manifest` reports `appid-url-not-reachable`: for an `io.github.<user>.<App>`
+ID it opens `https://github.com/<user>/<app>` with the last part lower-cased and without hyphens,
+that is `https://github.com/bearyjd/fastfotolinux`, which does not exist (the repository is
+`fastfoto-linux`). The maintainer has to choose before submitting: rename the repository to
+`fastfotolinux` (GitHub redirects the old name; update the URLs in the metainfo, the manifest and
+the README), ask the Flathub reviewers for an exception in the submission PR, or change the app ID
+(which renames every file that carries it). Decide this first, because the app ID cannot change
+after publication.
 
 ## Placeholders to fill (search for `TODO(release)`)
 

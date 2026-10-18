@@ -1,4 +1,4 @@
-<!-- Generated: 2026-10-17 | Files scanned: 24 | Token estimate: ~950 -->
+<!-- Generated: 2026-10-17 | Files scanned: 28 | Token estimate: ~1000 -->
 <!-- AUTO-GENERATED -->
 # Documents pipeline (src/fastfoto_linux/documents/)
 
@@ -11,12 +11,16 @@ Entry: `build.py:build_document(pages, settings, ...)` = `write_document(analyse
 Stages inside analyse (per sheet, duplex pair together) and write:
 1. Load: `loader.py:load_page` -> `LoadedPage` (`inspect_page`, `require_size`); PNG only
 2. Trim: `trim.py:trim_page` -> `Trimmed`; backing band `band.py:band_cut`/`EdgeRule`/`backing_mask`; safety check `guard.py:holds_content`; scanner streak `streak.py:streak_pixels`/`with_streak`
-3. Blank: `blank.py:is_blank_beside` (duplex back with nothing); marks `marks.py:find_marks` -> `Mark`; staple/punch holes `holes.py:all_are_holes`; skipped when `keep_blank`
-4. Encode: `encode.py:encode_page` -> `EncodedPage` (JPEG colour/grey, CCITT G4 bilevel via `bilevel.py:binarise`); modes `modes.py:ColourMode`/`output_mode`
-5. Assemble (write): `pdf.py:assemble_pdf` (img2pdf, no re-encode)
-6. OCR (write): `ocr.py:run_ocr` -> `OcrOutcome` (`OcrMode`, `OcrStatus`, `validate_langs`); failure falls back to plain PDF
+3. Blank: `blank.py:is_blank_beside` (thin wrapper) -> `assess.py:blank_verdict` (`BlankVerdict`, the only blank decision); skipped when `keep_blank`
+   - marks `marks.py:find_marks` -> `Mark` (`darkest_channel`, `BLANK_MARGIN_MM`); holes `holes.py:all_are_holes`, `hole_report`
+4. Flags (explain, never drop/keep): `assess.py:assess_page` -> `PageAssessment`; `draft.py:Flag`, `BoxN` (mark box), `PageAnalysis.flags/ink/describe()`
+   - `bleed.py`: `show_through`, `set_off`, `frame_boxes`; `inkmap.py`: `ink_map` (20 dpi `InkMap`), `hit_rates`, `lies_on`
+   - `neighbours.py:with_neighbour_flags`: SET_OFF from neighbouring sheets, once all sheets are analysed
+5. Encode: `encode.py:encode_page` -> `EncodedPage` (JPEG colour/grey, CCITT G4 bilevel via `bilevel.py:binarise`); modes `modes.py:ColourMode`/`output_mode`
+6. Assemble (write): `pdf.py:assemble_pdf` (img2pdf, no re-encode)
+7. OCR (write): `ocr.py:run_ocr` -> `OcrOutcome` (`OcrMode`, `OcrStatus`, `validate_langs`); failure falls back to plain PDF
    - tools: `ocr_tools.py` (`find_ocrmypdf`, `find_tesseract`, `ocr_missing_parts`, `ocr_environment`); version gates `ocr_version.py` (`ocrmypdf_version`, `accepts_rasterizer`); exit-code text `ocr_codes.py:describe_exit`
-7. Publish (write): `publish.py:publish_pdf` / `require_output_folder` (no overwrite)
+8. Publish (write): `publish.py:publish_pdf` / `require_output_folder` (no overwrite)
 
 Support: `units.py:mm_to_px`; errors `errors.py` (`DocumentError`, `AllPagesBlankError`, `OcrMissingError`, `DocumentCancelledError`, `DocumentSettingsError`, ...). Public names re-exported in `documents/__init__.py`.
 

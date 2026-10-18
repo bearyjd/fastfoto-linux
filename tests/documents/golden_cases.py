@@ -27,7 +27,7 @@ from fastfoto_linux.documents import (
 )
 from fastfoto_linux.documents.blank import is_blank_beside
 from fastfoto_linux.documents.loader import LoadedPage
-from fastfoto_linux.documents.trim import trim_page
+from fastfoto_linux.documents.trim import Trimmed, trim_page
 from tests import _fake_ocrmypdf as fake
 from tests.doc_synth import (
     Scene,
@@ -234,28 +234,31 @@ def _pale_pages() -> dict[str, LoadedPage]:
     }
 
 
-def _verdict(page: LoadedPage, other: LoadedPage | None) -> tuple[bool, bool | None]:
+Judge = Callable[[Trimmed, Trimmed | None], bool]
+
+
+def _verdict(
+    page: LoadedPage, other: LoadedPage | None, judge: Judge = is_blank_beside
+) -> tuple[bool, bool | None]:
     first = trim_page(page)
     second = None if other is None else trim_page(other)
-    return is_blank_beside(first, second), (
-        None if second is None else is_blank_beside(second, first)
-    )
+    return judge(first, second), (None if second is None else judge(second, first))
 
 
-def verdict_table() -> dict[str, bool]:
-    """``is_blank_beside`` for each fixture, each side beside the other. Grey and 1-bit pages
-    are judged for the families where the page kind matters."""
+def verdict_table(judge: Judge = is_blank_beside) -> dict[str, bool]:
+    """``judge`` (``is_blank_beside``) for each fixture, each side beside the other. Grey and
+    1-bit pages are judged for the families where the page kind matters."""
     table: dict[str, bool] = {}
     for label, (front, back) in scene_pairs().items():
         for kind, make in PAGE_KINDS.items():
             if kind in KINDS_BEYOND_COLOUR and not label.startswith(KINDED_FAMILIES):
                 continue
-            first, second = _verdict(make(front), None if back is None else make(back))
+            first, second = _verdict(make(front), None if back is None else make(back), judge)
             table[f"{label} | {kind} | front"] = first
             if second is not None:
                 table[f"{label} | {kind} | back"] = second
     for label, page in _pale_pages().items():
-        table[f"{label} | colour | front"] = _verdict(page, None)[0]
+        table[f"{label} | colour | front"] = _verdict(page, None, judge)[0]
     return table
 
 

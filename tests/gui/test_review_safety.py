@@ -149,3 +149,26 @@ def test_preview_source_and_path_must_match_current_request(out):
     assert side.preview_path is None
     side.preview_ready((source, 3, out / "previews" / "page-0003.jpg", ""))
     assert side.preview_path == out / "previews" / "page-0003.jpg"
+
+
+def test_deletion_cleans_known_artifacts_and_preserves_newer_or_unknown_files(out, monkeypatch):
+    monkeypatch.setattr(reviewside, "save_draft", lambda *args: None)
+    side, page = opened(out)
+    thumb = out / "thumbs" / "page-0001.jpg"
+    preview = out / "previews" / "page-0001.jpg"
+    for path in (thumb, preview):
+        path.parent.mkdir(exist_ok=True)
+        path.write_bytes(b"synthetic")
+    unknown = thumb.with_name("unrelated.jpg")
+    unknown.write_bytes(b"unrelated")
+    sidecar = out / "review.json"
+    sidecar.write_bytes(b"old")
+    page.worker.write_draft = lambda *args: None
+    side.save()
+    page.controller.on_finished(replace(clean_document(out), draft=side.state.draft, raw_dir=out))
+    sidecar.write_bytes(b"newer review")
+    side.delete_originals(True)
+    assert not thumb.exists()
+    assert not preview.exists()
+    assert unknown.read_bytes() == b"unrelated"
+    assert sidecar.read_bytes() == b"newer review"

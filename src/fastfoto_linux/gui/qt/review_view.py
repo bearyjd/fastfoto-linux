@@ -2,6 +2,7 @@
 
 import logging
 from collections.abc import Callable
+from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -35,7 +36,9 @@ class ReviewView(QObject):
         self._timer.timeout.connect(self.flush)
 
     def stop(self) -> None:
-        self._timer.stop()
+        # Qt may already have deleted the bridge and its child timer.
+        with suppress(RuntimeError):
+            self._timer.stop()
 
     def refresh(self) -> None:
         state = self._side.state

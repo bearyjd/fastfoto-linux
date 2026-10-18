@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from fastfoto_linux.documents import ocr_tools
+from fastfoto_linux.documents.ocr_languages import Inventory, Language
 from tests.cli.fakes import block_hardware, refuse
 
 WORKER_TRANSPORT = (
@@ -22,6 +23,18 @@ def no_hardware(monkeypatch: pytest.MonkeyPatch) -> None:
     block_hardware(monkeypatch)
     for name in WORKER_TRANSPORT:
         monkeypatch.setattr(f"fastfoto_linux.gui.worker.{name}", refuse)
+    monkeypatch.setattr("fastfoto_linux.gui.worker.require_languages", lambda _langs: None)
+    # OCR models are another machine dependency. GUI tests provide an installed inventory;
+    # language-picker tests replace it with their own missing/downloadable models.
+    monkeypatch.setattr(
+        "fastfoto_linux.documents.ocr_languages.discover_languages",
+        lambda **_options: Inventory(
+            tuple(
+                Language(code, name, 100, installed=True)
+                for code, name in (("eng", "English"), ("deu", "German"), ("spa", "Spanish"))
+            )
+        ),
+    )
 
 
 @pytest.fixture

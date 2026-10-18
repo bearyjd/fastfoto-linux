@@ -124,6 +124,24 @@ def test_discovery_failure_is_a_visible_retryable_error(make_languages: Any) -> 
     assert "Language data unavailable" in view.message
 
 
+def test_catalog_downloads_work_before_tesseract_is_installed(make_languages: Any) -> None:
+    inventory = Inventory((Language("eng", "English", 100),), error="Tesseract is not installed.")
+    calls: list[tuple[str, ...]] = []
+    view = make_languages(
+        discover=lambda **_k: inventory,
+        download=lambda codes, **_k: calls.append(tuple(codes)),
+    )
+    view.reload()
+    wait_until(lambda: not view.busy, "catalog without Tesseract")
+    assert view.canDownload
+    assert not view.ready
+    assert "Tesseract" in view.scanMessage
+    view.downloadSelected()
+    wait_until(lambda: not view.busy, "advance download")
+    assert calls == [("eng",)]
+    assert not view.ready
+
+
 def test_stopping_a_discovery_prevents_late_qt_updates(make_languages: Any) -> None:
     started, returned = threading.Event(), threading.Event()
 

@@ -83,6 +83,11 @@ def make_bridge(qapp: Any, out: Path) -> Iterator[Callable[..., Any]]:
         options.setdefault("process", process_fake(out))
         bridge = Bridge(remember=False, **options)
         made.append(bridge)
+        # Existing callers receive a settled synthetic machine inventory, as they do the
+        # form. Tests of pending discovery construct their own LanguagesView explicitly.
+        from tests.gui.qt.qt_helpers import wait_until
+
+        wait_until(lambda: not bridge.documents.languages.busy, "initial language inventory")
         return bridge
 
     yield make

@@ -222,7 +222,7 @@ def test_the_form_shows_the_documents_settings_and_none_of_the_photo_ones(
         "docBothSidesBox",
         "docKeepBlankBox",
         "docSearchableBox",
-        "docLangsField",
+        "docLanguageSearch",
     ):
         assert shown(window, name), name
     for name in ("albumField", "dateField", "restoreBox", "feedBox"):
@@ -257,7 +257,8 @@ def test_the_defaults_are_those_of_the_command_line(make_doc_bridge: Any, open_w
     assert child(window, "docDpiBox").property("currentValue") == 300
     assert child(window, "docBothSidesBox").property("checked") is True
     assert child(window, "docKeepBlankBox").property("checked") is False
-    assert child(window, "docLangsField").property("text") == "eng"
+    assert bridge.documents.form["langs"] == "eng"
+    assert "English (eng)" in child(window, "docLanguageSummary").property("text")
 
 
 def test_a_bad_field_shows_its_message_under_it(make_doc_bridge: Any, open_window: Any) -> None:
@@ -318,7 +319,13 @@ def test_the_form_cannot_be_edited_while_a_scan_runs(
     bridge.startScan()
     wait_until(lambda: bridge.canCancel, "the scan to hold")
     settle()
-    for name in ("docNameField", "docColourBox", "docDpiBox", "docBothSidesBox", "docLangsField"):
+    for name in (
+        "docNameField",
+        "docColourBox",
+        "docDpiBox",
+        "docBothSidesBox",
+        "docLanguageSearch",
+    ):
         assert child(window, name).property("enabled") is False, name
     session.release.set()
     wait_until(lambda: bridge.state == "done", "the scan to end")

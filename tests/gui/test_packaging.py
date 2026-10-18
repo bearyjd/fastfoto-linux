@@ -22,6 +22,7 @@ QML_FILES = (
     "PhotoCell.qml",
     "ModeSwitch.qml",
     "DocumentFormPanel.qml",
+    "OcrLanguagePicker.qml",
     "DocumentsView.qml",
     "ReviewPage.qml",
     "ReviewCell.qml",

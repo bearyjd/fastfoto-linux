@@ -15,6 +15,7 @@ from fastfoto_linux.documents import (
     OcrMode,
     build_document,
 )
+from fastfoto_linux.documents.ocr_languages import require_languages
 from fastfoto_linux.gui.docform import DocumentForm, document_errors, to_document_request
 from fastfoto_linux.gui.docreport import os_error_words
 from fastfoto_linux.gui.doctools import DocumentTools
@@ -95,6 +96,7 @@ class Worker:
         self._request: ScanRequest | None = None
         self._document_request: DocumentScanRequest | None = None
         tools = documents or DocumentTools()
+        self._check_languages = tools.check_languages or require_languages
         self._document_session = run_document_session if tools.session is None else tools.session
         self._build = build_document if tools.build is None else tools.build
         self._review_jobs = ReviewJobs(sink, self._start, tools)
@@ -243,6 +245,8 @@ class Worker:
         *,
         review: bool = False,
     ) -> Callable[[], None]:
+        if form.searchable and ocr_available:
+            self._check_languages(form.langs)
         request = to_document_request(
             form, folder, self._discover(), ocr_available=ocr_available, check_disk=False
         )

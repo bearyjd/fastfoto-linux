@@ -29,7 +29,7 @@ from fastfoto_linux.documents.trim import Trimmed, trim_page
 logger = logging.getLogger(__name__)
 
 SIDES_PER_SHEET = 2
-ANALYSIS_VERSION = 2  # bump when a change makes an old analysis wrong (see ``draft_store``)
+ANALYSIS_VERSION = 3  # bump when a change makes an old analysis wrong (see ``draft_store``)
 
 
 def _load_sheet(

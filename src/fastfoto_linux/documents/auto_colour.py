@@ -25,7 +25,8 @@ PAPER_MIN = 240
 PAPER_FLOOR = 224  # only a light paper estimate can relax the near-white noise band
 PAPER_QUANTILE = 0.9
 PAPER_NOISE = 8
-EDGE_RADIUS_MM = 0.20  # antialias tones must touch a dark stroke within this physical bound
+EDGE_RADIUS_MM = 0.20  # connected antialias tones may grow this far from a dark stroke
+PIXEL_NEIGHBOURHOOD = 3  # one-pixel, eight-connected topology; physical reach is bounded below
 WIDE_DARK_RADIUS_MM = 0.50  # nonblack fills wider than ordinary strokes retain their tones
 FAINT_MIN = 160
 CONTINUOUS_LEVELS = 16
@@ -94,8 +95,8 @@ def _tone_reason(grey: np.ndarray, dpi: int) -> ColourReason:
     """Admit bounded text-edge tones, retaining disconnected and shaded content.
 
     The current binarizer preserves every dark core through its absolute floor. Intermediate
-    tones are only harmless when they hug those cores within EDGE_RADIUS_MM. Broad nonblack
-    dark fills, and intermediate marks away from cores, cannot be justified as text edges.
+    tones need a foreground connection to those cores within EDGE_RADIUS_MM. Growth cannot
+    cross paper gaps to detached marks. Broad nonblack dark fills also retain their tones.
     All masks retain source resolution; morphology uses physical bounds and linear page memory.
     """
     histogram = cv2.calcHist([grey], [0], None, [256], [0, 256]).ravel()
@@ -110,7 +111,12 @@ def _tone_reason(grey: np.ndarray, dpi: int) -> ColourReason:
     if cv2.countNonZero(wide):
         return _tone_label(grey, relevant)
     del wide
-    cv2.dilate(cores, _physical_kernel(EDGE_RADIUS_MM, dpi), dst=cores)
+    foreground = cv2.bitwise_or(cores, relevant)
+    adjacent = cv2.getStructuringElement(cv2.MORPH_RECT, (PIXEL_NEIGHBOURHOOD, PIXEL_NEIGHBOURHOOD))
+    for _ in range(mm_to_px(EDGE_RADIUS_MM, dpi)):
+        cv2.dilate(cores, adjacent, dst=cores)
+        cv2.bitwise_and(cores, foreground, dst=cores)
+    del foreground
     cv2.bitwise_not(cores, dst=cores)
     cv2.bitwise_and(relevant, cores, dst=relevant)
     return _tone_label(grey, relevant) if cv2.countNonZero(relevant) else ColourReason.BILEVEL

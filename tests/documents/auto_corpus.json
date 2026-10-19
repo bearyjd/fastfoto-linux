@@ -92,10 +92,45 @@
         300,
         600
       ]
+    },
+    {
+      "case": "detached_faint_near_core",
+      "expected_auto": "grey",
+      "content": "230-level line separated from a dark stroke by a white gap inside the AA radius",
+      "dpi": [
+        100,
+        300,
+        600
+      ],
+      "source_kinds": [
+        "grey",
+        "colour"
+      ]
+    },
+    {
+      "case": "detached_shading_near_core",
+      "expected_auto": "grey",
+      "content": "Detached 170/200-level shaded patch near a dark stroke",
+      "dpi": [
+        300,
+        600
+      ]
+    },
+    {
+      "case": "connected_diagonal_antialias",
+      "expected_auto": "bw",
+      "content": "Diagonal antialiased dark stroke with eight-connected edges",
+      "dpi": [
+        300,
+        600
+      ]
     }
   ],
   "held_out_real_evaluation": "Pending separately rights-cleared corpus; no downloads authorized",
   "additional_generators": [
     "tests/documents/auto_antialias.py:antialiased_page"
+  ],
+  "regression_sources": [
+    "tests/documents/test_auto_detached.py"
   ]
 }

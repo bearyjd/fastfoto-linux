@@ -664,6 +664,10 @@ The settings are kept in `~/.var/app/io.github.bearyjd.FastFotoLinux/`.
 
 ## Planned interfaces
 
+The reviewed [photo and document enhancement roadmap](docs/roadmaps/enhancements.md)
+and [research survey](docs/research/enhancement-survey-2026-10-18.md) preserve the
+proposed features, evidence, and release order.
+
 1. KDE desktop app (native and Flatpak previews above)
 2. Local web page (127.0.0.1)
 3. CLI + watched folder

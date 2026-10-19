@@ -19,6 +19,10 @@ Item {
     required property string reason
     required property bool backOnly
 
+    property var editReview: null
+    property int photoRow: -1
+    property bool reviewEligible: false
+    property string reviewReason: ""
     property bool showEnhanced: false
     readonly property string pictureUrl: showEnhanced && hasEnhanced ? enhancedUrl : frontUrl
 
@@ -145,6 +149,28 @@ Item {
             }
         }
 
+        QQC2.Button {
+            objectName: "reviewRedEyesButton"
+            Layout.alignment: Qt.AlignHCenter
+            visible: cell.editReview !== null
+            text: qsTr("Review red eyes")
+            enabled: cell.reviewEligible && cell.editReview !== null && !cell.editReview.busy
+            Accessible.name: qsTr("Review red eyes")
+            Accessible.description: cell.title + ". " + cell.reviewReason
+            onClicked: cell.editReview.openPhoto(cell.photoRow)
+            QQC2.ToolTip.visible: hovered && cell.reviewReason !== ""
+            QQC2.ToolTip.text: cell.reviewReason
+        }
+        QQC2.Label {
+            Layout.fillWidth: true
+            visible: cell.editReview !== null && !cell.reviewEligible
+            text: cell.reviewReason
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+            maximumLineCount: 2
+            elide: Text.ElideRight
+            font: Kirigami.Theme.smallFont
+        }
         QQC2.Label {
             Layout.fillWidth: true
             text: cell.title

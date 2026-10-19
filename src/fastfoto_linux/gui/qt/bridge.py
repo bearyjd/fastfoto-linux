@@ -533,6 +533,7 @@ class Bridge(QObject):
         self._languages.stop()
         self._review.stop()
         self._photo_edit.stop()
+        self._worker.cleanup_photo_edit_cache()
         self._close_events()
         self._worker.cancel()
         deadline = time.monotonic() + SHUTDOWN_WAIT

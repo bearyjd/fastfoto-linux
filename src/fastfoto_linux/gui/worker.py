@@ -126,6 +126,7 @@ class Worker:
             sink, self._start, photo_edits or PhotoEditTools(), photo_cache_dir or new_cache_dir()
         )
         self.photo_edit_job = self._photo_edit_jobs.submit
+        self.cleanup_photo_edit_cache = self._photo_edit_jobs.close
         self._review_jobs = ReviewJobs(sink, self._start, tools)
         self.analyse_folder = self._review_jobs.analyse_folder
         self.write_draft = self._review_jobs.write_draft

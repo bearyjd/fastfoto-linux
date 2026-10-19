@@ -13,10 +13,10 @@ from fastfoto_linux.photo_edits import PhotoEditRecipe
 from tests.gui.photoedit_helpers import EditWorker, eyes, preview, source
 
 
-def open_editor(make_bridge, out, *, candidates=None):
+def open_editor(make_bridge, out, *, candidates=None, dpi=300):
     bridge = make_bridge()
     assert hasattr(bridge, "photoEdit"), "Bridge must expose a dedicated photo editor child"
-    src = source(out)
+    src = source(out, dpi=dpi)
     from fastfoto_linux.gui.photos import PhotoItem
 
     bridge.controller._photos = (PhotoItem(out, 1, src.path, None, None),)

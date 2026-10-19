@@ -131,3 +131,30 @@ def test_pre_cancelled_open_never_decodes_or_detects(out):
     result = execute(p, PhotoEditRequest("open", 52, path=p.source.path), cancel=cancel)
     assert result.cancelled
     assert p.calls == []
+
+
+def test_worker_shutdown_cleans_only_its_returned_preview_files(out):
+    p = queued(out)
+    result = execute(p, PhotoEditRequest("open", 61, path=p.source.path))
+    unrelated = result.preview.before.parent / "user-file.txt"
+    unrelated.write_text("keep")
+    p.runner.close()
+    assert not result.preview.before.exists()
+    assert not result.preview.after.exists()
+    assert unrelated.read_text() == "keep"
+
+
+def test_preview_finishing_after_window_shutdown_is_cleaned_and_cancelled(out):
+    src = source(out)
+    tools = fake_tools(src, [])
+    p = queued(out, tools=tools)
+    original = tools.preview
+
+    def ending(*args, **kwargs):
+        p.runner.close()
+        return original(*args, **kwargs)
+
+    p.runner._tools = replace(tools, preview=ending)
+    result = execute(p, PhotoEditRequest("open", 71, path=src.path))
+    assert result.cancelled
+    assert list((out / "private-preview").glob("*.png")) == []

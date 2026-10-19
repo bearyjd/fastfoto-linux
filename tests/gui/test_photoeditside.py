@@ -233,3 +233,17 @@ def test_editor_blocks_scans_and_mode_changes_until_closed(out):
         p.controller.start_scan()
     with pytest.raises(RuntimeError, match=r"review|edit|close"):
         p.controller.set_mode("documents")
+
+
+def test_closed_editor_cleans_late_own_preview_without_deleting_other_files(out):
+    p = opened(out)
+    p.side.set_accepted("left", True)
+    request = p.worker.requests[-1]
+    generated = preview(request.recipe, request.generation, p.side._cache_dir)
+    unrelated = p.side._cache_dir / "user-file.txt"
+    unrelated.write_text("keep")
+    p.side.close(discard_confirmed=True)
+    finish(p, PhotoEditResult("preview", request.generation, request.recipe, generated))
+    assert not generated.after.exists()
+    assert not generated.roi_before.exists()
+    assert unrelated.read_text() == "keep"

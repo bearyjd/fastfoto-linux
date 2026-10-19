@@ -18,7 +18,8 @@ DEFAULT_EYE_RADIUS_MM = 0.6
 
 
 def _candidate(eye: EyeEdit) -> dict[str, object]:
-    ys, xs = np.nonzero(eye.mask)
+    ys = np.flatnonzero(eye.mask.any(axis=1))
+    xs = np.flatnonzero(eye.mask.any(axis=0))
     return dict(
         id=eye.id,
         origin=eye.origin,
@@ -118,6 +119,10 @@ class PhotoEditView(QObject):
     @Property(bool, notify=changed)
     def canUndo(self) -> bool:
         return self._side.can_undo
+
+    @Property(bool, notify=changed)
+    def canReset(self) -> bool:
+        return self._side.can_reset
 
     @Property(bool, notify=changed)
     def canSave(self) -> bool:

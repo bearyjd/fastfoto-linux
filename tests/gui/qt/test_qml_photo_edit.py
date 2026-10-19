@@ -9,12 +9,12 @@ from tests.gui.qt import require_qt
 require_qt()
 
 from PIL import Image
-from PySide6.QtCore import Q_ARG, Q_RETURN_ARG, QMetaObject, QPointF, QUrl
+from PySide6.QtCore import Q_ARG, Q_RETURN_ARG, QMetaObject, QPointF, Qt, QUrl
 from PySide6.QtQml import QQmlComponent, QQmlEngine
-from PySide6.QtTest import QSignalSpy
+from PySide6.QtTest import QSignalSpy, QTest
 
 from tests.gui.qt import test_qml
-from tests.gui.qt.qt_helpers import child, invoke, settle
+from tests.gui.qt.qt_helpers import child, invoke, settle, wait_until
 from tests.gui.qt.test_photo_edit_view import open_editor
 
 open_window = test_qml.open_window
@@ -30,6 +30,14 @@ def test_review_page_exposes_decisions_numeric_adjustments_compare_and_save(
     window, warnings = open_window(bridge)
     settle()
     page = child(window, "photoEditPage")
+    wait_until(
+        lambda: (
+            page.property("enabled")
+            and page.property("opacity") >= 0.99
+            and abs(page.mapToScene(QPointF(0, 0)).x()) < 1
+        ),
+        "photo review navigation to finish",
+    )
     for name in (
         "photoAccept",
         "photoReject",
@@ -110,6 +118,14 @@ def test_empty_suggestions_offer_manual_eye_and_dirty_back_confirmation(
     window, warnings = open_window(bridge)
     settle()
     page = child(window, "photoEditPage")
+    wait_until(
+        lambda: (
+            page.property("enabled")
+            and page.property("opacity") >= 0.99
+            and abs(page.mapToScene(QPointF(0, 0)).x()) < 1
+        ),
+        "photo review navigation to finish",
+    )
     assert child(page, "photoNoSuggestions").property("visible")
     assert child(page, "photoManualEye").property("enabled")
     view.addEllipse(23, 23, 3, 3)
@@ -118,4 +134,28 @@ def test_empty_suggestions_offer_manual_eye_and_dirty_back_confirmation(
     settle()
     assert child(window, "photoDiscardDialog").property("visible")
     assert view.active
+    assert warnings == []
+
+
+@pytest.mark.parametrize("dpi", [300, 600])
+def test_manual_click_uses_retained_dpi_and_source_pixels(make_bridge, open_window, out, dpi):
+    bridge, view, _worker = open_editor(make_bridge, out, candidates=(), dpi=dpi)
+    bridge.setField("dpi", 600 if dpi == 300 else 300)
+    window, warnings = open_window(bridge)
+    page = child(window, "photoEditPage")
+    wait_until(
+        lambda: page.property("opacity") >= 0.99 and abs(page.mapToScene(QPointF(0, 0)).x()) < 1,
+        "photo review viewport",
+    )
+    canvas = child(page, "photoEditCanvas")
+    child(page, "photoManualEye").setProperty("checked", True)
+    spy = QSignalSpy(canvas.ellipseRequested)
+    position = canvas.mapToScene(QPointF(canvas.width() / 2, canvas.height() / 2)).toPoint()
+    QTest.mouseClick(window, Qt.MouseButton.LeftButton, pos=position)
+    assert spy.count() == 1
+    cx, cy, rx, ry = spy.at(0)
+    assert (cx, cy) == pytest.approx((50, 30), abs=0.5)
+    assert (rx, ry) == pytest.approx((0.6 * dpi / 25.4,) * 2)
+    assert view.candidates[0]["accepted"]
+    assert view.candidates[0]["origin"] == "manual"
     assert warnings == []

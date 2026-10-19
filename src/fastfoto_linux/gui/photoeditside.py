@@ -78,6 +78,10 @@ class PhotoEditSide:
         return bool(self._undo) and self._can_edit
 
     @property
+    def can_reset(self) -> bool:
+        return self._can_edit and self.recipe is not self._initial
+
+    @property
     def can_save(self) -> bool:
         return self._can_edit and not self._worker_busy and not self.busy and not self.error
 
@@ -292,6 +296,8 @@ class PhotoEditSide:
         self._changed()
 
     def close(self, discard_confirmed: bool = False) -> bool:
+        if not self.active and self._inflight is None:
+            return True
         if self.dirty and not discard_confirmed:
             return False
         if self._inflight is not None:

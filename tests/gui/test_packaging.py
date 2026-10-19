@@ -21,6 +21,8 @@ QML_FILES = (
     "FormPanel.qml",
     "ResultsView.qml",
     "PhotoCell.qml",
+    "PhotoEditCanvas.qml",
+    "PhotoEditPage.qml",
     "ModeSwitch.qml",
     "DocumentFormPanel.qml",
     "OcrLanguagePicker.qml",

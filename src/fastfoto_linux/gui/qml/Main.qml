@@ -16,7 +16,7 @@ Kirigami.ApplicationWindow {
     pageStack.initialPage: ScanPage { onSettingsRequested: root.openSettings() }
     property var settingsPage: null
     // Settings replaces the workspace visually; the scan form keeps its full layout underneath.
-    pageStack.defaultColumnWidth: settingsPage !== null ? pageStack.width : Kirigami.Units.gridUnit * 20
+    pageStack.defaultColumnWidth: (settingsPage !== null || photoEditPage !== null) ? pageStack.width : Kirigami.Units.gridUnit * 20
 
     function openSettings() {
         if (settingsPage !== null) {
@@ -58,11 +58,37 @@ Kirigami.ApplicationWindow {
         }
     }
 
+    property var photoEditPage: null
+    property bool syncingPhotoEdit: false
+    property bool photoClosingWindow: false
+
+    function syncPhotoEdit() {
+        if (syncingPhotoEdit) return;
+        syncingPhotoEdit = true;
+        try {
+            if (bridge.photoEdit.active && photoEditPage === null) {
+                closeSettings();
+                photoEditPage = photoEditComponent.createObject(root.pageStack);
+                pageStack.push(photoEditPage);
+            } else if (!bridge.photoEdit.active && photoEditPage !== null) {
+                closeSettings();
+                const previous = photoEditPage;
+                pageStack.pop();
+                photoEditPage = null;
+                previous.destroy();
+            }
+        } finally {
+            syncingPhotoEdit = false;
+        }
+    }
+
     Component.onCompleted: {
         bridge.review.enable();
         syncReview();
+        syncPhotoEdit();
     }
     Component { id: reviewComponent; ReviewPage {} }
+    Component { id: photoEditComponent; PhotoEditPage {} }
     Component {
         id: settingsComponent
         ScannerSettingsPage {
@@ -74,9 +100,38 @@ Kirigami.ApplicationWindow {
         function onChanged() { root.syncReview(); }
     }
 
+    Connections {
+        target: bridge.photoEdit
+        function onChanged() { root.syncPhotoEdit(); }
+        function onCloseConfirmationRequired() { photoDiscardDialog.open(); }
+    }
+
+    Kirigami.PromptDialog {
+        id: photoDiscardDialog
+        objectName: "photoDiscardDialog"
+        title: qsTr("Discard unsaved photo edits?")
+        subtitle: qsTr("Your original and saved copies are kept.")
+        standardButtons: QQC2.Dialog.Yes | QQC2.Dialog.No
+        onAccepted: {
+            const closing = root.photoClosingWindow;
+            root.photoClosingWindow = false;
+            bridge.photoEdit.close(true);
+            if (closing) root.close();
+        }
+        onRejected: root.photoClosingWindow = false
+    }
+
     // A scan in progress is cancelled first (after asking); the window closes by itself once
     // it has stopped. Closing while it is already being cancelled just waits for that.
     onClosing: close => {
+        if (bridge.photoEdit.active) {
+            root.photoClosingWindow = true;
+            if (!bridge.photoEdit.close()) {
+                close.accepted = false;
+                return;
+            }
+            root.photoClosingWindow = false;
+        }
         if (bridge.review.active && !bridge.running &&
                 ((reviewPage !== null && !reviewPage.commitPendingName()) || !bridge.review.flush())) {
             close.accepted = false;

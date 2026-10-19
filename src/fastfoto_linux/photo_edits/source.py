@@ -7,7 +7,7 @@ import warnings
 from pathlib import Path
 
 import numpy as np
-from PIL import Image, ImageOps, UnidentifiedImageError
+from PIL import ExifTags, Image, ImageOps, UnidentifiedImageError
 
 from fastfoto_linux.photo_edits.model import (
     MAX_SOURCE_BYTES,
@@ -19,6 +19,11 @@ from fastfoto_linux.photo_edits.model import (
 
 FALLBACK_DPI = 300.0
 SWAPPED_ORIENTATIONS = frozenset({5, 6, 7, 8})
+CM_PER_INCH = 2.54
+JFIF_UNIT_INCHES = 1
+JFIF_UNIT_CENTIMETERS = 2
+EXIF_UNIT_INCHES = 2
+EXIF_UNIT_CENTIMETERS = 3
 
 
 def source_bytes(path: Path) -> bytes:
@@ -39,16 +44,39 @@ def verify_source(source: PhotoSource) -> None:
         raise PhotoEditError("the retained source hash changed; reopen the original")
 
 
-def _dpi(image: Image.Image, notes: list[str]) -> tuple[float, float]:
-    try:
-        x, y = image.info["dpi"]
-        x, y = finite(x, "DPI"), finite(y, "DPI")
-        if x <= 0 or y <= 0:
-            raise PhotoEditError("invalid DPI")
-    except (KeyError, TypeError, ValueError):
-        notes.append("Original resolution is missing or invalid; using 300 DPI for eye detection.")
-        return FALLBACK_DPI, FALLBACK_DPI
+def _dpi_pair(values: tuple[object, object], scale: float) -> tuple[float, float]:
+    x, y = values
+    x, y = finite(float(x) * scale, "DPI"), finite(float(y) * scale, "DPI")
+    if x <= 0 or y <= 0:
+        raise PhotoEditError("invalid DPI")
     return x, y
+
+
+def _dpi(image: Image.Image, notes: list[str]) -> tuple[float, float]:
+    # Pillow's EXIF-only info["dpi"] repeats XResolution on both axes, so read both explicitly.
+    exif = image.getexif()
+    candidates = (
+        (
+            image.info.get("jfif_unit"),
+            image.info.get("jfif_density"),
+            {JFIF_UNIT_INCHES: 1.0, JFIF_UNIT_CENTIMETERS: CM_PER_INCH},
+        ),
+        (
+            exif.get(ExifTags.Base.ResolutionUnit),
+            (exif.get(ExifTags.Base.XResolution), exif.get(ExifTags.Base.YResolution)),
+            {EXIF_UNIT_INCHES: 1.0, EXIF_UNIT_CENTIMETERS: CM_PER_INCH},
+        ),
+    )
+    for unit, values, scales in candidates:
+        try:
+            if unit in scales:
+                return _dpi_pair(values, scales[unit])
+        except (TypeError, ValueError, OverflowError, ZeroDivisionError):
+            continue
+    notes.append(
+        "Original resolution is missing, relative or invalid; using 300 DPI for eye detection."
+    )
+    return FALLBACK_DPI, FALLBACK_DPI
 
 
 def _profile(image: Image.Image, notes: list[str]) -> bytes | None:

@@ -5,10 +5,11 @@ import io
 from pathlib import Path
 from threading import Event
 
-from PIL import ExifTags, Image
+from PIL import Image
 
 from fastfoto_linux.output.errors import OutputCollisionError
 from fastfoto_linux.output.files import locked_folder, write_new_files
+from fastfoto_linux.photo_edits.metadata import derivative_exif, derivative_xmp
 from fastfoto_linux.photo_edits.model import (
     MAX_RECIPE_BYTES,
     MAX_SOURCE_BYTES,
@@ -30,24 +31,6 @@ from fastfoto_linux.photo_edits.render import check_cancel, render
 from fastfoto_linux.photo_edits.source import load_source, source_bytes, verify_source
 
 MAX_VERSIONS = 9999
-EXIF_THUMBNAIL_KEYS = (513, 514)
-
-
-def _exif(source: PhotoSource) -> bytes:
-    exif = Image.Exif()
-    if source.exif:
-        exif.load(source.exif)
-    exif[ExifTags.Base.Orientation] = 1
-    for key in EXIF_THUMBNAIL_KEYS:
-        exif.pop(key, None)
-    for key, value in ((256, source.width), (257, source.height)):
-        if key in exif:
-            exif[key] = value
-    details = exif.get_ifd(ExifTags.IFD.Exif)
-    for key, value in ((40962, source.width), (40963, source.height)):
-        if key in details:
-            details[key] = value
-    return exif.tobytes()
 
 
 def _encode(source: PhotoSource, recipe: PhotoEditRecipe, cancel: Event) -> bytes:
@@ -59,8 +42,8 @@ def _encode(source: PhotoSource, recipe: PhotoEditRecipe, cancel: Event) -> byte
         "JPEG",
         quality=recipe.quality,
         subsampling=0,
-        exif=_exif(source),
-        xmp=source.xmp,
+        exif=derivative_exif(source),
+        xmp=derivative_xmp(source),
         icc_profile=source.icc_profile,
         dpi=(source.dpi_x, source.dpi_y),
     )

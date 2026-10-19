@@ -30,11 +30,37 @@ GAUSS_SUPPORT_SIGMAS = 4
 MIN_PADDING_PX = 2
 PREVIEW_QUALITY = 90
 TONE_TILE_PIXELS = 262_144
+RGB_MAX = 255
+CONTROL_SCALE = 100
+BRIGHTNESS_SCALE = 200
+RGB_MIDPOINT = 0.5
+GRAY_WEIGHTS = (0.2126, 0.7152, 0.0722)
 
 
 def _tone_tile(pixels: np.ndarray, tone: PhotoTone) -> np.ndarray:
-    """Transform one bounded RGB tile (implemented in GREEN)."""
-    raise NotImplementedError("photo tone rendering is not implemented")
+    """Transform one contiguous RGB tile in float64, clipping only at conversion."""
+    original = pixels.astype(np.float64) / RGB_MAX
+    adjusted = (original + tone.brightness / BRIGHTNESS_SCALE - RGB_MIDPOINT) * (
+        1 + tone.contrast / CONTROL_SCALE
+    ) + RGB_MIDPOINT
+    gray = (
+        GRAY_WEIGHTS[0] * adjusted[:, 0]
+        + GRAY_WEIGHTS[1] * adjusted[:, 1]
+        + GRAY_WEIGHTS[2] * adjusted[:, 2]
+    )[:, np.newaxis]
+    saturated = gray + (adjusted - gray) * (1 + tone.saturation / CONTROL_SCALE)
+    mixed = original + (tone.strength / CONTROL_SCALE) * (saturated - original)
+    return np.floor(RGB_MAX * np.clip(mixed, 0, 1) + RGB_MIDPOINT).astype(np.uint8)
+
+
+def _apply_tone(pixels: np.ndarray, tone: PhotoTone, cancel: Event) -> None:
+    if tone.strength == 0 or (tone.brightness, tone.contrast, tone.saturation) == (0, 0, 0):
+        return
+    flat = pixels.reshape(-1, 3)
+    for start in range(0, len(flat), TONE_TILE_PIXELS):
+        check_cancel(cancel)
+        tile = flat[start : start + TONE_TILE_PIXELS]
+        tile[:] = _tone_tile(tile, tone)
 
 
 def check_cancel(cancel: Event) -> None:
@@ -100,7 +126,7 @@ def _overlap(left: EyeEdit, right: EyeEdit) -> bool:
 
 
 def render(source: PhotoSource, recipe: PhotoEditRecipe, *, cancel: Event) -> np.ndarray:
-    """Render accepted corrections from source without changing its pixels."""
+    """Render accepted eye corrections then tone, without changing source pixels."""
     check_cancel(cancel)
     _same_source(source, recipe)
     accepted = tuple(edit for edit in recipe.eyes if edit.accepted)
@@ -116,6 +142,7 @@ def render(source: PhotoSource, recipe: PhotoEditRecipe, *, cancel: Event) -> np
         result[y0:y1, x0:x1] = redeye.apply_fixes(
             source.pixels[y0:y1, x0:x1], (fix,), strength=edit.strength / 100
         )
+    _apply_tone(result, recipe.tone, cancel)
     check_cancel(cancel)
     return result
 

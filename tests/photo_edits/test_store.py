@@ -33,7 +33,7 @@ def test_recipe_round_trip_preserves_masks_decisions_strength_and_pixels(tmp_pat
     recipe = PhotoEditRecipe(source, (eye(strength=45), eye("right", right=True, accepted=False)))
     encoded = recipe_bytes(recipe)
     decoded = parse_recipe(encoded, source)
-    assert decoded.schema_version == 1 and decoded.algorithm_version == "redeye-v1"
+    assert decoded.schema_version == 2 and decoded.algorithm_version == "photo-tone-v1"
     assert [edit.accepted for edit in decoded.eyes] == [True, False]
     assert decoded.eyes[0].strength == 45
     assert np.array_equal(decoded.eyes[0].mask, recipe.eyes[0].mask)

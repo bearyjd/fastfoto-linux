@@ -3,11 +3,14 @@
 import base64
 import binascii
 import json
+from dataclasses import asdict, replace
 from typing import Any
 
 import numpy as np
 
 from fastfoto_linux.photo_edits.model import (
+    ALGORITHM_VERSION,
+    LEGACY_SCHEMA_VERSION,
     MAX_EYES,
     MAX_MASK_PIXELS,
     MAX_RECIPE_BYTES,
@@ -15,6 +18,7 @@ from fastfoto_linux.photo_edits.model import (
     MAX_SOURCE_PIXELS,
     POINT_COORDINATES,
     ROI_COORDINATES,
+    SCHEMA_VERSION,
     EyeEdit,
     PhotoEditError,
     PhotoEditRecipe,
@@ -24,8 +28,10 @@ from fastfoto_linux.photo_edits.model import (
     finite,
     integer,
     sibling_name,
+    validate_version,
 )
 
+TONE_KEYS = frozenset({"brightness", "contrast", "saturation", "strength"})
 ROOT_KEYS = frozenset({"schema_version", "algorithm_version", "quality", "source", "eyes"})
 SOURCE_KEYS = (
     "sha256",
@@ -61,13 +67,16 @@ def _eye_dict(eye: EyeEdit) -> dict[str, Any]:
 
 
 def recipe_object(recipe: PhotoEditRecipe) -> dict[str, Any]:
-    return {
+    payload = {
         "schema_version": recipe.schema_version,
         "algorithm_version": recipe.algorithm_version,
         "quality": recipe.quality,
         "source": source_identity(recipe.source),
         "eyes": [_eye_dict(eye) for eye in recipe.eyes],
     }
+    if recipe.schema_version == SCHEMA_VERSION:
+        payload["tone"] = asdict(recipe.tone)
+    return payload
 
 
 def json_bytes(payload: dict[str, Any]) -> bytes:
@@ -110,14 +119,25 @@ def read_object(data: bytes) -> dict[str, Any]:
         raise PhotoEditError("photo recipe is not valid bounded JSON") from error
     if not isinstance(value, dict):
         raise PhotoEditError("photo recipe must be an object")
+    validate_version(value.get("schema_version"), value.get("algorithm_version"))
     expected = ROOT_KEYS | ({"output"} if "output" in value else set())
+    if value["schema_version"] == SCHEMA_VERSION:
+        expected |= {"tone"}
     fields(value, expected, "photo recipe")
-    integer(value["schema_version"], 1, 1, "photo recipe schema")
+    integer(value["quality"], 1, 100, "JPEG quality")
+    _read_tone(value)
     if "output" in value:
         output = fields(value["output"], {"name", "sha256"}, "output identity")
         sibling_name(output["name"])
         digest(output["sha256"])
     return value
+
+
+def _read_tone(payload: dict[str, Any]) -> PhotoTone:
+    if payload["schema_version"] == LEGACY_SCHEMA_VERSION:
+        return PhotoTone()
+    tone = fields(payload["tone"], TONE_KEYS, "photo tone")
+    return PhotoTone(**tone)
 
 
 def _mask_shape(payload: dict[str, Any]) -> tuple[int, int]:
@@ -207,14 +227,21 @@ def parse_recipe(data: bytes, source: PhotoSource) -> PhotoEditRecipe:
         raise PhotoEditError("too many or invalid eye corrections")
     _mask_budget(eyes)
     return PhotoEditRecipe(
-        source,
-        tuple(_eye(eye) for eye in eyes),
-        payload["schema_version"],
-        payload["algorithm_version"],
-        payload["quality"],
+        source=source,
+        eyes=tuple(_eye(eye) for eye in eyes),
+        schema_version=payload["schema_version"],
+        algorithm_version=payload["algorithm_version"],
+        quality=payload["quality"],
+        tone=_read_tone(payload),
     )
 
 
 def update_tone(recipe: PhotoEditRecipe, tone: PhotoTone) -> PhotoEditRecipe:
-    """Return a changed draft, upgrading legacy tone edits (implemented in GREEN)."""
-    raise NotImplementedError("photo tone updates are not implemented")
+    """Preserve no-op identity; upgrade a changed legacy draft without mutating it."""
+    if not isinstance(recipe, PhotoEditRecipe) or not isinstance(tone, PhotoTone):
+        raise PhotoEditError("tone updates require a recipe and validated photo adjustments")
+    if recipe.tone == tone:
+        return recipe
+    return replace(
+        recipe, tone=tone, schema_version=SCHEMA_VERSION, algorithm_version=ALGORITHM_VERSION
+    )

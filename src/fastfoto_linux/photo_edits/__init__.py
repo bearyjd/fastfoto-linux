@@ -1,4 +1,4 @@
-"""Recoverable red-eye editing of retained cropped/upright photo originals."""
+"""Recoverable editing of retained cropped/upright photo originals."""
 
 from fastfoto_linux.photo_edits.model import (
     ALGORITHM_VERSION,

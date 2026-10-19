@@ -6,7 +6,7 @@ from pathlib import Path
 from fastfoto_linux.documents import (
     DEFAULT_LANGS,
     DEFAULT_NAME,
-    ColourMode,
+    ColourPolicy,
     DocumentSettings,
     OcrMode,
     validate_langs,
@@ -29,7 +29,7 @@ from fastfoto_linux.session import (
     RawPolicy,
 )
 
-DOCUMENT_COLOURS = tuple(mode.value for mode in ColourMode)
+DOCUMENT_COLOURS = tuple(mode.value for mode in ColourPolicy)
 FOLDER_FIELD = "output_folder"
 
 
@@ -39,7 +39,7 @@ class DocumentForm:
     ``ffscan doc scan``; the output folder is the Photos form's (one folder for both modes)."""
 
     name: str = ""
-    colour: str = ColourMode.COLOUR.value
+    colour: str = ColourPolicy.COLOUR.value
     dpi: int = DEFAULT_DOCUMENT_DPI
     both_sides: bool = True
     keep_blank: bool = False
@@ -127,7 +127,7 @@ def to_document_settings(
     return DocumentSettings(
         output_root=output_root,
         name=form.name.strip() or DEFAULT_NAME,
-        colour=ColourMode(form.colour),
+        colour=ColourPolicy(form.colour),
         keep_blank=form.keep_blank,
         ocr=ocr_mode(form, ocr_available=ocr_available),
         langs=form.langs,

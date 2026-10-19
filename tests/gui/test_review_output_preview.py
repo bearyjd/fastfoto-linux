@@ -11,7 +11,8 @@ from PIL import Image
 
 from fastfoto_linux.documents import ColourMode, ColourPolicy, DocumentCancelledError
 from fastfoto_linux.documents.draft import TrimBox
-from fastfoto_linux.gui import reviewjobs
+from fastfoto_linux.gui import reviewjobs, reviewside
+from fastfoto_linux.gui.review import ReviewState
 from fastfoto_linux.gui.reviewjobs import (
     PREVIEW_MAX_PX,
     PreviewCompletion,
@@ -19,7 +20,7 @@ from fastfoto_linux.gui.reviewjobs import (
     ReviewJobs,
     make_preview,
 )
-from tests.gui.doc_helpers import DocRecordingSink
+from tests.gui.doc_helpers import DocRecordingSink, clean_document
 from tests.gui.test_review_colour import decided_draft
 from tests.gui.test_reviewside import opened
 
@@ -112,3 +113,100 @@ def test_override_and_view_change_invalidate_ready_output_and_inflight_completio
     assert side.preview_path is None
     side.preview_ready(PreviewCompletion(old, output))
     assert side.preview_path is None
+
+
+def test_busy_preview_coalesces_to_the_newest_snapshot_and_ignores_same_key_old_generation(out):
+    side, page = opened(out)
+    calls = []
+    page.worker.preview_page = lambda *args: calls.append(args)
+    side.preview(1, "output")
+    old = calls[-1][0]
+    page.worker.busy = True
+    side.preview(2, "output")
+    side.preview(1, "source")
+    side.preview(1, "output")
+    latest = side._preview_requested
+    assert latest is not old
+    assert len(calls) == 1
+    page.worker.busy = False
+    path = out / "previews" / "page-0001-output-colour-r0.jpg"
+    side.preview_ready(PreviewCompletion(old, path))
+    assert side.preview_path is None
+    assert len(calls) == 2
+    assert calls[-1] == (latest,)
+    side.preview_ready(PreviewCompletion(old, path))
+    assert side.preview_path is None
+    side.preview_ready(PreviewCompletion(latest, path))
+    assert side.preview_path == path
+
+
+def test_busy_source_completion_dispatches_current_output_without_relabelling_source(out):
+    side, page = opened(out)
+    calls = []
+    page.worker.preview_page = lambda *args: calls.append(args)
+    source = side.state.draft
+    side.preview(1)
+    page.worker.busy = True
+    side.preview(1, "output")
+    page.worker.busy = False
+    side.preview_ready((source, 1, out / "previews" / "page-0001.jpg", ""))
+    assert side.preview_path is None
+    assert side.preview_view == "output"
+    assert calls[-1][0] is side._preview_requested
+    assert calls[-1][0].view == "output"
+
+
+def test_output_rotation_happens_before_rendering_once(out, monkeypatch):
+    source = decided_draft(out)
+    page = replace(source.pages[0], trim=TrimBox(0, 0, 0, 0, False))
+    source = replace(source, pages=(page,))
+    source = ReviewState(source).rotate(1, 1).draft
+    raw = out / page.name
+    Image.new("RGB", (160, 240), "white").save(raw, dpi=(300, 300))
+    original = raw.read_bytes()
+    shapes = []
+
+    def rendered(loaded, mode):
+        shapes.append(loaded.pixels.shape)
+        return loaded.pixels[:, :, 0].copy()
+
+    monkeypatch.setattr(reviewjobs, "render_page", rendered)
+    output = make_preview(source, 1, threading.Event(), policy=ColourPolicy.AUTO, view="output")
+    assert shapes == [(160, 240, 3)]
+    with Image.open(output) as image:
+        assert image.size == (240, 160)
+    assert raw.read_bytes() == original
+
+
+def test_cancel_during_render_does_not_publish_a_partial_output_preview(out, monkeypatch):
+    source = decided_draft(out)
+    page = replace(source.pages[0], trim=TrimBox(0, 0, 0, 0, False))
+    source = replace(source, pages=(page,))
+    Image.new("RGB", (160, 240), "white").save(out / page.name, dpi=(300, 300))
+    cancel = threading.Event()
+
+    def rendered(loaded, mode):
+        cancel.set()
+        return np.zeros(loaded.pixels.shape[:2], dtype=np.uint8)
+
+    monkeypatch.setattr(reviewjobs, "render_page", rendered)
+    with pytest.raises(DocumentCancelledError):
+        make_preview(source, 1, cancel, policy=ColourPolicy.AUTO, view="output")
+    assert not (out / "previews").exists()
+
+
+def test_confirmed_delete_removes_only_known_unchanged_output_variants(out, monkeypatch):
+    side, page = opened(out)
+    monkeypatch.setattr(reviewside, "save_draft", lambda *args: None)
+    folder = out / "previews"
+    folder.mkdir()
+    output = folder / "page-0001-output-bw-r1.jpg"
+    unknown = folder / "page-0001-output-other-r1.jpg"
+    output.write_bytes(b"synthetic")
+    unknown.write_bytes(b"unrelated")
+    page.worker.write_draft = lambda *args: None
+    side.save()
+    page.controller.on_finished(replace(clean_document(out), draft=side.state.draft, raw_dir=out))
+    side.delete_originals(True)
+    assert not output.exists()
+    assert unknown.read_bytes() == b"unrelated"

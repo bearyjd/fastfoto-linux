@@ -15,6 +15,14 @@ Kirigami.ScrollablePage {
     property int editingPart: 0
     property string editedName: ""
     property bool nameValid: true
+    readonly property var selectedItem: {
+        const number = bridge.review.focusNumber;
+        for (let index = 0; index < grid.count; ++index) {
+            const row = bridge.review.items.get(index);
+            if (row.number === number) return row;
+        }
+        return {};
+    }
 
     function commitName(number, name) {
         editingPart = 0;
@@ -75,6 +83,38 @@ Kirigami.ScrollablePage {
                 }
             }
 
+            RowLayout {
+                Layout.fillWidth: true
+                QQC2.Label {
+                    text: page.selectedItem.number ? qsTr("Page %1 output:").arg(page.selectedItem.number) : qsTr("Page output:")
+                    textFormat: Text.PlainText
+                }
+                QQC2.ComboBox {
+                    objectName: "reviewColourBox"
+                    enabled: !!page.selectedItem.number
+                    readonly property var colourChoices: [
+                        { "text": qsTr("Document setting"), "value": "" },
+                        { "text": qsTr("Auto"), "value": "auto" },
+                        { "text": qsTr("Colour"), "value": "colour" },
+                        { "text": qsTr("Grey"), "value": "grey" },
+                        { "text": qsTr("Black and white"), "value": "bw" }
+                    ]
+                    model: colourChoices
+                    textRole: "text"
+                    valueRole: "value"
+                    currentIndex: Math.max(0, colourChoices.findIndex(choice => choice.value === (page.selectedItem.colourOverride ?? "")))
+                    Accessible.name: qsTr("Selected page output")
+                    onActivated: bridge.review.setColour(page.selectedItem.number, currentValue)
+                }
+                QQC2.Label {
+                    objectName: "reviewColourExplanation"
+                    Layout.fillWidth: true
+                    text: page.selectedItem.colourText ?? ""
+                    textFormat: Text.PlainText
+                    wrapMode: Text.WordWrap
+                }
+            }
+
             Repeater {
                 id: names
                 objectName: "reviewPartNames"
@@ -124,6 +164,7 @@ Kirigami.ScrollablePage {
             width: grid.cellWidth
             height: grid.cellHeight
             selected: GridView.isCurrentItem
+            outputText: model.colourText ?? ""
             previousOrderIndex: index > 0 ? (bridge.review.items.get(index - 1).orderIndex ?? -1) : -1
             nextOrderIndex: index + 1 < grid.count ? (bridge.review.items.get(index + 1).orderIndex ?? -1) : -1
             onActivated: {

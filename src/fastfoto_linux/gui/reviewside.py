@@ -8,12 +8,19 @@ from typing import TYPE_CHECKING
 from fastfoto_linux.documents import DocumentSettings
 from fastfoto_linux.documents.draft import DocumentDraft
 from fastfoto_linux.documents.draft_store import save_draft
+from fastfoto_linux.documents.modes import ColourPolicy
 from fastfoto_linux.gui.docform import to_document_settings
 from fastfoto_linux.gui.docreport import document_error_banner
 from fastfoto_linux.gui.report import Banner
 from fastfoto_linux.gui.review import ReviewState
 from fastfoto_linux.gui.reviewdelete import SavedOriginals, capture_originals, delete_originals
-from fastfoto_linux.gui.reviewjobs import PREVIEW_DIR, PreviewResult
+from fastfoto_linux.gui.reviewjobs import (
+    PREVIEW_DIR,
+    PreviewCompletion,
+    PreviewRequest,
+    PreviewResult,
+    output_preview_names,
+)
 from fastfoto_linux.gui.state import ActionBlockedError, Mode, State, transition
 from fastfoto_linux.session import DocumentSessionResult, SessionResult
 
@@ -41,7 +48,10 @@ class ReviewSide:
         self._saving_originals: SavedOriginals | None = None
         self.preview_path: Path | None = None
         self.preview_number = 0
-        self._preview_requested: tuple[DocumentDraft, int] | None = None
+        self.preview_view = "source"
+        self._preview_requested: PreviewRequest | None = None
+        self._preview_running: PreviewRequest | None = None
+        self._preview_cached: PreviewRequest | None = None
 
     @property
     def active(self) -> bool:
@@ -78,6 +88,11 @@ class ReviewSide:
         if operation not in {"only_flagged", "focused"}:
             self.dirty = True
             self._originals = None
+            request = self._preview_requested
+            number = self.preview_number or (request.number if request else 0)
+            if number and (self.preview_view == "output" or request is not None):
+                self._preview_requested = None
+                self.preview(number, self.preview_view)
         self._controller._changed()
         return True
 
@@ -191,6 +206,8 @@ class ReviewSide:
         self.state = ReviewState(draft)
         self.dirty = True
         self.preview_path, self.preview_number = None, 0
+        self.preview_view = "source"
+        self._preview_requested = self._preview_running = self._preview_cached = None
         self._originals = None
         self._controller._result = DocumentSessionResult(draft=draft, raw_dir=draft.raw_dir)
         self._set(State.REVIEWING)
@@ -202,39 +219,91 @@ class ReviewSide:
             return True
         return False
 
+    def _preview_matches(self, request: PreviewRequest | None, number: int, view: str) -> bool:
+        return bool(
+            request is not None
+            and self.state is not None
+            and request.draft is self.state.draft
+            and request.number == number
+            and request.view == view
+            and ColourPolicy(request.policy) is ColourPolicy(self._settings.colour)
+        )
+
     def preview(self, number: int, view: str = "source") -> str:
-        if view != "source":
-            raise NotImplementedError("output preview snapshots are not implemented")
         if not self.active or self.state is None:
             raise ActionBlockedError("there is no page to preview")
-        self.state.focused(number)  # validate the raw number before starting a job
-        if self.preview_number == number and self.preview_path is not None:
+        self.state.focused(number)
+        request = PreviewRequest(self.state.draft, number, self._settings.colour, view)
+        if self._preview_matches(self._preview_cached, number, view) and self.preview_path:
             return self.preview_path.as_uri()
-        self._preview_requested = self.state.draft, number
+        if self._preview_matches(self._preview_requested, number, view):
+            return ""
+        self._preview_requested = request
+        self.preview_view = view
         self.preview_path, self.preview_number = None, 0
-        self._controller._worker.preview_page(self.state.draft, number)
+        self._preview_cached = None
+        if not self._worker_busy:
+            self._dispatch_preview(request)
+        self._controller._changed()
         return ""
 
-    def preview_ready(self, answer: PreviewResult) -> None:
+    def _dispatch_preview(self, request: PreviewRequest) -> None:
+        self._preview_running = request
+        try:
+            if request.view == "source":
+                self._controller._worker.preview_page(request.draft, request.number)
+            else:
+                self._controller._worker.preview_page(request)
+        except Exception:
+            self._preview_requested = self._preview_running = None
+            raise
+
+    def _preview_completion(self, answer: PreviewResult) -> PreviewCompletion | None:
+        if isinstance(answer, PreviewCompletion):
+            return answer
         source, number, path, error = answer
+        request = self._preview_running
+        if request is None or request.view != "source":
+            return None
+        if request.draft is not source or request.number != number:
+            return None
+        return PreviewCompletion(request, path, error)
+
+    @staticmethod
+    def _preview_path_valid(request: PreviewRequest, path: Path | None) -> bool:
+        if path is None:
+            return True
+        names = (
+            (f"page-{request.number:04d}.jpg",)
+            if request.view == "source"
+            else output_preview_names(request.number)
+        )
+        return path.parent == request.draft.raw_dir / PREVIEW_DIR and path.name in names
+
+    def preview_ready(self, answer: PreviewResult) -> None:
         if not self.active or self.state is None:
             return
-        request = self._preview_requested
-        if (
-            source is not self.state.draft
-            or request is None
-            or request[0] is not source
-            or request[1] != number
+        completion = self._preview_completion(answer)
+        if completion is None or not self._preview_path_valid(completion.request, completion.path):
+            return
+        request = completion.request
+        if request is self._preview_running:
+            self._preview_running = None
+        if request is self._preview_requested and self._preview_matches(
+            request, request.number, self.preview_view
         ):
-            return
-        if path is not None and path != source.raw_dir / PREVIEW_DIR / f"page-{number:04d}.jpg":
-            return
-        self._preview_requested = None
-        if error:
-            self._controller._banner = Banner("error", "Could not preview the page. " + error)
-        else:
-            self.preview_path, self.preview_number = path, number
-        self._controller._changed()
+            self._preview_requested = None
+            if completion.error:
+                self._controller._banner = Banner(
+                    "error", "Could not preview the page. " + completion.error
+                )
+            else:
+                self.preview_path, self.preview_number = completion.path, request.number
+                self._preview_cached = request
+            self._controller._changed()
+        pending = self._preview_requested
+        if pending and self._preview_running is None and not self._worker_busy:
+            self._dispatch_preview(pending)
 
     def delete_originals(self, confirmed: bool = False) -> None:
         if not confirmed:

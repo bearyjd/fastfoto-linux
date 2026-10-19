@@ -34,8 +34,8 @@ def test_the_readme_lists_the_resolutions_and_the_default() -> None:
 
 def test_the_readme_names_the_colours_the_form_offers() -> None:
     section = desktop_section()
-    assert len(DOCUMENT_COLOURS) == 3
-    assert "Colour / Grey / Black and white" in section
+    assert len(DOCUMENT_COLOURS) == 4
+    assert "Auto / Colour / Grey / Black and white" in section
 
 
 def test_the_readme_names_the_button_for_kept_pages() -> None:

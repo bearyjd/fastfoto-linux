@@ -1,5 +1,7 @@
 """Real Qt roles, selected-page choices, reopen and truthful asynchronous output previews."""
 
+from dataclasses import replace
+
 import pytest
 
 from tests.gui.qt import require_qt
@@ -7,14 +9,17 @@ from tests.gui.qt import require_qt
 require_qt()
 
 from PIL import Image
-from PySide6.QtCore import Q_ARG, QMetaObject, Qt
+from PySide6.QtCore import Q_ARG, QMetaObject, Qt, QUrl
 from PySide6.QtTest import QSignalSpy, QTest
 
-from fastfoto_linux.documents import ColourPolicy
+from fastfoto_linux.documents import ColourMode, ColourPolicy
+from fastfoto_linux.documents.auto_colour import ColourDecision, ColourReason
+from fastfoto_linux.documents.draft import PageEdit, TrimBox
 from fastfoto_linux.documents.draft_store import open_draft
 from fastfoto_linux.gui.qt.review_model import ReviewModel
 from fastfoto_linux.gui.review import ReviewState, review_items
 from fastfoto_linux.gui.reviewjobs import PreviewCompletion
+from fastfoto_linux.session import DocumentSessionResult
 from tests.gui.qt import test_qml_documents, test_qml_review_window
 from tests.gui.qt.qt_helpers import child, invoke, settle
 from tests.gui.qt.test_bridge_review import open_review
@@ -22,7 +27,31 @@ from tests.gui.test_review_colour import decided_draft
 
 open_window = test_qml_documents.open_window
 make_doc_bridge = test_qml_documents.make_doc_bridge
-review_window = test_qml_review_window.review_window
+base_review_window = test_qml_review_window.review_window
+
+
+@pytest.fixture
+def review_window(base_review_window):
+    """Use valid raw pages and current analysis for the new reopen/output contracts."""
+    window, bridge, worker, source, warnings = base_review_window
+    pages = []
+    for page in source.pages:
+        path = source.raw_dir / page.name
+        Image.new("RGB", (160, 240), "white").save(path, dpi=(300, 300))
+        info = path.stat()
+        pages.append(
+            replace(
+                page,
+                size=info.st_size,
+                mtime_ns=info.st_mtime_ns,
+                trim=TrimBox(0, 0, 0, 0, False),
+                colour=ColourDecision(ColourMode.COLOUR, ColourMode.BW, ColourReason.BILEVEL),
+            )
+        )
+    source = replace(source, pages=tuple(pages))
+    bridge.controller.review.state = ReviewState(source)
+    bridge.review.refresh()
+    return window, bridge, worker, source, warnings
 
 
 def test_model_has_explicit_colour_roles_and_updates_without_reset(qapp, out):
@@ -46,7 +75,7 @@ def test_qt_slot_sets_clears_and_autosaves_only_the_selected_raw_page(make_bridg
     assert view.items.get(1)["colourOverride"] == "auto"
     assert view.items.get(0)["colourOverride"] == ""
     view.setColour(2, "")
-    assert bridge.controller.review.state.draft.edits[2].colour is None
+    assert bridge.controller.review.state.draft.edits.get(2, PageEdit()).colour is None
 
 
 @pytest.mark.usefixtures("kirigami")
@@ -82,11 +111,12 @@ def test_real_selected_page_override_survives_flush_and_reopen(review_window):
         source.raw_dir, tuple(source.raw_dir / page.name for page in source.pages), settings
     )
     assert reopened.edits[3].colour is ColourPolicy.AUTO
-    bridge.controller.review._accept(reopened)
+    bridge.review.openFolder(QUrl.fromLocalFile(str(source.raw_dir)))
+    bridge.controller.on_finished(DocumentSessionResult(draft=reopened, raw_dir=source.raw_dir))
     child(window, "reviewGrid").setProperty("currentIndex", 2)
     bridge.review.focus(3)
     settle()
-    assert box.property("currentValue") == "auto"
+    assert child(window, "reviewColourBox").property("currentValue") == "auto"
     assert warnings == []
 
 

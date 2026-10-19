@@ -1,13 +1,14 @@
 """The public QML photo editor interface, backed by one Qt-free controller component."""
 
 from collections.abc import Callable
+from dataclasses import asdict
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from PySide6.QtCore import Property, QObject, QUrl, Signal, Slot
 
 from fastfoto_linux.gui.qt.photos_model import file_url
-from fastfoto_linux.photo_edits import EyeEdit
+from fastfoto_linux.photo_edits import EyeEdit, PhotoTone
 
 if TYPE_CHECKING:
     from fastfoto_linux.gui.photoeditside import PhotoEditSide
@@ -68,7 +69,7 @@ class PhotoEditView(QObject):
 
     @Property(str, notify=changed)
     def sourceLabel(self) -> str:
-        return "Retained cropped, upright JPEG. Red-eye edits save a new copy."
+        return "Retained cropped, upright original JPEG. Photo edits save a new copy."
 
     @Property(str, notify=changed)
     def warning(self) -> str:
@@ -114,7 +115,8 @@ class PhotoEditView(QObject):
 
     @Property("QVariantMap", notify=changed)
     def tone(self) -> dict[str, int]:
-        return {}
+        recipe = self._side.recipe
+        return asdict(recipe.tone if recipe else PhotoTone())
 
     @Property(str, notify=changed)
     def selectedId(self) -> str:

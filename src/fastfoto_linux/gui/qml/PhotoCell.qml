@@ -153,9 +153,9 @@ Item {
             objectName: "reviewRedEyesButton"
             Layout.alignment: Qt.AlignHCenter
             visible: cell.editReview !== null
-            text: qsTr("Review red eyes")
+            text: qsTr("Edit photo")
             enabled: cell.reviewEligible && cell.editReview !== null && !cell.editReview.busy
-            Accessible.name: qsTr("Review red eyes")
+            Accessible.name: qsTr("Edit photo")
             Accessible.description: cell.title + ". " + cell.reviewReason
             onClicked: cell.editReview.openPhoto(cell.photoRow)
             QQC2.ToolTip.visible: hovered && cell.reviewReason !== ""

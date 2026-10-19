@@ -7,7 +7,7 @@ import org.kde.kirigami as Kirigami
 Kirigami.Page {
     id: page
     objectName: "photoEditPage"
-    title: qsTr("Review red eyes")
+    title: qsTr("Edit photo")
     background: Rectangle { color: Kirigami.Theme.backgroundColor }
     property var editor: bridge.photoEdit
     readonly property var selected: editor.candidates.find(eye => eye.id === editor.selectedId) || null
@@ -125,6 +125,15 @@ Kirigami.Page {
                 ColumnLayout {
                     width: parent.width
                     spacing: Kirigami.Units.smallSpacing
+                    PhotoToneControls {
+                        Layout.fillWidth: true
+                        editor: page.editor
+                    }
+                    Kirigami.Heading {
+                        objectName: "photoRedEyeHeading"
+                        text: qsTr("Red-eye correction")
+                        level: 3
+                    }
                     QQC2.Label {
                         objectName: "photoNoSuggestions"
                         Layout.fillWidth: true

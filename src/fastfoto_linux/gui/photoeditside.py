@@ -8,7 +8,14 @@ from typing import TYPE_CHECKING
 from fastfoto_linux.gui.photoeditjobs import PhotoEditRequest, PhotoEditResult, PhotoEditTools
 from fastfoto_linux.gui.photos import PhotoItem
 from fastfoto_linux.gui.state import ActionBlockedError, Mode
-from fastfoto_linux.photo_edits import EyeEdit, PhotoEditRecipe, PhotoPreview, SavedPhotoEdit
+from fastfoto_linux.photo_edits import (
+    EyeEdit,
+    PhotoEditRecipe,
+    PhotoPreview,
+    PhotoTone,
+    SavedPhotoEdit,
+    update_tone,
+)
 
 if TYPE_CHECKING:
     from fastfoto_linux.gui.controller import Controller
@@ -198,10 +205,18 @@ class PhotoEditSide:
             self._replace(eye_id, replace(eye, strength=value))
 
     def set_tone(self, field: str, value: int) -> None:
-        raise NotImplementedError("photo tone controls")
+        recipe = self._require_edit()
+        if field not in {"brightness", "contrast", "saturation", "strength"}:
+            raise ValueError("Choose a brightness, contrast, saturation or strength adjustment.")
+        updated = update_tone(recipe, replace(recipe.tone, **{field: value}))
+        if updated is not recipe:
+            self._change(updated)
 
     def reset_tone(self) -> None:
-        raise NotImplementedError("reset photo adjustments")
+        recipe = self._require_edit()
+        updated = update_tone(recipe, PhotoTone())
+        if updated is not recipe:
+            self._change(updated)
 
     def add_ellipse(self, cx: float, cy: float, rx: float, ry: float) -> None:
         recipe = self._require_edit()

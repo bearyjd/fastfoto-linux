@@ -2,6 +2,7 @@
 
 from dataclasses import replace
 
+import numpy as np
 import pytest
 
 from fastfoto_linux.gui.photoeditjobs import PhotoEditResult
@@ -200,7 +201,12 @@ def test_numeric_replacement_uses_authoritative_backend_geometry_and_remove_undo
     p = opened(out)
     original = p.side.recipe.eyes[0]
     adjusted = replace(
-        original, roi=(10, 10, 18, 16), center=(14, 13), origin="manual", accepted=True
+        original,
+        roi=(10, 10, 18, 16),
+        center=(14, 13),
+        mask=np.ones((6, 8), bool),
+        origin="manual",
+        accepted=True,
     )
     calls = []
 

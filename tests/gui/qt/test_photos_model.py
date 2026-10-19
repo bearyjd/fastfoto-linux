@@ -53,6 +53,8 @@ def test_the_roles_are_named_for_qml(model: PhotosModel) -> None:
         "unprocessed",
         "reason",
         "backOnly",
+        "canReviewRedEyes",
+        "reviewRedEyesReason",
     }
 
 

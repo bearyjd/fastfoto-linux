@@ -13,6 +13,38 @@ Kirigami.Page {
     readonly property var selected: editor.candidates.find(eye => eye.id === editor.selectedId) || null
     onBackRequested: event => { event.accepted = true; editor.close(); }
 
+    component GeometrySpinBox: QQC2.SpinBox {
+        id: control
+        editable: true
+        live: false
+        inputMethodHints: Qt.ImhFormattedNumbersOnly
+        textFromValue: page.decimalText
+        valueFromText: page.decimalValue
+        validator: DoubleValidator {
+            locale: control.locale.name
+            bottom: control.from / 100
+            top: control.to / 100
+            decimals: 2
+            notation: DoubleValidator.StandardNotation
+        }
+        // KDE's default input eagerly applies textEdited even when live is false.
+        // Native SpinBox acceptance commits this input once on Return or focus loss.
+        contentItem: QQC2.TextField {
+            text: control.displayText
+            readOnly: !control.editable
+            validator: control.validator
+            inputMethodHints: control.inputMethodHints
+            selectByMouse: true
+            font: control.font
+            palette: control.palette
+            padding: 0
+            background: null
+            verticalAlignment: TextInput.AlignVCenter
+            Accessible.name: control.Accessible.name
+            Accessible.description: control.Accessible.description
+        }
+    }
+
     function applyEllipse() {
         if (selected !== null) editor.replaceEllipse(editor.selectedId,
             centerX.value / 100, centerY.value / 100, radiusX.value / 100, radiusY.value / 100);
@@ -157,46 +189,38 @@ Kirigami.Page {
                         columns: 2
                         enabled: editor.canEdit && page.selected !== null
                         QQC2.Label { text: qsTr("Center X"); textFormat: Text.PlainText }
-                        QQC2.SpinBox {
+                        GeometrySpinBox {
                             id: centerX
                             objectName: "photoCenterX"
                             from: 0; to: Math.max(0, editor.sourceWidth * 100 - 1)
                             value: page.selected !== null ? Math.round(page.selected.center[0] * 100) : 0
-                            editable: true
-                            textFromValue: page.decimalText; valueFromText: page.decimalValue
                             Accessible.name: qsTr("Eye center X in source pixels")
                             onValueModified: page.applyEllipse()
                         }
                         QQC2.Label { text: qsTr("Center Y"); textFormat: Text.PlainText }
-                        QQC2.SpinBox {
+                        GeometrySpinBox {
                             id: centerY
                             objectName: "photoCenterY"
                             from: 0; to: Math.max(0, editor.sourceHeight * 100 - 1)
                             value: page.selected !== null ? Math.round(page.selected.center[1] * 100) : 0
-                            editable: true
-                            textFromValue: page.decimalText; valueFromText: page.decimalValue
                             Accessible.name: qsTr("Eye center Y in source pixels")
                             onValueModified: page.applyEllipse()
                         }
                         QQC2.Label { text: qsTr("Radius X"); textFormat: Text.PlainText }
-                        QQC2.SpinBox {
+                        GeometrySpinBox {
                             id: radiusX
                             objectName: "photoRadiusX"
                             from: 1; to: Math.max(1, editor.sourceWidth * 100)
                             value: page.selected !== null ? Math.round(page.selected.radiusX * 100) : 100
-                            editable: true
-                            textFromValue: page.decimalText; valueFromText: page.decimalValue
                             Accessible.name: qsTr("Eye horizontal radius in source pixels")
                             onValueModified: page.applyEllipse()
                         }
                         QQC2.Label { text: qsTr("Radius Y"); textFormat: Text.PlainText }
-                        QQC2.SpinBox {
+                        GeometrySpinBox {
                             id: radiusY
                             objectName: "photoRadiusY"
                             from: 1; to: Math.max(1, editor.sourceHeight * 100)
                             value: page.selected !== null ? Math.round(page.selected.radiusY * 100) : 100
-                            editable: true
-                            textFromValue: page.decimalText; valueFromText: page.decimalValue
                             Accessible.name: qsTr("Eye vertical radius in source pixels")
                             onValueModified: page.applyEllipse()
                         }

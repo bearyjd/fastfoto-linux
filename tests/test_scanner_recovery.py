@@ -14,7 +14,7 @@ from fastfoto_linux.scanner.job import ScanJob
 from fastfoto_linux.scanner.power import PowerSettingsError
 from fastfoto_linux.scanner.run import run_scan
 from fastfoto_linux.scanner.usb import UsbScanner
-from tests.libusb_fake import FakeLibusb
+from tests.libusb_fake import FakeDevice, FakeLibusb
 from tests.power_helpers import TARGET, ScriptedUsb, frame, install_usb, read_usb
 
 
@@ -251,3 +251,15 @@ def test_network_alias_cannot_bypass_unsafe_physical_scanner_guard(tmp_path):
     recovery.begin(TARGET)
     with pytest.raises(PowerSettingsError):
         run_scan(ScanJob("epsonds:net:scanner.example", tmp_path / "out"), env={})
+
+
+def test_unknown_usb_address_cannot_bypass_pending_recovery(monkeypatch):
+    recovery.begin(TARGET)
+    monkeypatch.setattr(recovery, "find_usb_scanners", lambda: ())
+    lib = FakeLibusb(devices=(FakeDevice(TARGET.bus, TARGET.device + 1),))
+    with (
+        pytest.raises(PowerSettingsError),
+        libusb.open_scanner(TARGET.bus, TARGET.device + 1, lib=lib),
+    ):
+        pytest.fail("must not open an unknown address while recovery is pending")
+    assert lib.calls == []

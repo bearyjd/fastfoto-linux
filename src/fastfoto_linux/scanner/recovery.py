@@ -115,6 +115,8 @@ def require_address_ready(bus: int, address: int) -> None:
         for scanner in find_usb_scanners():
             if (scanner.bus, scanner.device) == (bus, address):
                 require_ready(scanner)
+                return
+        raise _error(RESTART_MESSAGE, pending[0])
 
 
 def _sync_directory(path: Path) -> None:

@@ -162,3 +162,58 @@ def test_aligned_unknown_binary_data_is_skipped_structurally(monkeypatch):
     snapshot = power.read_power_settings(TARGET)
     assert snapshot.sleep_capability.minimum == 1
     assert snapshot.power_off_capability is None
+
+
+def test_failed_cleanup_after_cancellation_retains_reconnect_requirement(monkeypatch):
+    cancel = threading.Event()
+    usb = ScriptedUsb(b"\x06", TransportError("FIN reply missing"))
+    original = usb.read
+
+    def cancelled_read(size, timeout_ms):
+        reply = original(size, timeout_ms)
+        cancel.set()
+        return reply
+
+    monkeypatch.setattr(usb, "read", cancelled_read)
+    install_usb(monkeypatch, usb)
+    with pytest.raises(power.PowerSettingsError) as error:
+        power.read_power_settings(TARGET, cancel=cancel)
+    assert "cancelled" in str(error.value).lower()
+    assert error.value.reconnect_required
+    assert error.value.scanner == TARGET
+    assert usb.released
+
+
+def test_fully_framed_negative_fin_requires_restart_of_owned_session(monkeypatch):
+    usb = ScriptedUsb(
+        b"\x06", frame(b"CAPA", CAPS), frame(b"RESA", CURRENT), frame(b"FIN ", status=b"#nrdBUSY")
+    )
+    install_usb(monkeypatch, usb)
+    with pytest.raises(power.PowerCleanupError) as error:
+        power.read_power_settings(TARGET)
+    assert error.value.reconnect_required
+    assert usb.released
+
+
+@pytest.mark.parametrize(
+    "status", [b"#parWHAT", b"#nrdWHAT", b"#err#parOK  ", b"#parOK  #parFAIL", b"#par"]
+)
+def test_malformed_header_status_cannot_look_successful(monkeypatch, status):
+    usb = apply_usb(status=status)
+    install_usb(monkeypatch, usb)
+    with pytest.raises(power.PowerWriteUncertainError) as error:
+        power.apply_power_settings(TARGET, power.PowerChanges(30, 0))
+    assert error.value.reconnect_required
+    assert b"FIN " not in usb.stream
+    assert usb.released
+
+
+def test_binary_bytes_cannot_supply_the_required_header_terminator(monkeypatch):
+    header = b"PARAx0000000#parOK  #XYZh004#---".ljust(64, b"\0")
+    usb = ScriptedUsb(b"\x06", frame(b"CAPA", CAPS), frame(b"RESA", CURRENT), header)
+    install_usb(monkeypatch, usb)
+    with pytest.raises(power.PowerWriteUncertainError) as error:
+        power.apply_power_settings(TARGET, power.PowerChanges(30, 0))
+    assert error.value.reconnect_required
+    assert b"FIN " not in usb.stream
+    assert usb.released

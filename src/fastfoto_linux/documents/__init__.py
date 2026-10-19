@@ -12,7 +12,7 @@ from fastfoto_linux.documents.errors import (
     OutputFolderMissingError,
     UnsupportedPageError,
 )
-from fastfoto_linux.documents.modes import ColourMode
+from fastfoto_linux.documents.modes import ColourMode, ColourPolicy
 from fastfoto_linux.documents.ocr import (
     DEFAULT_LANGS,
     OcrMode,
@@ -29,6 +29,7 @@ __all__ = [
     "DEFAULT_NAME",
     "AllPagesBlankError",
     "ColourMode",
+    "ColourPolicy",
     "DocumentCancelledError",
     "DocumentError",
     "DocumentResult",

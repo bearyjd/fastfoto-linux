@@ -18,6 +18,7 @@ from fastfoto_linux.documents.draft import (
     PageEdit,
 )
 from fastfoto_linux.documents.errors import DocumentEditError
+from fastfoto_linux.documents.modes import ColourPolicy
 from fastfoto_linux.output.errors import InvalidPrefixError
 from fastfoto_linux.output.naming import sanitise_prefix
 
@@ -34,6 +35,7 @@ class PageEdits:
     split: frozenset[int] = frozenset()
     order: tuple[int, ...] = ()
     part_names: Mapping[int, str] = field(default_factory=dict)
+    colour: Mapping[int, ColourPolicy | None] = field(default_factory=dict)
 
 
 def _page(draft: DocumentDraft, number: int) -> PageAnalysis:
@@ -177,3 +179,8 @@ def parts(draft: DocumentDraft) -> tuple[OutputPart, ...]:
         OutputPart(tuple(group), draft.part_names.get(index))
         for index, group in enumerate(groups, start=1)
     )
+
+
+def set_colour(draft: DocumentDraft, number: int, policy: ColourPolicy | None) -> DocumentDraft:
+    """Return a draft with this raw page's policy override, or cleared with None."""
+    raise NotImplementedError("document colour overrides are not implemented")

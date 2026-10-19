@@ -62,3 +62,8 @@ def encode_page(page: LoadedPage, requested: ColourMode) -> EncodedPage:
     else:
         data = _group4(binarise(_grey(page), page.dpi), page.dpi)
     return EncodedPage(data, mode, width, height, page.dpi)
+
+
+def render_page(page: LoadedPage, actual_mode: ColourMode) -> np.ndarray:
+    """Render full-resolution output pixels before encoding or preview downsampling."""
+    raise NotImplementedError("document output preview rendering is not implemented")

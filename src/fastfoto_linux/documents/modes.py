@@ -11,6 +11,15 @@ class ColourMode(StrEnum):
     BW = "bw"
 
 
+class ColourPolicy(StrEnum):
+    """A requested output policy; Auto is never a source pixel kind."""
+
+    AUTO = "auto"
+    COLOUR = "colour"
+    GREY = "grey"
+    BW = "bw"
+
+
 _RICHNESS = {ColourMode.COLOUR: 2, ColourMode.GREY: 1, ColourMode.BW: 0}
 
 

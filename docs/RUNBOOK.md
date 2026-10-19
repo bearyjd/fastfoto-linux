@@ -33,6 +33,22 @@ These are observations from testing one scanner, not documented behaviour.
 - USB port: a front-panel USB 3 port dropped the link (kernel error -110) during testing. Use a
   port directly on the back of the machine or the motherboard rather than a hub or front-panel port.
 
+## Read or change idle power timers
+
+The desktop app's **Scanner settings** page reads sleep and AC power-off timers
+over USB after **Read settings**. **Apply changes** sends only edited timers and
+checks a fresh readback. See [Scanner power settings](SCANNER_SETTINGS.md) for the
+current-versus-draft display, supported values and error recovery. The hour-long
+power-off observation above is not a default to assume for another scanner; read
+its actual settings.
+
+If the settings page says **Turn the scanner off and on before continuing**, follow
+that instruction, then use **Check USB reconnection** and **Read settings**. The
+reconnection check reads USB metadata only. Until new USB enumeration is observed,
+the app blocks device commands for that target. Do not use the scan-recovery
+padding options below to bypass this settings-recovery block. A failed write may
+have been accepted; the app does not automatically retry it.
+
 ## USB gap shim
 
 The FF-680W ignores a bulk transfer that follows the end of its previous reply too closely. The

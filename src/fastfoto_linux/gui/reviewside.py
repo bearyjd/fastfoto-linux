@@ -202,7 +202,9 @@ class ReviewSide:
             return True
         return False
 
-    def preview(self, number: int) -> str:
+    def preview(self, number: int, view: str = "source") -> str:
+        if view != "source":
+            raise NotImplementedError("output preview snapshots are not implemented")
         if not self.active or self.state is None:
             raise ActionBlockedError("there is no page to preview")
         self.state.focused(number)  # validate the raw number before starting a job

@@ -5,7 +5,7 @@ import io
 import logging
 import threading
 from collections.abc import Callable
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -15,6 +15,7 @@ from fastfoto_linux.documents import DocumentCancelledError, DocumentError, Docu
 from fastfoto_linux.documents.draft import DocumentDraft
 from fastfoto_linux.documents.draft_store import THUMBS_DIR, open_draft
 from fastfoto_linux.documents.loader import load_page
+from fastfoto_linux.documents.modes import ColourMode, ColourPolicy
 from fastfoto_linux.documents.private_io import ensure_private_dir, write_private_atomic
 from fastfoto_linux.documents.write import write_document
 from fastfoto_linux.gui.docreport import os_error_words
@@ -33,8 +34,34 @@ PreviewResult = tuple[DocumentDraft, int, Path | None, str]
 Job = Callable[[threading.Event], Callable[[], None]]
 
 
-def make_preview(draft: DocumentDraft, number: int, cancel: threading.Event) -> Path:
+@dataclass(frozen=True)
+class PreviewRequest:
+    """The immutable page, request policy and view captured before worker dispatch."""
+
+    draft: DocumentDraft
+    number: int
+    policy: ColourPolicy | ColourMode = ColourPolicy.COLOUR
+    view: str = "source"
+
+
+@dataclass(frozen=True)
+class PreviewCompletion:
+    request: PreviewRequest
+    path: Path | None
+    error: str = ""
+
+
+def make_preview(
+    draft: DocumentDraft,
+    number: int,
+    cancel: threading.Event,
+    *,
+    policy: ColourPolicy | ColourMode = ColourPolicy.COLOUR,
+    view: str = "source",
+) -> Path:
     """One trimmed raw page, bounded to 1600 pixels, saved privately without changing the raw."""
+    if view != "source":
+        raise NotImplementedError("output preview rendering is not implemented")
     if draft.raw_dir is None or not 1 <= number <= len(draft.pages):
         raise ValueError("the preview needs a page in its original folder")
     page = draft.pages[number - 1]
@@ -124,7 +151,12 @@ class ReviewJobs:
             result = replace(result, document=document)
         return functools.partial(self._sink.on_finished, result)
 
-    def preview_page(self, draft: DocumentDraft, number: int) -> None:
+    def preview_page(
+        self, draft: DocumentDraft | PreviewRequest, number: int | None = None
+    ) -> None:
+        if isinstance(draft, PreviewRequest):
+            raise NotImplementedError("worker output preview snapshots are not implemented")
+        assert number is not None
         self._start(lambda cancel: self._previewed(draft, number, cancel))
 
     def _previewed(

@@ -13,6 +13,7 @@ from fastfoto_linux.documents.draft import (
     sorted_flags,
 )
 from fastfoto_linux.documents.draft_store import THUMBS_DIR
+from fastfoto_linux.documents.modes import ColourMode, ColourPolicy
 
 FLAG_LABELS = {
     Flag.FEW_MARKS: "Only a few marks",
@@ -43,6 +44,9 @@ class ReviewState:
 
     def rotate(self, number: int, turns: int) -> "ReviewState":
         return replace(self, draft=draft_edit.rotate(self.draft, number, turns))
+
+    def set_colour(self, number: int, policy: ColourPolicy | None) -> "ReviewState":
+        raise NotImplementedError("per-page review colour is not implemented")
 
     def move(self, number: int, to: int) -> "ReviewState":
         return replace(self, draft=draft_edit.move(self.draft, number, to))
@@ -81,8 +85,12 @@ class ReviewItem:
     dropped: bool
 
 
-def review_items(state: ReviewState) -> tuple[ReviewItem, ...]:
+def review_items(
+    state: ReviewState, document_policy: ColourPolicy | ColourMode | None = None
+) -> tuple[ReviewItem, ...]:
     """All raw pages in review order, including the pages that do not go into a PDF."""
+    if document_policy is not None:
+        raise NotImplementedError("review colour decisions are not implemented")
     draft = state.draft
     output = draft_edit.parts(draft)
     part_numbers = {

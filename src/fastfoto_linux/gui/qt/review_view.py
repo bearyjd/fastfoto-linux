@@ -127,6 +127,10 @@ class ReviewView(QObject):
     def toggle(self, number: int) -> None:
         self._call(self._side.edit, "toggle", number)
 
+    @Slot(int, str)
+    def setColour(self, number: int, value: str) -> None:
+        raise NotImplementedError("per-page review colour is not implemented")
+
     @Slot(int, int)
     def rotate(self, number: int, turns: int) -> None:
         self._call(self._side.edit, "rotate", number, turns)
@@ -184,6 +188,10 @@ class ReviewView(QObject):
     @Slot(int, result=str)
     def preview(self, number: int) -> str:
         return self._call(self._side.preview, number) or ""
+
+    @Slot(int, str, result=str)
+    def previewMode(self, number: int, view: str) -> str:
+        raise NotImplementedError("output preview selection is not implemented")
 
     @Slot(bool)
     def deleteOriginals(self, confirmed: bool = False) -> None:

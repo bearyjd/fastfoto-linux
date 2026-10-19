@@ -168,6 +168,15 @@ class Worker:
             raise RuntimeError("no scan has run, so there are no settings to process the pages")
         self._start(lambda cancel: self._process_kept(kept, request, cancel))
 
+    @property
+    def reconnect_required(self) -> bool:
+        """True after a device reply requires a physical scanner restart."""
+        raise NotImplementedError
+
+    def check_power_connection(self) -> None:
+        """Check USB metadata for physical reconnection, without issuing device commands."""
+        raise NotImplementedError
+
     def read_power(self, scanner: object = None) -> None:
         """Read power settings through the shared job queue."""
         raise NotImplementedError

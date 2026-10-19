@@ -1,15 +1,22 @@
 """Power operations share the scanner worker and report after ownership is released."""
 
 import threading
+from dataclasses import replace
 from typing import Any
 
 import pytest
 
+from fastfoto_linux.gui.docform import DocumentForm
+from fastfoto_linux.gui.form import ScanForm
 from fastfoto_linux.gui.power import PowerResult, PowerTools
 from fastfoto_linux.gui.worker import Worker, WorkerBusyError
-from fastfoto_linux.scanner.power import PowerChanges
+from fastfoto_linux.scanner.power import (
+    PowerChanges,
+    PowerSettingsError,
+    PowerWriteUncertainError,
+)
 from tests.gui.helpers import RecordingSink
-from tests.gui.power_helpers import SCANNER, snapshot
+from tests.gui.power_helpers import OTHER_SCANNER, SCANNER, snapshot
 
 WAIT = 5.0
 
@@ -92,3 +99,97 @@ def test_power_failure_is_reported_to_settings_and_not_scan_error_sink() -> None
     assert sink.names == ["power"]
     assert sink.events[0][1].error is error
     assert not worker.busy
+
+
+def unsafe_worker() -> tuple[Worker, PowerSink, list[object]]:
+    sink = PowerSink()
+    calls: list[object] = []
+
+    def fail(*args: Any, **kwargs: Any) -> Any:
+        calls.append("write")
+        raise PowerWriteUncertainError(
+            "partial PARA; turn scanner off and on",
+            scanner=SCANNER,
+            reconnect_required=True,
+        )
+
+    worker = make_worker(sink, apply=fail)
+    worker.apply_power(SCANNER, PowerChanges(sleep_minutes=20))
+    worker.join(WAIT)
+    return worker, sink, calls
+
+
+def test_desynchronized_power_write_blocks_every_scanner_command_before_io() -> None:
+    worker, sink, calls = unsafe_worker()
+    assert worker.reconnect_required
+    for operation in (
+        worker.check,
+        worker.read_power,
+        lambda: worker.apply_power(SCANNER, PowerChanges(sleep_minutes=21)),
+        lambda: worker.scan(ScanForm()),
+        lambda: worker.scan_documents(DocumentForm(), "", ocr_available=False),
+    ):
+        with pytest.raises(PowerSettingsError, match=r"[Tt]urn.*off.*on"):
+            operation()
+    worker.cancel()
+    worker.join(WAIT)
+    assert worker.reconnect_required
+    assert sink.names == ["power"]
+    assert calls == ["write"]
+
+
+@pytest.mark.parametrize("visible", [(SCANNER,), (), (OTHER_SCANNER,)])
+def test_metadata_check_without_the_restarted_scanner_keeps_device_commands_blocked(
+    visible: tuple[Any, ...],
+) -> None:
+    worker, sink, calls = unsafe_worker()
+    metadata_reads = []
+
+    def discover() -> tuple[Any, ...]:
+        metadata_reads.append(True)
+        return visible
+
+    worker._power_tools = PowerTools(discover=discover)
+    worker.check_power_connection()
+    worker.join(WAIT)
+    assert worker.reconnect_required
+    assert metadata_reads == [True]
+    assert calls == ["write"]
+    assert sink.events[-1][1].error.reconnect_required
+
+
+def test_only_new_enumeration_on_the_same_physical_usb_path_clears_the_latch() -> None:
+    worker, sink, calls = unsafe_worker()
+    restarted = replace(SCANNER, device=SCANNER.device + 10)
+    worker._power_tools = PowerTools(discover=lambda: (restarted, OTHER_SCANNER))
+    worker.check_power_connection()
+    worker.join(WAIT)
+    assert not worker.reconnect_required
+    assert sink.events[-1][1].recovered_scanner == restarted
+    assert calls == ["write"]
+
+
+def test_device_quarantine_does_not_prevent_jobs_that_only_process_existing_images() -> None:
+    worker, _, _ = unsafe_worker()
+    completed = threading.Event()
+
+    def local_job(cancel: threading.Event) -> Any:
+        return completed.set
+
+    worker._start(local_job)
+    worker.join(WAIT)
+    assert completed.is_set()
+    assert worker.reconnect_required
+
+
+def test_aligned_failure_does_not_require_physical_reconnection() -> None:
+    sink = PowerSink()
+
+    def fail(*args: Any, **kwargs: Any) -> Any:
+        raise PowerWriteUncertainError("read back before applying again", scanner=SCANNER)
+
+    worker = make_worker(sink, apply=fail)
+    worker.apply_power(SCANNER, PowerChanges(sleep_minutes=20))
+    worker.join(WAIT)
+    assert not worker.reconnect_required
+    assert sink.events[-1][1].error.reconnect_required is False

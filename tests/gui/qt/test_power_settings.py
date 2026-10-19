@@ -12,6 +12,7 @@ require_qt()
 
 from fastfoto_linux.gui.power import PowerTools
 from fastfoto_linux.gui.state import ActionBlockedError
+from fastfoto_linux.scanner.power import PowerWriteUncertainError
 from tests.gui.power_helpers import SCANNER, snapshot
 from tests.gui.qt import test_qml
 from tests.gui.qt.qt_helpers import child, click, invoke, settle, wait_until
@@ -133,3 +134,40 @@ def test_power_job_disables_all_conflicting_actions_and_releases_on_shutdown(
         bridge.shutdown()
     assert stopped.is_set()
     assert not bridge.job_alive
+
+
+def test_desynchronized_write_blocks_scan_and_refresh_until_metadata_proves_restart(
+    make_bridge: Any,
+) -> None:
+    bridge = make_bridge()
+    fake_power(bridge)
+    bridge.checkScanner()
+    wait_until(lambda: bridge.canScan, "synthetic scanner")
+    bridge.power.read()
+    wait_until(lambda: bridge.power.loaded, "settings")
+
+    def fail(*args: Any, **kwargs: Any) -> Any:
+        raise PowerWriteUncertainError("partial PARA", scanner=SCANNER, reconnect_required=True)
+
+    bridge._worker._power_tools = PowerTools(apply=fail)
+    bridge.power.setValue("sleep_minutes", 20)
+    bridge.power.apply()
+    wait_until(lambda: not bridge.power.busy, "unsafe write report")
+    assert bridge.power.reconnectRequired
+    assert not bridge.canScan
+    assert not bridge.canCheck
+    assert not bridge.power.canRead
+    assert not bridge.power.canApply
+    assert "off and on" in bridge.power.message.lower()
+    with pytest.raises(ActionBlockedError):
+        bridge.controller.start_scan()
+    bridge.cancel()
+    assert bridge.power.reconnectRequired
+    restarted = replace(SCANNER, device=SCANNER.device + 10)
+    bridge._worker._power_tools = PowerTools(discover=lambda: (restarted,))
+    bridge.power.checkConnection()
+    wait_until(lambda: not bridge.power.busy, "safe USB metadata check")
+    assert not bridge.power.reconnectRequired
+    assert bridge.power.canRead
+    assert not bridge.power.loaded
+    assert not bridge.power.canApply

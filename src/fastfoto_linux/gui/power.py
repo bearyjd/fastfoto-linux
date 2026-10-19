@@ -14,12 +14,14 @@ class PowerTools:
 
     read: Callable[..., PowerSnapshot] | None = None
     apply: Callable[..., PowerSnapshot] | None = None
+    discover: Callable[[], tuple[UsbScanner, ...]] | None = None
 
 
 @dataclass(frozen=True)
 class PowerResult:
     snapshot: PowerSnapshot | None = None
     error: Exception | None = None
+    recovered_scanner: UsbScanner | None = None
 
 
 class PowerSettings:
@@ -55,4 +57,7 @@ class PowerSettings:
         raise NotImplementedError
 
     def complete(self, result: PowerResult) -> None:
+        raise NotImplementedError
+
+    def check_connection(self) -> None:
         raise NotImplementedError

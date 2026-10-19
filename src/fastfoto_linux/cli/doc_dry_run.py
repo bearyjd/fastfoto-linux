@@ -1,7 +1,9 @@
 """``ffscan doc process --dry-run``: what each page would become, and nothing written."""
 
+from fastfoto_linux.documents.auto_colour import page_colour
 from fastfoto_linux.documents.draft import DocumentDraft, PageAnalysis, sorted_flags
 from fastfoto_linux.documents.draft_edit import parts
+from fastfoto_linux.documents.modes import ColourMode, ColourPolicy
 
 _COLUMNS = ("page", "verdict", "flags", "part", "what happens")
 NO_PDF_LINE = "no PDF would be written: no page is left"
@@ -40,9 +42,17 @@ def _rows(draft: DocumentDraft) -> list[tuple[str, ...]]:
     return rows
 
 
-def dry_run_lines(draft: DocumentDraft) -> list[str]:
+def dry_run_lines(
+    draft: DocumentDraft, policy: ColourPolicy | ColourMode = ColourMode.COLOUR
+) -> list[str]:
     """The table (a header and a row for each page, in raw order), then a line for each PDF."""
-    table = [_COLUMNS, *_rows(draft)]
+    rows = _rows(draft)
+    if policy == ColourPolicy.AUTO or any(edit.colour is not None for edit in draft.edits.values()):
+        rows = [
+            _colour_row(row, page, draft, policy)
+            for row, page in zip(rows, draft.pages, strict=True)
+        ]
+    table = [_COLUMNS, *rows]
     widths = [max(len(row[column]) for row in table) for column in range(len(_COLUMNS) - 1)]
     lines = [
         "  ".join(cell.ljust(width) for cell, width in zip(row, widths, strict=False))
@@ -57,3 +67,16 @@ def dry_run_lines(draft: DocumentDraft) -> list[str]:
         count = len(part.pages)
         lines.append(f"PDF {number}: {count} page{'' if count == 1 else 's'}")
     return lines
+
+
+def _colour_row(
+    row: tuple[str, ...],
+    page: PageAnalysis,
+    draft: DocumentDraft,
+    policy: ColourPolicy | ColourMode,
+) -> tuple[str, ...]:
+    mode = page_colour(draft, page, policy)
+    reason = "" if page.colour is None else f" reason={page.colour.reason.value}"
+    override = draft.edits.get(page.number)
+    chosen = " override" if override is not None and override.colour is not None else ""
+    return (*row[:-1], f"{row[-1]}; colour={mode.value}{reason}{chosen}")

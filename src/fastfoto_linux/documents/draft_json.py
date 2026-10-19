@@ -17,6 +17,7 @@ from types import MappingProxyType
 from typing import Any
 
 from fastfoto_linux.documents.assess import MAX_BOXES
+from fastfoto_linux.documents.colour_json import decode_decision, decode_policy, encode_decision
 from fastfoto_linux.documents.draft import (
     QUARTER_TURNS,
     BoxN,
@@ -28,13 +29,13 @@ from fastfoto_linux.documents.draft import (
     sorted_flags,
 )
 from fastfoto_linux.documents.loader import MAX_DPI, MIN_DPI
-from fastfoto_linux.documents.modes import ColourMode
+from fastfoto_linux.documents.modes import ColourMode, ColourPolicy
 from fastfoto_linux.documents.ocr import OcrMode, validate_langs
 from fastfoto_linux.documents.settings import DocumentSettings
 from fastfoto_linux.output.errors import InvalidPrefixError
 from fastfoto_linux.output.naming import sanitise_prefix
 
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2
 MAX_PAGES = 2000  # a document of more pages than this is not reviewed from a file
 MAX_FILE_BYTES = 1 << 40  # the size of one page file
 MAX_MTIME_NS = 1 << 63
@@ -55,7 +56,7 @@ class StoredOptions:
     """The document options the draft was made with, for a front end to offer again."""
 
     name: str
-    colour: ColourMode
+    colour: ColourPolicy | ColourMode
     ocr: OcrMode
     langs: str
 
@@ -88,6 +89,7 @@ def _page_json(page: PageAnalysis) -> dict[str, Any]:
         "flags": [str(flag) for flag in sorted_flags(page.flags)],
         "marks": [[box.x0, box.y0, box.x1, box.y1] for box in page.marks],
         "detail": list(page.detail),
+        "colour": encode_decision(page.colour),
     }
 
 
@@ -116,7 +118,11 @@ def encode_review(
         "keep_blank": draft.keep_blank,
         "pages": [_page_json(page) for page in draft.pages],
         "edits": {
-            str(number): {"include": edit.include, "turns": edit.quarter_turns}
+            str(number): {
+                "include": edit.include,
+                "turns": edit.quarter_turns,
+                "colour": None if edit.colour is None else edit.colour.value,
+            }
             for number, edit in sorted(draft.edits.items())
         },
         "order": list(draft.order),
@@ -221,7 +227,7 @@ def _details(value: Any) -> tuple[str, ...]:
     return tuple(words)
 
 
-def _page(value: Any, number: int, name: str, count: int) -> PageAnalysis:
+def _page(value: Any, number: int, name: str, count: int, version: int) -> PageAnalysis:
     entry = _dict(value, f"page {number}")
     if entry.get("name") != name:
         raise ReviewFormatError(f"page {number} is not the page file {name}")
@@ -242,10 +248,11 @@ def _page(value: Any, number: int, name: str, count: int) -> PageAnalysis:
         flags=_flags(entry.get("flags")),
         marks=tuple(_box(box) for box in _list(entry.get("marks"), "marks", MAX_BOXES)),
         detail=_details(entry.get("detail")),
+        colour=decode_decision(entry.get("colour"), version),
     )
 
 
-def _edits(value: Any, count: int) -> Mapping[int, PageEdit]:
+def _edits(value: Any, count: int, version: int) -> Mapping[int, PageEdit]:
     edits: dict[int, PageEdit] = {}
     for key, raw in _dict(value, "edits").items():
         number = _number_key(key, "edits", count)
@@ -254,7 +261,7 @@ def _edits(value: Any, count: int) -> Mapping[int, PageEdit]:
         if include is not None:
             include = _flag(include, "include")
         turns = _whole(entry.get("turns"), "turns", 0, QUARTER_TURNS - 1)
-        edits[number] = PageEdit(include, turns)
+        edits[number] = PageEdit(include, turns, decode_policy(entry.get("colour"), version))
     return MappingProxyType(edits)
 
 
@@ -282,12 +289,14 @@ def _part_names(value: Any, count: int) -> Mapping[int, str]:
     )
 
 
-def _options(value: Any) -> StoredOptions | None:
+def _options(value: Any, version: int) -> StoredOptions | None:
     if value is None:
         return None
     entry = _dict(value, "options")
     try:
-        colour = ColourMode(_text(entry.get("colour"), "colour"))
+        colour = (ColourMode if version == 1 else ColourPolicy)(
+            _text(entry.get("colour"), "colour")
+        )
         ocr = OcrMode(_text(entry.get("ocr"), "ocr"))
         langs = validate_langs(_text(entry.get("langs"), "langs"))
     except ValueError as error:
@@ -315,13 +324,13 @@ def _decode(data: bytes, names: Sequence[str]) -> StoredReview:
     count = len(names)
     if not 1 <= count <= MAX_PAGES:
         raise ReviewFormatError(f"{count} pages are not 1 to {MAX_PAGES}")
-    if top.get("version") != FORMAT_VERSION or type(top.get("version")) is not int:
+    if top.get("version") not in (1, FORMAT_VERSION) or type(top.get("version")) is not int:
         raise ReviewFormatError("the format version is not one this program reads")
     entries = _list(top.get("pages"), "pages", count)
     if len(entries) != count:
         raise ReviewFormatError(f"the file has {len(entries)} pages, the folder {count}")
     pages = tuple(
-        _page(entry, number, name, count)
+        _page(entry, number, name, count, top["version"])
         for number, (entry, name) in enumerate(zip(entries, names, strict=True), start=1)
     )
     draft = DocumentDraft(
@@ -329,7 +338,7 @@ def _decode(data: bytes, names: Sequence[str]) -> StoredReview:
         raw_dir=None,
         duplex=_flag(top.get("duplex"), "duplex"),
         keep_blank=_flag(top.get("keep_blank"), "keep_blank"),
-        edits=_edits(top.get("edits", {}), count),
+        edits=_edits(top.get("edits", {}), count, top["version"]),
         order=_order(top.get("order", []), count),
         splits=_splits(top.get("splits", []), count),
         part_names=_part_names(top.get("part_names", {}), count),
@@ -338,4 +347,6 @@ def _decode(data: bytes, names: Sequence[str]) -> StoredReview:
     dpi = top.get("fallback_dpi")
     if dpi is not None:
         dpi = _whole(dpi, "fallback_dpi", MIN_DPI, MAX_DPI)
-    return StoredReview(draft, version, _options(top.get("options")), dpi, "fallback_dpi" in top)
+    return StoredReview(
+        draft, version, _options(top.get("options"), top["version"]), dpi, "fallback_dpi" in top
+    )

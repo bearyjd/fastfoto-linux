@@ -57,6 +57,10 @@ def check_settings(settings: DocumentSettings) -> CheckedSettings:
             f"the name {settings.name!r} has no usable characters for a file name"
         ) from error
     try:
+        ColourPolicy(settings.colour)
+    except (TypeError, ValueError) as error:
+        raise DocumentSettingsError("colour mode must be auto, colour, grey or bw") from error
+    try:
         validate_langs(settings.langs)
     except ValueError as error:
         raise DocumentSettingsError(str(error)) from error

@@ -156,6 +156,8 @@ class PageEdit:
     colour: ColourPolicy | None = None
 
     def __post_init__(self) -> None:
+        if self.colour is not None and not isinstance(self.colour, ColourPolicy):
+            raise ValueError("page colour must be a known output policy")
         if not 0 <= self.quarter_turns < QUARTER_TURNS:
             raise ValueError(f"quarter turns must be 0 to 3, got {self.quarter_turns}")
 

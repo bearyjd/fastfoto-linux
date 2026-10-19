@@ -120,7 +120,9 @@ def _is_fresh(
     stored: StoredReview, pages: Sequence[Path], settings: DocumentSettings | None
 ) -> bool:
     """Whether the stored analysis is the one that would be made now."""
-    if stored.analysis_version != ANALYSIS_VERSION:
+    if stored.analysis_version != ANALYSIS_VERSION or any(
+        page.colour is None for page in stored.draft.pages
+    ):
         return False
     if settings is not None and (
         stored.draft.duplex != settings.duplex

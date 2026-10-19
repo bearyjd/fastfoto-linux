@@ -121,7 +121,7 @@ def validate_edits(edits: PageEdits, page_count: int) -> None:
     """Raise DocumentEditError for edits that cannot be made to a document of ``page_count``
     pages: a page that is not there, a page both left out and brought back, a turn that is not
     1 to 3 quarter turns, an order that is not a permutation, a part number below 1."""
-    mentioned = [*edits.drop, *edits.keep, *edits.rotate, *edits.split]
+    mentioned = [*edits.drop, *edits.keep, *edits.rotate, *edits.split, *edits.colour]
     for number in sorted(mentioned):
         if not 1 <= number <= page_count:
             raise DocumentEditError(
@@ -137,6 +137,8 @@ def validate_edits(edits: PageEdits, page_count: int) -> None:
             f"the order must be a permutation of the page numbers 1 to {page_count}: "
             "every page exactly once"
         )
+    for policy in edits.colour.values():
+        _checked_colour(policy)
     for part in sorted(edits.part_names):
         if part < 1:
             raise DocumentEditError(f"part {part} does not exist: parts count from 1")
@@ -154,6 +156,8 @@ def with_edits(draft: DocumentDraft, edits: PageEdits) -> DocumentDraft:
     for number, turns in sorted(edits.rotate.items()):
         edit = edited.edits.get(number, PageEdit())
         edited = _with_page_edit(edited, number, replace(edit, quarter_turns=turns))
+    for number, policy in sorted(edits.colour.items()):
+        edited = set_colour(edited, number, policy)
     edited = replace(edited, splits=edited.splits | edits.split)
     for part, name in sorted(edits.part_names.items()):
         edited = set_part_name(edited, part, name)
@@ -183,4 +187,12 @@ def parts(draft: DocumentDraft) -> tuple[OutputPart, ...]:
 
 def set_colour(draft: DocumentDraft, number: int, policy: ColourPolicy | None) -> DocumentDraft:
     """Return a draft with this raw page's policy override, or cleared with None."""
-    raise NotImplementedError("document colour overrides are not implemented")
+    _page(draft, number)
+    _checked_colour(policy)
+    edit = draft.edits.get(number, PageEdit())
+    return _with_page_edit(draft, number, replace(edit, colour=policy))
+
+
+def _checked_colour(policy: ColourPolicy | None) -> None:
+    if policy is not None and not isinstance(policy, ColourPolicy):
+        raise DocumentEditError("page colour mode must be Auto, colour, grey or black and white")

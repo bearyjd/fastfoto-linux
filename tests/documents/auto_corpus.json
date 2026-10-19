@@ -61,7 +61,41 @@
       "case": "blank",
       "expected_auto": null,
       "content": "White page; inclusion judged independently"
+    },
+    {
+      "case": "antialiased_text",
+      "expected_auto": "bw",
+      "content": "45/245 neutral glyphs, physical 0.25mm stroke and 3mm font height, antialiased edges, seed 611 paper noise",
+      "dpi": [
+        300,
+        600
+      ],
+      "source_kinds": [
+        "colour",
+        "grey"
+      ]
+    },
+    {
+      "case": "antialiased_text_with_pencil",
+      "expected_auto": "grey",
+      "content": "Separate 0.18mm faint 221-level neutral line beside antialiased text",
+      "dpi": [
+        300,
+        600
+      ]
+    },
+    {
+      "case": "antialiased_text_with_photo",
+      "expected_auto": "grey",
+      "content": "Separate neutral continuous-tone patch beside antialiased text",
+      "dpi": [
+        300,
+        600
+      ]
     }
   ],
-  "held_out_real_evaluation": "Pending separately rights-cleared corpus; no downloads authorized"
+  "held_out_real_evaluation": "Pending separately rights-cleared corpus; no downloads authorized",
+  "additional_generators": [
+    "tests/documents/auto_antialias.py:antialiased_page"
+  ]
 }

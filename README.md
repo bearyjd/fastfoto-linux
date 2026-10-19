@@ -103,6 +103,16 @@ uv run ffscan process page-*.png --out ~/Scans --album "Family Trips"
   answering or in use by another program, 4 no documents in the feeder. `-v` logs progress,
   `--debug` adds tracebacks.
 
+## Scanner power settings
+
+In the desktop app, open **Scanner settings**, then **Read settings** to read the
+FF-680W's current sleep and AC power-off timers over USB. Choose a supported delay
+and use **Apply changes** to write it and verify the returned values. Opening the
+page and changing a selection do not write settings; **Off** appears only when the
+scanner advertises it. See the [settings guide](docs/SCANNER_SETTINGS.md) for usage
+and recovery, and the [capability and API inventory](docs/SCANNER_CAPABILITIES.md)
+for documented vendor features, application coverage and remaining gaps.
+
 ## Documents to PDF (preview)
 
 Letters, forms and receipts to one multi-page PDF, with blank pages dropped and, when OCR is

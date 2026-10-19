@@ -13,7 +13,7 @@ from enum import Enum, auto
 from pathlib import Path
 from typing import IO, cast
 
-from fastfoto_linux.scanner import unclean
+from fastfoto_linux.scanner import recovery, unclean
 from fastfoto_linux.scanner.errors import (
     NoDocumentsError,
     OutputDirError,
@@ -101,6 +101,8 @@ def run_scan(  # noqa: PLR0913
     """
     if cancel is not None and cancel.is_set():
         raise ScanCancelledError("scan cancelled before it started")
+    # A network alias may still address the physical scanner whose USB session is unfinished.
+    recovery.require_ready()
     _prepare_output_dir(job)
     proc = _start(popen, build_argv(job, scanimage), env)
     note = _unclean_noter(job)

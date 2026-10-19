@@ -26,6 +26,7 @@ from fastfoto_linux.gui.form import (
 )
 from fastfoto_linux.gui.modes import ModeSide, PhotosSide, View, WorkerPort
 from fastfoto_linux.gui.photos import PhotoItem, item_from_files
+from fastfoto_linux.gui.power import RESTART_MESSAGE, PowerSettings
 from fastfoto_linux.gui.report import (
     CHECKING_TEXT,
     FOUND_TEXT,
@@ -98,6 +99,12 @@ class Controller:
         self._documents: tuple[DocumentItem, ...] = ()
         self._other_views: dict[Mode, View] = {}
         self.review = ReviewSide(self)
+        self.power = PowerSettings(
+            worker,
+            busy=lambda: self.busy or bool(getattr(self._worker, "busy", False)),
+            changed=self._changed,
+        )
+        self.on_power = self.power.complete
         self.on_review_preview = self.review.preview_ready
         self._set_form(form or ScanForm(), disk=disk_check is None)
 
@@ -151,7 +158,7 @@ class Controller:
     @property
     def busy(self) -> bool:
         """True while a job runs, or while the folder is looked at before a scan starts."""
-        return is_busy(self._state) or self.starting_scan
+        return is_busy(self._state) or self.starting_scan or self.power.pending
 
     @property
     def running(self) -> bool:
@@ -175,6 +182,9 @@ class Controller:
             and self._scanner_ready
             and not self.errors
             and not self.starting_scan
+            and not self.busy
+            and not self.power.reconnect_required
+            and not bool(getattr(self._worker, "busy", False))
         )
 
     @property
@@ -182,6 +192,8 @@ class Controller:
         """Why Scan is disabled, in words for the user; empty when it is enabled or a job runs."""
         if self.starting_scan:
             return CHECKING_DISK_TEXT
+        if self.power.reconnect_required:
+            return RESTART_MESSAGE
         if self.busy or self.can_scan:
             return ""
         errors = self.errors
@@ -200,7 +212,7 @@ class Controller:
 
     @property
     def can_check(self) -> bool:
-        return not self.busy
+        return not self.busy and not self.power.reconnect_required
 
     @property
     def can_process_kept(self) -> bool:
@@ -552,12 +564,16 @@ class Controller:
     def _set_scanner(self, error: Exception | None, *, repeated: bool = False) -> None:
         """Remember what a check or a lost scanner said; ``repeated``: a banner says it already."""
         self._scanner_ready = error is None
+        if error is not None:
+            self.power.select(None)
         if error is None:
             self._scanner_message = FOUND_TEXT
         else:
             self._scanner_message = LOST_TEXT if repeated else error_text(error)
 
     def _why_not_scan(self) -> str:
+        if self.power.reconnect_required:
+            return RESTART_MESSAGE
         if self.errors:
             return f"the form has errors in {', '.join(self.errors)}"
         if not self._scanner_ready:

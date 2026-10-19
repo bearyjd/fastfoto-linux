@@ -26,10 +26,19 @@ from fastfoto_linux.gui.form import (
     validate,
     validate_syntax,
 )
+from fastfoto_linux.gui.power import PowerResult, PowerTools
+from fastfoto_linux.gui.power_recovery import PowerRecovery
 from fastfoto_linux.gui.reviewjobs import PreviewResult, ReviewJobs
 from fastfoto_linux.output import WrittenFiles
 from fastfoto_linux.pipeline.process import ProcessResult, process_pages
 from fastfoto_linux.scanner import ScanTarget, default_shim_candidates, resolve_target
+from fastfoto_linux.scanner.power import (
+    PowerChanges,
+    PowerSnapshot,
+    apply_power_settings,
+    read_power_settings,
+)
+from fastfoto_linux.scanner.usb import UsbScanner, find_usb_scanners
 from fastfoto_linux.session import (
     DocumentScanRequest,
     DocumentSessionResult,
@@ -65,6 +74,7 @@ class WorkerSink(Protocol):
     def on_finished(self, result: SessionResult | DocumentSessionResult) -> None: ...
     def on_error(self, error: Exception) -> None: ...
     def on_review_preview(self, answer: PreviewResult) -> None: ...
+    def on_power(self, answer: PowerResult) -> None: ...
 
 
 def default_discover() -> ScanTarget:
@@ -75,7 +85,7 @@ def default_discover() -> ScanTarget:
 class Worker:
     """One background job at a time: check the scanner, scan a batch, or process kept pages."""
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 - worker collaborators are explicit test seams
         self,
         sink: WorkerSink,
         *,
@@ -83,9 +93,12 @@ class Worker:
         session: SessionFn | None = None,
         process: ProcessFn | None = None,
         documents: DocumentTools | None = None,
+        power: PowerTools | None = None,
     ) -> None:
         """The three collaborators default to the real ones, looked up when the worker is made."""
         self._sink = sink
+        self._power_tools = power or PowerTools()
+        self._power_recovery = PowerRecovery()
         self._discover = default_discover if discover is None else discover
         self._session = run_session if session is None else session
         self._process = process_pages if process is None else process
@@ -120,6 +133,7 @@ class Worker:
                 return functools.partial(self._sink.on_scanner, error)
             return functools.partial(self._sink.on_scanner, None)
 
+        self._require_power_safe()
         self._start(job)
 
     def scan(self, form: ScanForm, *, checked: bool = False) -> None:
@@ -128,6 +142,7 @@ class Worker:
         ``checked``: the caller has just read the disk for this form, so only the form's text is
         looked at here, on the caller's thread (the job looks at the disk again on its own).
         """
+        self._require_power_safe()
         errors = validate_syntax(form) if checked else validate(form)
         if errors:
             raise FormInvalidError(errors)
@@ -148,6 +163,7 @@ class Worker:
         the session refuses a missing one before it scans anything, and its message is the
         authority.
         """
+        self._require_power_safe()
         errors = document_errors(form, folder, disk=not checked)
         if errors:
             raise FormInvalidError(errors)
@@ -168,6 +184,56 @@ class Worker:
             raise RuntimeError("no scan has run, so there are no settings to process the pages")
         self._start(lambda cancel: self._process_kept(kept, request, cancel))
 
+    @property
+    def reconnect_required(self) -> bool:
+        """True after a device reply requires a physical scanner restart."""
+        return self._power_recovery.required
+
+    @property
+    def power_recovery_message(self) -> str:
+        return self._power_recovery.message
+
+    def check_power_connection(self) -> None:
+        """Check USB metadata for physical reconnection, without issuing device commands."""
+        self._start(self._power_connection)
+
+    def read_power(self, scanner: UsbScanner | None = None) -> None:
+        """Read power settings through the shared job queue."""
+        self._require_power_safe()
+        read = self._power_tools.read or read_power_settings
+        self._start(
+            lambda cancel: self._power_job(lambda: read(scanner, cancel=cancel)), daemon=False
+        )
+
+    def apply_power(self, scanner: UsbScanner, changes: PowerChanges) -> None:
+        """Apply power changes through the shared job queue."""
+        self._require_power_safe()
+        apply = self._power_tools.apply or apply_power_settings
+        self._start(
+            lambda cancel: self._power_job(lambda: apply(scanner, changes, cancel=cancel)),
+            daemon=False,
+        )
+
+    def _require_power_safe(self) -> None:
+        self._power_recovery.require()
+
+    def _power_job(self, action: Callable[[], PowerSnapshot]) -> Callable[[], None]:
+        try:
+            result = PowerResult(snapshot=action())
+        except Exception as error:
+            self._power_recovery.observe(error)
+            result = PowerResult(error=error)
+        return functools.partial(self._sink.on_power, result)
+
+    def _power_connection(self, cancel: threading.Event) -> Callable[[], None]:
+        try:
+            visible = (self._power_tools.discover or find_usb_scanners)()
+            restarted = self._power_recovery.check(visible, cancel)
+            result = PowerResult(recovered_scanner=restarted)
+        except Exception as error:
+            result = PowerResult(error=error)
+        return functools.partial(self._sink.on_power, result)
+
     def cancel(self) -> None:
         """Ask the running job to stop; harmless when nothing runs."""
         self._cancel.set()
@@ -183,14 +249,14 @@ class Worker:
         if thread is not None:
             thread.join(timeout)
 
-    def _start(self, job: _Job) -> None:
+    def _start(self, job: _Job, *, daemon: bool = True) -> None:
         with self._lock:
             if self._busy:
                 raise WorkerBusyError("the scanner is busy with another job")
             self._busy = True
             self._cancel = threading.Event()
             self._thread = threading.Thread(
-                target=self._run, args=(job, self._cancel), name="fastfoto-worker", daemon=True
+                target=self._run, args=(job, self._cancel), name="fastfoto-worker", daemon=daemon
             )
         self._thread.start()
 

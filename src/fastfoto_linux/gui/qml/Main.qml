@@ -13,7 +13,28 @@ Kirigami.ApplicationWindow {
     minimumHeight: Kirigami.Units.gridUnit * 30
     visible: true
 
-    pageStack.initialPage: ScanPage {}
+    pageStack.initialPage: ScanPage { onSettingsRequested: root.openSettings() }
+    property var settingsPage: null
+    // Settings replaces the workspace visually; the scan form keeps its full layout underneath.
+    pageStack.defaultColumnWidth: settingsPage !== null ? pageStack.width : Kirigami.Units.gridUnit * 20
+
+    function openSettings() {
+        if (settingsPage !== null) {
+            if (pageStack.currentItem === settingsPage) return;
+            settingsPage.destroy();
+        }
+        settingsPage = settingsComponent.createObject(root.pageStack);
+        pageStack.push(settingsPage);
+    }
+
+    function closeSettings() {
+        if (settingsPage === null) return;
+        if (pageStack.currentItem === settingsPage) pageStack.pop();
+        const previous = settingsPage;
+        settingsPage = null;
+        previous.destroy();
+    }
+
     property var reviewPage: null
     property bool syncingReview: false
 
@@ -22,9 +43,11 @@ Kirigami.ApplicationWindow {
         syncingReview = true;
         try {
             if (bridge.review.active && reviewPage === null) {
+                closeSettings();
                 reviewPage = reviewComponent.createObject(root.pageStack);
                 pageStack.push(reviewPage);
             } else if (!bridge.review.active && reviewPage !== null) {
+                closeSettings();
                 const previous = reviewPage;
                 pageStack.pop();
                 reviewPage = null;
@@ -40,6 +63,12 @@ Kirigami.ApplicationWindow {
         syncReview();
     }
     Component { id: reviewComponent; ReviewPage {} }
+    Component {
+        id: settingsComponent
+        ScannerSettingsPage {
+            onCloseRequested: root.closeSettings()
+        }
+    }
     Connections {
         target: bridge.review
         function onChanged() { root.syncReview(); }

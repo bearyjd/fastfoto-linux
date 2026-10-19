@@ -12,6 +12,7 @@ import time
 from collections.abc import Callable, Iterator
 from typing import Any
 
+from fastfoto_linux.scanner import recovery
 from fastfoto_linux.scanner.errors import ScannerError, ScannerInUseError
 from fastfoto_linux.scanner.unstick import DeviceGoneError, TransportError, UsbTransport
 from fastfoto_linux.scanner.usb import USB_PRODUCT_ID, USB_VENDOR_ID
@@ -257,6 +258,7 @@ def open_scanner(
     reason. The interface is released, the device closed and libusb exited on every way out, so
     that nothing is held when scanimage starts.
     """
+    recovery.require_address_ready(bus, address)
     library = load_libusb() if lib is None else lib
     _declare(library)
     with (

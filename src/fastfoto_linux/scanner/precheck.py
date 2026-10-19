@@ -14,7 +14,7 @@ import time
 from collections.abc import Callable, Mapping
 from typing import Any
 
-from fastfoto_linux.scanner import unclean
+from fastfoto_linux.scanner import recovery, unclean
 from fastfoto_linux.scanner.errors import ScanCancelledError, ScannerStuckError
 from fastfoto_linux.scanner.libusb import (
     CheckUnavailableError,
@@ -62,6 +62,8 @@ def check_scanner(  # noqa: PLR0913 - keyword-only knobs, most of them test seam
     """
     environ = os.environ if env is None else env
     address = usb_address(device)
+    if address is not None:
+        recovery.require_address_ready(*address)
     if address is None or not precheck_applies(device, environ):
         return
     if cancel is not None and cancel.is_set():

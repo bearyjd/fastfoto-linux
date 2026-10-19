@@ -430,7 +430,7 @@ def test_a_note_that_cannot_be_written_does_not_replace_the_scan_error(
 ) -> None:
     blocker = tmp_path / "a-file"
     blocker.write_text("not a folder")
-    monkeypatch.setenv("XDG_STATE_HOME", str(blocker / "state"))
+    monkeypatch.setattr(unclean, "marker_path", lambda: blocker / "state" / "scanner-unclean")
     env = fake_env(bin_dir, pages=1, early_stderr_lines=[IO_ERROR], hang=True)
 
     with pytest.raises(ScanError, match="Error during device I/O") as excinfo:

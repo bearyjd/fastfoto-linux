@@ -19,6 +19,7 @@ SIGNAL_READ_BYTES = 4096
 APP_ID = "io.github.bearyjd.FastFotoLinux"
 APP_NAME = "fastfoto-linux"
 DISPLAY_NAME = "FastFoto Linux"
+TEARDOWN_INCUBATE_MS = 20  # finish small asynchronous toolbar delegates before engine deletion
 STYLE = "org.kde.desktop"
 STYLE_ENV_VAR = "QT_QUICK_CONTROLS_STYLE"
 MISSING_QT_MESSAGE = (
@@ -86,6 +87,12 @@ def destroy_now(item: Any) -> None:
     import shiboken6  # noqa: PLC0415
 
     if shiboken6.isValid(item):
+        # A window closed before its first frame can still be creating toolbar actions. Complete
+        # that bounded QML work before deleting its engine; no event loop or worker job is run.
+        incubation = getattr(item, "incubationController", None)
+        controller = incubation() if incubation is not None else None
+        if controller is not None:
+            controller.incubateFor(TEARDOWN_INCUBATE_MS)
         shiboken6.delete(item)
 
 

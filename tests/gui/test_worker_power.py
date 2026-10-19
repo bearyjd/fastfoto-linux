@@ -1,7 +1,10 @@
 """Power operations share the scanner worker and report after ownership is released."""
 
+import subprocess
+import sys
 import threading
 from dataclasses import replace
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -10,6 +13,7 @@ from fastfoto_linux.gui.docform import DocumentForm
 from fastfoto_linux.gui.form import ScanForm
 from fastfoto_linux.gui.power import PowerResult, PowerTools
 from fastfoto_linux.gui.worker import Worker, WorkerBusyError
+from fastfoto_linux.scanner import recovery
 from fastfoto_linux.scanner.power import (
     PowerChanges,
     PowerSettingsError,
@@ -193,3 +197,67 @@ def test_aligned_failure_does_not_require_physical_reconnection() -> None:
     worker.join(WAIT)
     assert not worker.reconnect_required
     assert sink.events[-1][1].error.reconnect_required is False
+
+
+def test_power_job_keeps_the_process_alive_until_cleanup_finishes(tmp_path: Path) -> None:
+    marker = tmp_path / "power-cleanup.txt"
+    done = subprocess.run(
+        [sys.executable, "-m", "tests.gui.power_lifetime_app", str(marker)],
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
+    )
+    assert done.returncode == 0, done.stderr
+    assert marker.read_text() == "cleanup finished"
+
+
+def test_new_worker_loads_persisted_guard_before_discovery_or_scanner_io() -> None:
+    recovery.begin(SCANNER)
+    sink = PowerSink()
+    worker = make_worker(sink)
+    assert worker.reconnect_required
+    with pytest.raises(PowerSettingsError):
+        worker.check()
+    with pytest.raises(PowerSettingsError):
+        worker.read_power()
+    assert sink.events == []
+    assert recovery.pending_targets() == (SCANNER,)
+
+
+def test_metadata_recovery_clears_durable_marker_and_a_new_worker_stays_safe() -> None:
+    recovery.begin(SCANNER)
+    worker = make_worker(PowerSink())
+    restarted = replace(SCANNER, device=SCANNER.device + 10)
+    worker._power_tools = PowerTools(discover=lambda: (restarted,))
+    worker.check_power_connection()
+    worker.join(WAIT)
+    assert recovery.pending_targets() == ()
+    assert not worker.reconnect_required
+    assert not make_worker(PowerSink()).reconnect_required
+
+
+def test_pending_marker_created_by_another_process_is_checked_before_each_device_job() -> None:
+    worker = make_worker(PowerSink())
+    assert not worker.reconnect_required
+    recovery.begin(SCANNER)
+    with pytest.raises(PowerSettingsError):
+        worker.check()
+    assert worker.reconnect_required
+
+
+def test_corrupt_persistent_state_preserves_the_actionable_diagnostic(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def corrupt() -> tuple[Any, ...]:
+        raise PowerSettingsError(
+            "Unreadable recovery journal: turn scanner off, then repair the state file",
+            reconnect_required=True,
+        )
+
+    monkeypatch.setattr(recovery, "pending_targets", corrupt)
+    worker = make_worker(PowerSink())
+    assert worker.reconnect_required
+    assert "repair the state file" in worker.power_recovery_message
+    with pytest.raises(PowerSettingsError, match="repair the state file"):
+        worker.check()

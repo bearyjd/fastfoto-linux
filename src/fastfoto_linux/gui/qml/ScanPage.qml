@@ -9,6 +9,15 @@ Kirigami.Page {
     objectName: "scanPage"
     title: bridge.mode === "documents" ? qsTr("Scan documents") : qsTr("Scan photos")
     padding: Kirigami.Units.largeSpacing
+    signal settingsRequested()
+    actions: [
+        Kirigami.Action {
+            objectName: "scannerSettingsAction"
+            text: qsTr("Scanner settings")
+            icon.name: "configure"
+            onTriggered: page.settingsRequested()
+        }
+    ]
 
     function messageType(kind) {
         switch (kind) {

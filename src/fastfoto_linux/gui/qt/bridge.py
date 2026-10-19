@@ -22,6 +22,7 @@ from fastfoto_linux.gui.form import (
     absolute_folder,
     validate_filesystem,
 )
+from fastfoto_linux.gui.power import PowerResult, PowerTools
 from fastfoto_linux.gui.prefs import (
     load_document_form,
     load_form,
@@ -32,6 +33,7 @@ from fastfoto_linux.gui.prefs import (
 )
 from fastfoto_linux.gui.qt.documents_view import DocumentsView
 from fastfoto_linux.gui.qt.photos_model import PhotosModel, file_url
+from fastfoto_linux.gui.qt.power_view import PowerView
 from fastfoto_linux.gui.qt.review_view import ReviewView
 from fastfoto_linux.gui.report import photos_heading
 from fastfoto_linux.gui.state import ActionBlockedError, Mode
@@ -117,12 +119,13 @@ class Bridge(QObject):
         process: ProcessFn | None = None,
         mode: Mode | None = None,
         documents: DocumentTools | None = None,
+        power: PowerTools | None = None,
     ) -> None:
         super().__init__()
         self._photos = PhotosModel(self)
         tools = documents or DocumentTools()
         self._worker = Worker(
-            self, discover=discover, session=session, process=process, documents=tools
+            self, discover=discover, session=session, process=process, documents=tools, power=power
         )
         start = form if form is not None else (load_form() if remember else ScanForm())
         self.controller = Controller(
@@ -142,6 +145,7 @@ class Bridge(QObject):
         self._documents = DocumentsView(self.controller, self)
         self._languages = self._documents.languages
         self._review = ReviewView(self)
+        self._power = PowerView(self)
         self.on_review_preview = lambda answer: self._send("on_review_preview", answer)
         self._close_signalled = False
         self._closed = False
@@ -159,6 +163,9 @@ class Bridge(QObject):
         self._languages.reload()
 
     # -- the worker's sink (called on the worker's thread) ----------------------------------
+
+    def on_power(self, answer: PowerResult) -> None:
+        self._send("on_power", answer)
 
     def on_scanner(self, error: Exception | None) -> None:
         self._send("on_scanner", error)
@@ -225,12 +232,14 @@ class Bridge(QObject):
     @Slot(object, object)
     @_guarded(None)
     def _disk_answered(self, key: Any, errors: Any) -> None:
-        self.controller.on_disk(key, errors)
+        if not self._closed:
+            self.controller.on_disk(key, errors)
 
     @Slot(str, object)
     @_guarded(None, job=True)
     def _dispatch(self, name: str, payload: Any) -> None:
-        getattr(self.controller, name)(payload)
+        if not self._closed:
+            getattr(self.controller, name)(payload)
 
     def _fail(self, error: Exception, *, job: bool = False) -> None:
         try:
@@ -239,9 +248,12 @@ class Bridge(QObject):
             logger.exception("could not show the error %r", error)
 
     def _on_change(self) -> None:
+        if self._closed:
+            return
         self._photos.set_items(self.controller.photos)
         self._documents.refresh()
         self._review.refresh()
+        self._power.refresh()
         self.changed.emit()
         if self.controller.close_ready and not self._close_signalled:
             self._close_signalled = True
@@ -271,7 +283,7 @@ class Bridge(QObject):
 
     @Property(bool, notify=changed)
     def busy(self) -> bool:
-        return self.controller.busy
+        return self.controller.busy or self._worker.busy
 
     @Property(bool, notify=changed)
     def running(self) -> bool:
@@ -293,11 +305,11 @@ class Bridge(QObject):
 
     @Property(bool, notify=changed)
     def canCheck(self) -> bool:
-        return self.controller.can_check
+        return self.controller.can_check and not self._worker.busy
 
     @Property(bool, notify=changed)
     def canProcessKept(self) -> bool:
-        return self.controller.can_process_kept
+        return self.controller.can_process_kept and not self._worker.busy
 
     @Property("QVariantMap", notify=changed)
     def form(self) -> dict[str, Any]:
@@ -380,6 +392,10 @@ class Bridge(QObject):
     @Property(QObject, constant=True)
     def documents(self) -> DocumentsView:
         return self._documents
+
+    @Property(QObject, constant=True)
+    def power(self) -> PowerView:
+        return self._power
 
     @Property(QObject, constant=True)
     def review(self) -> ReviewView:

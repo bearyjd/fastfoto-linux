@@ -7,7 +7,12 @@ import pytest
 from fastfoto_linux.gui.power import PowerResult, PowerSettings
 from fastfoto_linux.gui.state import ActionBlockedError
 from fastfoto_linux.scanner import ScannerNotFoundError
-from fastfoto_linux.scanner.power import PowerChanges, TimerCapability
+from fastfoto_linux.scanner.power import (
+    PowerChanges,
+    PowerReadbackError,
+    PowerWriteUncertainError,
+    TimerCapability,
+)
 from tests.gui.power_helpers import OTHER_SCANNER, SCANNER, PowerWorker, snapshot
 
 
@@ -160,3 +165,43 @@ def test_start_failure_is_visible_and_does_not_leave_a_pending_job() -> None:
     settings.read()
     assert not settings.pending
     assert "busy" in settings.message
+
+
+def test_readback_mismatch_shows_returned_current_values_but_requires_refresh() -> None:
+    settings, worker = loaded()
+    settings.set_value("sleep_minutes", 20)
+    settings.apply()
+    actual = snapshot(sleep_minutes=21)
+    settings.complete(PowerResult(error=PowerReadbackError("different settings returned", actual)))
+    assert settings.snapshot == actual
+    assert settings.drafts == {}
+    assert settings.can_read
+    assert not settings.can_apply
+    assert len(worker.calls) == 2
+
+
+def test_disconnect_forgets_bound_target_so_a_new_read_can_discover_again() -> None:
+    settings, worker = loaded()
+    settings.read()
+    settings.complete(PowerResult(error=ScannerNotFoundError("disconnected")))
+    assert settings.target is None
+    settings.read()
+    assert worker.calls[-1] == ("read", None)
+
+
+def test_late_unsafe_report_survives_selection_change_and_blocks_new_reads() -> None:
+    settings, worker = loaded()
+    settings.read()
+    settings.select(OTHER_SCANNER)
+    settings.complete(
+        PowerResult(
+            error=PowerWriteUncertainError("partial PARA", scanner=SCANNER, reconnect_required=True)
+        )
+    )
+    assert settings.reconnect_required
+    assert not settings.can_read
+    assert not settings.can_apply
+    settings.select(None)
+    assert settings.reconnect_required
+    assert "off and on" in settings.message.lower()
+    assert len(worker.calls) == 2

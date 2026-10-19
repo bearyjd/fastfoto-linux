@@ -17,6 +17,7 @@ ICON = ROOT / "packaging" / f"{APP_ID}.svg"
 QML_FILES = (
     "Main.qml",
     "ScanPage.qml",
+    "ScannerSettingsPage.qml",
     "FormPanel.qml",
     "ResultsView.qml",
     "PhotoCell.qml",

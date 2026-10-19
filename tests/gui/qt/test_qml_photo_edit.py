@@ -159,3 +159,60 @@ def test_manual_click_uses_retained_dpi_and_source_pixels(make_bridge, open_wind
     assert view.candidates[0]["accepted"]
     assert view.candidates[0]["origin"] == "manual"
     assert warnings == []
+
+
+@pytest.mark.parametrize("commit_key", [Qt.Key.Key_Return, Qt.Key.Key_Tab])
+@pytest.mark.parametrize(
+    "case",
+    [
+        ("photoCenterX", "23.25", 0, False),
+        ("photoCenterY", "23.25", 1, False),
+        ("photoRadiusX", "3.25", 0, True),
+        ("photoRadiusY", "3.25", 1, True),
+    ],
+)
+def test_fractional_geometry_keyboard_entry_commits_once(
+    make_bridge,
+    open_window,
+    out,
+    case,
+    commit_key,
+):
+    name, text, axis, is_radius = case
+    bridge, view, _worker = open_editor(make_bridge, out)
+    window, warnings = open_window(bridge)
+    page = child(window, "photoEditPage")
+    wait_until(
+        lambda: page.property("opacity") >= 0.99 and abs(page.mapToScene(QPointF(0, 0)).x()) < 1,
+        "photo review viewport",
+    )
+    control = child(page, name)
+    field = control.property("contentItem")
+    initial = bridge.controller.photo_edit.recipe
+    invoke(field, "forceActiveFocus")
+    settle()
+    QTest.keyClick(window, Qt.Key.Key_A, Qt.KeyboardModifier.ControlModifier)
+    for character in text:
+        QTest.keyClick(window, Qt.Key(ord(character)))
+    assert bridge.controller.photo_edit.recipe is initial, "typing must not commit partial geometry"
+    assert field.property("text") == text
+    assert field.property("acceptableInput")
+    QTest.keyClick(window, commit_key)
+    settle()
+    recipe = bridge.controller.photo_edit.recipe
+    assert recipe is not initial
+    eye = recipe.eyes[0]
+    if is_radius:
+        assert eye.center == initial.eyes[0].center
+        # A radius of 3.25 includes the (3,1) edge point excluded by a radius of 3.
+        x, y = (26, 24) if axis == 0 else (24, 26)
+        assert eye.mask[y - eye.roi[1], x - eye.roi[0]]
+        assert not eye.mask[0, 0]
+    else:
+        assert eye.center[axis] == pytest.approx(23.25)
+        assert eye.center[1 - axis] == initial.eyes[0].center[1 - axis]
+    assert view.canUndo
+    view.undo()
+    assert bridge.controller.photo_edit.recipe is initial
+    assert not view.canUndo, "one completed entry must create exactly one undo step"
+    assert warnings == []

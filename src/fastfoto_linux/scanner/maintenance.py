@@ -38,6 +38,7 @@ class Maintenance:
         self.owned = False
         self.synchronized = True
         self.parameter_attempted = False
+        self.attempted_io = False
         self.cleaning_up = False
 
     def check(self) -> None:
@@ -107,6 +108,7 @@ class Maintenance:
         while rest:
             timeout = self._timeout()
             try:
+                self.attempted_io = True
                 taken = self.transport.write(rest, timeout)
             except TransportError as exc:
                 raise self.error(

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from fastfoto_linux.scanner import libusb, power, precheck, recovery
+from fastfoto_linux.scanner import libusb, power, precheck, recovery, target
 from fastfoto_linux.scanner.errors import ScannerInUseError
 from fastfoto_linux.scanner.job import ScanJob
 from fastfoto_linux.scanner.power import PowerSettingsError
@@ -192,3 +192,62 @@ def test_safe_semantic_error_fin_clears_durable_marker(monkeypatch):
         power.read_power_settings(TARGET)
     assert not error.value.reconnect_required
     assert recovery.pending_targets() == ()
+
+
+def test_actual_state_sync_failure_prevents_first_out(monkeypatch):
+    usb = read_usb()
+    install_usb(monkeypatch, usb)
+
+    def fail_sync(_fd):
+        raise OSError("synthetic state storage failure")
+
+    monkeypatch.setattr(recovery.os, "fsync", fail_sync)
+    with pytest.raises(PowerSettingsError) as error:
+        power.read_power_settings(TARGET)
+    assert usb.stream == b""
+    assert str(recovery.marker_path(TARGET)) in str(error.value)
+    assert usb.released
+
+
+def test_corrupt_state_diagnostic_names_repair_location():
+    recovery.begin(TARGET)
+    recovery.marker_path(TARGET).write_text("broken", encoding="ascii")
+    with pytest.raises(PowerSettingsError) as error:
+        recovery.require_ready()
+    assert str(recovery.marker_path(TARGET)) in str(error.value)
+    assert "off" in str(error.value)
+    assert "broken" not in str(error.value)
+
+
+def test_verified_fin_but_failed_marker_clear_still_blocks_future_operations(monkeypatch):
+    usb = read_usb()
+    install_usb(monkeypatch, usb)
+
+    def fail_clear(_scanner):
+        raise PowerSettingsError("Could not clear state", scanner=TARGET, reconnect_required=True)
+
+    monkeypatch.setattr(recovery, "complete", fail_clear)
+    with pytest.raises(power.PowerCleanupError) as error:
+        power.read_power_settings(TARGET)
+    assert error.value.reconnect_required
+    assert recovery.pending_targets() == (TARGET,)
+    assert usb.stream.endswith(b"FIN x0000000")
+
+
+def test_target_resolution_cannot_ignore_saved_recovery(monkeypatch):
+    recovery.begin(TARGET)
+    monkeypatch.setattr(target, "find_usb_scanners", lambda _root: (TARGET,))
+    with pytest.raises(PowerSettingsError):
+        target.resolve_target(shim_candidates=())
+
+
+def test_unknown_usb_sane_name_cannot_bypass_guard(tmp_path):
+    recovery.begin(TARGET)
+    with pytest.raises(PowerSettingsError):
+        run_scan(ScanJob("epson2:libusb:001:004", tmp_path / "out"), env={})
+
+
+def test_network_alias_cannot_bypass_unsafe_physical_scanner_guard(tmp_path):
+    recovery.begin(TARGET)
+    with pytest.raises(PowerSettingsError):
+        run_scan(ScanJob("epsonds:net:scanner.example", tmp_path / "out"), env={})

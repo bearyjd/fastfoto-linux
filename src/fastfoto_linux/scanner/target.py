@@ -5,6 +5,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+from fastfoto_linux.scanner import recovery
 from fastfoto_linux.scanner.errors import ScannerNotFoundError, ShimMissingError
 from fastfoto_linux.scanner.job import build_env, validate_shim_path
 from fastfoto_linux.scanner.network import (
@@ -86,6 +87,7 @@ def resolve_target(
         validate_config_dir(config_dir)
     scanners = find_usb_scanners(sysfs_root)
     if scanners:
+        recovery.require_ready(scanners[0])
         if len(scanners) > 1:
             logger.warning("%d FF-680W scanners on USB; using the first", len(scanners))
         choice = select_shim(shim_candidates)

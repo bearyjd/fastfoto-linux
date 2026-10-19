@@ -2,6 +2,7 @@
 
 import threading
 
+from fastfoto_linux.scanner import recovery
 from fastfoto_linux.scanner.errors import ScanCancelledError
 from fastfoto_linux.scanner.libusb import open_scanner
 from fastfoto_linux.scanner.maintenance import Maintenance
@@ -129,11 +130,15 @@ def _operation_error(
 def _run(
     scanner: UsbScanner, changes: PowerChanges | None, cancel: threading.Event | None
 ) -> PowerSnapshot:
+    recovery.require_ready(scanner)
     with open_scanner(scanner.bus, scanner.device) as transport:
         session = Maintenance(transport, scanner, cancel)
         error: Exception | None = None
         answer: PowerSnapshot | None = None
+        marked = False
         try:
+            recovery.begin(scanner)
+            marked = True
             session.acquire()
             answer = _snapshot(session, scanner)
             if changes is not None:
@@ -143,20 +148,30 @@ def _run(
         finally:
             try:
                 session.finish()
-            except (PowerSettingsError, ScanCancelledError):
+                if marked and (
+                    not session.attempted_io or (not session.owned and session.synchronized)
+                ):
+                    recovery.complete(scanner)
+            except (PowerSettingsError, ScanCancelledError) as cleanup:
                 if error is None:
                     error = PowerCleanupError(
-                        "The settings session could not close cleanly. Restart the scanner.",
+                        f"The settings session could not finish safely. {cleanup}",
                         scanner=scanner,
-                        reconnect_required=not session.synchronized,
+                        reconnect_required=getattr(cleanup, "reconnect_required", False)
+                        or not session.synchronized,
                     )
                 else:
-                    error.add_note("The maintenance session also failed to close cleanly.")
+                    error.args = (f"{error} Recovery cleanup also failed: {cleanup}",)
                     if isinstance(error, PowerSettingsError):
-                        error.reconnect_required |= not session.synchronized
+                        error.reconnect_required |= (
+                            getattr(cleanup, "reconnect_required", False)
+                            or not session.synchronized
+                        )
                     else:
-                        error = session.error(
-                            f"{error} The maintenance session also failed to close cleanly."
+                        error = PowerSettingsError(
+                            f"{error} The maintenance session also failed to close cleanly.",
+                            scanner=scanner,
+                            reconnect_required=True,
                         )
         if error is not None:
             raise error

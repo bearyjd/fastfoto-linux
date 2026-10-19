@@ -141,6 +141,10 @@ uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr o
   that is treated as paper: a grey box comes out white, with its text still black. Dark shading
   is the limit: black text printed on a fill darker than 96 is lost in the black area (light
   text on it stays white), so scan such pages in grey or colour.
+- `--colour auto` chooses an output mode for each trimmed page. Meaningful colour keeps
+  colour; continuous tones, faint marks or uncertain thresholding keep grey. Black and white
+  is chosen only when the analysis finds it safe. The default remains `colour`, and scanning
+  still captures colour before output conversion. Auto does not change blank-page decisions.
 - Only what is certainly empty is trimmed, blank white or the scanner's backing; when in doubt
   nothing is cut. Below the paper that is the scanner's white tail: flat rows at the bottom, 4 mm or longer and at least 4 levels
   brighter than the 10 mm above them, of which 3 mm stay. Anything in the tail columns that is
@@ -373,6 +377,10 @@ uv run ffscan doc process page-*.png --out ~/Documents/Scans --order 1,3,2,4 --d
   error. `--rotate 3:90,5:180` turns a page clockwise 90, 180 or 270 degrees (the pixels move,
   nothing is resampled). `--order 1,3,2,4` puts the pages in that order and must name every page
   once.
+- `--page-colour 2:grey,5:colour,7:auto,8:default` changes individual raw page numbers.
+  `auto` requests the page's recommendation; `default` clears its override and follows
+  `--colour`. Overrides survive saved review sessions and page reordering. Output is rebuilt
+  from retained originals when the chosen mode changes, never from a previous JPEG.
 - `--split 5,9` starts a new PDF at pages 5 and 9. If a split page is left out, the next page that
   stays starts the new PDF; a split on the first page that stays does nothing, and a PDF whose
   pages are all left out is not made.
@@ -388,8 +396,10 @@ uv run ffscan doc process page-*.png --out ~/Documents/Scans --order 1,3,2,4 --d
   (exit 2), found before any page is read where the page count is enough. If every page is left out
   nothing is written and the exit code is 1.
 - Limits: the page files are left as they were. `--rotate` and `--keep` read a page again from
-  its file, so they need all the pages in one folder (the other edits do not). `ffscan doc scan`
-  has no edit options. Searchable text
+  its file, so they need all the pages in one folder. A `--page-colour` change also needs that
+  retained raw folder when conversion requires reading the source again; a choice matching
+  the cached actual mode can reuse its bytes. The other edits do not need another source
+  read. `ffscan doc scan` has no edit options. Searchable text
   runs afterwards with OCRmyPDF's `--rotate-pages`, which may turn a page back if its text reads
   sideways; a page turned on purpose can therefore come out turned again in a searchable PDF (not
   yet checked with the real tool).
@@ -512,7 +522,7 @@ so far are kept and **Process them now** turns them into photos later. Closing t
 a scan asks to cancel first, and the settings you used are remembered for next time.
 
 A **Photos | Documents** switch at the top of the form chooses what the feeder holds. **Documents**
-reviews the scanned stack before saving PDFs: a name, Colour / Grey / Black and white,
+reviews the scanned stack before saving PDFs: a name, Auto / Colour / Grey / Black and white,
 200 / 300 / 600 dpi (300 is the default), **Both sides (drop blank pages)** (off scans one side),
 **Keep blank pages**, and **Searchable text** with a searchable checkbox picker for 124 OCR
 languages. Choose one or more languages by name; the picker shows which models are installed,

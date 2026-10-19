@@ -197,6 +197,12 @@ class PhotoEditSide:
         if eye.strength != value:
             self._replace(eye_id, replace(eye, strength=value))
 
+    def set_tone(self, field: str, value: int) -> None:
+        raise NotImplementedError("photo tone controls")
+
+    def reset_tone(self) -> None:
+        raise NotImplementedError("reset photo adjustments")
+
     def add_ellipse(self, cx: float, cy: float, rx: float, ry: float) -> None:
         recipe = self._require_edit()
         ids = {eye.id for eye in recipe.eyes}

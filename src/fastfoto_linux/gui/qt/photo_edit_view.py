@@ -112,6 +112,10 @@ class PhotoEditView(QObject):
     def candidates(self) -> list[dict[str, object]]:
         return [_candidate(eye) for eye in self._side.recipe.eyes] if self._side.recipe else []
 
+    @Property("QVariantMap", notify=changed)
+    def tone(self) -> dict[str, int]:
+        return {}
+
     @Property(str, notify=changed)
     def selectedId(self) -> str:
         return self._side.selected_id
@@ -169,6 +173,14 @@ class PhotoEditView(QObject):
     @Slot(str, int)
     def setStrength(self, eye_id: str, value: int) -> None:
         self._call(self._side.set_strength, eye_id, value)
+
+    @Slot(str, int)
+    def setTone(self, field: str, value: int) -> None:
+        self._call(self._side.set_tone, field, value)
+
+    @Slot()
+    def resetTone(self) -> None:
+        self._call(self._side.reset_tone)
 
     @Slot(float, float, float, float)
     def addEllipse(self, cx: float, cy: float, rx: float, ry: float) -> None:

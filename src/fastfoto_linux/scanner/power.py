@@ -37,6 +37,13 @@ class PowerChanges:
 class PowerSettingsError(ScannerError):
     """Power settings could not be read or changed."""
 
+    def __init__(
+        self, message: str, *, scanner: UsbScanner | None = None, reconnect_required: bool = False
+    ) -> None:
+        super().__init__(message)
+        self.scanner = scanner
+        self.reconnect_required = reconnect_required
+
 
 class PowerWriteUncertainError(PowerSettingsError):
     """The scanner may have changed settings; read them again before another Apply."""
@@ -46,7 +53,7 @@ class PowerReadbackError(PowerSettingsError):
     """The returned settings do not match the requested values."""
 
     def __init__(self, message: str, snapshot: PowerSnapshot) -> None:
-        super().__init__(message)
+        super().__init__(message, scanner=snapshot.scanner)
         self.snapshot = snapshot
 
 

@@ -138,9 +138,11 @@ def test_possible_write_without_verified_result_is_uncertain(monkeypatch, failur
     replies.extend([TransportError("reply unavailable"), frame(b"FIN ")])
     usb = ScriptedUsb(*replies)
     install_usb(monkeypatch, usb)
-    with pytest.raises(power.PowerWriteUncertainError):
+    with pytest.raises(power.PowerWriteUncertainError) as error:
         power.apply_power_settings(TARGET, power.PowerChanges(30, 0))
     assert usb.stream.count(b"PARA") == 1
+    assert b"FIN " not in usb.stream
+    assert error.value.reconnect_required
     assert usb.released
 
 
@@ -169,9 +171,11 @@ def test_failure_while_sending_parameter_payload_is_uncertain(monkeypatch):
     usb = apply_usb()
     usb.write_error_at = 5  # FS-Z, CAPA, RESA, PARA header, PARA payload
     install_usb(monkeypatch, usb)
-    with pytest.raises(power.PowerWriteUncertainError):
+    with pytest.raises(power.PowerWriteUncertainError) as error:
         power.apply_power_settings(TARGET, power.PowerChanges(30, 0))
     assert usb.stream.count(b"PARA") == 1
+    assert b"FIN " not in usb.stream
+    assert error.value.reconnect_required
     assert usb.released
 
 
@@ -186,7 +190,7 @@ def test_missing_current_blocks_requested_write(monkeypatch):
 
 def test_cancellation_after_ack_cleans_up_owned_session(monkeypatch):
     cancelled = threading.Event()
-    usb = read_usb()
+    usb = ScriptedUsb(b"\x06", frame(b"FIN "))
     original_read = usb.read
 
     def read(size, timeout_ms):

@@ -1,24 +1,51 @@
 """Red-eye suggestions, manual ellipses and source-based RGB rendering."""
 
+import hashlib
+import io
+import math
 from pathlib import Path
 from threading import Event
 
 import numpy as np
+from PIL import Image
 
+from fastfoto_linux.documents.private_io import ensure_private_dir, write_private_atomic
+from fastfoto_linux.enhance import redeye
 from fastfoto_linux.enhance.faces import FaceDetector
 from fastfoto_linux.photo_edits.model import (
+    MAX_MASK_PIXELS,
+    PREVIEW_MAX_PX,
     EyeEdit,
+    PhotoEditCancelledError,
+    PhotoEditError,
     PhotoEditRecipe,
     PhotoPreview,
     PhotoSource,
+    finite,
+    integer,
 )
+
+GAUSS_SUPPORT_SIGMAS = 4
+MIN_PADDING_PX = 2
+PREVIEW_QUALITY = 90
+
+
+def check_cancel(cancel: Event) -> None:
+    if cancel.is_set():
+        raise PhotoEditCancelledError("photo edit cancelled")
 
 
 def detect_eyes(
     source: PhotoSource, *, cancel: Event, detector: FaceDetector | None = None
 ) -> tuple[EyeEdit, ...]:
     """Return pending suggestions using the existing full-resolution detection gates."""
-    raise NotImplementedError("photo eye suggestions are pending")
+    check_cancel(cancel)
+    fixes = redeye.detect_fixes(source.pixels, source.effective_dpi, detector)
+    check_cancel(cancel)
+    return tuple(
+        EyeEdit(f"detected-{index + 1}", "detected", fix.roi, fix.center, fix.mask)
+        for index, fix in enumerate(fixes)
+    )
 
 
 def manual_eye(  # noqa: PLR0913 - the explicit source-space ellipse is the public contract
@@ -32,12 +59,90 @@ def manual_eye(  # noqa: PLR0913 - the explicit source-space ellipse is the publ
     strength: int = 100,
 ) -> EyeEdit:
     """An accepted manual pupil mask, clipped to the retained original."""
-    raise NotImplementedError("manual eye ellipses are pending")
+    cx, cy, rx, ry = (finite(value, "ellipse coordinate") for value in (cx, cy, rx, ry))
+    if rx <= 0 or ry <= 0 or not 0 <= cx < source.width or not 0 <= cy < source.height:
+        raise PhotoEditError("ellipse needs positive radii and a center inside the source")
+    reach = max(rx, ry)
+    padding = max(
+        MIN_PADDING_PX,
+        math.ceil(reach * (redeye.GROW_FRACTION + redeye.FEATHER_FRACTION * GAUSS_SUPPORT_SIGMAS)),
+    )
+    x0, y0 = max(0, math.floor(cx - rx - padding)), max(0, math.floor(cy - ry - padding))
+    x1 = min(source.width, math.ceil(cx + rx + padding) + 1)
+    y1 = min(source.height, math.ceil(cy + ry + padding) + 1)
+    if (x1 - x0) * (y1 - y0) > MAX_MASK_PIXELS:
+        raise PhotoEditError("manual ellipse is too large")
+    ys, xs = np.ogrid[y0:y1, x0:x1]
+    mask = ((xs - cx) / rx) ** 2 + ((ys - cy) / ry) ** 2 <= 1
+    return EyeEdit(eye_id, "manual", (x0, y0, x1, y1), (cx, cy), mask, True, strength)
+
+
+def _same_source(source: PhotoSource, recipe: PhotoEditRecipe) -> None:
+    other = recipe.source
+    identity = ("sha256", "byte_size", "width", "height", "orientation", "dpi_x", "dpi_y")
+    if source.path != other.path or any(
+        getattr(source, key) != getattr(other, key) for key in identity
+    ):
+        raise PhotoEditError("recipe source identity does not match the retained source")
+
+
+def _overlap(left: EyeEdit, right: EyeEdit) -> bool:
+    ax, ay, ar, ab = left.roi
+    bx, by, br, bb = right.roi
+    return ax < br and bx < ar and ay < bb and by < ab
 
 
 def render(source: PhotoSource, recipe: PhotoEditRecipe, *, cancel: Event) -> np.ndarray:
     """Render accepted corrections from source without changing its pixels."""
-    raise NotImplementedError("photo edit rendering is pending")
+    check_cancel(cancel)
+    _same_source(source, recipe)
+    accepted = tuple(edit for edit in recipe.eyes if edit.accepted)
+    for index, edit in enumerate(accepted):
+        if any(_overlap(edit, other) for other in accepted[:index]):
+            raise PhotoEditError("accepted eye regions overlap; resize or reject the duplicate")
+    result = source.pixels.copy()
+    for edit in accepted:
+        check_cancel(cancel)
+        x0, y0, x1, y1 = edit.roi
+        center = (edit.center[0] - x0, edit.center[1] - y0)
+        fix = redeye.EyeFix((0, 0, x1 - x0, y1 - y0), edit.mask, center)
+        result[y0:y1, x0:x1] = redeye.apply_fixes(
+            source.pixels[y0:y1, x0:x1], (fix,), strength=edit.strength / 100
+        )
+    check_cancel(cancel)
+    return result
+
+
+def _preview_jpeg(
+    pixels: np.ndarray, *, bounded: bool, icc_profile: bytes | None
+) -> tuple[bytes, tuple[int, int]]:
+    image = Image.fromarray(pixels)
+    if bounded:
+        image.thumbnail((PREVIEW_MAX_PX, PREVIEW_MAX_PX))
+    buffer = io.BytesIO()
+    image.save(buffer, "JPEG", quality=PREVIEW_QUALITY, subsampling=0, icc_profile=icc_profile)
+    return buffer.getvalue(), image.size
+
+
+def _preview_images(
+    source: PhotoSource, recipe: PhotoEditRecipe, selected_id: str | None, cancel: Event
+) -> tuple[list[bytes], tuple[int, int]]:
+    after = render(source, recipe, cancel=cancel)
+    before_blob, size = _preview_jpeg(source.pixels, bounded=True, icc_profile=source.icc_profile)
+    after_blob, _ = _preview_jpeg(after, bounded=True, icc_profile=source.icc_profile)
+    blobs = [before_blob, after_blob]
+    if selected_id is not None:
+        selected = next((eye for eye in recipe.eyes if eye.id == selected_id), None)
+        if selected is None:
+            raise PhotoEditError("selected eye is no longer in the draft")
+        x0, y0, x1, y1 = selected.roi
+        for pixels in (source.pixels, after):
+            blobs.append(
+                _preview_jpeg(pixels[y0:y1, x0:x1], bounded=False, icc_profile=source.icc_profile)[
+                    0
+                ]
+            )
+    return blobs, size
 
 
 def make_preview(  # noqa: PLR0913 - preview geometry and cancellation are explicit
@@ -50,4 +155,33 @@ def make_preview(  # noqa: PLR0913 - preview geometry and cancellation are expli
     selected_id: str | None = None,
 ) -> PhotoPreview:
     """Publish private bounded previews, with an optional full-resolution eye crop."""
-    raise NotImplementedError("photo edit previews are pending")
+    check_cancel(cancel)
+    integer(generation, 0, 2**63 - 1, "preview generation")
+    blobs, size = _preview_images(source, recipe, selected_id, cancel)
+    check_cancel(cancel)
+    cache_dir.mkdir(parents=True, mode=0o700, exist_ok=True)
+    ensure_private_dir(cache_dir)
+    token = hashlib.sha256(b"".join(blobs)).hexdigest()[:24]
+    paths = [
+        cache_dir / f"{source.sha256[:16]}-{generation}-{token}-{n}.jpg" for n in range(len(blobs))
+    ]
+    published: list[Path] = []
+    try:
+        for path, blob in zip(paths, blobs, strict=True):
+            write_private_atomic(path, blob)
+            published.append(path)
+    except BaseException:
+        for path in published:
+            path.unlink(missing_ok=True)
+        raise
+    return PhotoPreview(
+        paths[0],
+        paths[1],
+        source.width,
+        source.height,
+        *size,
+        source.sha256,
+        generation,
+        paths[2] if selected_id is not None else None,
+        paths[3] if selected_id is not None else None,
+    )

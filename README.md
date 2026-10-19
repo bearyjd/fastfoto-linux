@@ -521,7 +521,7 @@ as a "Not processed" page with the reason). **Cancel** stops the scan; the pages
 so far are kept and **Process them now** turns them into photos later. Closing the window during
 a scan asks to cancel first, and the settings you used are remembered for next time.
 
-For a processed photo with its retained original, **Review red eyes** opens a separate editor.
+For a processed photo with its retained original, **Edit photo** opens a separate editor.
 Select a suggested eye and **Accept** or **Reject** it; suggestions start unaccepted. Use
 **Add eye: click or draw ellipse** for a missed eye, adjust **Strength**, and compare
 **Before / After** or **Selected eye · 1:1**. **Undo** restores the previous edit and **Reset**
@@ -529,11 +529,24 @@ restores the recipe as it was opened. The editor works from the retained cropped
 than raw scanner data or the enhanced `_a` copy. Missing originals and unprocessed sheets
 cannot be edited.
 
+**Brightness** and **Contrast** range from -50 to 50; **Saturation** ranges from -100
+(grayscale at full adjustment strength) to 100. Their neutral value is 0. **Adjustment strength** blends these three
+adjustments from 0 to 100; it leaves eye-correction strength separate. You can adjust tone
+when no eyes were detected. **Reset adjustments** restores neutral tone values and strength
+100 while keeping eye corrections. Each slider drag is one Undo step. The page's **Reset**
+still restores the recipe as it was opened, including saved adjustments.
+
+Adjustments operate on the retained JPEG's stored RGB channels after accepted red-eye
+corrections. They can clip highlights or shadows and do not recover lost detail. Both preview
+and export render from the retained source. Existing version-1 red-eye recipes reopen with
+neutral adjustments; a tone edit uses the new version-2 recipe. See the
+[photo adjustment contract](docs/design/photo-tone.md) for replay and compatibility details.
+
 **Save new copy** writes a numbered `_edit-0001.jpg` and matching JSON recipe beside the
 source, without replacing the original, enhanced copy or back. Keep both new files to reopen
 that edit through **Open saved photo edit**. Leaving with unsaved changes asks before
-discarding them. These edits contain red-eye corrections only; they do not inherit earlier
-colour restoration from the enhanced copy. Automatic red-eye correction during scanning
+discarding them. These edits combine accepted red-eye corrections and manual tone adjustments; they do not
+inherit earlier colour restoration from the enhanced copy. Automatic red-eye correction during scanning
 remains experimental and off by default.
 
 A **Photos | Documents** switch at the top of the form chooses what the feeder holds. **Documents**

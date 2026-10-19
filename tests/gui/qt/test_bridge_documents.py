@@ -110,7 +110,7 @@ def test_a_field_the_form_does_not_have_is_said_not_raised(make_doc_bridge: Any)
 def test_the_choices_are_the_cli_ones(make_doc_bridge: Any) -> None:
     bridge = make_doc_bridge()
     assert list(bridge.documents.dpiChoices) == [200, 300, 600]
-    assert list(bridge.documents.colourChoices) == ["colour", "grey", "bw"]
+    assert list(bridge.documents.colourChoices) == ["auto", "colour", "grey", "bw"]
 
 
 def test_searchable_text_follows_what_is_installed(make_doc_bridge: Any) -> None:

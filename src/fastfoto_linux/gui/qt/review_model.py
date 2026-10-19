@@ -26,6 +26,11 @@ _ROLES = (
     "startsPart",
     "part",
     "dropped",
+    "colourPolicy",
+    "colourMode",
+    "colourReason",
+    "colourOverride",
+    "colourText",
 )
 
 
@@ -42,6 +47,11 @@ def _values(item: ReviewItem) -> dict[str, object]:
         "startsPart": item.starts_part,
         "part": item.part,
         "dropped": item.dropped,
+        "colourPolicy": item.colour_policy,
+        "colourMode": item.colour_mode,
+        "colourReason": item.colour_reason,
+        "colourOverride": item.colour_override,
+        "colourText": item.colour_text,
     }
 
 

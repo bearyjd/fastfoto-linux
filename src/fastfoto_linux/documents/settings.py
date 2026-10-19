@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from fastfoto_linux.documents.errors import DocumentSettingsError, OcrMissingError
-from fastfoto_linux.documents.modes import ColourMode
+from fastfoto_linux.documents.modes import ColourMode, ColourPolicy
 from fastfoto_linux.documents.ocr import (
     DEFAULT_LANGS,
     OcrMode,
@@ -23,7 +23,7 @@ DEFAULT_NAME = "Document"
 class DocumentSettings:
     output_root: Path
     name: str = DEFAULT_NAME
-    colour: ColourMode = ColourMode.COLOUR
+    colour: ColourPolicy | ColourMode = ColourMode.COLOUR
     keep_blank: bool = False
     ocr: OcrMode = OcrMode.AUTO
     langs: str = DEFAULT_LANGS
@@ -56,6 +56,10 @@ def check_settings(settings: DocumentSettings) -> CheckedSettings:
         raise DocumentSettingsError(
             f"the name {settings.name!r} has no usable characters for a file name"
         ) from error
+    try:
+        ColourPolicy(settings.colour)
+    except (TypeError, ValueError) as error:
+        raise DocumentSettingsError("colour mode must be auto, colour, grey or bw") from error
     try:
         validate_langs(settings.langs)
     except ValueError as error:

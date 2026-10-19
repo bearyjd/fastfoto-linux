@@ -11,6 +11,7 @@ from collections.abc import Iterable
 from fastfoto_linux.cli.errors import EXIT_USAGE, CliError
 from fastfoto_linux.documents.draft_edit import PageEdits, validate_edits
 from fastfoto_linux.documents.errors import DocumentEditError
+from fastfoto_linux.documents.modes import ColourPolicy
 from fastfoto_linux.output.errors import InvalidPrefixError
 from fastfoto_linux.output.naming import sanitise_prefix
 
@@ -20,6 +21,7 @@ EDIT_OPTIONS = (
     "--drop",
     "--keep",
     "--rotate",
+    "--page-colour",
     "--split",
     "--order",
     "--part-name",
@@ -42,6 +44,11 @@ def add_edit_options(parser: argparse.ArgumentParser) -> None:
         "--rotate",
         metavar="N:ANGLE,N:ANGLE",
         help=f"turn pages clockwise by {_ANGLE_WORDS}, e.g. --rotate 3:90,5:180",
+    )
+    group.add_argument(
+        "--page-colour",
+        metavar="N:MODE,N:MODE",
+        help="page output: auto, colour, grey, bw, or default to clear; e.g. 2:grey,5:auto",
     )
     group.add_argument(
         "--split", metavar="N,N", help="these pages each start a new PDF, e.g. --split 5,9"
@@ -158,9 +165,27 @@ def edits_from_args(args: argparse.Namespace, page_count: int) -> PageEdits:
         split=_page_set("--split", args.split),
         order=_order(args.order),
         part_names=_part_names(args.part_name),
+        colour=_colours(getattr(args, "page_colour", None)),
     )
     try:
         validate_edits(edits, page_count)
     except DocumentEditError as error:
         raise _usage(str(error)) from error
     return edits
+
+
+def _colours(text: str | None) -> dict[int, ColourPolicy | None]:
+    if text is None:
+        return {}
+    pairs: list[tuple[int, ColourPolicy | None]] = []
+    for item in _items("--page-colour", text):
+        page, colon, mode = item.partition(":")
+        if not colon or not page.isdecimal():
+            raise _usage(f"--page-colour: expected PAGE:MODE, got {item!r}")
+        try:
+            policy = None if mode == "default" else ColourPolicy(mode)
+        except ValueError as error:
+            raise _usage("--page-colour: mode must be auto, colour, grey, bw or default") from error
+        pairs.append((int(page), policy))
+    _once("--page-colour", (page for page, _ in pairs))
+    return dict(pairs)

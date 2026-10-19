@@ -48,6 +48,7 @@ from fastfoto_linux.documents import (
     find_ocrmypdf,
 )
 from fastfoto_linux.documents.analyse import analyse_document
+from fastfoto_linux.documents.auto_colour import page_colour
 from fastfoto_linux.documents.draft import DocumentDraft
 from fastfoto_linux.documents.draft_edit import PageEdits, parts, with_edits
 from fastfoto_linux.documents.draft_store import open_draft
@@ -152,13 +153,24 @@ def _edited(
     except DocumentEditError as error:
         raise CliError(str(error), EXIT_USAGE) from error
     if dry_run:
-        print("\n".join(dry_run_lines(draft)))
+        print("\n".join(dry_run_lines(draft, settings.colour)))
         return None
     if draft.raw_dir is None and any(
         page.encoded is None or turns for part in parts(draft) for page, turns in part.pages
     ):
         raise CliError(  # a page to turn or bring back is read again from its file
             "--rotate and --keep need the pages in one folder, which these are not",
+            EXIT_USAGE,
+        )
+    if draft.raw_dir is None and any(
+        page.encoded is not None
+        and page_colour(draft, page, settings.colour) is not page.encoded.mode
+        for part in parts(draft)
+        for page, _turns in part.pages
+    ):
+        raise CliError(
+            "--page-colour changes need the original pages in one folder; "
+            "these inputs are from different folders",
             EXIT_USAGE,
         )
     return write_document(draft, settings)
@@ -258,7 +270,7 @@ def process_command(pages: Sequence[Path], request: DocumentScanRequest, root: P
     ``pages``: the same folder, resolution and every option that is not the default."""
     settings = request.settings
     options = (
-        (settings.colour is not ColourMode.COLOUR, ["--colour", settings.colour.value]),
+        (settings.colour != ColourMode.COLOUR, ["--colour", settings.colour.value]),
         (settings.name != DEFAULT_NAME, ["--name", settings.name]),
         (settings.ocr is not OcrMode.AUTO, ["--ocr", settings.ocr.value]),
         (settings.langs != DEFAULT_LANGS, ["--lang", settings.langs]),

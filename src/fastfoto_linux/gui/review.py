@@ -4,6 +4,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 
 from fastfoto_linux.documents import draft_edit
+from fastfoto_linux.documents.auto_colour import ColourReason, page_policy, resolve_colour
 from fastfoto_linux.documents.draft import (
     BoxN,
     DocumentDraft,
@@ -13,6 +14,7 @@ from fastfoto_linux.documents.draft import (
     sorted_flags,
 )
 from fastfoto_linux.documents.draft_store import THUMBS_DIR
+from fastfoto_linux.documents.modes import ColourMode, ColourPolicy
 
 FLAG_LABELS = {
     Flag.FEW_MARKS: "Only a few marks",
@@ -43,6 +45,9 @@ class ReviewState:
 
     def rotate(self, number: int, turns: int) -> "ReviewState":
         return replace(self, draft=draft_edit.rotate(self.draft, number, turns))
+
+    def set_colour(self, number: int, policy: ColourPolicy | None) -> "ReviewState":
+        return replace(self, draft=draft_edit.set_colour(self.draft, number, policy))
 
     def move(self, number: int, to: int) -> "ReviewState":
         return replace(self, draft=draft_edit.move(self.draft, number, to))
@@ -79,9 +84,46 @@ class ReviewItem:
     starts_part: bool
     part: int
     dropped: bool
+    colour_policy: str = "colour"
+    colour_mode: str = ""
+    colour_reason: str = ""
+    colour_override: str = ""
+    colour_text: str = ""
 
 
-def review_items(state: ReviewState) -> tuple[ReviewItem, ...]:
+MODE_LABELS = {"colour": "Colour", "grey": "Grey", "bw": "Black and white"}
+REASON_LABELS = {
+    ColourReason.SOURCE_BW: "black and white source",
+    ColourReason.COLOUR_MARKS: "colour marks",
+    ColourReason.COLOUR_UNCERTAIN: "possible colour",
+    ColourReason.CONTINUOUS_TONE: "continuous tones",
+    ColourReason.FAINT_MARKS: "faint marks",
+    ColourReason.THRESHOLD_RISK: "preserve shading and fine marks",
+    ColourReason.BILEVEL: "clear dark marks on light paper",
+}
+
+
+def colour_values(
+    draft: DocumentDraft, page: PageAnalysis, document_policy: ColourPolicy | ColourMode
+) -> tuple[str, str, str, str, str]:
+    """Present stored decisions; never read or classify full raw pages on the GUI thread."""
+    policy = page_policy(draft, page, document_policy)
+    edit = draft.edits.get(page.number, PageEdit())
+    override = edit.colour.value if edit.colour is not None else ""
+    if page.colour is None:
+        label = "Auto" if policy is ColourPolicy.AUTO else MODE_LABELS[policy.value]
+        return policy.value, "", "", override, f"{label}: awaiting page analysis"
+    mode = resolve_colour(page.colour, policy)
+    reason = page.colour.reason
+    text = MODE_LABELS[mode.value]
+    if policy is ColourPolicy.AUTO:
+        text = f"Auto: {text} — {REASON_LABELS[reason]}"
+    return policy.value, mode.value, reason.value, override, text
+
+
+def review_items(
+    state: ReviewState, document_policy: ColourPolicy | ColourMode = ColourPolicy.COLOUR
+) -> tuple[ReviewItem, ...]:
     """All raw pages in review order, including the pages that do not go into a PDF."""
     draft = state.draft
     output = draft_edit.parts(draft)
@@ -110,6 +152,7 @@ def review_items(state: ReviewState) -> tuple[ReviewItem, ...]:
                 number in starts,
                 part_numbers.get(number, 0),
                 page.blank and not included,
+                *colour_values(draft, page, document_policy),
             )
         )
     return tuple(rows)

@@ -3,7 +3,6 @@
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from threading import Event
 
 from fastfoto_linux.documents import DocumentResult, find_ocrmypdf
 from fastfoto_linux.documents.draft import DocumentDraft
@@ -31,7 +30,7 @@ class DocumentTools:
     build: Callable[..., DocumentResult] | None = None
     open_review: Callable[..., DocumentDraft] | None = None
     write_review: Callable[..., DocumentResult] | None = None
-    preview_review: Callable[[DocumentDraft, int, Event], Path] | None = None
+    preview_review: Callable[..., Path] | None = None
     find_ocr: Callable[[], str | None] = find_ocrmypdf
     in_flatpak: Callable[[], bool] = inside_flatpak
     check_languages: Callable[[str], None] | None = None

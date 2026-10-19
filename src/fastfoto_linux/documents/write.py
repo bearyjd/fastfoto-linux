@@ -18,6 +18,12 @@ from pathlib import Path
 
 import numpy as np
 
+from fastfoto_linux.documents.auto_colour import (
+    classify_colour,
+    page_colour,
+    page_policy,
+    resolve_colour,
+)
 from fastfoto_linux.documents.draft import DocumentDraft, OutputPart, PageAnalysis
 from fastfoto_linux.documents.draft_edit import parts
 from fastfoto_linux.documents.encode import EncodedPage, encode_page
@@ -28,6 +34,7 @@ from fastfoto_linux.documents.errors import (
     stop_if_cancelled,
 )
 from fastfoto_linux.documents.loader import LoadedPage, load_page
+from fastfoto_linux.documents.modes import ColourPolicy
 from fastfoto_linux.documents.ocr import OcrMode, OcrOutcome, OcrStatus, run_ocr
 from fastfoto_linux.documents.ocr_tools import ocr_missing_text
 from fastfoto_linux.documents.pdf import assemble_pdf
@@ -167,13 +174,19 @@ def _encoded(run: "_Run", page: PageAnalysis, turns: int) -> EncodedPage:
     """The page as it goes into the PDF: the bytes it carries (when it is not turned), or the
     raw page read again, cut, turned and encoded (one decoded page at a time; a cancel is
     honoured before each such page)."""
-    if page.encoded is not None and turns == 0:
+    stop_if_cancelled(run.cancel, f"page {page.number} of {len(run.draft.pages)} was written")
+    policy = page_policy(run.draft, page, run.settings.colour)
+    if page.colour is not None or policy is not ColourPolicy.AUTO:
+        mode = page_colour(run.draft, page, run.settings.colour)
+        if page.encoded is not None and turns == 0 and page.encoded.mode is mode:
+            return page.encoded
+    loaded = _read_page(page, turns, run.draft, run.settings)
+    mode = resolve_colour(page.colour or classify_colour(loaded), policy)
+    if page.encoded is not None and turns == 0 and page.encoded.mode is mode:
         return page.encoded
-    total = len(run.draft.pages)
-    stop_if_cancelled(run.cancel, f"page {page.number} of {total} was written")
     if run.on_page is not None:
-        run.on_page(page.number, total)
-    return encode_page(_read_page(page, turns, run.draft, run.settings), run.settings.colour)
+        run.on_page(page.number, len(run.draft.pages))
+    return encode_page(loaded, mode)
 
 
 def _make_part(run: _Run, part: OutputPart, name: str) -> tuple[str, bytes, int, OcrOutcome]:

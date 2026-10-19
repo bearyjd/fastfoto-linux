@@ -12,8 +12,10 @@ from enum import StrEnum
 from pathlib import Path
 from types import MappingProxyType
 
+from fastfoto_linux.documents.auto_colour import ColourDecision
 from fastfoto_linux.documents.encode import EncodedPage
 from fastfoto_linux.documents.loader import LoadedPage
+from fastfoto_linux.documents.modes import ColourPolicy
 from fastfoto_linux.documents.trim import Trimmed
 
 
@@ -130,6 +132,8 @@ class PageAnalysis:
     ink: InkMap | None = field(default=None, repr=False, compare=False)
     encoded: EncodedPage | None = field(default=None, repr=False, compare=False)
 
+    colour: ColourDecision | None = None
+
     def describe(self) -> str:
         """Numbers and flag names only, stably ordered: ``page 3 kept flags=few_marks marks=2``."""
         verdict = "blank" if self.blank else "kept"
@@ -149,8 +153,11 @@ class PageEdit:
 
     include: bool | None = None
     quarter_turns: int = 0
+    colour: ColourPolicy | None = None
 
     def __post_init__(self) -> None:
+        if self.colour is not None and not isinstance(self.colour, ColourPolicy):
+            raise ValueError("page colour must be a known output policy")
         if not 0 <= self.quarter_turns < QUARTER_TURNS:
             raise ValueError(f"quarter turns must be 0 to 3, got {self.quarter_turns}")
 

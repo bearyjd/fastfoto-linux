@@ -114,7 +114,11 @@ QQC2.ScrollView {
             implicitWidth: Kirigami.Units.gridUnit * 16
             Kirigami.FormData.label: qsTr("Colour:")
             Layout.fillWidth: true
-            model: [
+            readonly property var colourChoices: [
+                {
+                    "text": qsTr("Auto"),
+                    "value": "auto"
+                },
                 {
                     "text": qsTr("Colour"),
                     "value": "colour"
@@ -128,9 +132,10 @@ QQC2.ScrollView {
                     "value": "bw"
                 }
             ]
+            model: colourChoices
             textRole: "text"
             valueRole: "value"
-            currentIndex: Math.max(0, indexOfValue(bridge.documents.form.colour))
+            currentIndex: Math.max(0, colourChoices.findIndex(choice => choice.value === bridge.documents.form.colour))
             enabled: panel.editable
             Accessible.name: qsTr("Colour")
             onActivated: bridge.setDocumentField("colour", currentValue)

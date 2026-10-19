@@ -23,7 +23,7 @@ transport PR); software deskew (the scanner's own deskew stays on).
 
 ## Command line
 ```
-ffscan doc scan    --out DIR [--mkdir] [--name NAME] [--colour colour|grey|bw] [--dpi 200|300|600]
+ffscan doc scan    --out DIR [--mkdir] [--name NAME] [--colour auto|colour|grey|bw] [--dpi 200|300|600]
                    [--simplex] [--keep-blank] [--ocr auto|on|off] [--lang LANGS]
                    [--keep-raw | --discard-raw] [--net HOST] [-v] [--debug]
 ffscan doc process PAGE.png ... --out DIR [--mkdir] [same output options]
@@ -122,6 +122,11 @@ What the first pull request settled where the specification left room.
   | bw (1-bit) | bw | bw | bw |
 
   A 1-bit page keeps its pixels exactly; it is never thresholded again.
+
+  `--colour auto` is a separate request policy: each trimmed source page gets an actual
+  colour/grey/B&W decision and a reason. Source PNG kind remains its storage format. Auto
+  retains meaningful colour and chooses grey for continuous tones, faint marks or threshold
+  risk; ambiguity retains the richer representation. The default remains `colour`.
 - **Loader.** RGB, 8-bit grey and 1-bit PNGs that carry a resolution (50-2400 dpi, horizontal
   and vertical equal within 1 dpi; Pillow reads pixels per metre as values such as 299.9994, so
   it is rounded). `--dpi` only fills in for a file without one. Palette, alpha, 16-bit and
@@ -774,9 +779,16 @@ What the third review pull request settled where the plan left room.
 - **The result.** `DocumentResult` holds `parts` (`PartResult(pdf, name, pages, ocr)`) and
   `removed`; `pdf`, `pages_in_pdf`, `ocr` (the worst outcome) and `ok` are derived. The summary and
   the banner of the app name each PDF.
-- **Command line.** `--drop`, `--keep`, `--rotate`, `--split`, `--order`, `--part-name` and
+- **Command line.** `--drop`, `--keep`, `--rotate`, `--split`, `--order`, `--page-colour`, `--part-name` and
   `--dry-run` belong to `ffscan doc process` only, are checked before any page is read where the
   page count is enough, and `--drop` wins over `--keep-blank`. A raw folder as the input is part D.
+- **Per-page colour.** `--page-colour 2:grey,5:colour,7:auto,8:default` is keyed by the
+  original raw page number. It sets a manual or Auto override; `default` clears the override.
+  Reordering, rotation, splitting and restoring a dropped page retain that page's choice.
+  Reuse encoded bytes only when their actual mode matches the new resolved output mode;
+  otherwise decode the retained source, apply the stored trim/rotation and encode again.
+  A conversion requires one retained raw folder; a choice already matching cached actual
+  bytes can be applied without rereading. Global Auto still works with arbitrary input paths.
 - **Limits.** The page files are left as they were. A page that is turned or brought back is read
   again from its file, so `--rotate` and `--keep` need the pages in one folder (`raw_dir`), and
   are refused with a usage error otherwise. Searchable text uses OCRmyPDF's
@@ -792,6 +804,11 @@ What the third review pull request settled where the plan left room.
   order, splits and part names, and the `ANALYSIS_VERSION`. Not the pixels and not the ink maps
   (the neighbour flags are settled before it is saved). `list_pages` finds neither the file nor
   the thumbnails.
+- **Colour decisions and versioning.** Review format 2 stores each page's source kind,
+  recommended mode/reason and optional output-policy override. Format 1 remains readable;
+  its missing decisions trigger fresh analysis while existing edits are retained. Unsupported
+  future formats are refused. Algorithm changes that affect decisions advance the analysis
+  version; a stored user override is independent of the automatic recommendation.
 - **Thumbnails.** `analyse_document(..., thumbs=dir)` writes `thumbs/page-NNNN.jpg` (NNNN is the
   raw number) from the trimmed page it already decoded: 480 px on the long side at most, JPEG
   quality 80, mode 0600 in a 0700 folder, the same bytes every time. A thumbnail that cannot be

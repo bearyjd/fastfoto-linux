@@ -7,7 +7,7 @@ from pathlib import Path
 
 from fastfoto_linux.documents.draft import DocumentDraft
 from fastfoto_linux.documents.draft_store import REVIEW_FILE, THUMBS_DIR
-from fastfoto_linux.gui.reviewjobs import PREVIEW_DIR
+from fastfoto_linux.gui.reviewjobs import PREVIEW_DIR, output_preview_names
 
 Stamp = tuple[int, int, int, int]
 
@@ -47,6 +47,7 @@ def capture_originals(draft: DocumentDraft) -> SavedOriginals:
                 f"{PREVIEW_DIR}/page-{page.number:04d}.jpg",
             )
         )
+        names.extend(f"{PREVIEW_DIR}/{name}" for name in output_preview_names(page.number))
     artifacts = []
     for name in names:
         path = folder / name

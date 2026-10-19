@@ -153,6 +153,16 @@ class EyeEdit:
         object.__setattr__(self, "mask", _readonly(self.mask))
 
 
+@dataclass(frozen=True)
+class PhotoTone:
+    """Immutable encoded-RGB adjustment controls (validation follows in GREEN)."""
+
+    brightness: int = 0
+    contrast: int = 0
+    saturation: int = 0
+    strength: int = 100
+
+
 @dataclass(frozen=True, eq=False)
 class PhotoEditRecipe:
     """Replay from source, never from a previously encoded derivative."""
@@ -162,6 +172,7 @@ class PhotoEditRecipe:
     schema_version: int = SCHEMA_VERSION
     algorithm_version: str = ALGORITHM_VERSION
     quality: int = 95
+    tone: PhotoTone = field(default_factory=PhotoTone, kw_only=True)
 
     def __post_init__(self) -> None:
         if not isinstance(self.source, PhotoSource):

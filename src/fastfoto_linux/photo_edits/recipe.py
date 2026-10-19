@@ -19,6 +19,7 @@ from fastfoto_linux.photo_edits.model import (
     PhotoEditError,
     PhotoEditRecipe,
     PhotoSource,
+    PhotoTone,
     digest,
     finite,
     integer,
@@ -212,3 +213,8 @@ def parse_recipe(data: bytes, source: PhotoSource) -> PhotoEditRecipe:
         payload["algorithm_version"],
         payload["quality"],
     )
+
+
+def update_tone(recipe: PhotoEditRecipe, tone: PhotoTone) -> PhotoEditRecipe:
+    """Return a changed draft, upgrading legacy tone edits (implemented in GREEN)."""
+    raise NotImplementedError("photo tone updates are not implemented")

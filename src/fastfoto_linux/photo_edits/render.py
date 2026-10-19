@@ -21,6 +21,7 @@ from fastfoto_linux.photo_edits.model import (
     PhotoEditRecipe,
     PhotoPreview,
     PhotoSource,
+    PhotoTone,
     finite,
     integer,
 )
@@ -28,6 +29,12 @@ from fastfoto_linux.photo_edits.model import (
 GAUSS_SUPPORT_SIGMAS = 4
 MIN_PADDING_PX = 2
 PREVIEW_QUALITY = 90
+TONE_TILE_PIXELS = 262_144
+
+
+def _tone_tile(pixels: np.ndarray, tone: PhotoTone) -> np.ndarray:
+    """Transform one bounded RGB tile (implemented in GREEN)."""
+    raise NotImplementedError("photo tone rendering is not implemented")
 
 
 def check_cancel(cancel: Event) -> None:

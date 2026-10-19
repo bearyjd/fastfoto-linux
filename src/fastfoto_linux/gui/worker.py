@@ -168,6 +168,14 @@ class Worker:
             raise RuntimeError("no scan has run, so there are no settings to process the pages")
         self._start(lambda cancel: self._process_kept(kept, request, cancel))
 
+    def read_power(self, scanner: object = None) -> None:
+        """Read power settings through the shared job queue."""
+        raise NotImplementedError
+
+    def apply_power(self, scanner: object, changes: object) -> None:
+        """Apply power changes through the shared job queue."""
+        raise NotImplementedError
+
     def cancel(self) -> None:
         """Ask the running job to stop; harmless when nothing runs."""
         self._cancel.set()

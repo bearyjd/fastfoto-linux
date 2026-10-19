@@ -66,10 +66,22 @@ The app blocks device reads, applies, scanning and scanner checks for that USB
 target until a new physical USB enumeration is observed. Close any other scanner
 program, switch the scanner off and on, and wait for it to appear on USB again.
 Use **Check USB reconnection**, which checks USB metadata without sending scanner
-commands, then use **Read settings** again. Reopening the page or retrying the same
-USB address does not clear the block. Disconnecting and reconnecting USB alone is
+commands, then use **Read settings** again. Reopening the page, restarting the app
+or retrying the same USB address does not clear the block. The recovery record is
+saved before scanner communication so an interrupted app cannot silently discard it.
+This record belongs to the current app installation and profile. If communication
+was interrupted, switch the scanner off and on before using another scanning app,
+another profile, or switching between native and Flatpak installations. Disconnecting and reconnecting USB alone is
 not established as a scanner protocol reset; follow the restart instruction.
 Processing existing image files remains available.
+
+If the app reports that its saved recovery state is unreadable or corrupt, it
+cannot identify the previous USB connection safely. A scanner restart alone cannot
+clear that error. Close the app and switch the scanner off first. Use the path in
+the error to repair access to that recovery record, or remove only the corrupt
+record while the scanner remains off. Restart the app with the scanner still off,
+then switch it on and read its settings again. Do not remove a healthy pending
+recovery record to bypass the normal restart check.
 
 ## Scope and evidence
 

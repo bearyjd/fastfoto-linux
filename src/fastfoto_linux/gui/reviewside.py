@@ -90,7 +90,9 @@ class ReviewSide:
             self._originals = None
             request = self._preview_requested
             number = self.preview_number or (request.number if request else 0)
-            if number and (self.preview_view == "output" or request is not None):
+            # Every page edit names its page first; another page's edit cannot change this preview.
+            affects = bool(args) and args[0] == number
+            if number and affects and (self.preview_view == "output" or request is not None):
                 self._preview_requested = None
                 self.preview(number, self.preview_view)
         self._controller._changed()

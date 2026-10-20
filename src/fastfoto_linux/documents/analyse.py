@@ -122,7 +122,9 @@ def _analyse_sheet(  # noqa: PLR0913 - what a sheet needs, and the hooks, in one
         partner = numbers[1 - index] if paired else None
         if blank:
             logger.info("page %d (%s) is blank and left out", number, pages[number - 1].name)
-        # A progress callback may request finishing this page and stopping before the next.
+        # A progress callback (on_page above) may set ``cancel`` to mean "finish this page, then
+        # stop". Seen set here, the page is classified and kept, and the stop is honoured at the
+        # next page's check; seen clear here, a cancel during classification stops now.
         already_cancelled = cancel is not None and cancel.is_set()
         colour = classify_colour(trimmed.page)
         if not already_cancelled:

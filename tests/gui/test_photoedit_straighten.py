@@ -181,3 +181,15 @@ def test_stale_straightened_files_are_discarded_when_a_new_preview_lands(out):
     side.set_straighten(0)
     land(page, straightened=False)
     assert not first.straightened.exists()
+
+
+def test_setting_the_same_angle_keeps_the_crop(out):
+    page = opened_at(out)
+    side = page.side
+    side.set_geometry_mode(True)
+    side.set_straighten(20)
+    fw, fh = frame_size(page.source, side.recipe.geometry)
+    side.set_crop(5, 0, fw - 5, fh)
+    cropped = side.recipe
+    side.set_straighten(20)
+    assert side.recipe is cropped

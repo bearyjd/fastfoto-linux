@@ -323,3 +323,14 @@ def test_eye_actions_stay_refused_with_an_angle(make_bridge, open_window, out):
     view.setAccepted("left", True)
     assert view.error and bridge.controller.photo_edit.recipe is recipe
     assert warnings == []
+
+
+def test_slider_keys_step_one_tenth_of_a_degree(make_bridge, open_window, out):
+    _bridge, view, window, page, warnings = straighten_page(make_bridge, open_window, out)
+    invoke(child(page, "photoStraightenSlider"), "forceActiveFocus")
+    settle()
+    QTest.keyClick(window, Qt.Key.Key_Right)
+    settle()
+    assert view.geometry["straightenTenths"] == 1
+    assert child(page, "photoStraightenAngle").property("value") == 1
+    assert warnings == []

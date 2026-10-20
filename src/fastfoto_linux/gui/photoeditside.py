@@ -161,13 +161,13 @@ class PhotoEditSide(PhotoGeometryActions):
         if not self.active or result.generation != self.generation:
             self._discard_preview(result.preview)
         else:
-            self._accept_result(result)
+            self._accept_result(result, current)
         pending, self._pending = self._pending, None
         if self.active and pending is not None:
             self._submit(pending)
         self._changed()
 
-    def _accept_result(self, result: PhotoEditResult) -> None:
+    def _accept_result(self, result: PhotoEditResult, request: PhotoEditRequest) -> None:
         self.error = result.error or (
             "Photo edit cancelled. Your draft is kept." if result.cancelled else ""
         )
@@ -180,6 +180,8 @@ class PhotoEditSide(PhotoGeometryActions):
         if result.preview is not None:
             self._discard_preview(self.preview, keeping=result.preview)
             self.preview = result.preview
+            built = request.recipe or result.recipe
+            self.preview_tenths = built.geometry.straighten_tenths if built else None
         if result.saved is not None:
             self.saved_edit = result.saved
             self._clean = result.saved.recipe
@@ -360,7 +362,7 @@ class PhotoEditSide(PhotoGeometryActions):
 
     def _forget_preview(self) -> None:
         self._discard_preview(self.preview)
-        self.preview = None
+        self.preview = self.preview_tenths = None
         with suppress(OSError):
             self._cache_dir.rmdir()
 

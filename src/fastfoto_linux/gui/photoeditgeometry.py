@@ -17,6 +17,7 @@ class PhotoGeometryActions:
     """Mixin for ``PhotoEditSide``: the mode lives here, never in the page."""
 
     geometry_mode = False
+    preview_tenths: int | None = None  # the angle the held preview was built for
 
     @property
     def can_edit_eyes(self: "PhotoEditSide") -> bool:
@@ -67,8 +68,12 @@ class PhotoGeometryActions:
 
     @property
     def preview_current(self: "PhotoEditSide") -> bool:
-        """True once the latest request has landed, so the image matches the draft."""
-        return self.preview is not None and self.preview.generation == self.generation
+        """True when the held preview was built for the draft's straighten angle."""
+        return (
+            self.preview is not None
+            and self.recipe is not None
+            and self.preview_tenths == self.recipe.geometry.straighten_tenths
+        )
 
     def set_straighten(self: "PhotoEditSide", tenths: int) -> None:
         """Set the angle in tenths of a degree; a new angle clears the crop (same undo entry)."""

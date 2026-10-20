@@ -392,13 +392,16 @@ def test_a_rejected_box_entry_snaps_back_to_the_draft_angle(make_bridge, open_wi
 def test_a_rejected_slider_move_snaps_back_to_the_draft_angle(make_bridge, open_window, out):
     _bridge, view, window, page, warnings = tiny_frame_page(make_bridge, open_window, out)
     slider = child(page, "photoStraightenSlider")
-    invoke(slider, "forceActiveFocus")
+    start = slider.mapToScene(QPointF(slider.width() * 0.5, slider.height() / 2)).toPoint()
+    end = slider.mapToScene(QPointF(slider.width() - 1, slider.height() / 2)).toPoint()
+    QTest.mousePress(window, Qt.MouseButton.LeftButton, pos=start)
+    QTest.mouseMove(window, end, delay=20)
+    QTest.mouseRelease(window, Qt.MouseButton.LeftButton, pos=end)
     settle()
-    QTest.keyClick(window, Qt.Key.Key_End)
-    settle()
-    assert view.error and view.geometry["straightenTenths"] == 0
-    assert slider.property("value") == 0
-    assert child(page, "photoStraightenAngle").property("value") == 0
+    kept = view.geometry["straightenTenths"]
+    assert view.error and kept < 150
+    assert slider.property("value") == kept
+    assert child(page, "photoStraightenAngle").property("value") == kept
     assert warnings == []
 
 

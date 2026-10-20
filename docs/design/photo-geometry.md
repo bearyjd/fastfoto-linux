@@ -26,6 +26,7 @@ JSON stays byte-identical across round trips.
 - New drafts remain schema 2. Changing geometry upgrades a draft to schema 3, a tone change
   never downgrades it, and a schema 3 draft returned to neutral stays schema 3. Undo restores
   the earlier schema because the editor keeps the earlier recipe object.
+- A slider drag is one undo entry; each keyboard step on the slider or angle box is its own.
 
 ## Preview and saved metadata
 

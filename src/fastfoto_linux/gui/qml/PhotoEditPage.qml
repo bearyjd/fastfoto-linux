@@ -107,7 +107,13 @@ Kirigami.Page {
                 Layout.fillHeight: true
                 Layout.minimumWidth: 120
                 Layout.minimumHeight: 160
-                imageUrl: compare.checked ? editor.afterUrl : editor.beforeUrl
+                imageUrl: !compare.checked ? editor.beforeUrl
+                    : (editor.geometryMode && geometryControls.showResult ? editor.afterUrl : editor.workingUrl)
+                showEyes: !editor.geometryMode
+                cropMode: editor.geometryMode && !geometryControls.showResult
+                crop: editor.geometry.crop
+                minCropWidth: editor.minCropWidth
+                minCropHeight: editor.minCropHeight
                 sourceWidth: editor.sourceWidth
                 sourceHeight: editor.sourceHeight
                 candidates: editor.candidates
@@ -117,6 +123,7 @@ Kirigami.Page {
                 manualMode: manual.checked
                 onEllipseRequested: (cx, cy, rx, ry) => editor.addEllipse(cx, cy, rx, ry)
                 onEyeSelected: eyeId => editor.selectEye(eyeId)
+                onCropRequested: (left, top, right, bottom) => editor.setCrop(left, top, right, bottom)
             }
             QQC2.ScrollView {
                 Layout.preferredWidth: Kirigami.Units.gridUnit * 16
@@ -125,6 +132,11 @@ Kirigami.Page {
                 ColumnLayout {
                     width: parent.width
                     spacing: Kirigami.Units.smallSpacing
+                    PhotoGeometryControls {
+                        id: geometryControls
+                        Layout.fillWidth: true
+                        editor: page.editor
+                    }
                     PhotoToneControls {
                         Layout.fillWidth: true
                         editor: page.editor
@@ -149,7 +161,7 @@ Kirigami.Page {
                         textRole: "id"
                         valueRole: "id"
                         currentIndex: editor.candidates.findIndex(eye => eye.id === editor.selectedId)
-                        enabled: editor.canEdit && editor.candidates.length > 0
+                        enabled: editor.canEditEyes && editor.candidates.length > 0
                         Accessible.name: qsTr("Select eye")
                         onActivated: editor.selectEye(currentValue)
                     }
@@ -158,14 +170,14 @@ Kirigami.Page {
                             objectName: "photoAccept"
                             text: qsTr("Accept")
                             Accessible.name: qsTr("Accept")
-                            enabled: editor.canEdit && page.selected !== null
+                            enabled: editor.canEditEyes && page.selected !== null
                             onClicked: editor.setAccepted(editor.selectedId, true)
                         }
                         QQC2.Button {
                             objectName: "photoReject"
                             text: qsTr("Reject")
                             Accessible.name: qsTr("Reject")
-                            enabled: editor.canEdit && page.selected !== null
+                            enabled: editor.canEditEyes && page.selected !== null
                             onClicked: editor.setAccepted(editor.selectedId, false)
                         }
                     }
@@ -179,7 +191,7 @@ Kirigami.Page {
                         id: manual
                         objectName: "photoManualEye"
                         text: qsTr("Add eye: click or draw ellipse")
-                        enabled: editor.canEdit
+                        enabled: editor.canEditEyes
                         Accessible.name: qsTr("Add eye: click or draw ellipse")
                     }
                     QQC2.Label { text: qsTr("Strength"); textFormat: Text.PlainText }
@@ -188,7 +200,7 @@ Kirigami.Page {
                         Layout.fillWidth: true
                         from: 0; to: 100; stepSize: 1
                         value: page.selected !== null ? page.selected.strength : 100
-                        enabled: editor.canEdit && page.selected !== null
+                        enabled: editor.canEditEyes && page.selected !== null
                         Accessible.name: qsTr("Eye correction strength")
                         onPressedChanged: { if (pressed) editor.beginGesture(); else editor.endGesture(); }
                         onMoved: editor.setStrength(editor.selectedId, Math.round(value))
@@ -196,7 +208,7 @@ Kirigami.Page {
                     QQC2.Label { text: qsTr("Ellipse in source pixels"); textFormat: Text.PlainText }
                     GridLayout {
                         columns: 2
-                        enabled: editor.canEdit && page.selected !== null
+                        enabled: editor.canEditEyes && page.selected !== null
                         QQC2.Label { text: qsTr("Center X"); textFormat: Text.PlainText }
                         GeometrySpinBox {
                             id: centerX
@@ -235,9 +247,10 @@ Kirigami.Page {
                         }
                     }
                     QQC2.Button {
+                        objectName: "photoRemoveEye"
                         text: qsTr("Remove eye")
                         Accessible.name: qsTr("Remove eye")
-                        enabled: editor.canEdit && page.selected !== null
+                        enabled: editor.canEditEyes && page.selected !== null
                         onClicked: editor.removeEye(editor.selectedId)
                     }
                     QQC2.Label {

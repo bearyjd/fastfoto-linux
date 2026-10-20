@@ -23,6 +23,7 @@ QML_FILES = (
     "PhotoCell.qml",
     "PhotoEditCanvas.qml",
     "PhotoEditPage.qml",
+    "PhotoGeometryControls.qml",
     "PhotoToneControls.qml",
     "ModeSwitch.qml",
     "DocumentFormPanel.qml",

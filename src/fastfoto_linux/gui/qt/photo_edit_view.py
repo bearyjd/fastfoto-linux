@@ -10,7 +10,14 @@ from PySide6.QtCore import Property, QObject, QUrl, Signal, Slot
 
 from fastfoto_linux.gui.qt.photos_model import file_url
 from fastfoto_linux.gui.state import ActionBlockedError
-from fastfoto_linux.photo_edits import EyeEdit, PhotoEditError, PhotoTone
+from fastfoto_linux.photo_edits import (
+    EyeEdit,
+    PhotoEditError,
+    PhotoGeometry,
+    PhotoTone,
+    min_crop_size,
+    output_size,
+)
 
 if TYPE_CHECKING:
     from fastfoto_linux.gui.photoeditside import PhotoEditSide
@@ -83,7 +90,8 @@ class PhotoEditView(QObject):
 
     def _url(self, name: str) -> str:
         preview = self._side.preview
-        return file_url(getattr(preview, name)) if preview else ""
+        path = getattr(preview, name) if preview else None
+        return file_url(path) if path else ""
 
     @Property(str, notify=changed)
     def beforeUrl(self) -> str:
@@ -92,6 +100,11 @@ class PhotoEditView(QObject):
     @Property(str, notify=changed)
     def afterUrl(self) -> str:
         return self._url("after")
+
+    @Property(str, notify=changed)
+    def workingUrl(self) -> str:
+        # Identical to the after image while the geometry is neutral.
+        return self._url("working") or self._url("after")
 
     @Property(str, notify=changed)
     def roiBeforeUrl(self) -> str:
@@ -108,6 +121,52 @@ class PhotoEditView(QObject):
     @Property(int, notify=changed)
     def sourceHeight(self) -> int:
         return self._side.recipe.source.height if self._side.recipe else 0
+
+    @Property(bool, notify=changed)
+    def geometryMode(self) -> bool:
+        return self._side.geometry_mode
+
+    @Property(bool, notify=changed)
+    def geometryNeutral(self) -> bool:
+        recipe = self._side.recipe
+        return recipe is None or recipe.geometry == PhotoGeometry()
+
+    @Property(bool, notify=changed)
+    def canEditEyes(self) -> bool:
+        return self._side.can_edit_eyes
+
+    @Property("QVariantMap", notify=changed)
+    def geometry(self) -> dict[str, object]:
+        recipe = self._side.recipe
+        if recipe is None:
+            return dict(quarterTurns=0, cropped=False, crop=[0, 0, 0, 0])
+        geometry = recipe.geometry
+        full = (0, 0, recipe.source.width, recipe.source.height)
+        return dict(
+            quarterTurns=geometry.quarter_turns,
+            cropped=geometry.crop is not None,
+            crop=list(geometry.crop or full),
+        )
+
+    def _output(self) -> tuple[int, int]:
+        recipe = self._side.recipe
+        return output_size(recipe.source, recipe.geometry) if recipe else (0, 0)
+
+    @Property(int, notify=changed)
+    def outputWidth(self) -> int:
+        return self._output()[0]
+
+    @Property(int, notify=changed)
+    def outputHeight(self) -> int:
+        return self._output()[1]
+
+    @Property(int, notify=changed)
+    def minCropWidth(self) -> int:
+        return min_crop_size(self._side.recipe.source)[0] if self._side.recipe else 0
+
+    @Property(int, notify=changed)
+    def minCropHeight(self) -> int:
+        return min_crop_size(self._side.recipe.source)[1] if self._side.recipe else 0
 
     @Property(float, notify=changed)
     def defaultRadius(self) -> float:
@@ -191,6 +250,30 @@ class PhotoEditView(QObject):
     @Slot()
     def resetTone(self) -> None:
         self._call(self._side.reset_tone)
+
+    @Slot(bool)
+    def setGeometryMode(self, value: bool) -> None:
+        self._call(self._side.set_geometry_mode, value)
+
+    @Slot()
+    def rotateClockwise(self) -> None:
+        self._call(self._side.rotate, True)
+
+    @Slot()
+    def rotateCounterclockwise(self) -> None:
+        self._call(self._side.rotate, False)
+
+    @Slot(int, int, int, int)
+    def setCrop(self, left: int, top: int, right: int, bottom: int) -> None:
+        self._call(self._side.set_crop, left, top, right, bottom)
+
+    @Slot()
+    def clearCrop(self) -> None:
+        self._call(self._side.clear_crop)
+
+    @Slot()
+    def resetGeometry(self) -> None:
+        self._call(self._side.reset_geometry)
 
     @Slot(float, float, float, float)
     def addEllipse(self, cx: float, cy: float, rx: float, ry: float) -> None:

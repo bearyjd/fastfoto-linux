@@ -5,6 +5,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from fastfoto_linux.gui.photoeditgeometry import PhotoGeometryActions
 from fastfoto_linux.gui.photoeditjobs import PhotoEditRequest, PhotoEditResult, PhotoEditTools
 from fastfoto_linux.gui.photos import PhotoItem
 from fastfoto_linux.gui.state import ActionBlockedError, Mode
@@ -37,12 +38,18 @@ def _preview_paths(preview: PhotoPreview | None) -> set[Path]:
         return set()
     return {
         path
-        for path in (preview.before, preview.after, preview.roi_before, preview.roi_after)
+        for path in (
+            preview.before,
+            preview.after,
+            preview.working,
+            preview.roi_before,
+            preview.roi_after,
+        )
         if path is not None
     }
 
 
-class PhotoEditSide:
+class PhotoEditSide(PhotoGeometryActions):
     def __init__(
         self,
         controller: "Controller",
@@ -134,6 +141,7 @@ class PhotoEditSide:
         self.saved_edit = None
         self._undo.clear()
         self._pending = None
+        self.geometry_mode = False
         self.end_gesture()
         self.generation += 1
         self._submit(PhotoEditRequest(operation, self.generation, path=path))
@@ -189,17 +197,20 @@ class PhotoEditSide:
         raise ValueError("That eye is no longer in this review.")
 
     def select_eye(self, eye_id: str) -> None:
+        self._require_eye_edit()
         self._eye(eye_id)
         if eye_id != self.selected_id:
             self.selected_id = eye_id
             self.request_preview()
 
     def set_accepted(self, eye_id: str, value: bool) -> None:
+        self._require_eye_edit()
         eye = self._eye(eye_id)
         if eye.accepted != value:
             self._replace(eye_id, replace(eye, accepted=value))
 
     def set_strength(self, eye_id: str, value: int) -> None:
+        self._require_eye_edit()
         eye = self._eye(eye_id)
         if eye.strength != value:
             self._replace(eye_id, replace(eye, strength=value))
@@ -219,6 +230,7 @@ class PhotoEditSide:
             self._change(updated)
 
     def add_ellipse(self, cx: float, cy: float, rx: float, ry: float) -> None:
+        self._require_eye_edit()
         recipe = self._require_edit()
         ids = {eye.id for eye in recipe.eyes}
         self._manual_number += 1
@@ -236,6 +248,7 @@ class PhotoEditSide:
         rx: float,
         ry: float,
     ) -> None:
+        self._require_eye_edit()
         eye = self._eye(eye_id)
         assert self.recipe is not None
         adjusted = self._tools.manual(
@@ -252,6 +265,7 @@ class PhotoEditSide:
         )
 
     def remove_eye(self, eye_id: str) -> None:
+        self._require_eye_edit()
         self._eye(eye_id)
         assert self.recipe is not None
         eyes = tuple(eye for eye in self.recipe.eyes if eye.id != eye_id)
@@ -329,6 +343,7 @@ class PhotoEditSide:
         self.recipe = self._initial = self._clean = None
         self._undo.clear()
         self.selected_id, self.error = "", ""
+        self.geometry_mode = False
         self.end_gesture()
         self._forget_preview()
         self._changed()

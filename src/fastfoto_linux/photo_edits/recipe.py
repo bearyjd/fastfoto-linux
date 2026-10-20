@@ -19,6 +19,7 @@ from fastfoto_linux.photo_edits.model import (
     POINT_COORDINATES,
     RECIPE_VERSIONS,
     ROI_COORDINATES,
+    STRAIGHTEN_SCHEMA_VERSION,
     TONE_SCHEMA_VERSION,
     EyeEdit,
     PhotoEditError,
@@ -28,6 +29,7 @@ from fastfoto_linux.photo_edits.model import (
     PhotoTone,
     digest,
     finite,
+    frame_size,
     integer,
     sibling_name,
     validate_version,
@@ -35,6 +37,7 @@ from fastfoto_linux.photo_edits.model import (
 
 TONE_KEYS = frozenset({"brightness", "contrast", "saturation", "strength"})
 GEOMETRY_KEYS = frozenset({"quarter_turns", "crop"})
+STRAIGHTEN_KEYS = GEOMETRY_KEYS | {"straighten_tenths"}
 ROOT_KEYS = frozenset({"schema_version", "algorithm_version", "quality", "source", "eyes"})
 SOURCE_KEYS = (
     "sha256",
@@ -79,12 +82,15 @@ def recipe_object(recipe: PhotoEditRecipe) -> dict[str, Any]:
     }
     if recipe.schema_version >= TONE_SCHEMA_VERSION:
         payload["tone"] = asdict(recipe.tone)
-    if recipe.schema_version == GEOMETRY_SCHEMA_VERSION:
+    if recipe.schema_version >= GEOMETRY_SCHEMA_VERSION:
         crop = recipe.geometry.crop
-        payload["geometry"] = {
+        geometry = {
             "crop": None if crop is None else list(crop),
             "quarter_turns": recipe.geometry.quarter_turns,
         }
+        if recipe.schema_version == STRAIGHTEN_SCHEMA_VERSION:
+            geometry["straighten_tenths"] = recipe.geometry.straighten_tenths
+        payload["geometry"] = geometry
     return payload
 
 
@@ -138,7 +144,7 @@ def _read_checked(data: bytes) -> tuple[dict[str, Any], PhotoTone, PhotoGeometry
     expected = ROOT_KEYS | ({"output"} if "output" in value else set())
     if value["schema_version"] >= TONE_SCHEMA_VERSION:
         expected |= {"tone"}
-    if value["schema_version"] == GEOMETRY_SCHEMA_VERSION:
+    if value["schema_version"] >= GEOMETRY_SCHEMA_VERSION:
         expected |= {"geometry"}
     fields(value, expected, "photo recipe")
     integer(value["quality"], 1, 100, "JPEG quality")
@@ -158,13 +164,19 @@ def _read_tone(payload: dict[str, Any]) -> PhotoTone:
 
 
 def _read_geometry(payload: dict[str, Any]) -> PhotoGeometry:
-    if payload["schema_version"] != GEOMETRY_SCHEMA_VERSION:
+    version = payload["schema_version"]
+    if version < GEOMETRY_SCHEMA_VERSION:
         return PhotoGeometry()
-    geometry = fields(payload["geometry"], GEOMETRY_KEYS, "photo geometry")
+    keys = STRAIGHTEN_KEYS if version == STRAIGHTEN_SCHEMA_VERSION else GEOMETRY_KEYS
+    geometry = fields(payload["geometry"], keys, "photo geometry")
     crop = geometry["crop"]
     if crop is not None and not isinstance(crop, list):
         raise PhotoEditError("crop must be null or a list of four integers")
-    return PhotoGeometry(geometry["quarter_turns"], None if crop is None else tuple(crop))
+    return PhotoGeometry(
+        geometry["quarter_turns"],
+        None if crop is None else tuple(crop),
+        geometry.get("straighten_tenths", 0),
+    )
 
 
 def _mask_shape(payload: dict[str, Any]) -> tuple[int, int]:
@@ -277,17 +289,15 @@ def update_tone(recipe: PhotoEditRecipe, tone: PhotoTone) -> PhotoEditRecipe:
 
 
 def update_geometry(recipe: PhotoEditRecipe, geometry: PhotoGeometry) -> PhotoEditRecipe:
-    """Preserve no-op identity; any change moves a v1/v2 draft to schema 3, and v3 stays v3."""
+    """Preserve no-op identity; a change reaches schema 3, or 4 with an angle, and never drops."""
     if not isinstance(recipe, PhotoEditRecipe) or not isinstance(geometry, PhotoGeometry):
         raise PhotoEditError("geometry updates require a recipe and validated geometry")
-    crop = geometry.crop
-    if crop == (0, 0, recipe.source.width, recipe.source.height):
-        geometry = PhotoGeometry(geometry.quarter_turns)
+    if geometry.crop == (0, 0, *frame_size(recipe.source, geometry)):
+        geometry = replace(geometry, crop=None)
     if geometry == recipe.geometry:
         return recipe
+    wanted = STRAIGHTEN_SCHEMA_VERSION if geometry.straighten_tenths else GEOMETRY_SCHEMA_VERSION
+    schema = max(recipe.schema_version, wanted)
     return replace(
-        recipe,
-        geometry=geometry,
-        schema_version=GEOMETRY_SCHEMA_VERSION,
-        algorithm_version=RECIPE_VERSIONS[GEOMETRY_SCHEMA_VERSION],
+        recipe, geometry=geometry, schema_version=schema, algorithm_version=RECIPE_VERSIONS[schema]
     )

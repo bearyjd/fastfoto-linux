@@ -128,8 +128,8 @@ def _overlap(left: EyeEdit, right: EyeEdit) -> bool:
     return ax < br and bx < ar and ay < bb and by < ab
 
 
-def render(source: PhotoSource, recipe: PhotoEditRecipe, *, cancel: Event) -> np.ndarray:
-    """Render eye corrections, then crop and turn, then tone, without changing source pixels."""
+def _eye_buffer(source: PhotoSource, recipe: PhotoEditRecipe, cancel: Event) -> np.ndarray:
+    """A copy of the source with the accepted eye corrections applied, in source space."""
     check_cancel(cancel)
     _same_source(source, recipe)
     accepted = tuple(edit for edit in recipe.eyes if edit.accepted)
@@ -146,8 +146,14 @@ def render(source: PhotoSource, recipe: PhotoEditRecipe, *, cancel: Event) -> np
             source.pixels[y0:y1, x0:x1], (fix,), strength=edit.strength / 100
         )
     check_cancel(cancel)
+    return result
+
+
+def render(source: PhotoSource, recipe: PhotoEditRecipe, *, cancel: Event) -> np.ndarray:
+    """Render eyes, then straighten, crop and turn, then tone, without changing source pixels."""
+    result = _eye_buffer(source, recipe, cancel)
     if recipe.geometry != PhotoGeometry():
-        result = apply_geometry(result, recipe.geometry)
+        result = apply_geometry(result, recipe.geometry, cancel=cancel)
         check_cancel(cancel)
     _apply_tone(result, recipe.tone, cancel)
     check_cancel(cancel)
@@ -165,10 +171,47 @@ def _preview_jpeg(
     return buffer.getvalue(), image.size
 
 
+def _roi_blobs(
+    source: PhotoSource, recipe: PhotoEditRecipe, selected_id: str, working: np.ndarray
+) -> list[bytes]:
+    selected = next((eye for eye in recipe.eyes if eye.id == selected_id), None)
+    if selected is None:
+        raise PhotoEditError("selected eye is no longer in the draft")
+    x0, y0, x1, y1 = selected.roi
+    return [
+        _preview_jpeg(pixels[y0:y1, x0:x1], bounded=False, icc_profile=source.icc_profile)[0]
+        for pixels in (source.pixels, working)
+    ]
+
+
+def _straightened_images(
+    source: PhotoSource, recipe: PhotoEditRecipe, selected_id: str | None, cancel: Event
+) -> tuple[list[bytes], tuple[int, int]]:
+    """Blobs for an angled draft, keeping at most the eye buffer and one warped buffer alive."""
+    icc = source.icc_profile
+    buffer = _eye_buffer(source, recipe, cancel)
+    after = apply_geometry(buffer, recipe.geometry, cancel=cancel)
+    _apply_tone(after, recipe.tone, cancel)
+    after_blob, size = _preview_jpeg(after, bounded=True, icc_profile=icc)
+    del after
+    _apply_tone(buffer, recipe.tone, cancel)
+    before_blob, _ = _preview_jpeg(source.pixels, bounded=True, icc_profile=icc)
+    working_blob, _ = _preview_jpeg(buffer, bounded=True, icc_profile=icc)
+    blobs = [before_blob, after_blob, working_blob]
+    if selected_id is not None:
+        blobs += _roi_blobs(source, recipe, selected_id, buffer)
+    level = PhotoGeometry(straighten_tenths=recipe.geometry.straighten_tenths)
+    frame = apply_geometry(buffer, level, cancel=cancel)
+    blobs.append(_preview_jpeg(frame, bounded=True, icc_profile=icc)[0])
+    return blobs, size
+
+
 def _preview_images(
     source: PhotoSource, recipe: PhotoEditRecipe, selected_id: str | None, cancel: Event
 ) -> tuple[list[bytes], tuple[int, int]]:
-    """Blobs in order: before, after, working, then the optional eye crops (pre-geometry)."""
+    """Blobs: before, after, working, [roi_before, roi_after], and straightened last if angled."""
+    if recipe.geometry.straighten_tenths:
+        return _straightened_images(source, recipe, selected_id, cancel)
     neutral = recipe.geometry == PhotoGeometry()
     working = render(source, replace(recipe, geometry=PhotoGeometry()), cancel=cancel)
     before_blob, _ = _preview_jpeg(source.pixels, bounded=True, icc_profile=source.icc_profile)
@@ -182,16 +225,7 @@ def _preview_images(
         after_blob, size = _preview_jpeg(after, bounded=True, icc_profile=source.icc_profile)
     blobs = [before_blob, after_blob, working_blob]
     if selected_id is not None:
-        selected = next((eye for eye in recipe.eyes if eye.id == selected_id), None)
-        if selected is None:
-            raise PhotoEditError("selected eye is no longer in the draft")
-        x0, y0, x1, y1 = selected.roi
-        for pixels in (source.pixels, working):
-            blobs.append(
-                _preview_jpeg(pixels[y0:y1, x0:x1], bounded=False, icc_profile=source.icc_profile)[
-                    0
-                ]
-            )
+        blobs += _roi_blobs(source, recipe, selected_id, working)
     return blobs, size
 
 
@@ -235,4 +269,5 @@ def make_preview(  # noqa: PLR0913 - preview geometry and cancellation are expli
         paths[3] if selected_id is not None else None,
         paths[4] if selected_id is not None else None,
         working=paths[2],
+        straightened=paths[-1] if recipe.geometry.straighten_tenths else None,
     )

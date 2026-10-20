@@ -179,9 +179,9 @@ def test_dragging_on_the_canvas_sets_the_source_crop_as_one_undo(make_bridge, op
     enter_mode(page)
     initial = bridge.controller.photo_edit.recipe
     drag(window, canvas_point(page, 0.1, 0.0), canvas_point(page, 0.9, 1.0))
-    # The pointer maps through whole window pixels, so allow a pixel or two of slack.
+    # The pointer maps through whole window pixels, so allow one pixel of slack.
     left, top, right, bottom = view.geometry["crop"]
-    assert 8 <= left <= 12 and top == 0 and 88 <= right <= 92 and bottom == 60
+    assert 9 <= left <= 11 and top == 0 and 89 <= right <= 91 and bottom == 60
     assert view.geometry["cropped"]
     assert len(bridge.controller.photo_edit._undo) == 1
     assert child(page, "photoCropRect").property("visible")

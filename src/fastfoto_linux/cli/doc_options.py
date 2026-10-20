@@ -9,6 +9,7 @@ from fastfoto_linux.documents import (
     DEFAULT_LANGS,
     DEFAULT_NAME,
     ColourMode,
+    ColourPolicy,
     DocumentSettings,
     OcrMode,
     validate_langs,
@@ -51,9 +52,9 @@ def add_document_options(parser: argparse.ArgumentParser) -> None:
     pdf = parser.add_argument_group("document")
     pdf.add_argument(
         "--colour",
-        choices=[mode.value for mode in ColourMode],
+        choices=[mode.value for mode in ColourPolicy],
         default=ColourMode.COLOUR.value,
-        help="colour, grey or black and white (a page never gains colour; default: colour)",
+        help="auto per page, colour, grey or black and white (default: colour)",
     )
     pdf.add_argument(
         "--keep-blank", action="store_true", help="keep blank pages instead of dropping them"
@@ -117,7 +118,7 @@ def build_settings(args: argparse.Namespace) -> DocumentSettings:
     return DocumentSettings(
         output_root=args.out,
         name=args.name,
-        colour=ColourMode(args.colour),
+        colour=ColourPolicy.AUTO if args.colour == ColourPolicy.AUTO else ColourMode(args.colour),
         keep_blank=args.keep_blank,
         ocr=OcrMode(args.ocr),
         langs=args.lang,

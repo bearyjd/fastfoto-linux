@@ -15,6 +15,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from fastfoto_linux.documents.assess import PageAssessment, assess_page
+from fastfoto_linux.documents.auto_colour import ColourDecision, classify_colour, resolve_colour
 from fastfoto_linux.documents.draft import DocumentDraft, PageAnalysis, TrimBox
 from fastfoto_linux.documents.encode import EncodedPage, encode_page
 from fastfoto_linux.documents.errors import DocumentError, stop_if_cancelled
@@ -28,7 +29,7 @@ from fastfoto_linux.documents.trim import Trimmed, trim_page
 logger = logging.getLogger(__name__)
 
 SIDES_PER_SHEET = 2
-ANALYSIS_VERSION = 1  # bump when a change makes an old analysis wrong (see ``draft_store``)
+ANALYSIS_VERSION = 3  # bump when a change makes an old analysis wrong (see ``draft_store``)
 
 
 def _load_sheet(
@@ -68,6 +69,7 @@ def _analysis(  # noqa: PLR0913 - the fields of one page
     assessment: PageAssessment | None,
     encoded: EncodedPage | None,
     thumb: str | None,
+    colour: ColourDecision,
 ) -> PageAnalysis:
     info = path.stat()
     return PageAnalysis(
@@ -84,6 +86,7 @@ def _analysis(  # noqa: PLR0913 - the fields of one page
         thumb=thumb,
         ink=None if assessment is None else ink_map(trimmed),
         encoded=encoded,
+        colour=colour,
     )
 
 
@@ -119,7 +122,16 @@ def _analyse_sheet(  # noqa: PLR0913 - what a sheet needs, and the hooks, in one
         partner = numbers[1 - index] if paired else None
         if blank:
             logger.info("page %d (%s) is blank and left out", number, pages[number - 1].name)
-        encoded = encode_page(trimmed.page, settings.colour) if encode and not blank else None
+        # A progress callback may request finishing this page and stopping before the next.
+        already_cancelled = cancel is not None and cancel.is_set()
+        colour = classify_colour(trimmed.page)
+        if not already_cancelled:
+            stop_if_cancelled(cancel, f"page {number} of {len(pages)} was classified")
+        encoded = (
+            encode_page(trimmed.page, resolve_colour(colour, settings.colour))
+            if encode and not blank
+            else None
+        )
         analysed.append(
             _analysis(
                 pages[number - 1],
@@ -130,6 +142,7 @@ def _analyse_sheet(  # noqa: PLR0913 - what a sheet needs, and the hooks, in one
                 assessment=assessment,
                 encoded=encoded,
                 thumb=_thumbnail(thumbs, number, trimmed),
+                colour=colour,
             )
         )
     return analysed

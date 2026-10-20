@@ -1,0 +1,136 @@
+{
+  "version": 1,
+  "origin": "Generated entirely by tests/documents/auto_helpers.py:auto_page",
+  "rights": "Repository-authored synthetic fixtures; same GPL-3.0-or-later project license",
+  "external_sources": [],
+  "private_images_used": false,
+  "purpose": "Deterministic preservation invariants, not measured real-scanner accuracy",
+  "page_mm": {
+    "width": 80.0,
+    "height": 100.0
+  },
+  "evaluation_dpi": [
+    100,
+    300
+  ],
+  "strata": [
+    {
+      "case": "text",
+      "expected_auto": "bw",
+      "content": "Neutral black strokes on white"
+    },
+    {
+      "case": "stamp",
+      "expected_auto": "colour",
+      "content": "2 mm blue annotation"
+    },
+    {
+      "case": "red_stroke",
+      "expected_auto": "colour",
+      "content": "0.25 mm by 4 mm red stroke"
+    },
+    {
+      "case": "gradient",
+      "expected_auto": "grey",
+      "content": "Neutral continuous tones"
+    },
+    {
+      "case": "faint",
+      "expected_auto": "grey",
+      "content": "Faint 0.25 mm neutral pencil-like stroke"
+    },
+    {
+      "case": "reversed",
+      "expected_auto": "grey",
+      "content": "Light strokes over shaded fill"
+    },
+    {
+      "case": "sepia",
+      "expected_auto": "colour",
+      "content": "Uniform sepia paper tint"
+    },
+    {
+      "case": "neutral_noise",
+      "expected_auto": [
+        "grey",
+        "bw"
+      ],
+      "content": "Seed 27 neutral paper noise"
+    },
+    {
+      "case": "blank",
+      "expected_auto": null,
+      "content": "White page; inclusion judged independently"
+    },
+    {
+      "case": "antialiased_text",
+      "expected_auto": "bw",
+      "content": "45/245 neutral glyphs, physical 0.25mm stroke and 3mm font height, antialiased edges, seed 611 paper noise",
+      "dpi": [
+        300,
+        600
+      ],
+      "source_kinds": [
+        "colour",
+        "grey"
+      ]
+    },
+    {
+      "case": "antialiased_text_with_pencil",
+      "expected_auto": "grey",
+      "content": "Separate 0.18mm faint 221-level neutral line beside antialiased text",
+      "dpi": [
+        300,
+        600
+      ]
+    },
+    {
+      "case": "antialiased_text_with_photo",
+      "expected_auto": "grey",
+      "content": "Separate neutral continuous-tone patch beside antialiased text",
+      "dpi": [
+        300,
+        600
+      ]
+    },
+    {
+      "case": "detached_faint_near_core",
+      "expected_auto": "grey",
+      "content": "230-level line separated from a dark stroke by a white gap inside the AA radius",
+      "dpi": [
+        100,
+        300,
+        600
+      ],
+      "source_kinds": [
+        "grey",
+        "colour"
+      ]
+    },
+    {
+      "case": "detached_shading_near_core",
+      "expected_auto": "grey",
+      "content": "Detached 170/200-level shaded patch near a dark stroke",
+      "dpi": [
+        300,
+        600
+      ]
+    },
+    {
+      "case": "connected_diagonal_antialias",
+      "expected_auto": "bw",
+      "content": "Diagonal antialiased dark stroke with eight-connected edges",
+      "dpi": [
+        300,
+        600
+      ]
+    }
+  ],
+  "held_out_real_evaluation": "Pending separately rights-cleared corpus; no downloads authorized",
+  "additional_generators": [
+    "tests/documents/auto_antialias.py:antialiased_page"
+  ],
+  "regression_sources": [
+    "tests/documents/test_auto_detached.py"
+  ]
+}

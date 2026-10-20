@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from fastfoto_linux.documents import DEFAULT_NAME, ColourMode, OcrMode
+from fastfoto_linux.documents import DEFAULT_NAME, ColourPolicy, OcrMode
 from fastfoto_linux.gui.docform import (
     DOCUMENT_COLOURS,
     DocumentForm,
@@ -36,8 +36,8 @@ def test_the_defaults_are_those_of_ffscan_doc_scan() -> None:
 
 
 def test_the_colour_choices_are_the_cli_ones() -> None:
-    assert DOCUMENT_COLOURS == ("colour", "grey", "bw")
-    assert tuple(mode.value for mode in ColourMode) == DOCUMENT_COLOURS
+    assert DOCUMENT_COLOURS == ("auto", "colour", "grey", "bw")
+    assert tuple(mode.value for mode in ColourPolicy) == DOCUMENT_COLOURS
 
 
 def test_the_default_form_is_valid() -> None:
@@ -144,7 +144,7 @@ def test_the_settings_follow_the_form(tmp_path: Path) -> None:
     settings = to_document_settings(form, tmp_path, ocr_available=True)
     assert settings.output_root == tmp_path
     assert settings.name == "Lease"
-    assert settings.colour is ColourMode.BW
+    assert settings.colour is ColourPolicy.BW
     assert settings.keep_blank is True
     assert settings.langs == "eng+deu"
     assert settings.ocr is OcrMode.ON

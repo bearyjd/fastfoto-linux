@@ -53,12 +53,17 @@ def encode_page(page: LoadedPage, requested: ColourMode) -> EncodedPage:
     """
     mode = output_mode(page.kind, requested)
     height, width = page.pixels.shape[:2]
-    if mode is ColourMode.COLOUR:
-        data = _jpeg(page.pixels, page.dpi)
-    elif mode is ColourMode.GREY:
-        data = _jpeg(_grey(page), page.dpi)
-    elif page.kind is ColourMode.BW:
-        data = _group4(page.pixels == WHITE, page.dpi)
-    else:
-        data = _group4(binarise(_grey(page), page.dpi), page.dpi)
+    pixels = render_page(page, mode)
+    data = _group4(pixels == WHITE, page.dpi) if mode is ColourMode.BW else _jpeg(pixels, page.dpi)
     return EncodedPage(data, mode, width, height, page.dpi)
+
+
+def render_page(page: LoadedPage, actual_mode: ColourMode) -> np.ndarray:
+    """Render full-resolution output pixels before encoding or preview downsampling."""
+    mode = output_mode(page.kind, actual_mode)
+    if mode is ColourMode.COLOUR:
+        return page.pixels.copy()
+    grey = _grey(page)
+    if mode is ColourMode.GREY or page.kind is ColourMode.BW:
+        return grey.copy()
+    return np.where(binarise(grey, page.dpi), WHITE, 0).astype(np.uint8)

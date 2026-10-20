@@ -9,10 +9,11 @@ from typing import TYPE_CHECKING, Any
 from PySide6.QtCore import Property, QObject, QTimer, QUrl, Signal, Slot
 
 from fastfoto_linux.documents.draft_edit import parts
+from fastfoto_linux.documents.modes import ColourPolicy
 from fastfoto_linux.gui.qt.photos_model import file_url
 from fastfoto_linux.gui.qt.review_model import ReviewModel
 from fastfoto_linux.gui.report import Banner
-from fastfoto_linux.gui.review import review_items, review_summary
+from fastfoto_linux.gui.review import MODE_LABELS, colour_values, review_items, review_summary
 
 if TYPE_CHECKING:
     from fastfoto_linux.gui.qt.bridge import Bridge
@@ -42,7 +43,9 @@ class ReviewView(QObject):
 
     def refresh(self) -> None:
         state = self._side.state
-        self._items.set_items(review_items(state) if state else ())
+        settings = self._side._settings
+        policy = settings.colour if settings else ColourPolicy.COLOUR
+        self._items.set_items(review_items(state, policy) if state else ())
         if state and state.draft is not self._last_draft:
             self._last_draft = state.draft
             if self._side.dirty:
@@ -108,6 +111,24 @@ class ReviewView(QObject):
     def previewNumber(self) -> int:
         return self._side.preview_number
 
+    @Property(str, notify=changed)
+    def previewView(self) -> str:
+        return self._side.preview_view
+
+    @Property(str, notify=changed)
+    def previewLabel(self) -> str:
+        if self._side.preview_view == "source":
+            return "Source preview"
+        if self._side.preview_path is None:
+            return "Preparing output preview…"
+        state = self._side.state
+        if state is None:
+            return "Output preview"
+        page = state.draft.pages[self._side.preview_number - 1]
+        values = colour_values(state.draft, page, self._side._settings.colour)
+        mode = MODE_LABELS.get(values[1], "")
+        return f"Output: {mode}" if mode else "Output preview"
+
     def _call(self, action: Callable[..., Any], *args: object) -> Any:
         try:
             answer = action(*args)
@@ -126,6 +147,14 @@ class ReviewView(QObject):
     @Slot(int)
     def toggle(self, number: int) -> None:
         self._call(self._side.edit, "toggle", number)
+
+    @Slot(int, str)
+    def setColour(self, number: int, value: str) -> None:
+        self._call(self._set_colour, number, value)
+
+    def _set_colour(self, number: int, value: str) -> None:
+        policy = ColourPolicy(value) if value else None
+        self._side.edit("set_colour", number, policy)
 
     @Slot(int, int)
     def rotate(self, number: int, turns: int) -> None:
@@ -184,6 +213,10 @@ class ReviewView(QObject):
     @Slot(int, result=str)
     def preview(self, number: int) -> str:
         return self._call(self._side.preview, number) or ""
+
+    @Slot(int, str, result=str)
+    def previewMode(self, number: int, view: str) -> str:
+        return self._call(self._side.preview, number, view) or ""
 
     @Slot(bool)
     def deleteOriginals(self, confirmed: bool = False) -> None:

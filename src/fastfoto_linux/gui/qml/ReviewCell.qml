@@ -5,6 +5,8 @@ import org.kde.kirigami as Kirigami
 
 Item {
     id: cell
+    required property var model
+    property string outputText: ""
     required property int index
     required property int orderIndex
     property int previousOrderIndex: -1
@@ -43,6 +45,12 @@ Item {
             text: cell.startsPart ? qsTr("Page %1 · New PDF %2").arg(cell.number).arg(cell.part) : qsTr("Page %1").arg(cell.number)
             textFormat: Text.PlainText
             font.bold: cell.startsPart
+        }
+        QQC2.Label {
+            text: qsTr("Source preview")
+            textFormat: Text.PlainText
+            font: Kirigami.Theme.smallFont
+            color: Kirigami.Theme.disabledTextColor
         }
         Item {
             Layout.fillWidth: true
@@ -99,6 +107,17 @@ Item {
             QQC2.ToolTip.visible: flagHover.hovered && cell.flags.length > 0
             QQC2.ToolTip.text: cell.flagText
             HoverHandler { id: flagHover }
+        }
+        QQC2.Label {
+            Layout.fillWidth: true
+            visible: cell.outputText !== ""
+            text: cell.outputText
+            textFormat: Text.PlainText
+            elide: Text.ElideRight
+            font: Kirigami.Theme.smallFont
+            QQC2.ToolTip.visible: outputHover.hovered
+            QQC2.ToolTip.text: cell.outputText
+            HoverHandler { id: outputHover }
         }
         RowLayout {
             spacing: 2

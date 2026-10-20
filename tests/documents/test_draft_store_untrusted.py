@@ -82,7 +82,7 @@ TAMPERINGS: dict[str, Tamper] = {
     "part name too far": lambda d: d.update(part_names={"9": "x"}) or d,
     "part name with a path": lambda d: d.update(part_names={"1": "../x"}) or d,
     "part name not a string": lambda d: d.update(part_names={"1": 5}) or d,
-    "wrong version": lambda d: d.update(version=2) or d,
+    "wrong version": lambda d: d.update(version=99) or d,
     "version as a string": lambda d: d.update(version="1") or d,
     "duplex as a number": lambda d: d.update(duplex=1) or d,
     "options with a bad colour": lambda d: d["options"].update(colour="neon") or d,
@@ -173,7 +173,7 @@ def test_a_sidecar_that_is_a_pipe_is_ignored_without_hanging(saved, caplog) -> N
 def test_the_valid_sidecar_of_these_tests_is_accepted(saved) -> None:
     folder, pages, settings, _ = saved
     assert load_draft(folder, pages, settings) is not None
-    assert json.loads((folder / REVIEW_FILE).read_text())["version"] == 1
+    assert json.loads((folder / REVIEW_FILE).read_text())["version"] == 2
     assert store.MAX_REVIEW_BYTES == MAX_REVIEW_BYTES
 
 

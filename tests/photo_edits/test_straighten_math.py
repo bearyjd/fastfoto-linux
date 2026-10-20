@@ -180,3 +180,32 @@ def test_shrink_loop_recovers_from_an_overestimate_and_stays_maximal(
             assert not all(_inside(width, height, tenths, fw + 1, fh))
         if fh < height:
             assert not all(_inside(width, height, tenths, fw, fh + 1))
+
+
+def test_float_estimate_matches_closed_forms_in_both_regimes() -> None:
+    angle = math.radians(15.0)
+    s, c = math.sin(angle), math.cos(angle)
+    wide = st._estimate(400, 5, 150)  # thin: the short side is the binding constraint
+    assert wide == pytest.approx((2 / s, 2 / c))
+    tall = st._estimate(5, 400, 150)
+    assert tall == pytest.approx((2 / c, 2 / s))
+    a = math.radians(0.7)
+    s, c = math.sin(a), math.cos(a)
+    d = c * c - s * s
+    est = st._estimate(300, 200, 7)
+    assert est == pytest.approx(((299 * c - 199 * s) / d, (199 * c - 299 * s) / d))
+    assert st._estimate(1, 50, 37) == (0.0, 0.0) and st._estimate(50, 1, -37) == (0.0, 0.0)
+    assert st._estimate(300, 200, -7) == est
+
+
+def test_estimate_regime_boundary_sits_at_twice_sin_cos() -> None:
+    angle = math.radians(15.0)
+    s, c = math.sin(angle), math.cos(angle)
+    # short/long = 0.45 lies between 1.5*s*c and 2*s*c, so it is inside the thin regime
+    assert st._estimate(46, 101, 150) == pytest.approx((22.5 / c, 22.5 / s))
+    assert st._estimate(101, 46, 150) == pytest.approx((22.5 / s, 22.5 / c))
+    # just over the boundary the general closed form applies
+    d = c * c - s * s
+    assert st._estimate(52, 101, 150) == pytest.approx(
+        ((51 * c - 100 * s) / d, (100 * c - 51 * s) / d)
+    )

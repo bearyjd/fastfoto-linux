@@ -250,3 +250,12 @@ def test_output_size_swaps_on_odd_turns_with_a_straightened_crop(tmp_path: Path)
     assert output_size(source, PhotoGeometry(0, None, 37)) == (fw, fh)
     assert output_size(source, PhotoGeometry(3, None, 37)) == (fh, fw)
     assert output_size(source, PhotoGeometry(1, (2, 3, 50, 40), 37)) == (37, 48)
+
+
+def test_angled_preview_rejects_a_selected_eye_that_left_the_draft(tmp_path: Path) -> None:
+    source = source_at(tmp_path)
+    recipe = straight_recipe(source, PhotoGeometry(0, None, 30))
+    with pytest.raises(PhotoEditError, match="selected eye"):
+        make_preview(
+            source, recipe, cache_dir=tmp_path / "x", generation=1, cancel=Event(), selected_id="no"
+        )

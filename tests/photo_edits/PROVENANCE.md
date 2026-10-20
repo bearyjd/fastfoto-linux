@@ -32,3 +32,12 @@ geometry fields). `fixtures/legacy-v2.json` is the canonical schema 2 sidecar ge
 `legacy-v1.json` with non-neutral tone (25, -35, 60, 75) by the code at commit fd48197; it shares
 `legacy.jpg` and the same exact source and output hashes. These fixtures check lossless pixel
 arithmetic and format compatibility only; none uses a private image or claims photo quality.
+
+E05b-2 (2026-10-20) adds generated straighten cases: seeded random uint8 RGB arrays of several
+shapes (odd, thin, square, a 1300 by 900 image that crosses 512 px tile seams), a single bright
+marker pixel for the rotation direction, a one-pixel line rising 3.0 degrees for levelling, and a
+numpy integer reference that defines the bilinear warp. `fixtures/legacy-v3.jpg` is a locally
+generated 12 by 8 gradient JPEG at 20 dpi (so a 2 px minimum crop leaves room for a real crop);
+its literal `legacy-v3.json` sidecar (quarter turn 1, crop 2,1,10,7, tone 25,-35,60,75, one
+accepted eye) was generated once by the code at commit 396b929 (schema 3) before any straighten
+change and shares exact source and output hashes. None uses a private image or claims photo quality.

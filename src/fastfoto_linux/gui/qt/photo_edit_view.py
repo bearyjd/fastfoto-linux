@@ -15,8 +15,10 @@ from fastfoto_linux.photo_edits import (
     PhotoEditError,
     PhotoGeometry,
     PhotoTone,
+    frame_size,
     min_crop_size,
     output_size,
+    straightened_size,
 )
 
 if TYPE_CHECKING:
@@ -108,6 +110,11 @@ class PhotoEditView(QObject):
         return self._url("working") or self._url("after")
 
     @Property(str, notify=changed)
+    def straightenedUrl(self) -> str:
+        # The straightened frame, else the working image (the source frame at angle 0).
+        return self._url("straightened") or self.workingUrl
+
+    @Property(str, notify=changed)
     def roiBeforeUrl(self) -> str:
         return self._url("roi_before")
 
@@ -142,12 +149,49 @@ class PhotoEditView(QObject):
         if recipe is None:
             return dict(quarterTurns=0, cropped=False, crop=[0, 0, 0, 0])
         geometry = recipe.geometry
-        full = (0, 0, recipe.source.width, recipe.source.height)
+        full = (0, 0, *frame_size(recipe.source, geometry))
         return dict(
             quarterTurns=geometry.quarter_turns,
             cropped=geometry.crop is not None,
             crop=list(geometry.crop or full),
+            straightenTenths=geometry.straighten_tenths,
         )
+
+    def _frame(self) -> tuple[int, int]:
+        recipe = self._side.recipe
+        return frame_size(recipe.source, recipe.geometry) if recipe else (0, 0)
+
+    @Property(int, notify=changed)
+    def frameWidth(self) -> int:
+        return self._frame()[0]
+
+    @Property(int, notify=changed)
+    def frameHeight(self) -> int:
+        return self._frame()[1]
+
+    def _shown_frame(self) -> tuple[int, int]:
+        """The frame the held preview was built for, which may lag the draft's frame."""
+        side = self._side
+        if side.recipe is None:
+            return (0, 0)
+        source = side.recipe.source
+        return straightened_size(source.width, source.height, side.preview_tenths or 0)
+
+    @Property(int, notify=changed)
+    def shownFrameWidth(self) -> int:
+        return self._shown_frame()[0]
+
+    @Property(int, notify=changed)
+    def shownFrameHeight(self) -> int:
+        return self._shown_frame()[1]
+
+    @Property(bool, notify=changed)
+    def canStraighten(self) -> bool:
+        return self._side.can_straighten
+
+    @Property(bool, notify=changed)
+    def previewCurrent(self) -> bool:
+        return self._side.preview_current
 
     def _output(self) -> tuple[int, int]:
         recipe = self._side.recipe
@@ -161,13 +205,17 @@ class PhotoEditView(QObject):
     def outputHeight(self) -> int:
         return self._output()[1]
 
+    def _min_crop(self) -> tuple[int, int]:
+        recipe = self._side.recipe
+        return min_crop_size(recipe.source, recipe.geometry) if recipe else (0, 0)
+
     @Property(int, notify=changed)
     def minCropWidth(self) -> int:
-        return min_crop_size(self._side.recipe.source)[0] if self._side.recipe else 0
+        return self._min_crop()[0]
 
     @Property(int, notify=changed)
     def minCropHeight(self) -> int:
-        return min_crop_size(self._side.recipe.source)[1] if self._side.recipe else 0
+        return self._min_crop()[1]
 
     @Property(float, notify=changed)
     def defaultRadius(self) -> float:
@@ -275,6 +323,14 @@ class PhotoEditView(QObject):
     @Slot()
     def clearCrop(self) -> None:
         self._call(self._side.clear_crop)
+
+    @Slot(int)
+    def setStraighten(self, tenths: int) -> None:
+        self._call(self._side.set_straighten, tenths)
+
+    @Slot()
+    def resetStraighten(self) -> None:
+        self._call(self._side.reset_straighten)
 
     @Slot()
     def resetGeometry(self) -> None:

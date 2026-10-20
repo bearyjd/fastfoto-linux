@@ -17,7 +17,7 @@ ColumnLayout {
         editable: true
         live: false
         from: 0
-        to: edge % 2 === 0 ? root.editor.sourceWidth : root.editor.sourceHeight
+        to: edge % 2 === 0 ? root.editor.frameWidth : root.editor.frameHeight
         value: root.editor.geometry.crop[edge]
         enabled: root.editor.canEdit
         Accessible.name: label
@@ -69,6 +69,78 @@ ColumnLayout {
             enabled: root.editor.canEdit
             onClicked: root.editor.rotateClockwise()
         }
+    }
+    QQC2.Label { visible: root.inMode; text: qsTr("Straighten"); textFormat: Text.PlainText }
+    RowLayout {
+        visible: root.inMode
+        Layout.fillWidth: true
+        QQC2.Slider {
+            objectName: "photoStraightenSlider"
+            Layout.fillWidth: true
+            from: -150
+            to: 150
+            stepSize: 1
+            snapMode: QQC2.Slider.SnapAlways
+            value: root.editor.geometry.straightenTenths
+            enabled: root.editor.canStraighten
+            Accessible.name: qsTr("Straighten angle")
+            onPressedChanged: pressed ? root.editor.beginGesture() : root.editor.endGesture()
+            onMoved: root.editor.setStraighten(Math.round(value))
+        }
+        QQC2.SpinBox {
+            id: angleBox
+            objectName: "photoStraightenAngle"
+            from: -150
+            to: 150
+            stepSize: 1
+            editable: true
+            live: false
+            value: root.editor.geometry.straightenTenths
+            enabled: root.editor.canStraighten
+            Accessible.name: qsTr("Straighten angle in degrees")
+            validator: RegularExpressionValidator {
+                regularExpression: /^\s*[-+]?\d{0,2}[.,]?\d?\s*°?\s*$/
+            }
+            textFromValue: (v, locale) => (v / 10).toFixed(1) + " °"
+            valueFromText: (text, locale) => {
+                const parsed = parseFloat(text.replace(",", "."));
+                return isNaN(parsed) ? value : Math.round(parsed * 10);
+            }
+            onValueModified: root.editor.setStraighten(value)
+            // KDE's default input applies every keystroke even when live is false; this one
+            // commits once, on Return or focus loss (same approach as the eye spin boxes).
+            contentItem: QQC2.TextField {
+                text: angleBox.displayText
+                readOnly: !angleBox.editable
+                validator: angleBox.validator
+                inputMethodHints: Qt.ImhFormattedNumbersOnly
+                selectByMouse: true
+                font: angleBox.font
+                palette: angleBox.palette
+                padding: 0
+                background: null
+                verticalAlignment: TextInput.AlignVCenter
+                Accessible.name: angleBox.Accessible.name
+            }
+        }
+    }
+    QQC2.Button {
+        objectName: "photoResetStraighten"
+        visible: root.inMode
+        text: qsTr("Reset straighten")
+        Accessible.name: qsTr("Reset straighten")
+        enabled: root.editor.canStraighten && root.editor.geometry.straightenTenths !== 0
+        onClicked: root.editor.resetStraighten()
+    }
+    QQC2.Label {
+        objectName: "photoStraightenHint"
+        Layout.fillWidth: true
+        visible: root.inMode
+        text: root.editor.canEdit && !root.editor.canStraighten
+            ? qsTr("Straighten needs equal horizontal and vertical resolution.")
+            : qsTr("Changing the angle clears the crop.")
+        textFormat: Text.PlainText
+        wrapMode: Text.WordWrap
     }
     GridLayout {
         visible: root.inMode

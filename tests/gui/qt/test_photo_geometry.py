@@ -77,7 +77,12 @@ def test_view_exposes_the_geometry_contract(make_bridge, out):
         assert meta.indexOfSlot(slot) >= 0, slot
     assert view.geometryMode is False and view.geometryNeutral is True
     assert view.canEditEyes is True
-    assert view.geometry == {"quarterTurns": 0, "cropped": False, "crop": FULL}
+    assert view.geometry == {
+        "quarterTurns": 0,
+        "cropped": False,
+        "crop": FULL,
+        "straightenTenths": 0,
+    }
     assert (view.outputWidth, view.outputHeight) == (100, 60)
     assert view.minCropWidth == view.minCropHeight == 59
 

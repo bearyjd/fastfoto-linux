@@ -236,9 +236,9 @@ def test_a_plain_click_gives_no_hint(make_bridge, open_window, out):
 def test_dragging_past_the_image_edge_clamps_to_the_source(make_bridge, open_window, out):
     _bridge, view, window, page, warnings = editor_page(make_bridge, open_window, out)
     enter_mode(page)
-    drag(window, canvas_point(page, 0.1, 0.1), canvas_point(page, 1.6, 1.8))
+    drag(window, canvas_point(page, 0.1, -0.2), canvas_point(page, 1.6, 1.8))
     left, top, right, bottom = view.geometry["crop"]
-    assert 9 <= left <= 11 and 5 <= top <= 7 and right == 100 and bottom == 60
+    assert 9 <= left <= 11 and top == 0 and right == 100 and bottom == 60
     assert view.geometry["cropped"] and not view.error
     assert warnings == []
 

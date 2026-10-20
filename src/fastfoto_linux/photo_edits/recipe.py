@@ -111,6 +111,12 @@ def fields(value: object, expected: set[str] | frozenset[str], label: str) -> di
 
 
 def read_object(data: bytes) -> dict[str, Any]:
+    """The validated recipe object, checked before any source is decoded."""
+    return _read_checked(data)[0]
+
+
+def _read_checked(data: bytes) -> tuple[dict[str, Any], PhotoTone]:
+    """The validated recipe object and its tone, which is validated here and only here."""
     if not isinstance(data, bytes) or not 0 < len(data) <= MAX_RECIPE_BYTES:
         raise PhotoEditError("photo recipe exceeds its byte limit or is empty")
     try:
@@ -125,12 +131,12 @@ def read_object(data: bytes) -> dict[str, Any]:
         expected |= {"tone"}
     fields(value, expected, "photo recipe")
     integer(value["quality"], 1, 100, "JPEG quality")
-    _read_tone(value)
+    tone = _read_tone(value)
     if "output" in value:
         output = fields(value["output"], {"name", "sha256"}, "output identity")
         sibling_name(output["name"])
         digest(output["sha256"])
-    return value
+    return value, tone
 
 
 def _read_tone(payload: dict[str, Any]) -> PhotoTone:
@@ -207,7 +213,7 @@ def _eye(value: object) -> EyeEdit:
 
 def parse_recipe(data: bytes, source: PhotoSource) -> PhotoEditRecipe:
     """Decode a bounded recipe only when its retained source identity matches."""
-    payload = read_object(data)
+    payload, tone = _read_checked(data)
     stored_source = fields(payload["source"], {"name", *SOURCE_KEYS}, "source identity")
     sibling_name(stored_source["name"])
     if any(type(stored_source[key]) is bool for key in SOURCE_KEYS):
@@ -232,7 +238,7 @@ def parse_recipe(data: bytes, source: PhotoSource) -> PhotoEditRecipe:
         schema_version=payload["schema_version"],
         algorithm_version=payload["algorithm_version"],
         quality=payload["quality"],
-        tone=_read_tone(payload),
+        tone=tone,
     )
 
 

@@ -34,7 +34,7 @@ from fastfoto_linux.documents.errors import (
     stop_if_cancelled,
 )
 from fastfoto_linux.documents.loader import LoadedPage, load_page
-from fastfoto_linux.documents.modes import ColourPolicy
+from fastfoto_linux.documents.modes import ColourMode, ColourPolicy
 from fastfoto_linux.documents.ocr import OcrMode, OcrOutcome, OcrStatus, run_ocr
 from fastfoto_linux.documents.ocr_tools import ocr_missing_text
 from fastfoto_linux.documents.pdf import assemble_pdf
@@ -142,9 +142,7 @@ def _turned(page: LoadedPage, turns: int) -> LoadedPage:
     return replace(page, pixels=np.ascontiguousarray(np.rot90(page.pixels, -turns)))
 
 
-def _read_page(
-    page: PageAnalysis, turns: int, draft: DocumentDraft, settings: DocumentSettings
-) -> LoadedPage:
+def _read_page(page: PageAnalysis, turns: int, draft: DocumentDraft) -> LoadedPage:
     """The raw page read, cut with its trim box and turned. The raw pixels are released on
     return when the page is turned, so one decoded page is held while it is encoded."""
     raw_dir = draft.raw_dir
@@ -153,7 +151,7 @@ def _read_page(
             f"page {page.number} ({page.name}) has no encoded bytes, and the draft has no "
             "folder of raw pages to read it from"
         )
-    loaded = load_page(raw_dir / page.name, fallback_dpi=settings.fallback_dpi)
+    loaded = load_page(raw_dir / page.name, fallback_dpi=page.dpi)
     return _turned(page.trim.apply(loaded), turns)
 
 
@@ -176,14 +174,17 @@ def _encoded(run: "_Run", page: PageAnalysis, turns: int) -> EncodedPage:
     honoured before each such page)."""
     stop_if_cancelled(run.cancel, f"page {page.number} of {len(run.draft.pages)} was written")
     policy = page_policy(run.draft, page, run.settings.colour)
+    kept = page.encoded if turns == 0 else None
+    mode: ColourMode | None = None
     if page.colour is not None or policy is not ColourPolicy.AUTO:
         mode = page_colour(run.draft, page, run.settings.colour)
-        if page.encoded is not None and turns == 0 and page.encoded.mode is mode:
-            return page.encoded
-    loaded = _read_page(page, turns, run.draft, run.settings)
-    mode = resolve_colour(page.colour or classify_colour(loaded), policy)
-    if page.encoded is not None and turns == 0 and page.encoded.mode is mode:
-        return page.encoded
+        if kept is not None and kept.mode is mode:
+            return kept
+    loaded = _read_page(page, turns, run.draft)
+    if mode is None:  # Auto on a page that was not analysed: classify it once, here
+        mode = resolve_colour(classify_colour(loaded), policy)
+        if kept is not None and kept.mode is mode:
+            return kept
     if run.on_page is not None:
         run.on_page(page.number, len(run.draft.pages))
     return encode_page(loaded, mode)

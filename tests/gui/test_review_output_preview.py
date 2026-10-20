@@ -210,3 +210,17 @@ def test_confirmed_delete_removes_only_known_unchanged_output_variants(out, monk
     side.delete_originals(True)
     assert not output.exists()
     assert unknown.read_bytes() == b"unrelated"
+
+
+def test_an_edit_to_another_page_keeps_the_previewed_output_and_asks_for_no_new_one(out):
+    side, page = opened(out)
+    calls = []
+    page.worker.preview_page = lambda *args: calls.append(args)
+    side.preview(1, "output")
+    output = out / "previews" / "page-0001-output-colour.jpg"
+    side.preview_ready(PreviewCompletion(calls[-1][0], output))
+    side.edit("rotate", 2, 1)
+    assert side.dirty
+    assert side.preview_path == output and len(calls) == 1
+    side.edit("rotate", 1, 1)
+    assert side.preview_path is None and len(calls) == 2

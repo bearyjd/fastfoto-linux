@@ -47,6 +47,9 @@ New drafts use schema 2 / `photo-tone-v1` and an exact four-field `tone` object.
 `redeye-v1` remains readable with implicit neutral tone and its original identity. An effective
 tone change upgrades a new immutable draft; Undo can restore the legacy draft. Existing saved
 files are never rewritten in place. A version-2 draft stays version 2 when returned to neutral.
+Decision: an update upgrades a schema-1 draft whenever the stored tone object differs, so a
+strength-only change with the other controls neutral also upgrades it to schema 2, although the
+picture is unchanged (strength has no effect while the controls are neutral).
 Older app versions reject version-2 recipes; the derivative JPEG remains a normal image.
 
 The public immutable `PhotoTone` and pure `update_tone(recipe, tone)` API enforce genuine

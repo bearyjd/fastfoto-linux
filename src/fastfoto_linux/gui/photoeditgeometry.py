@@ -34,6 +34,7 @@ class PhotoGeometryActions:
 
     def set_geometry_mode(self: "PhotoEditSide", value: bool) -> None:
         self._require_edit()
+        self.end_gesture()
         self.geometry_mode = bool(value)
         self._changed()
 

@@ -124,6 +124,7 @@ Kirigami.Page {
                 onEllipseRequested: (cx, cy, rx, ry) => editor.addEllipse(cx, cy, rx, ry)
                 onEyeSelected: eyeId => editor.selectEye(eyeId)
                 onCropRequested: (left, top, right, bottom) => editor.setCrop(left, top, right, bottom)
+                onCropRejected: geometryControls.cropRejected = true
             }
             QQC2.ScrollView {
                 Layout.preferredWidth: Kirigami.Units.gridUnit * 16

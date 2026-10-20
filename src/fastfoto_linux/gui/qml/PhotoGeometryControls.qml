@@ -7,6 +7,9 @@ ColumnLayout {
     required property var editor
     property alias showResult: result.checked
     readonly property bool inMode: root.editor.geometryMode
+    // Set by the canvas when a drag is below the minimum crop; cleared by the next geometry change.
+    property bool cropRejected: false
+    property string seenGeometry: ""
 
     component CropBox: QQC2.SpinBox {
         required property int edge
@@ -27,7 +30,14 @@ ColumnLayout {
 
     Connections {
         target: root.editor
-        function onChanged() { if (!root.editor.geometryMode) result.checked = false; }
+        function onChanged() {
+            if (!root.editor.geometryMode) result.checked = false;
+            const now = JSON.stringify(root.editor.geometry);
+            if (now !== root.seenGeometry) {
+                root.seenGeometry = now;
+                root.cropRejected = false;
+            }
+        }
     }
 
     QQC2.Button {
@@ -85,6 +95,14 @@ ColumnLayout {
             enabled: root.editor.canEdit && !root.editor.geometryNeutral
             onClicked: root.editor.resetGeometry()
         }
+    }
+    QQC2.Label {
+        objectName: "photoCropHint"
+        Layout.fillWidth: true
+        visible: root.inMode && root.cropRejected
+        text: qsTr("That selection is smaller than the minimum crop size.")
+        textFormat: Text.PlainText
+        wrapMode: Text.WordWrap
     }
     QQC2.Switch {
         id: result

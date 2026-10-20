@@ -208,7 +208,7 @@ def test_clicks_and_too_small_drags_are_ignored_and_eyes_stay_unselected(
 
 
 def test_a_sub_minimum_drag_shows_a_hint_until_the_next_valid_edit(make_bridge, open_window, out):
-    bridge, view, window, page, warnings = editor_page(make_bridge, open_window, out)
+    _bridge, view, window, page, warnings = editor_page(make_bridge, open_window, out)
     enter_mode(page)
     hint = child(page, "photoCropHint")
     assert not hint.property("visible")
@@ -248,7 +248,7 @@ def test_dragging_while_zoomed_maps_through_the_zoom(make_bridge, open_window, o
     enter_mode(page)
     child(page, "photoEditCanvas").setProperty("viewZoom", 2)
     settle()
-    # Zoom 2 about the centre halves the span: canvas fractions 0.1..0.9 are image fractions 0.3..0.7.
+    # Zoom 2 halves the span: canvas fractions 0.1..0.9 are image fractions 0.3..0.7.
     drag(window, canvas_point(page, 0.1, 0.1), canvas_point(page, 0.9, 0.9))
     left, top, right, bottom = view.geometry["crop"]
     assert 28 <= left <= 31 and 17 <= top <= 19 and 69 <= right <= 72 and 41 <= bottom <= 43

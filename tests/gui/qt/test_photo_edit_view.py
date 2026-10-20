@@ -1,7 +1,5 @@
 """Public child interface, eligibility and dirty-close protection for photo review."""
 
-import pytest
-
 from tests.gui.qt import require_qt
 
 require_qt()

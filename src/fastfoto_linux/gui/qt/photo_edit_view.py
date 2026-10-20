@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 MM_PER_INCH = 25.4
 DEFAULT_EYE_RADIUS_MM = 0.6
+GENERIC_ERROR = "Something went wrong with the photo edit. See the log for details."
 GENERIC_FILE_ERROR = "The photo or its saved edit could not be read or written."
 
 
@@ -216,6 +217,10 @@ class PhotoEditView(QObject):
             # The OS text can hold a path, so it goes to the log, never to the page.
             logger.exception("photo edit action failed")
             self._side.report_error(GENERIC_FILE_ERROR)
+        except Exception:
+            # A bug must not escape the Qt slot; its text may hold paths, so only the log gets it.
+            logger.exception("unexpected photo edit failure")
+            self._side.report_error(GENERIC_ERROR)
         return None
 
     @Slot(int)

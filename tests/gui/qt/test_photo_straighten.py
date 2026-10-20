@@ -410,7 +410,10 @@ def test_until_the_new_preview_lands_the_canvas_holds_the_last_settled_image(
 ):
     bridge, view, _window, page, warnings = straighten_page(make_bridge, open_window, out)
     canvas = child(page, "photoEditCanvas")
+    child(page, "photoBeforeAfter").setProperty("checked", False)
+    settle()
     settled = canvas.property("imageUrl")
+    assert settled == view.beforeUrl != view.workingUrl
     view.setStraighten(30)
     settle()
     assert not view.previewCurrent

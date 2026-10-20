@@ -31,10 +31,6 @@ ColumnLayout {
     Connections {
         target: root.editor
         function onChanged() {
-            // A rejected angle leaves the draft as it was, so the bindings would not run:
-            // put the widgets back on the draft's angle.
-            angleSlider.value = Qt.binding(() => root.editor.geometry.straightenTenths);
-            angleBox.value = Qt.binding(() => root.editor.geometry.straightenTenths);
             if (!root.editor.geometryMode) {
                 result.checked = false;
                 root.cropRejected = false;
@@ -79,7 +75,6 @@ ColumnLayout {
         visible: root.inMode
         Layout.fillWidth: true
         QQC2.Slider {
-            id: angleSlider
             objectName: "photoStraightenSlider"
             Layout.fillWidth: true
             from: -150

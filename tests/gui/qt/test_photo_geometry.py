@@ -224,6 +224,19 @@ def test_a_sub_minimum_drag_shows_a_hint_until_the_next_valid_edit(make_bridge, 
     assert warnings == []
 
 
+@pytest.mark.parametrize("name", ["sourceWidth", "sourceHeight"])
+def test_an_unusable_canvas_gives_no_too_small_hint(make_bridge, open_window, out, name):
+    _bridge, view, window, page, warnings = editor_page(make_bridge, open_window, out)
+    enter_mode(page)
+    start, end = canvas_point(page, 0.1, 0.0), canvas_point(page, 0.9, 1.0)
+    canvas = child(page, "photoEditCanvas")
+    canvas.setProperty(name, 0)  # as if the source size were not known yet
+    drag(window, start, end)
+    assert not child(page, "photoCropHint").property("visible")
+    assert not view.geometry["cropped"] and not view.error
+    assert warnings == []
+
+
 def test_the_hint_does_not_survive_leaving_and_reentering_the_mode(make_bridge, open_window, out):
     _bridge, _view, window, page, warnings = editor_page(make_bridge, open_window, out)
     enter_mode(page)

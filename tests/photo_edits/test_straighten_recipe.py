@@ -8,7 +8,6 @@ from pathlib import Path
 from threading import Event
 
 import pytest
-from fastfoto_linux.photo_edits.straighten import straightened_size
 
 import fastfoto_linux.photo_edits as package
 from fastfoto_linux.photo_edits import (
@@ -27,6 +26,7 @@ from fastfoto_linux.photo_edits import (
     update_tone,
 )
 from fastfoto_linux.photo_edits import recipe as codec
+from fastfoto_linux.photo_edits.straighten import straightened_size
 from tests.photo_edits.helpers import eye, source_at
 from tests.photo_edits.straighten_helpers import TONE, straight_recipe
 
@@ -116,7 +116,7 @@ def test_crop_is_validated_inside_the_straightened_frame(tmp_path: Path) -> None
 def _payload(tmp_path: Path, tenths: int = 37) -> tuple[object, dict]:
     source = source_at(tmp_path)
     recipe = straight_recipe(
-        source, PhotoGeometry(1, (3, 4, 100, 50), tenths), tone=TONE, eyes=(eye(),)
+        source, PhotoGeometry(1, (3, 4, 100, 70), tenths), tone=TONE, eyes=(eye(),)
     )
     return source, json.loads(recipe_bytes(recipe))
 
@@ -125,14 +125,14 @@ def test_v4_serializes_the_exact_geometry_object_and_round_trips(tmp_path: Path)
     source, payload = _payload(tmp_path)
     assert (payload["schema_version"], payload["algorithm_version"]) == V4
     assert payload["geometry"] == {
-        "crop": [3, 4, 100, 50],
+        "crop": [3, 4, 100, 70],
         "quarter_turns": 1,
         "straighten_tenths": 37,
     }
     data = codec.json_bytes(payload)
-    assert b'"geometry":{"crop":[3,4,100,50],"quarter_turns":1,"straighten_tenths":37}' in data
+    assert b'"geometry":{"crop":[3,4,100,70],"quarter_turns":1,"straighten_tenths":37}' in data
     recipe = parse_recipe(data, source)
-    assert recipe.geometry == PhotoGeometry(1, (3, 4, 100, 50), 37)
+    assert recipe.geometry == PhotoGeometry(1, (3, 4, 100, 70), 37)
     assert recipe_bytes(recipe) == data
     uncropped = straight_recipe(source, PhotoGeometry(0, None, -150))
     assert b'"geometry":{"crop":null,"quarter_turns":0,"straighten_tenths":-150}' in recipe_bytes(
@@ -142,7 +142,7 @@ def test_v4_serializes_the_exact_geometry_object_and_round_trips(tmp_path: Path)
 
 def test_v3_payload_never_gains_the_key(tmp_path: Path) -> None:
     source = source_at(tmp_path)
-    v3 = straight_recipe(source, PhotoGeometry(1, (3, 4, 100, 50)))
+    v3 = straight_recipe(source, PhotoGeometry(1, (3, 4, 100, 70)))
     assert v3.schema_version == 3
     assert "straighten_tenths" not in json.loads(recipe_bytes(v3))["geometry"]
 
@@ -193,9 +193,9 @@ def test_update_geometry_schema_rules(tmp_path: Path) -> None:
     v2 = PhotoEditRecipe(source)
     angled = update_geometry(v2, PhotoGeometry(0, None, 37))
     assert (angled.schema_version, angled.algorithm_version) == V4
-    v3 = update_geometry(v2, PhotoGeometry(1, (3, 4, 100, 50)))
+    v3 = update_geometry(v2, PhotoGeometry(1, (3, 4, 100, 70)))
     assert v3.schema_version == 3
-    assert update_geometry(v3, PhotoGeometry(2, (3, 4, 100, 50))).schema_version == 3
+    assert update_geometry(v3, PhotoGeometry(2, (3, 4, 100, 70))).schema_version == 3
     from_v3 = update_geometry(v3, PhotoGeometry(1, None, -5))
     assert (from_v3.schema_version, from_v3.algorithm_version) == V4
     neutral = update_geometry(angled, PhotoGeometry())

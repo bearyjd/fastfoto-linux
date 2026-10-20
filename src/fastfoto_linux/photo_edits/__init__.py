@@ -11,6 +11,8 @@ from fastfoto_linux.photo_edits.model import (
     MIN_CROP_MM,
     PREVIEW_MAX_PX,
     SCHEMA_VERSION,
+    STRAIGHTEN_ALGORITHM_VERSION,
+    STRAIGHTEN_SCHEMA_VERSION,
     TONE_ALGORITHM_VERSION,
     TONE_SCHEMA_VERSION,
     EyeEdit,
@@ -22,12 +24,14 @@ from fastfoto_linux.photo_edits.model import (
     PhotoSource,
     PhotoTone,
     SavedPhotoEdit,
+    frame_size,
     min_crop_size,
 )
 from fastfoto_linux.photo_edits.recipe import update_geometry, update_tone
 from fastfoto_linux.photo_edits.render import detect_eyes, make_preview, manual_eye, render
 from fastfoto_linux.photo_edits.source import load_source
 from fastfoto_linux.photo_edits.store import open_edit, parse_recipe, recipe_bytes, save_edit
+from fastfoto_linux.photo_edits.straighten import STRAIGHTEN_LIMIT_TENTHS, straightened_size
 
 __all__ = [
     "ALGORITHM_VERSION",
@@ -39,6 +43,9 @@ __all__ = [
     "MIN_CROP_MM",
     "PREVIEW_MAX_PX",
     "SCHEMA_VERSION",
+    "STRAIGHTEN_ALGORITHM_VERSION",
+    "STRAIGHTEN_LIMIT_TENTHS",
+    "STRAIGHTEN_SCHEMA_VERSION",
     "TONE_ALGORITHM_VERSION",
     "TONE_SCHEMA_VERSION",
     "EyeEdit",
@@ -52,6 +59,7 @@ __all__ = [
     "SavedPhotoEdit",
     "apply_geometry",
     "detect_eyes",
+    "frame_size",
     "load_source",
     "make_preview",
     "manual_eye",
@@ -62,6 +70,7 @@ __all__ = [
     "recipe_bytes",
     "render",
     "save_edit",
+    "straightened_size",
     "update_geometry",
     "update_tone",
 ]

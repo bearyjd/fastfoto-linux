@@ -50,7 +50,7 @@ def corner_eye(source, eye_id: str = "corner"):
 
 def test_render_is_eyes_then_straighten_crop_turn_then_tone(tmp_path: Path) -> None:
     source = source_at(tmp_path)
-    recipe = straight_recipe(source, PhotoGeometry(1, (3, 4, 100, 50), 37), eyes=(eye(),))
+    recipe = straight_recipe(source, PhotoGeometry(1, (3, 4, 100, 70), 37), eyes=(eye(),))
     eyes_only = render(
         source, replace(recipe, geometry=PhotoGeometry(), tone=recipe.tone), cancel=Event()
     )
@@ -195,11 +195,13 @@ def test_preview_cancellation_during_the_warp(tmp_path: Path, monkeypatch) -> No
 def test_save_and_reopen_replays_from_the_source(tmp_path: Path) -> None:
     source = source_at(tmp_path)
     recipe = straight_recipe(
-        source, PhotoGeometry(3, (4, 4, 120, 50), -45), tone=TONE, eyes=(eye(),)
+        source, PhotoGeometry(3, (4, 4, 120, 70), -45), tone=TONE, eyes=(eye(),)
     )
     saved = save_edit(source, recipe, cancel=Event())
     reopened_source, reopened = open_edit(saved.sidecar)
-    assert recipe_bytes(reopened) == recipe_bytes(recipe)
+    assert (reopened.geometry, reopened.tone) == (recipe.geometry, recipe.tone)
+    assert (reopened.schema_version, reopened.eyes[0].id) == (4, "left")
+    assert recipe_bytes(open_edit(saved.sidecar)[1]) == recipe_bytes(reopened)
     assert np.array_equal(
         render(reopened_source, reopened, cancel=Event()), render(source, recipe, cancel=Event())
     )

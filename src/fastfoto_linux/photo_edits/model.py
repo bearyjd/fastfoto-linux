@@ -1,4 +1,4 @@
-"""Typed contract for recoverable, source-bound red-eye edits."""
+"""Typed contract for recoverable, source-bound photo edits."""
 
 import math
 from dataclasses import dataclass, field
@@ -6,8 +6,12 @@ from pathlib import Path
 
 import numpy as np
 
-SCHEMA_VERSION = 1
-ALGORITHM_VERSION = "redeye-v1"
+SCHEMA_VERSION = 2
+ALGORITHM_VERSION = "photo-tone-v1"
+LEGACY_SCHEMA_VERSION = 1
+LEGACY_ALGORITHM_VERSION = "redeye-v1"
+TONE_CONTROL_LIMIT = 50
+TONE_PERCENT_LIMIT = 100
 MAX_RECIPE_BYTES = 2_000_000
 MAX_EYES = 128
 MAX_MASK_PIXELS = 1_000_000
@@ -25,6 +29,13 @@ def integer(value: object, minimum: int, maximum: int, label: str) -> int:
     if type(value) is not int or not minimum <= value <= maximum:
         raise PhotoEditError(f"{label} must be an integer between {minimum} and {maximum}")
     return value
+
+
+def validate_version(schema: object, algorithm: object) -> None:
+    integer(schema, LEGACY_SCHEMA_VERSION, SCHEMA_VERSION, "recipe schema version")
+    expected = LEGACY_ALGORITHM_VERSION if schema == LEGACY_SCHEMA_VERSION else ALGORITHM_VERSION
+    if not isinstance(algorithm, str) or algorithm != expected:
+        raise PhotoEditError("unsupported photo correction algorithm version")
 
 
 def finite(value: object, label: str) -> float:
@@ -153,6 +164,22 @@ class EyeEdit:
         object.__setattr__(self, "mask", _readonly(self.mask))
 
 
+@dataclass(frozen=True)
+class PhotoTone:
+    """Immutable integer controls for the versioned encoded-RGB tone transform."""
+
+    brightness: int = 0
+    contrast: int = 0
+    saturation: int = 0
+    strength: int = 100
+
+    def __post_init__(self) -> None:
+        integer(self.brightness, -TONE_CONTROL_LIMIT, TONE_CONTROL_LIMIT, "brightness")
+        integer(self.contrast, -TONE_CONTROL_LIMIT, TONE_CONTROL_LIMIT, "contrast")
+        integer(self.saturation, -TONE_PERCENT_LIMIT, TONE_PERCENT_LIMIT, "saturation")
+        integer(self.strength, 0, TONE_PERCENT_LIMIT, "adjustment strength")
+
+
 @dataclass(frozen=True, eq=False)
 class PhotoEditRecipe:
     """Replay from source, never from a previously encoded derivative."""
@@ -162,13 +189,16 @@ class PhotoEditRecipe:
     schema_version: int = SCHEMA_VERSION
     algorithm_version: str = ALGORITHM_VERSION
     quality: int = 95
+    tone: PhotoTone = field(default_factory=PhotoTone, kw_only=True)
 
     def __post_init__(self) -> None:
         if not isinstance(self.source, PhotoSource):
             raise PhotoEditError("recipe requires a retained source")
-        integer(self.schema_version, SCHEMA_VERSION, SCHEMA_VERSION, "recipe schema version")
-        if self.algorithm_version != ALGORITHM_VERSION:
-            raise PhotoEditError("unsupported photo correction algorithm version")
+        validate_version(self.schema_version, self.algorithm_version)
+        if not isinstance(self.tone, PhotoTone):
+            raise PhotoEditError("recipe tone requires validated photo adjustments")
+        if self.schema_version == LEGACY_SCHEMA_VERSION and self.tone != PhotoTone():
+            raise PhotoEditError("legacy recipes cannot contain tone adjustments")
         integer(self.quality, 1, 100, "JPEG quality")
         if not isinstance(self.eyes, tuple) or len(self.eyes) > MAX_EYES:
             raise PhotoEditError("too many eye corrections")

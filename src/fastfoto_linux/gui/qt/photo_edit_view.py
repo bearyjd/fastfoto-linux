@@ -1,13 +1,14 @@
 """The public QML photo editor interface, backed by one Qt-free controller component."""
 
 from collections.abc import Callable
+from dataclasses import asdict
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from PySide6.QtCore import Property, QObject, QUrl, Signal, Slot
 
 from fastfoto_linux.gui.qt.photos_model import file_url
-from fastfoto_linux.photo_edits import EyeEdit
+from fastfoto_linux.photo_edits import EyeEdit, PhotoTone
 
 if TYPE_CHECKING:
     from fastfoto_linux.gui.photoeditside import PhotoEditSide
@@ -68,7 +69,7 @@ class PhotoEditView(QObject):
 
     @Property(str, notify=changed)
     def sourceLabel(self) -> str:
-        return "Retained cropped, upright JPEG. Red-eye edits save a new copy."
+        return "Retained cropped, upright original JPEG. Photo edits save a new copy."
 
     @Property(str, notify=changed)
     def warning(self) -> str:
@@ -111,6 +112,11 @@ class PhotoEditView(QObject):
     @Property("QVariantList", notify=changed)
     def candidates(self) -> list[dict[str, object]]:
         return [_candidate(eye) for eye in self._side.recipe.eyes] if self._side.recipe else []
+
+    @Property("QVariantMap", notify=changed)
+    def tone(self) -> dict[str, int]:
+        recipe = self._side.recipe
+        return asdict(recipe.tone if recipe else PhotoTone())
 
     @Property(str, notify=changed)
     def selectedId(self) -> str:
@@ -169,6 +175,14 @@ class PhotoEditView(QObject):
     @Slot(str, int)
     def setStrength(self, eye_id: str, value: int) -> None:
         self._call(self._side.set_strength, eye_id, value)
+
+    @Slot(str, int)
+    def setTone(self, field: str, value: int) -> None:
+        self._call(self._side.set_tone, field, value)
+
+    @Slot()
+    def resetTone(self) -> None:
+        self._call(self._side.reset_tone)
 
     @Slot(float, float, float, float)
     def addEllipse(self, cx: float, cy: float, rx: float, ry: float) -> None:

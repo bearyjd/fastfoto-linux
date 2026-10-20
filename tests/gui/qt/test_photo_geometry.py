@@ -224,6 +224,18 @@ def test_a_sub_minimum_drag_shows_a_hint_until_the_next_valid_edit(make_bridge, 
     assert warnings == []
 
 
+def test_the_hint_does_not_survive_leaving_and_reentering_the_mode(make_bridge, open_window, out):
+    _bridge, _view, window, page, warnings = editor_page(make_bridge, open_window, out)
+    enter_mode(page)
+    hint = child(page, "photoCropHint")
+    drag(window, canvas_point(page, 0.5, 0.5), canvas_point(page, 0.55, 0.95))
+    assert hint.property("visible")
+    enter_mode(page)
+    enter_mode(page)
+    assert not hint.property("visible")
+    assert warnings == []
+
+
 def test_a_plain_click_gives_no_hint(make_bridge, open_window, out):
     _bridge, _view, window, page, warnings = editor_page(make_bridge, open_window, out)
     enter_mode(page)

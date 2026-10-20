@@ -5,7 +5,8 @@ from fractions import Fraction
 
 from PIL import ExifTags, Image
 
-from fastfoto_linux.photo_edits.model import PhotoEditError, PhotoSource
+from fastfoto_linux.photo_edits.geometry import output_size
+from fastfoto_linux.photo_edits.model import PhotoEditError, PhotoGeometry, PhotoSource
 
 EXIF_THUMBNAIL_KEYS = (513, 514)
 RESOLUTION_UNIT_INCHES = 2
@@ -14,22 +15,31 @@ TIFF_NS = "http://ns.adobe.com/tiff/1.0/"
 EXIF_NS = "http://ns.adobe.com/exif/1.0/"
 
 
-def derivative_exif(source: PhotoSource) -> bytes:
-    """Match EXIF geometry and physical axes to the already upright source pixels."""
+def _frame(source: PhotoSource, geometry: PhotoGeometry) -> tuple[int, int, float, float]:
+    """Output width, height and per-axis DPI; odd quarter turns swap the physical axes."""
+    width, height = output_size(source, geometry)
+    if geometry.quarter_turns % 2:
+        return width, height, source.dpi_y, source.dpi_x
+    return width, height, source.dpi_x, source.dpi_y
+
+
+def derivative_exif(source: PhotoSource, geometry: PhotoGeometry = PhotoGeometry()) -> bytes:  # noqa: B008
+    """Match EXIF geometry and physical axes to the upright output pixels."""
+    width, height, dpi_x, dpi_y = _frame(source, geometry)
     exif = Image.Exif()
     if source.exif:
         exif.load(source.exif)
     exif[ExifTags.Base.Orientation] = 1
-    exif[ExifTags.Base.XResolution] = source.dpi_x
-    exif[ExifTags.Base.YResolution] = source.dpi_y
+    exif[ExifTags.Base.XResolution] = dpi_x
+    exif[ExifTags.Base.YResolution] = dpi_y
     exif[ExifTags.Base.ResolutionUnit] = RESOLUTION_UNIT_INCHES
     for key in EXIF_THUMBNAIL_KEYS:
         exif.pop(key, None)
-    for key, value in ((256, source.width), (257, source.height)):
+    for key, value in ((256, width), (257, height)):
         if key in exif:
             exif[key] = value
     details = exif.get_ifd(ExifTags.IFD.Exif)
-    for key, value in ((40962, source.width), (40963, source.height)):
+    for key, value in ((40962, width), (40963, height)):
         if key in details:
             details[key] = value
     return exif.tobytes()
@@ -47,20 +57,21 @@ def _rational(value: float) -> str:
     return f"{fraction.numerator}/{fraction.denominator}"
 
 
-def _geometry(source: PhotoSource) -> dict[str, str]:
+def _geometry(source: PhotoSource, geometry: PhotoGeometry) -> dict[str, str]:
+    width, height, dpi_x, dpi_y = _frame(source, geometry)
     return {
         f"{{{TIFF_NS}}}Orientation": "1",
-        f"{{{TIFF_NS}}}XResolution": _rational(source.dpi_x),
-        f"{{{TIFF_NS}}}YResolution": _rational(source.dpi_y),
+        f"{{{TIFF_NS}}}XResolution": _rational(dpi_x),
+        f"{{{TIFF_NS}}}YResolution": _rational(dpi_y),
         f"{{{TIFF_NS}}}ResolutionUnit": str(RESOLUTION_UNIT_INCHES),
-        f"{{{TIFF_NS}}}ImageWidth": str(source.width),
-        f"{{{TIFF_NS}}}ImageLength": str(source.height),
-        f"{{{EXIF_NS}}}PixelXDimension": str(source.width),
-        f"{{{EXIF_NS}}}PixelYDimension": str(source.height),
+        f"{{{TIFF_NS}}}ImageWidth": str(width),
+        f"{{{TIFF_NS}}}ImageLength": str(height),
+        f"{{{EXIF_NS}}}PixelXDimension": str(width),
+        f"{{{EXIF_NS}}}PixelYDimension": str(height),
     }
 
 
-def derivative_xmp(source: PhotoSource) -> bytes:
+def derivative_xmp(source: PhotoSource, geometry: PhotoGeometry = PhotoGeometry()) -> bytes:  # noqa: B008
     """Normalize present geometry fields; preserve descriptive metadata and safe packets."""
     if not source.xmp:
         return b""
@@ -68,13 +79,13 @@ def derivative_xmp(source: PhotoSource) -> bytes:
         parser = ET.XMLParser(target=_SafeXmpBuilder(insert_comments=True, insert_pis=True))
         root = ET.fromstring(source.xmp, parser=parser)
         changed = False
-        geometry = _geometry(source)
+        fields = _geometry(source, geometry)
         for element in root.iter():
-            for key in element.attrib.keys() & geometry.keys():
-                element.set(key, geometry[key])
+            for key in element.attrib.keys() & fields.keys():
+                element.set(key, fields[key])
                 changed = True
-            if element.tag in geometry:
-                value = geometry[element.tag]
+            if element.tag in fields:
+                value = fields[element.tag]
                 element.clear()
                 element.text = value
                 changed = True

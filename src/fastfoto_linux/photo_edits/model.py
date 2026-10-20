@@ -6,12 +6,25 @@ from pathlib import Path
 
 import numpy as np
 
+from fastfoto_linux.pipeline.geometry import mm_to_px
+
 # SCHEMA_VERSION and ALGORITHM_VERSION are the CURRENT versions: what new drafts are written with.
 # The legacy pair below is still readable and is kept for an unchanged older draft.
 SCHEMA_VERSION = 2
 ALGORITHM_VERSION = "photo-tone-v1"
 LEGACY_SCHEMA_VERSION = 1
 LEGACY_ALGORITHM_VERSION = "redeye-v1"
+TONE_SCHEMA_VERSION = 2
+TONE_ALGORITHM_VERSION = "photo-tone-v1"
+GEOMETRY_SCHEMA_VERSION = 3
+GEOMETRY_ALGORITHM_VERSION = "photo-geometry-v1"
+RECIPE_VERSIONS = {
+    LEGACY_SCHEMA_VERSION: LEGACY_ALGORITHM_VERSION,
+    TONE_SCHEMA_VERSION: TONE_ALGORITHM_VERSION,
+    GEOMETRY_SCHEMA_VERSION: GEOMETRY_ALGORITHM_VERSION,
+}
+MIN_CROP_MM = 5.0
+CROP_COORDINATES = 4
 TONE_CONTROL_LIMIT = 50
 TONE_PERCENT_LIMIT = 100
 MAX_RECIPE_BYTES = 2_000_000
@@ -34,9 +47,8 @@ def integer(value: object, minimum: int, maximum: int, label: str) -> int:
 
 
 def validate_version(schema: object, algorithm: object) -> None:
-    integer(schema, LEGACY_SCHEMA_VERSION, SCHEMA_VERSION, "recipe schema version")
-    expected = LEGACY_ALGORITHM_VERSION if schema == LEGACY_SCHEMA_VERSION else ALGORITHM_VERSION
-    if not isinstance(algorithm, str) or algorithm != expected:
+    integer(schema, min(RECIPE_VERSIONS), max(RECIPE_VERSIONS), "recipe schema version")
+    if not isinstance(algorithm, str) or algorithm != RECIPE_VERSIONS[schema]:
         raise PhotoEditError("unsupported photo correction algorithm version")
 
 
@@ -182,6 +194,43 @@ class PhotoTone:
         integer(self.strength, 0, TONE_PERCENT_LIMIT, "adjustment strength")
 
 
+@dataclass(frozen=True)
+class PhotoGeometry:
+    """Quarter turns (clockwise) of a source-space crop; the crop is half-open pixel edges."""
+
+    quarter_turns: int = 0
+    crop: tuple[int, int, int, int] | None = None
+
+    def __post_init__(self) -> None:
+        integer(self.quarter_turns, 0, 3, "quarter turns")
+        if self.crop is None:
+            return
+        if not isinstance(self.crop, tuple) or len(self.crop) != CROP_COORDINATES:
+            raise PhotoEditError("crop must have four integer coordinates")
+        for value in self.crop:
+            integer(value, 0, MAX_SOURCE_PIXELS, "crop coordinate")
+        left, top, right, bottom = self.crop
+        if left >= right or top >= bottom:
+            raise PhotoEditError("crop edges must enclose a nonempty area")
+
+
+def min_crop_size(source: PhotoSource) -> tuple[int, int]:
+    """The smallest allowed crop (width, height): 5 mm at the source's effective DPI."""
+    pixels = max(1, mm_to_px(MIN_CROP_MM, source.effective_dpi))
+    return min(pixels, source.width), min(pixels, source.height)
+
+
+def _check_crop(source: PhotoSource, crop: tuple[int, int, int, int]) -> None:
+    left, top, right, bottom = crop
+    if right > source.width or bottom > source.height:
+        raise PhotoEditError("crop lies outside the retained source")
+    if (left, top, right, bottom) == (0, 0, source.width, source.height):
+        raise PhotoEditError("full-frame crop must be stored as no crop")
+    min_width, min_height = min_crop_size(source)
+    if right - left < min_width or bottom - top < min_height:
+        raise PhotoEditError(f"crop is smaller than the {MIN_CROP_MM:g} mm minimum")
+
+
 @dataclass(frozen=True, eq=False)
 class PhotoEditRecipe:
     """Replay from source, never from a previously encoded derivative."""
@@ -192,6 +241,7 @@ class PhotoEditRecipe:
     algorithm_version: str = ALGORITHM_VERSION
     quality: int = 95
     tone: PhotoTone = field(default_factory=PhotoTone, kw_only=True)
+    geometry: PhotoGeometry = field(default_factory=PhotoGeometry, kw_only=True)
 
     def __post_init__(self) -> None:
         if not isinstance(self.source, PhotoSource):
@@ -201,6 +251,12 @@ class PhotoEditRecipe:
             raise PhotoEditError("recipe tone requires validated photo adjustments")
         if self.schema_version == LEGACY_SCHEMA_VERSION and self.tone != PhotoTone():
             raise PhotoEditError("legacy recipes cannot contain tone adjustments")
+        if not isinstance(self.geometry, PhotoGeometry):
+            raise PhotoEditError("recipe geometry requires a validated crop and rotation")
+        if self.schema_version < GEOMETRY_SCHEMA_VERSION and self.geometry != PhotoGeometry():
+            raise PhotoEditError("recipe version cannot contain geometry")
+        if self.geometry.crop is not None:
+            _check_crop(self.source, self.geometry.crop)
         integer(self.quality, 1, 100, "JPEG quality")
         if not isinstance(self.eyes, tuple) or len(self.eyes) > MAX_EYES:
             raise PhotoEditError("too many eye corrections")
@@ -231,6 +287,7 @@ class PhotoPreview:
     generation: int
     roi_before: Path | None = None
     roi_after: Path | None = None
+    working: Path | None = field(default=None, kw_only=True)
 
 
 @dataclass(frozen=True)

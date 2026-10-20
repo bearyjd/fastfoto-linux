@@ -1,49 +1,67 @@
 """Recoverable editing of retained cropped/upright photo originals."""
 
+from fastfoto_linux.photo_edits.geometry import apply_geometry, output_size
 from fastfoto_linux.photo_edits.model import (
     ALGORITHM_VERSION,
+    GEOMETRY_ALGORITHM_VERSION,
+    GEOMETRY_SCHEMA_VERSION,
     MAX_EYES,
     MAX_MASK_PIXELS,
     MAX_RECIPE_BYTES,
+    MIN_CROP_MM,
     PREVIEW_MAX_PX,
     SCHEMA_VERSION,
+    TONE_ALGORITHM_VERSION,
+    TONE_SCHEMA_VERSION,
     EyeEdit,
     PhotoEditCancelledError,
     PhotoEditError,
     PhotoEditRecipe,
+    PhotoGeometry,
     PhotoPreview,
     PhotoSource,
     PhotoTone,
     SavedPhotoEdit,
+    min_crop_size,
 )
-from fastfoto_linux.photo_edits.recipe import update_tone
+from fastfoto_linux.photo_edits.recipe import update_geometry, update_tone
 from fastfoto_linux.photo_edits.render import detect_eyes, make_preview, manual_eye, render
 from fastfoto_linux.photo_edits.source import load_source
 from fastfoto_linux.photo_edits.store import open_edit, parse_recipe, recipe_bytes, save_edit
 
 __all__ = [
     "ALGORITHM_VERSION",
+    "GEOMETRY_ALGORITHM_VERSION",
+    "GEOMETRY_SCHEMA_VERSION",
     "MAX_EYES",
     "MAX_MASK_PIXELS",
     "MAX_RECIPE_BYTES",
+    "MIN_CROP_MM",
     "PREVIEW_MAX_PX",
     "SCHEMA_VERSION",
+    "TONE_ALGORITHM_VERSION",
+    "TONE_SCHEMA_VERSION",
     "EyeEdit",
     "PhotoEditCancelledError",
     "PhotoEditError",
     "PhotoEditRecipe",
+    "PhotoGeometry",
     "PhotoPreview",
     "PhotoSource",
     "PhotoTone",
     "SavedPhotoEdit",
+    "apply_geometry",
     "detect_eyes",
     "load_source",
     "make_preview",
     "manual_eye",
+    "min_crop_size",
     "open_edit",
+    "output_size",
     "parse_recipe",
     "recipe_bytes",
     "render",
     "save_edit",
+    "update_geometry",
     "update_tone",
 ]

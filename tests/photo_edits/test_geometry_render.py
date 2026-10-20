@@ -1,6 +1,7 @@
 """Exact pixel contract: eyes, then crop, then clockwise turns, then tone."""
 
 import importlib
+import json
 from dataclasses import replace
 from pathlib import Path
 from threading import Event
@@ -252,7 +253,9 @@ def test_save_and_reopen_replays_geometry_from_the_source(tmp_path: Path) -> Non
     )
     again = save_edit(reopened_source, reopened, cancel=Event())
     assert again.image.read_bytes() == saved.image.read_bytes()
-    assert again.sidecar.read_bytes().replace(b"0002", b"0001") == saved.sidecar.read_bytes()
+    first, second = (json.loads(path.sidecar.read_bytes()) for path in (saved, again))
+    assert first.pop("output")["sha256"] == second.pop("output")["sha256"]
+    assert first == second
 
 
 def _jpeg(pixels: np.ndarray, *, bounded: bool = True) -> bytes:

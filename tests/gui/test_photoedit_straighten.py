@@ -193,3 +193,45 @@ def test_setting_the_same_angle_keeps_the_crop(out):
     cropped = side.recipe
     side.set_straighten(20)
     assert side.recipe is cropped
+
+
+def test_a_save_result_without_a_preview_keeps_the_preview_current(out):
+    page = opened_at(out)
+    side = page.side
+    side.set_geometry_mode(True)
+    side.set_straighten(50)
+    land(page, straightened=True)
+    assert side.preview_current
+    side.save()
+    request = page.worker.requests[-1]
+    finish(page, PhotoEditResult("save", request.generation, side.recipe))
+    assert side.preview_current
+
+
+@pytest.mark.parametrize("cancelled", [False, True])
+def test_a_failed_or_cancelled_preview_is_not_current_until_a_retry_lands(out, cancelled):
+    page = opened_at(out)
+    side = page.side
+    side.set_geometry_mode(True)
+    side.set_straighten(50)
+    request = page.worker.requests[-1]
+    result = PhotoEditResult(
+        "preview", request.generation, cancelled=cancelled, error="" if cancelled else "boom"
+    )
+    finish(page, result)
+    assert side.error and not side.preview_current
+    side.request_preview()
+    land(page, straightened=True)
+    assert side.preview_current
+
+
+def test_current_means_built_for_the_present_angle_even_after_going_back(out):
+    page = opened_at(out)
+    side = page.side
+    side.set_geometry_mode(True)
+    side.set_straighten(30)
+    land(page, straightened=True)
+    side.set_straighten(40)
+    assert not side.preview_current
+    side.undo()
+    assert side.preview_current

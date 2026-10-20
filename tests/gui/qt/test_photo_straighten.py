@@ -19,6 +19,7 @@ from tests.gui.qt import test_qml
 from tests.gui.qt.qt_helpers import child, click, invoke, settle
 from tests.gui.qt.test_photo_edit_view import open_editor
 from tests.gui.qt.test_photo_geometry import canvas_point, drag, editor_page, enter_mode
+from tests.gui.qt.test_photo_tone import ready_page
 
 open_window = test_qml.open_window
 pytestmark = pytest.mark.usefixtures("kirigami")
@@ -333,4 +334,86 @@ def test_slider_keys_step_one_tenth_of_a_degree(make_bridge, open_window, out):
     settle()
     assert view.geometry["straightenTenths"] == 1
     assert child(page, "photoStraightenAngle").property("value") == 1
+    assert warnings == []
+
+
+def save_landed(bridge):
+    side = bridge.controller.photo_edit
+    bridge.controller._worker.busy = False
+    bridge.photoEdit.save()
+    request = bridge.controller._worker.requests[-1]
+    bridge.controller._worker.busy = False
+    bridge.controller.on_photo_edit_result(PhotoEditResult("save", request.generation, side.recipe))
+    bridge.photoEdit.refresh()
+    settle()
+
+
+def test_after_a_save_the_angled_preview_is_current_and_crop_drags_work(
+    make_bridge, open_window, out
+):
+    bridge, view, window, page, warnings = straighten_page(make_bridge, open_window, out)
+    view.setStraighten(50)
+    land(bridge, out)
+    save_landed(bridge)
+    assert view.previewCurrent
+    assert child(page, "photoEditCanvas").property("cropMode") is True
+    drag(window, canvas_point(page, 0.1, 0.0), canvas_point(page, 0.9, 1.0))
+    assert view.geometry["cropped"]
+    assert warnings == []
+
+
+def tiny_frame_page(make_bridge, open_window, out):
+    # At 250 dpi the 5 mm minimum is 49 px, so 15 degrees leaves too small a frame.
+    bridge, view, _worker = open_editor(make_bridge, out, dpi=250)
+    window, warnings = open_window(bridge)
+    window.setHeight(1800)
+    page = ready_page(window)
+    enter_mode(page)
+    return bridge, view, window, page, warnings
+
+
+def test_a_rejected_box_entry_snaps_back_to_the_draft_angle(make_bridge, open_window, out):
+    _bridge, view, window, page, warnings = tiny_frame_page(make_bridge, open_window, out)
+    box = child(page, "photoStraightenAngle")
+    field = box.property("contentItem")
+    invoke(field, "forceActiveFocus")
+    settle()
+    QTest.keyClick(window, Qt.Key.Key_A, Qt.KeyboardModifier.ControlModifier)
+    for character in "15":
+        QTest.keyClick(window, Qt.Key(ord(character)))
+    QTest.keyClick(window, Qt.Key.Key_Return)
+    settle()
+    assert view.error and view.geometry["straightenTenths"] == 0
+    assert box.property("value") == 0 and field.property("text") == "0.0 °"
+    assert child(page, "photoStraightenSlider").property("value") == 0
+    assert warnings == []
+
+
+def test_a_rejected_slider_move_snaps_back_to_the_draft_angle(make_bridge, open_window, out):
+    _bridge, view, window, page, warnings = tiny_frame_page(make_bridge, open_window, out)
+    slider = child(page, "photoStraightenSlider")
+    invoke(slider, "forceActiveFocus")
+    settle()
+    QTest.keyClick(window, Qt.Key.Key_End)
+    settle()
+    assert view.error and view.geometry["straightenTenths"] == 0
+    assert slider.property("value") == 0
+    assert child(page, "photoStraightenAngle").property("value") == 0
+    assert warnings == []
+
+
+def test_until_the_new_preview_lands_the_canvas_holds_the_last_settled_image(
+    make_bridge, open_window, out
+):
+    bridge, view, _window, page, warnings = straighten_page(make_bridge, open_window, out)
+    canvas = child(page, "photoEditCanvas")
+    settled = canvas.property("imageUrl")
+    view.setStraighten(30)
+    settle()
+    assert not view.previewCurrent
+    assert canvas.property("imageUrl") == settled
+    assert (canvas.property("sourceWidth"), canvas.property("sourceHeight")) == (100, 60)
+    land(bridge, out)
+    assert canvas.property("imageUrl") == view.straightenedUrl
+    assert canvas.property("sourceWidth") == view.frameWidth
     assert warnings == []

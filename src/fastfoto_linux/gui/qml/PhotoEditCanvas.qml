@@ -11,12 +11,18 @@ Item {
     property real panY: 0
     property bool manualMode: false
     property bool canEdit: true
+    property bool showEyes: true
+    property bool cropMode: false
+    property var crop: [0, 0, 0, 0]
+    property int minCropWidth: 1
+    property int minCropHeight: 1
     property real defaultRadius: 1
     property var candidates: []
     property string selectedId: ""
     readonly property real clickTolerance: 3
     signal ellipseRequested(real cx, real cy, real rx, real ry)
     signal eyeSelected(string eyeId)
+    signal cropRequested(int left, int top, int right, int bottom)
     clip: true
     focus: true
     activeFocusOnTab: true
@@ -35,6 +41,28 @@ Item {
                 p.x < left || p.y < top || p.x > left + w || p.y > top + h)
             return Qt.point(-1, -1);
         return Qt.point((p.x - left) * sourceWidth / w, (p.y - top) * sourceHeight / h);
+    }
+
+    // Mirrors photoeditcoords.source_crop: clamp into the painted image, floor and ceil to pixels.
+    function sourceCrop(x0: real, y0: real, x1: real, y1: real): var {
+        const w = picture.paintedWidth;
+        const h = picture.paintedHeight;
+        if (w <= 0 || h <= 0 || sourceWidth <= 0 || sourceHeight <= 0 ||
+                ![x0, y0, x1, y1].every(isFinite))
+            return null;
+        const left = (picture.width - w) / 2;
+        const top = (picture.height - h) / 2;
+        const a = picture.mapFromItem(canvas, x0, y0);
+        const b = picture.mapFromItem(canvas, x1, y1);
+        const across = (v, origin, painted, source) =>
+            Math.round((Math.min(Math.max(v, origin), origin + painted) - origin) * source / painted * 1e6) / 1e6;
+        const xs = [across(a.x, left, w, sourceWidth), across(b.x, left, w, sourceWidth)].sort((p, q) => p - q);
+        const ys = [across(a.y, top, h, sourceHeight), across(b.y, top, h, sourceHeight)].sort((p, q) => p - q);
+        const box = [Math.floor(xs[0]), Math.floor(ys[0]),
+                     Math.min(sourceWidth, Math.ceil(xs[1])), Math.min(sourceHeight, Math.ceil(ys[1]))];
+        if (box[2] - box[0] < Math.max(1, minCropWidth) || box[3] - box[1] < Math.max(1, minCropHeight))
+            return null;
+        return box;
     }
 
     function commitEllipse(x0: real, y0: real, x1: real, y1: real): void {
@@ -79,8 +107,9 @@ Item {
         smooth: true
 
         Repeater {
-            model: canvas.candidates
+            model: canvas.showEyes ? canvas.candidates : []
             delegate: Rectangle {
+                objectName: "photoEyeMarker"
                 required property var modelData
                 x: (picture.width - picture.paintedWidth) / 2 + modelData.roi[0] * picture.paintedWidth / canvas.sourceWidth
                 y: (picture.height - picture.paintedHeight) / 2 + modelData.roi[1] * picture.paintedHeight / canvas.sourceHeight
@@ -89,8 +118,22 @@ Item {
                 color: "transparent"
                 border.width: modelData.id === canvas.selectedId ? 2 / canvas.viewZoom : 1 / canvas.viewZoom
                 border.color: modelData.id === canvas.selectedId ? "#ffffff" : (modelData.accepted ? "#75d69c" : "#ffcd70")
-                visible: canvas.sourceWidth > 0 && canvas.sourceHeight > 0
+                visible: canvas.showEyes && canvas.sourceWidth > 0 && canvas.sourceHeight > 0
             }
+        }
+
+        Rectangle {
+            objectName: "photoCropRect"
+            readonly property bool valid: canvas.cropMode && canvas.sourceWidth > 0 &&
+                canvas.sourceHeight > 0 && canvas.crop.length === 4
+            x: (picture.width - picture.paintedWidth) / 2 + canvas.crop[0] * picture.paintedWidth / canvas.sourceWidth
+            y: (picture.height - picture.paintedHeight) / 2 + canvas.crop[1] * picture.paintedHeight / canvas.sourceHeight
+            width: (canvas.crop[2] - canvas.crop[0]) * picture.paintedWidth / canvas.sourceWidth
+            height: (canvas.crop[3] - canvas.crop[1]) * picture.paintedHeight / canvas.sourceHeight
+            color: "transparent"
+            border.width: 2 / canvas.viewZoom
+            border.color: "#ffffff"
+            visible: valid
         }
     }
 
@@ -102,13 +145,16 @@ Item {
         property point panStart: Qt.point(0, 0)
         property point current: Qt.point(0, 0)
         property bool drawing: false
-        cursorShape: canvas.manualMode ? Qt.CrossCursor : Qt.ArrowCursor
+        property bool cropping: false
+        readonly property bool eyeMode: canvas.showEyes && canvas.manualMode
+        cursorShape: (eyeMode || canvas.cropMode) ? Qt.CrossCursor : Qt.ArrowCursor
         onPressed: mouse => {
             canvas.forceActiveFocus();
             start = Qt.point(mouse.x, mouse.y);
             current = start;
             panStart = Qt.point(canvas.panX, canvas.panY);
-            drawing = mouse.button === Qt.LeftButton && canvas.manualMode && canvas.canEdit;
+            drawing = mouse.button === Qt.LeftButton && eyeMode && canvas.canEdit;
+            cropping = mouse.button === Qt.LeftButton && canvas.cropMode && canvas.canEdit;
         }
         onPositionChanged: mouse => {
             current = Qt.point(mouse.x, mouse.y);
@@ -119,10 +165,19 @@ Item {
         }
         onReleased: mouse => {
             drawing = false;
+            const wasCropping = cropping;
+            cropping = false;
             if (mouse.button !== Qt.LeftButton || !canvas.canEdit) return;
+            if (wasCropping) {
+                if (Math.hypot(mouse.x - start.x, mouse.y - start.y) < canvas.clickTolerance) return;
+                const box = canvas.sourceCrop(start.x, start.y, mouse.x, mouse.y);
+                if (box !== null) canvas.cropRequested(box[0], box[1], box[2], box[3]);
+                return;
+            }
+            if (!canvas.showEyes) return;
             const p = canvas.sourcePoint(mouse.x, mouse.y);
             if (p.x < 0) return;
-            if (canvas.manualMode) {
+            if (eyeMode) {
                 if (Math.hypot(mouse.x - start.x, mouse.y - start.y) < canvas.clickTolerance)
                     canvas.ellipseRequested(p.x, p.y, canvas.defaultRadius, canvas.defaultRadius);
                 else canvas.commitEllipse(start.x, start.y, mouse.x, mouse.y);
@@ -136,7 +191,7 @@ Item {
                 }
             }
         }
-        onCanceled: drawing = false
+        onCanceled: { drawing = false; cropping = false; }
     }
 
     Rectangle {
@@ -146,6 +201,17 @@ Item {
         height: Math.abs(pointer.start.y - pointer.current.y)
         radius: Math.min(width, height) / 2
         visible: pointer.drawing
+        color: "transparent"
+        border.color: "white"
+        border.width: 1
+    }
+
+    Rectangle {
+        x: Math.min(pointer.start.x, pointer.current.x)
+        y: Math.min(pointer.start.y, pointer.current.y)
+        width: Math.abs(pointer.start.x - pointer.current.x)
+        height: Math.abs(pointer.start.y - pointer.current.y)
+        visible: pointer.cropping
         color: "transparent"
         border.color: "white"
         border.width: 1

@@ -8,7 +8,7 @@ from tests.gui.qt import require_qt
 
 require_qt()
 
-from PySide6.QtCore import QObject, QPointF, Qt
+from PySide6.QtCore import QPointF, Qt
 from PySide6.QtTest import QTest
 
 from tests.gui.qt import test_qml
@@ -132,25 +132,26 @@ def test_working_url_falls_back_to_after_and_prefers_the_working_image(make_brid
 
 
 def test_mode_button_hides_eye_markers_and_disables_eye_controls(make_bridge, open_window, out):
-    _bridge, view, window, page, warnings = editor_page(make_bridge, open_window, out)
+    _bridge, view, _window, page, warnings = editor_page(make_bridge, open_window, out)
 
     def markers():
-        return window.findChildren(QObject, "photoEyeMarker")
+        picture = child(page, "photoCanvasImage")
+        return [i for i in picture.childItems() if i.objectName() == "photoEyeMarker"]
 
     eye_controls = ("photoEyeList", "photoAccept", "photoReject", "photoManualEye", "photoStrength")
-    assert len(markers()) == 2 and all(m.property("visible") for m in markers())
+    assert len(markers()) == 2 and all(m.isVisible() for m in markers())
     assert all(child(page, name).property("enabled") for name in eye_controls)
     assert not child(page, "photoRotateRight").property("visible")
     enter_mode(page)
     assert view.geometryMode and child(page, "photoGeometryMode").property("checked")
-    assert not any(m.property("visible") for m in markers())
+    assert not any(m.isVisible() for m in markers())
     assert not any(child(page, name).property("enabled") for name in eye_controls)
     assert not child(page, "photoRemoveEye").property("enabled")
     assert child(page, "photoRotateRight").property("visible")
     assert child(page, "photoBeforeAfter").property("enabled")
     enter_mode(page)
     assert not view.geometryMode
-    assert all(m.property("visible") for m in markers())
+    assert len(markers()) == 2 and all(m.isVisible() for m in markers())
     assert all(child(page, name).property("enabled") for name in eye_controls)
     assert warnings == []
 
@@ -178,11 +179,14 @@ def test_dragging_on_the_canvas_sets_the_source_crop_as_one_undo(make_bridge, op
     enter_mode(page)
     initial = bridge.controller.photo_edit.recipe
     drag(window, canvas_point(page, 0.1, 0.0), canvas_point(page, 0.9, 1.0))
-    assert view.geometry["crop"] == [10, 0, 90, 60] and view.geometry["cropped"]
+    # The pointer maps through whole window pixels, so allow a pixel or two of slack.
+    left, top, right, bottom = view.geometry["crop"]
+    assert 8 <= left <= 12 and top == 0 and 88 <= right <= 92 and bottom == 60
+    assert view.geometry["cropped"]
     assert len(bridge.controller.photo_edit._undo) == 1
     assert child(page, "photoCropRect").property("visible")
-    assert child(page, "photoCropLeft").property("value") == 10
-    assert child(page, "photoCropRight").property("value") == 90
+    assert child(page, "photoCropLeft").property("value") == left
+    assert child(page, "photoCropRight").property("value") == right
     assert child(page, "photoClearCrop").property("enabled")
     view.undo()
     assert bridge.controller.photo_edit.recipe is initial
@@ -212,13 +216,15 @@ def test_crop_drag_is_ignored_outside_the_mode(make_bridge, open_window, out):
 
 
 def test_spin_boxes_clear_reset_and_page_reset(make_bridge, open_window, out):
-    bridge, view, _window, page, warnings = editor_page(make_bridge, open_window, out)
+    bridge, view, window, page, warnings = editor_page(make_bridge, open_window, out)
     enter_mode(page)
     side = bridge.controller.photo_edit
     view.setCrop(10, 0, 90, 60)
     assert child(page, "photoCropTop").property("value") == 0
     assert child(page, "photoCropBottom").property("value") == 60
-    invoke(child(page, "photoCropLeft"), "increase")
+    invoke(child(page, "photoCropLeft"), "forceActiveFocus")
+    QTest.keyClick(window, Qt.Key.Key_Up)
+    settle()
     assert view.geometry["crop"] == [11, 0, 90, 60]
     click(child(page, "photoClearCrop"))
     assert not view.geometry["cropped"]

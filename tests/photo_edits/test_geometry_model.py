@@ -141,6 +141,12 @@ def test_min_crop_size_uses_five_millimetres_at_effective_dpi(tmp_path: Path) ->
     assert min_crop_size(tiny_dpi) == (1, 1)
 
 
+def test_min_crop_size_clamps_to_the_source_for_an_absurd_dpi(tmp_path: Path) -> None:
+    source = source_at(tmp_path)
+    huge = replace(source, dpi_x=1e308, dpi_y=1e308, effective_dpi=1e308)
+    assert min_crop_size(huge) == (huge.width, huge.height)
+
+
 def test_bounds_below_exactly_and_above_the_minimum(tmp_path: Path) -> None:
     source = source_at(tmp_path)
     _recipe(source, PhotoGeometry(0, (0, 0, 59, 59)))

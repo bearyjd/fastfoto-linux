@@ -121,15 +121,19 @@ def test_an_os_error_shows_a_generic_message_without_the_path(
     assert "/private/place/photo.jpg" in caplog.text
 
 
-def test_an_unexpected_error_is_not_swallowed_as_a_message(make_bridge, out, monkeypatch):
+def test_an_unexpected_error_is_logged_and_shown_as_a_generic_message(
+    make_bridge, out, monkeypatch, caplog
+):
     _bridge, view, _worker = open_editor(make_bridge, out)
 
     def fail(*_args):
-        raise KeyError("bug")
+        raise KeyError("secret-detail")
 
     monkeypatch.setattr(view._side, "save", fail)
-    with pytest.raises(KeyError):
+    with caplog.at_level("ERROR"):
         view.save()
+    assert view.error and "secret-detail" not in view.error
+    assert "secret-detail" in caplog.text
 
 
 def test_can_edit_is_public_on_the_side_controller(make_bridge, out):

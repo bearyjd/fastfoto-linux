@@ -67,6 +67,18 @@ def test_mode_is_off_after_open_toggle_is_free_and_close_clears_it(out):
     assert side.geometry_mode is False
 
 
+def test_leaving_the_mode_ends_an_open_gesture_so_later_edits_do_not_coalesce(out):
+    page = opened(out)
+    side = page.side
+    side.set_geometry_mode(True)
+    side.begin_gesture()
+    side.rotate(True)
+    side.set_geometry_mode(False)
+    side.set_geometry_mode(True)
+    side.rotate(True)
+    assert len(side._undo) == 2
+
+
 def test_reopening_clears_the_mode(out):
     page = opened(out)
     page.side.set_geometry_mode(True)

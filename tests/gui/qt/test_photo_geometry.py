@@ -171,6 +171,7 @@ def test_rotate_buttons_call_the_slots_and_size_label_follows(make_bridge, open_
     for _ in range(3):
         view.undo()
     assert view.geometryNeutral and not view.canUndo
+    assert bridge.controller.photo_edit.recipe.schema_version == 2
     assert warnings == []
 
 
@@ -203,6 +204,54 @@ def test_clicks_and_too_small_drags_are_ignored_and_eyes_stay_unselected(
     drag(window, canvas_point(page, 0.5, 0.5), canvas_point(page, 0.55, 0.95))
     assert bridge.controller.photo_edit.recipe is initial
     assert view.selectedId == selected and not view.error
+    assert warnings == []
+
+
+def test_a_sub_minimum_drag_shows_a_hint_until_the_next_valid_edit(make_bridge, open_window, out):
+    bridge, view, window, page, warnings = editor_page(make_bridge, open_window, out)
+    enter_mode(page)
+    hint = child(page, "photoCropHint")
+    assert not hint.property("visible")
+    drag(window, canvas_point(page, 0.5, 0.5), canvas_point(page, 0.55, 0.95))
+    assert hint.property("visible") and hint.property("text")
+    assert not view.error and not view.geometry["cropped"]
+    drag(window, canvas_point(page, 0.1, 0.0), canvas_point(page, 0.9, 1.0))
+    assert view.geometry["cropped"] and not hint.property("visible")
+    drag(window, canvas_point(page, 0.5, 0.5), canvas_point(page, 0.55, 0.95))
+    assert hint.property("visible")
+    click(child(page, "photoRotateRight"))
+    assert not hint.property("visible")
+    assert warnings == []
+
+
+def test_a_plain_click_gives_no_hint(make_bridge, open_window, out):
+    _bridge, _view, window, page, warnings = editor_page(make_bridge, open_window, out)
+    enter_mode(page)
+    QTest.mouseClick(window, Qt.MouseButton.LeftButton, pos=canvas_point(page, 0.5, 0.5))
+    settle()
+    assert not child(page, "photoCropHint").property("visible")
+    assert warnings == []
+
+
+def test_dragging_past_the_image_edge_clamps_to_the_source(make_bridge, open_window, out):
+    _bridge, view, window, page, warnings = editor_page(make_bridge, open_window, out)
+    enter_mode(page)
+    drag(window, canvas_point(page, 0.1, 0.1), canvas_point(page, 1.6, 1.8))
+    left, top, right, bottom = view.geometry["crop"]
+    assert 9 <= left <= 11 and 5 <= top <= 7 and right == 100 and bottom == 60
+    assert view.geometry["cropped"] and not view.error
+    assert warnings == []
+
+
+def test_dragging_while_zoomed_maps_through_the_zoom(make_bridge, open_window, out):
+    _bridge, view, window, page, warnings = editor_page(make_bridge, open_window, out)
+    enter_mode(page)
+    child(page, "photoEditCanvas").setProperty("viewZoom", 2)
+    settle()
+    # Zoom 2 about the centre halves the span: canvas fractions 0.1..0.9 are image fractions 0.3..0.7.
+    drag(window, canvas_point(page, 0.1, 0.1), canvas_point(page, 0.9, 0.9))
+    left, top, right, bottom = view.geometry["crop"]
+    assert 28 <= left <= 31 and 17 <= top <= 19 and 69 <= right <= 72 and 41 <= bottom <= 43
     assert warnings == []
 
 

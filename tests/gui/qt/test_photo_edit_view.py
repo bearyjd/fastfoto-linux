@@ -1,5 +1,7 @@
 """Public child interface, eligibility and dirty-close protection for photo review."""
 
+import pytest
+
 from tests.gui.qt import require_qt
 
 require_qt()
@@ -102,3 +104,34 @@ def test_results_model_explains_absent_original_and_unprocessed_sheet(out):
     idx = model.index(0, 0)
     assert not model.data(idx, roles["canReviewRedEyes"])
     assert "original" in model.data(idx, roles["reviewRedEyesReason"]).lower()
+
+
+def test_an_os_error_shows_a_generic_message_without_the_path(
+    make_bridge, out, monkeypatch, caplog
+):
+    _bridge, view, _worker = open_editor(make_bridge, out)
+
+    def fail(*_args):
+        raise OSError(13, "Permission denied", "/private/place/photo.jpg")
+
+    monkeypatch.setattr(view._side, "save", fail)
+    with caplog.at_level("ERROR"):
+        view.save()
+    assert view.error and "private" not in view.error and "Permission" not in view.error
+    assert "/private/place/photo.jpg" in caplog.text
+
+
+def test_an_unexpected_error_is_not_swallowed_as_a_message(make_bridge, out, monkeypatch):
+    _bridge, view, _worker = open_editor(make_bridge, out)
+
+    def fail(*_args):
+        raise KeyError("bug")
+
+    monkeypatch.setattr(view._side, "save", fail)
+    with pytest.raises(KeyError):
+        view.save()
+
+
+def test_can_edit_is_public_on_the_side_controller(make_bridge, out):
+    bridge, view, _worker = open_editor(make_bridge, out)
+    assert bridge.controller.photo_edit.can_edit is view.canEdit is True

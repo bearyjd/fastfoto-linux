@@ -1,5 +1,6 @@
 """The public QML photo editor interface, backed by one Qt-free controller component."""
 
+import logging
 from collections.abc import Callable
 from dataclasses import asdict
 from typing import TYPE_CHECKING, Any
@@ -8,14 +9,18 @@ import numpy as np
 from PySide6.QtCore import Property, QObject, QUrl, Signal, Slot
 
 from fastfoto_linux.gui.qt.photos_model import file_url
-from fastfoto_linux.photo_edits import EyeEdit, PhotoTone
+from fastfoto_linux.gui.state import ActionBlockedError
+from fastfoto_linux.photo_edits import EyeEdit, PhotoEditError, PhotoTone
 
 if TYPE_CHECKING:
     from fastfoto_linux.gui.photoeditside import PhotoEditSide
     from fastfoto_linux.gui.qt.bridge import Bridge
 
+logger = logging.getLogger(__name__)
+
 MM_PER_INCH = 25.4
 DEFAULT_EYE_RADIUS_MM = 0.6
+GENERIC_FILE_ERROR = "The photo or its saved edit could not be read or written."
 
 
 def _candidate(eye: EyeEdit) -> dict[str, object]:
@@ -136,7 +141,7 @@ class PhotoEditView(QObject):
 
     @Property(bool, notify=changed)
     def canEdit(self) -> bool:
-        return self._side._can_edit
+        return self._side.can_edit
 
     @Property(str, notify=changed)
     def savedEditUrl(self) -> str:
@@ -145,10 +150,14 @@ class PhotoEditView(QObject):
     def _call(self, action: Callable[..., Any], *args: object) -> Any:
         try:
             return action(*args)
-        except Exception as error:
-            self._side.error = str(error)
-            self._controller._changed()
-            return None
+        except (PhotoEditError, ActionBlockedError, ValueError) as error:
+            # These carry messages written for the user.
+            self._side.report_error(str(error))
+        except OSError:
+            # The OS text can hold a path, so it goes to the log, never to the page.
+            logger.exception("photo edit action failed")
+            self._side.report_error(GENERIC_FILE_ERROR)
+        return None
 
     @Slot(int)
     def openPhoto(self, row: int) -> None:
@@ -157,8 +166,7 @@ class PhotoEditView(QObject):
     @Slot(QUrl)
     def openSavedEdit(self, url: QUrl) -> None:
         if not url.isLocalFile():
-            self._side.error = "Choose a local saved edit JSON file."
-            self._controller._changed()
+            self._side.report_error("Choose a local saved edit JSON file.")
             return
         from pathlib import Path  # noqa: PLC0415 - local URL conversion
 

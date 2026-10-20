@@ -82,18 +82,18 @@ class PhotoEditSide:
 
     @property
     def can_undo(self) -> bool:
-        return bool(self._undo) and self._can_edit
+        return bool(self._undo) and self.can_edit
 
     @property
     def can_reset(self) -> bool:
-        return self._can_edit and self.recipe is not self._initial
+        return self.can_edit and self.recipe is not self._initial
 
     @property
     def can_save(self) -> bool:
-        return self._can_edit and not self._worker_busy and not self.busy and not self.error
+        return self.can_edit and not self._worker_busy and not self.busy and not self.error
 
     @property
-    def _can_edit(self) -> bool:
+    def can_edit(self) -> bool:
         return (
             self.active
             and self.recipe is not None
@@ -176,7 +176,7 @@ class PhotoEditSide:
             self._clean = result.saved.recipe
 
     def _require_edit(self) -> PhotoEditRecipe:
-        if not self._can_edit:
+        if not self.can_edit:
             raise ActionBlockedError("Wait for the photo to open or finish saving before editing.")
         assert self.recipe is not None
         return self.recipe
@@ -347,6 +347,11 @@ class PhotoEditSide:
         self.preview = None
         with suppress(OSError):
             self._cache_dir.rmdir()
+
+    def report_error(self, message: str) -> None:
+        """Show ``message`` as the review's error and tell the page."""
+        self.error = message
+        self._changed()
 
     def _changed(self) -> None:
         self._controller._changed()

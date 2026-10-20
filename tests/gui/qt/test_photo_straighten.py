@@ -423,3 +423,30 @@ def test_until_the_new_preview_lands_the_canvas_holds_the_last_settled_image(
     assert canvas.property("imageUrl") == view.straightenedUrl
     assert canvas.property("sourceWidth") == view.frameWidth
     assert warnings == []
+
+
+def test_an_angle_to_angle_change_keeps_the_previous_frame_until_the_preview_lands(
+    make_bridge, open_window, out
+):
+    bridge, view, _window, page, warnings = straighten_page(make_bridge, open_window, out)
+    canvas = child(page, "photoEditCanvas")
+    child(page, "photoBeforeAfter").setProperty("checked", False)
+    view.setStraighten(30)
+    settle()
+    land(bridge, out)
+    first = (canvas.property("sourceWidth"), canvas.property("sourceHeight"))
+    first_url = canvas.property("imageUrl")
+    assert first == (view.frameWidth, view.frameHeight)
+    view.setStraighten(40)
+    settle()
+    assert not view.previewCurrent
+    assert (view.frameWidth, view.frameHeight) != first
+    assert (canvas.property("sourceWidth"), canvas.property("sourceHeight")) == first
+    assert canvas.property("imageUrl") == first_url
+    assert not canvas.property("cropMode")
+    land(bridge, out)
+    assert (canvas.property("sourceWidth"), canvas.property("sourceHeight")) == (
+        view.frameWidth,
+        view.frameHeight,
+    )
+    assert warnings == []

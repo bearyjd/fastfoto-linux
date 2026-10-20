@@ -11,11 +11,12 @@ from fastfoto_linux.photo_edits.model import PhotoEditError, PhotoGeometry, Phot
 EXIF_THUMBNAIL_KEYS = (513, 514)
 RESOLUTION_UNIT_INCHES = 2
 MAX_RATIONAL_DENOMINATOR = 1_000_000
+NEUTRAL_GEOMETRY = PhotoGeometry()
 TIFF_NS = "http://ns.adobe.com/tiff/1.0/"
 EXIF_NS = "http://ns.adobe.com/exif/1.0/"
 
 
-def _frame(source: PhotoSource, geometry: PhotoGeometry) -> tuple[int, int, float, float]:
+def frame(source: PhotoSource, geometry: PhotoGeometry) -> tuple[int, int, float, float]:
     """Output width, height and per-axis DPI; odd quarter turns swap the physical axes."""
     width, height = output_size(source, geometry)
     if geometry.quarter_turns % 2:
@@ -23,9 +24,9 @@ def _frame(source: PhotoSource, geometry: PhotoGeometry) -> tuple[int, int, floa
     return width, height, source.dpi_x, source.dpi_y
 
 
-def derivative_exif(source: PhotoSource, geometry: PhotoGeometry = PhotoGeometry()) -> bytes:  # noqa: B008
+def derivative_exif(source: PhotoSource, geometry: PhotoGeometry = NEUTRAL_GEOMETRY) -> bytes:
     """Match EXIF geometry and physical axes to the upright output pixels."""
-    width, height, dpi_x, dpi_y = _frame(source, geometry)
+    width, height, dpi_x, dpi_y = frame(source, geometry)
     exif = Image.Exif()
     if source.exif:
         exif.load(source.exif)
@@ -58,7 +59,7 @@ def _rational(value: float) -> str:
 
 
 def _geometry(source: PhotoSource, geometry: PhotoGeometry) -> dict[str, str]:
-    width, height, dpi_x, dpi_y = _frame(source, geometry)
+    width, height, dpi_x, dpi_y = frame(source, geometry)
     return {
         f"{{{TIFF_NS}}}Orientation": "1",
         f"{{{TIFF_NS}}}XResolution": _rational(dpi_x),
@@ -71,7 +72,7 @@ def _geometry(source: PhotoSource, geometry: PhotoGeometry) -> dict[str, str]:
     }
 
 
-def derivative_xmp(source: PhotoSource, geometry: PhotoGeometry = PhotoGeometry()) -> bytes:  # noqa: B008
+def derivative_xmp(source: PhotoSource, geometry: PhotoGeometry = NEUTRAL_GEOMETRY) -> bytes:
     """Normalize present geometry fields; preserve descriptive metadata and safe packets."""
     if not source.xmp:
         return b""

@@ -216,7 +216,10 @@ class PhotoGeometry:
 
 def min_crop_size(source: PhotoSource) -> tuple[int, int]:
     """The smallest allowed crop (width, height): 5 mm at the source's effective DPI."""
-    pixels = max(1, mm_to_px(MIN_CROP_MM, source.effective_dpi))
+    try:
+        pixels = max(1, mm_to_px(MIN_CROP_MM, source.effective_dpi))
+    except OverflowError:  # an absurd DPI: the minimum exceeds any source, so clamp to its extent
+        return source.width, source.height
     return min(pixels, source.width), min(pixels, source.height)
 
 

@@ -28,6 +28,8 @@ if TYPE_CHECKING:
     from fastfoto_linux.gui.controller import Controller
 
 logger = logging.getLogger(__name__)
+# Operations that can change a page's output pixels; each names its page number first.
+PAGE_AFFECTING = frozenset({"toggle", "rotate", "set_colour"})
 _OPENABLE = frozenset(
     {State.READY, State.NO_SCANNER, State.DONE, State.FAILED, State.CANCELLED, State.REVIEWING}
 )
@@ -90,11 +92,15 @@ class ReviewSide:
             self._originals = None
             request = self._preview_requested
             number = self.preview_number or (request.number if request else 0)
-            # Every page edit names its page first; another page's edit cannot change this preview.
-            affects = bool(args) and args[0] == number
+            # These operations name their page first; another page's edit leaves this preview alone.
+            affects = operation in PAGE_AFFECTING and bool(args) and args[0] == number
             if number and affects and (self.preview_view == "output" or request is not None):
                 self._preview_requested = None
                 self.preview(number, self.preview_view)
+            elif request is not None:
+                # Re-point at the new draft so a stale in-flight result cannot be re-dispatched
+                # forever; the next dispatch renders the current draft and then matches.
+                self._preview_requested = replace(request, draft=self.state.draft)
         self._controller._changed()
         return True
 

@@ -23,6 +23,7 @@ Item {
     signal ellipseRequested(real cx, real cy, real rx, real ry)
     signal eyeSelected(string eyeId)
     signal cropRequested(int left, int top, int right, int bottom)
+    signal cropRejected()
     clip: true
     focus: true
     activeFocusOnTab: true
@@ -172,6 +173,7 @@ Item {
                 if (Math.hypot(mouse.x - start.x, mouse.y - start.y) < canvas.clickTolerance) return;
                 const box = canvas.sourceCrop(start.x, start.y, mouse.x, mouse.y);
                 if (box !== null) canvas.cropRequested(box[0], box[1], box[2], box[3]);
+                else canvas.cropRejected();
                 return;
             }
             if (!canvas.showEyes) return;

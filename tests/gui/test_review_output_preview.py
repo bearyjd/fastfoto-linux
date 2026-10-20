@@ -224,3 +224,40 @@ def test_an_edit_to_another_page_keeps_the_previewed_output_and_asks_for_no_new_
     assert side.preview_path == output and len(calls) == 1
     side.edit("rotate", 1, 1)
     assert side.preview_path is None and len(calls) == 2
+
+
+def test_an_edit_that_cannot_change_page_pixels_keeps_the_previewed_output(out):
+    side, page = opened(out)
+    calls = []
+    page.worker.preview_page = lambda *args: calls.append(args)
+    side.preview(1, "output")
+    output = out / "previews" / "page-0001-output-colour.jpg"
+    side.preview_ready(PreviewCompletion(calls[-1][0], output))
+    side.edit("name_part", 1, "Letter")
+    assert side.dirty
+    assert side.preview_path == output and len(calls) == 1
+
+
+@pytest.mark.parametrize(
+    "edit",
+    [
+        ("name_part", 1, "Letter"),
+        ("rotate", 2, 1),
+        ("toggle_split", 1),
+        ("toggle_split", 2),
+        ("move", 1, 2),
+    ],
+)
+def test_a_non_page_edit_during_an_inflight_preview_still_ends_in_a_matching_preview(out, edit):
+    side, page = opened(out)
+    calls = []
+    page.worker.preview_page = lambda *args: calls.append(args)
+    output = out / "previews" / "page-0001-output-colour.jpg"
+    side.preview(1, "output")
+    first = calls[-1][0]
+    side.edit(*edit)
+    side.preview_ready(PreviewCompletion(first, output))
+    assert len(calls) == 2 and calls[-1][0].draft is side.state.draft
+    side.preview_ready(PreviewCompletion(calls[-1][0], output))
+    assert len(calls) == 2
+    assert side.preview_path == output and side._preview_requested is None

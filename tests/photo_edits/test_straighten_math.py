@@ -166,3 +166,17 @@ def test_the_whole_frame_reference_matches_the_fused_uncropped_pass() -> None:
     assert np.array_equal(
         apply_geometry(pixels, PhotoGeometry(0, None, 11)), straightened_frame(pixels, 11)
     )
+
+
+@pytest.mark.parametrize(("width", "height"), SIZES)
+def test_shrink_loop_recovers_from_an_overestimate_and_stays_maximal(
+    width: int, height: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(st, "_estimate", lambda *_: (10.0 * width, 10.0 * height))
+    for tenths in (-150, -37, 1, 7, 90, 150):
+        fw, fh = st.straightened_size(width, height, tenths)
+        assert _inside(width, height, tenths, fw, fh) == (True, True)
+        if fw < width:
+            assert not all(_inside(width, height, tenths, fw + 1, fh))
+        if fh < height:
+            assert not all(_inside(width, height, tenths, fw, fh + 1))

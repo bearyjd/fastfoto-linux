@@ -107,15 +107,20 @@ Kirigami.Page {
                 Layout.fillHeight: true
                 Layout.minimumWidth: 120
                 Layout.minimumHeight: 160
-                imageUrl: !compare.checked ? editor.beforeUrl
+                // Framing an angled photo shows the straightened frame, whatever the compare switch says.
+                readonly property bool framing: editor.geometryMode && !geometryControls.showResult
+                readonly property bool angled: framing && editor.geometry.straightenTenths !== 0
+                imageUrl: angled ? editor.straightenedUrl
+                    : !compare.checked ? editor.beforeUrl
                     : (editor.geometryMode && geometryControls.showResult ? editor.afterUrl : editor.workingUrl)
                 showEyes: !editor.geometryMode
-                cropMode: editor.geometryMode && !geometryControls.showResult
+                // No crop drags against a stale image: an angled frame waits for its own preview.
+                cropMode: framing && (!angled || editor.previewCurrent)
                 crop: editor.geometry.crop
                 minCropWidth: editor.minCropWidth
                 minCropHeight: editor.minCropHeight
-                sourceWidth: editor.sourceWidth
-                sourceHeight: editor.sourceHeight
+                sourceWidth: angled ? editor.frameWidth : editor.sourceWidth
+                sourceHeight: angled ? editor.frameHeight : editor.sourceHeight
                 candidates: editor.candidates
                 selectedId: editor.selectedId
                 canEdit: editor.canEdit

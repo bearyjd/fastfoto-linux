@@ -550,6 +550,13 @@ saved framing and size. **Clear crop** removes the crop, **Reset geometry** remo
 and each change is one Undo step. Existing saved edits reopen unchanged; using crop or rotate saves a
 new version-3 recipe. See the [photo geometry contract](docs/design/photo-geometry.md).
 
+**Straighten**, inside Crop and rotate, levels a slightly tilted photo with the slider or the angle
+box, from -15.0° to 15.0° in 0.1° steps (positive turns the picture clockwise). The result is trimmed
+to the largest upright rectangle that fits inside the turned picture, so there are no empty corners.
+Unlike turns and crops, straightening resamples the pixels. Changing the angle clears any crop, and
+a whole slider drag is one Undo step. **Reset straighten** returns to 0.0°. It needs equal horizontal
+and vertical resolution and is disabled otherwise; using it saves a new version-4 recipe.
+
 **Save new copy** writes a numbered `_edit-0001.jpg` and matching JSON recipe beside the
 source, without replacing the original, enhanced copy or back. Keep both new files to reopen
 that edit through **Open saved photo edit**. Leaving with unsaved changes asks before

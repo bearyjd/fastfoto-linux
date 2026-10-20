@@ -44,6 +44,7 @@ def _preview_paths(preview: PhotoPreview | None) -> set[Path]:
             preview.working,
             preview.roi_before,
             preview.roi_after,
+            preview.straightened,
         )
         if path is not None
     }

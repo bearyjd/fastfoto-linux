@@ -51,7 +51,7 @@ def straighten_page(make_bridge, open_window, out, **kwargs):
 
 
 def test_view_exposes_the_straighten_contract(make_bridge, out):
-    bridge, view, _worker = open_editor(make_bridge, out, dpi=100)
+    _bridge, view, _worker = open_editor(make_bridge, out, dpi=100)
     meta = view.metaObject()
     names = {meta.property(i).name() for i in range(meta.propertyCount())}
     assert {
@@ -121,7 +121,9 @@ def test_slots_are_one_entry_each_and_report_domain_errors(make_bridge, out):
 def test_non_square_pixels_are_refused_with_a_user_message(make_bridge, out):
     bridge, view, _worker = open_editor(make_bridge, out, dpi=100)
     side = bridge.controller.photo_edit
-    side.recipe = replace(side.recipe, source=replace(side.recipe.source, dpi_y=200.0))
+    side.recipe = replace(
+        side.recipe, source=replace(side.recipe.source, dpi_y=200.0, effective_dpi=200.0)
+    )
     assert not view.canStraighten
     view.setGeometryMode(True)
     view.setStraighten(30)
@@ -239,7 +241,9 @@ def test_reset_straighten_button_is_one_undo(make_bridge, open_window, out):
 def test_without_square_pixels_the_controls_are_disabled_and_say_why(make_bridge, open_window, out):
     bridge, view, _window, page, warnings = straighten_page(make_bridge, open_window, out)
     side = bridge.controller.photo_edit
-    side.recipe = replace(side.recipe, source=replace(side.recipe.source, dpi_y=200.0))
+    side.recipe = replace(
+        side.recipe, source=replace(side.recipe.source, dpi_y=200.0, effective_dpi=200.0)
+    )
     view.refresh()
     settle()
     assert not child(page, "photoStraightenSlider").property("enabled")

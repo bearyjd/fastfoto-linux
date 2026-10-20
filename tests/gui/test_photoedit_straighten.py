@@ -21,7 +21,7 @@ def opened_at(folder, *, dpi=100, dpi_y=None):
     page = setup(folder)
     page.source = source(folder, dpi=dpi)
     if dpi_y is not None:
-        page.source = replace(page.source, dpi_y=dpi_y)
+        page.source = replace(page.source, dpi_y=dpi_y, effective_dpi=dpi_y)
     page.side.open_photo(0)
     request = page.worker.requests[-1]
     recipe = PhotoEditRecipe(page.source, eyes())
@@ -119,7 +119,7 @@ def test_reset_straighten_returns_to_zero_and_keeps_the_turns(out):
     side.reset_straighten()
     assert side.recipe.geometry == PhotoGeometry(1, None, 0)
     side.reset_straighten()
-    assert len(side._undo) == 2
+    assert len(side._undo) == 3
 
 
 @pytest.mark.parametrize("tenths", [151, -151, 2.5, True])

@@ -31,7 +31,10 @@ ColumnLayout {
     Connections {
         target: root.editor
         function onChanged() {
-            if (!root.editor.geometryMode) result.checked = false;
+            if (!root.editor.geometryMode) {
+                result.checked = false;
+                root.cropRejected = false;
+            }
             const now = JSON.stringify(root.editor.geometry);
             if (now !== root.seenGeometry) {
                 root.seenGeometry = now;

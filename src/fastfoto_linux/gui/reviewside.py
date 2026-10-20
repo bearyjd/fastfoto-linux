@@ -97,6 +97,10 @@ class ReviewSide:
             if number and affects and (self.preview_view == "output" or request is not None):
                 self._preview_requested = None
                 self.preview(number, self.preview_view)
+            elif request is not None:
+                # Re-point at the new draft so a stale in-flight result cannot be re-dispatched
+                # forever; the next dispatch renders the current draft and then matches.
+                self._preview_requested = replace(request, draft=self.state.draft)
         self._controller._changed()
         return True
 

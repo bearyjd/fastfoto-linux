@@ -242,7 +242,7 @@ def test_an_edit_that_cannot_change_page_pixels_keeps_the_previewed_output(out):
     "edit",
     [
         ("name_part", 1, "Letter"),
-        ("name_part", 2, "Letter"),
+        ("rotate", 2, 1),
         ("toggle_split", 1),
         ("toggle_split", 2),
         ("move", 1, 2),

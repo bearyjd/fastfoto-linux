@@ -151,3 +151,32 @@ def test_real_photo_entry_reads_edit_photo(make_bridge, out):
         cell.deleteLater()
         engine.deleteLater()
         settle()
+
+
+@pytest.mark.parametrize("field", ["brightness", "strength"])
+def test_dragged_slider_still_follows_reset_adjustments_and_undo(
+    make_bridge, open_window, out, field
+):
+    bridge, view, _worker = open_editor(make_bridge, out, candidates=())
+    window, warnings = open_window(bridge)
+    window.setHeight(1800)
+    page = ready_page(window)
+    slider = child(page, "photoTone" + field.capitalize())
+    start = slider.mapToScene(QPointF(slider.width() * 0.4, slider.height() / 2)).toPoint()
+    end = slider.mapToScene(QPointF(slider.width() * 0.8, slider.height() / 2)).toPoint()
+    QTest.mousePress(window, Qt.MouseButton.LeftButton, pos=start)
+    QTest.mouseMove(window, end, delay=20)
+    QTest.mouseRelease(window, Qt.MouseButton.LeftButton, pos=end)
+    settle()
+    dragged = view.tone[field]
+    assert dragged != NEUTRAL[field] and slider.property("value") == dragged
+    invoke(child(page, "photoResetTone"), "clicked")
+    settle()
+    assert slider.property("value") == NEUTRAL[field]
+    view.undo()
+    settle()
+    assert slider.property("value") == dragged
+    view.undo()
+    settle()
+    assert slider.property("value") == NEUTRAL[field]
+    assert warnings == []

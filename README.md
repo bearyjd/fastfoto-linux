@@ -542,6 +542,14 @@ and export render from the retained source. Existing version-1 red-eye recipes r
 neutral adjustments; a tone edit uses the new version-2 recipe. See the
 [photo adjustment contract](docs/design/photo-tone.md) for replay and compatibility details.
 
+**Crop and rotate** turns the photo in 90° steps (**Rotate left** / **Rotate right**) and crops it
+to a rectangle you drag on the picture or set with the **Left / Top / Right / Bottom** boxes. Cropping
+and turning use exact pixels with no resampling, and happen after red-eye correction and before tone
+adjustments. While Crop and rotate is open, red-eye editing is disabled; **Show result** previews the
+saved framing and size. **Clear crop** removes the crop, **Reset geometry** removes crop and turns,
+and each change is one Undo step. Existing saved edits reopen unchanged; using crop or rotate saves a
+new version-3 recipe. See the [photo geometry contract](docs/design/photo-geometry.md).
+
 **Save new copy** writes a numbered `_edit-0001.jpg` and matching JSON recipe beside the
 source, without replacing the original, enhanced copy or back. Keep both new files to reopen
 that edit through **Open saved photo edit**. Leaving with unsaved changes asks before

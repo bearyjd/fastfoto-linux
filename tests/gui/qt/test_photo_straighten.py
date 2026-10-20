@@ -417,7 +417,8 @@ def test_until_the_new_preview_lands_the_canvas_holds_the_last_settled_image(
     view.setStraighten(30)
     settle()
     assert not view.previewCurrent
-    assert canvas.property("imageUrl") == settled
+    # The held preview is still the unangled one, so its working image at the source size.
+    assert canvas.property("imageUrl") == view.workingUrl != settled
     assert (canvas.property("sourceWidth"), canvas.property("sourceHeight")) == (100, 60)
     land(bridge, out)
     assert canvas.property("imageUrl") == view.straightenedUrl
@@ -450,3 +451,36 @@ def test_an_angle_to_angle_change_keeps_the_previous_frame_until_the_preview_lan
         view.frameHeight,
     )
     assert warnings == []
+
+
+def shown(view):
+    return (view.shownFrameWidth, view.shownFrameHeight)
+
+
+def test_the_shown_frame_follows_the_held_preview_not_the_draft(make_bridge, out):
+    bridge, view, _worker = open_editor(make_bridge, out, dpi=100)
+    assert shown(view) == (100, 60)
+    view.setGeometryMode(True)
+    view.setStraighten(30)
+    assert shown(view) == (100, 60) != (view.frameWidth, view.frameHeight)
+    land(bridge, out)
+    first = shown(view)
+    assert first == (view.frameWidth, view.frameHeight) != (100, 60)
+    view.setStraighten(40)
+    assert shown(view) == first != (view.frameWidth, view.frameHeight)
+    view.undo()
+    assert shown(view) == first == (view.frameWidth, view.frameHeight)
+    land(bridge, out)
+    assert shown(view) == (view.frameWidth, view.frameHeight)
+
+
+def test_the_shown_frame_survives_a_save_and_resets_on_close(make_bridge, out):
+    bridge, view, _worker = open_editor(make_bridge, out, dpi=100)
+    view.setGeometryMode(True)
+    view.setStraighten(50)
+    land(bridge, out)
+    angled = shown(view)
+    save_landed(bridge)
+    assert shown(view) == angled == (view.frameWidth, view.frameHeight)
+    view.stop()
+    assert shown(view) == (0, 0)

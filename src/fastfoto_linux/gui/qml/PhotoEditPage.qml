@@ -110,28 +110,18 @@ Kirigami.Page {
                 // Framing an angled photo shows the straightened frame, whatever the compare switch says.
                 readonly property bool framing: editor.geometryMode && !geometryControls.showResult
                 readonly property bool angled: framing && editor.geometry.straightenTenths !== 0
-                // An angled frame waits for its own preview: until then the canvas keeps the last
-                // settled image and size, and takes no crop drags against a stale one.
-                readonly property bool settled: !angled || editor.previewCurrent
-                readonly property string wantUrl: angled ? editor.straightenedUrl
+                // The image and size come from the held preview, which lags the draft until the new
+                // preview lands; crop drags wait for it so they never map onto a stale frame.
+                imageUrl: angled ? editor.straightenedUrl
                     : !compare.checked ? editor.beforeUrl
                     : (editor.geometryMode && geometryControls.showResult ? editor.afterUrl : editor.workingUrl)
-                readonly property int wantWidth: angled ? editor.frameWidth : editor.sourceWidth
-                readonly property int wantHeight: angled ? editor.frameHeight : editor.sourceHeight
-                property string heldUrl: ""
-                property int heldWidth: 0
-                property int heldHeight: 0
-                Binding { target: canvas; property: "heldUrl"; value: canvas.wantUrl; when: canvas.settled; restoreMode: Binding.RestoreNone }
-                Binding { target: canvas; property: "heldWidth"; value: canvas.wantWidth; when: canvas.settled; restoreMode: Binding.RestoreNone }
-                Binding { target: canvas; property: "heldHeight"; value: canvas.wantHeight; when: canvas.settled; restoreMode: Binding.RestoreNone }
-                imageUrl: settled ? wantUrl : heldUrl
                 showEyes: !editor.geometryMode
-                cropMode: framing && settled
+                cropMode: framing && (!angled || editor.previewCurrent)
                 crop: editor.geometry.crop
                 minCropWidth: editor.minCropWidth
                 minCropHeight: editor.minCropHeight
-                sourceWidth: settled ? wantWidth : heldWidth
-                sourceHeight: settled ? wantHeight : heldHeight
+                sourceWidth: angled ? editor.shownFrameWidth : editor.sourceWidth
+                sourceHeight: angled ? editor.shownFrameHeight : editor.sourceHeight
                 candidates: editor.candidates
                 selectedId: editor.selectedId
                 canEdit: editor.canEdit

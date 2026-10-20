@@ -18,6 +18,7 @@ from fastfoto_linux.photo_edits import (
     frame_size,
     min_crop_size,
     output_size,
+    straightened_size,
 )
 
 if TYPE_CHECKING:
@@ -167,6 +168,22 @@ class PhotoEditView(QObject):
     @Property(int, notify=changed)
     def frameHeight(self) -> int:
         return self._frame()[1]
+
+    def _shown_frame(self) -> tuple[int, int]:
+        """The frame the held preview was built for, which may lag the draft's frame."""
+        side = self._side
+        if side.recipe is None:
+            return (0, 0)
+        source = side.recipe.source
+        return straightened_size(source.width, source.height, side.preview_tenths or 0)
+
+    @Property(int, notify=changed)
+    def shownFrameWidth(self) -> int:
+        return self._shown_frame()[0]
+
+    @Property(int, notify=changed)
+    def shownFrameHeight(self) -> int:
+        return self._shown_frame()[1]
 
     @Property(bool, notify=changed)
     def canStraighten(self) -> bool:

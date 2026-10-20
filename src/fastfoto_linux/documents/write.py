@@ -151,6 +151,8 @@ def _read_page(page: PageAnalysis, turns: int, draft: DocumentDraft) -> LoadedPa
             f"page {page.number} ({page.name}) has no encoded bytes, and the draft has no "
             "folder of raw pages to read it from"
         )
+    # page.dpi is what the analysis settled on; settings.fallback_dpi may differ by now, and
+    # re-reading with it would change the printed size of a PNG that declares no resolution.
     loaded = load_page(raw_dir / page.name, fallback_dpi=page.dpi)
     return _turned(page.trim.apply(loaded), turns)
 

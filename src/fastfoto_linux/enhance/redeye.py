@@ -271,27 +271,48 @@ def _feathered_alpha(patch: np.ndarray, mask: np.ndarray) -> np.ndarray:
     return alpha
 
 
-def _corrected_patch(patch: np.ndarray, mask: np.ndarray) -> np.ndarray:
+def _corrected_patch(patch: np.ndarray, mask: np.ndarray, strength: float = 1.0) -> np.ndarray:
     source = patch.astype(np.float32)
     neutral = (source[..., 1] + source[..., 2]) / 2
     level = np.minimum(np.minimum(source[..., 0], neutral) * DARKEN, PUPIL_MAX_LEVEL)
     fixed = np.repeat(level[..., np.newaxis], 3, axis=2)
-    alpha = _feathered_alpha(patch, mask)[..., np.newaxis]
+    alpha = _feathered_alpha(patch, mask)[..., np.newaxis] * strength
     blended = source + alpha * (fixed - source)
     return np.clip(np.rint(blended), 0, MAX_LEVEL).astype(np.uint8)
 
 
-def apply_fixes(img: np.ndarray, fixes: Sequence[EyeFix]) -> np.ndarray:
+def apply_fixes(img: np.ndarray, fixes: Sequence[EyeFix], *, strength: float = 1.0) -> np.ndarray:
     """A new array: ``img`` with every fix applied; pixels outside the fixes' ROIs are untouched."""
     ensure_rgb_uint8(img)
+    if isinstance(strength, bool) or not math.isfinite(strength) or not 0 <= strength <= 1:
+        raise ValueError("correction strength must be a finite fraction between 0 and 1")
     result = img.copy()
     height, width = img.shape[:2]
     for fix in fixes:
         x0, y0, x1, y1 = fix.roi
         if x1 > width or y1 > height:
             raise ValueError(f"fix ROI {fix.roi} lies outside the {width}x{height} image")
-        result[y0:y1, x0:x1] = _corrected_patch(result[y0:y1, x0:x1], fix.mask)
+        result[y0:y1, x0:x1] = _corrected_patch(result[y0:y1, x0:x1], fix.mask, strength)
     return result
+
+
+def _eligible_faces(img: np.ndarray, dpi: float, detector: FaceDetector | None) -> tuple[Face, ...]:
+    if isinstance(dpi, bool) or not math.isfinite(dpi) or dpi <= 0:
+        raise ValueError(f"dpi must be a positive finite number, got {dpi!r}")
+    ensure_rgb_uint8(img)
+    min_iod = _mm_to_px(MIN_INTEROCULAR_MM, dpi)
+    return tuple(
+        f
+        for f in detect_faces_full_res(img, detector)
+        if f.score >= MIN_FACE_SCORE and _interocular(f) >= min_iod
+    )
+
+
+def detect_fixes(
+    img: np.ndarray, dpi: float, detector: FaceDetector | None = None
+) -> tuple[EyeFix, ...]:
+    """Pending pupil fixes with the same full-resolution and physical-size gates as auto."""
+    return find_red_eyes(img, _eligible_faces(img, dpi, detector))
 
 
 def remove_red_eye(img: np.ndarray, dpi: int, detector: FaceDetector | None = None) -> np.ndarray:
@@ -300,15 +321,7 @@ def remove_red_eye(img: np.ndarray, dpi: int, detector: FaceDetector | None = No
     ``img`` is an upright RGB uint8 array and is not modified. Faces whose eyes are closer than
     ``MIN_INTEROCULAR_MM`` at ``dpi`` are skipped.
     """
-    if isinstance(dpi, bool) or not math.isfinite(dpi) or dpi <= 0:
-        raise ValueError(f"dpi must be a positive finite number, got {dpi!r}")
-    ensure_rgb_uint8(img)
-    min_iod = _mm_to_px(MIN_INTEROCULAR_MM, dpi)
-    faces = tuple(
-        f
-        for f in detect_faces_full_res(img, detector)
-        if f.score >= MIN_FACE_SCORE and _interocular(f) >= min_iod
-    )
+    faces = _eligible_faces(img, dpi, detector)
     fixes = find_red_eyes(img, faces)
     logger.info("red-eye: corrected %d eye(s) in %d face(s)", len(fixes), len(faces))
     return apply_fixes(img, fixes)

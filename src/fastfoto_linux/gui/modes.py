@@ -11,6 +11,7 @@ from typing import Protocol
 from fastfoto_linux.gui.docform import DocumentForm
 from fastfoto_linux.gui.documents import DocumentItem
 from fastfoto_linux.gui.form import ScanForm, destination
+from fastfoto_linux.gui.photoeditjobs import PhotoEditRequest
 from fastfoto_linux.gui.photos import PhotoItem
 from fastfoto_linux.gui.report import (
     Banner,
@@ -61,6 +62,7 @@ class WorkerPort(Protocol):
     ) -> None: ...
     def process_kept(self, kept: SessionResult | DocumentSessionResult) -> None: ...
     def cancel(self) -> None: ...
+    def photo_edit_job(self, request: PhotoEditRequest) -> None: ...
 
 
 class ModeSide[R](Protocol):

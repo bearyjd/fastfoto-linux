@@ -14,6 +14,7 @@ from PySide6.QtCore import (
     QUrl,
 )
 
+from fastfoto_linux.gui.photoeditside import eligibility
 from fastfoto_linux.gui.photos import PhotoItem
 
 Index = QModelIndex | QPersistentModelIndex
@@ -30,6 +31,8 @@ _ROLES = (
     "unprocessed",
     "reason",
     "backOnly",
+    "canReviewRedEyes",
+    "reviewRedEyesReason",
 )
 
 
@@ -53,6 +56,8 @@ def _values(item: PhotoItem) -> dict[str, object]:
         "unprocessed": item.unprocessed,
         "reason": item.unprocessed_reason or "",
         "backOnly": item.back_only,
+        "canReviewRedEyes": not eligibility(item),
+        "reviewRedEyesReason": eligibility(item),
     }
 
 

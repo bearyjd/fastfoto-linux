@@ -248,6 +248,13 @@ QQC2.ScrollView {
             Accessible.name: qsTr("Keep the plain original too")
             onToggled: bridge.setField("keep_original", checked)
         }
+        QQC2.Label {
+            Layout.fillWidth: true
+            text: qsTr("Keep the cropped, upright JPEG for later edits. This is not an untouched scanner master.")
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+            font: Kirigami.Theme.smallFont
+        }
     }
 
     FolderDialog {

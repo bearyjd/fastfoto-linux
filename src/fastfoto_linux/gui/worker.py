@@ -6,6 +6,7 @@ import os
 import threading
 from collections.abc import Callable
 from dataclasses import replace
+from pathlib import Path
 from typing import Protocol
 
 from fastfoto_linux.documents import (
@@ -25,6 +26,12 @@ from fastfoto_linux.gui.form import (
     to_request,
     validate,
     validate_syntax,
+)
+from fastfoto_linux.gui.photoeditjobs import (
+    PhotoEditJobs,
+    PhotoEditResult,
+    PhotoEditTools,
+    new_cache_dir,
 )
 from fastfoto_linux.gui.power import PowerResult, PowerTools
 from fastfoto_linux.gui.power_recovery import PowerRecovery
@@ -74,6 +81,7 @@ class WorkerSink(Protocol):
     def on_finished(self, result: SessionResult | DocumentSessionResult) -> None: ...
     def on_error(self, error: Exception) -> None: ...
     def on_review_preview(self, answer: PreviewResult) -> None: ...
+    def on_photo_edit_result(self, result: PhotoEditResult) -> None: ...
     def on_power(self, answer: PowerResult) -> None: ...
 
 
@@ -94,6 +102,8 @@ class Worker:
         process: ProcessFn | None = None,
         documents: DocumentTools | None = None,
         power: PowerTools | None = None,
+        photo_edits: PhotoEditTools | None = None,
+        photo_cache_dir: Path | None = None,
     ) -> None:
         """The three collaborators default to the real ones, looked up when the worker is made."""
         self._sink = sink
@@ -112,6 +122,11 @@ class Worker:
         self._check_languages = tools.check_languages or require_languages
         self._document_session = run_document_session if tools.session is None else tools.session
         self._build = build_document if tools.build is None else tools.build
+        self._photo_edit_jobs = PhotoEditJobs(
+            sink, self._start, photo_edits or PhotoEditTools(), photo_cache_dir or new_cache_dir()
+        )
+        self.photo_edit_job = self._photo_edit_jobs.submit
+        self.cleanup_photo_edit_cache = self._photo_edit_jobs.close
         self._review_jobs = ReviewJobs(sink, self._start, tools)
         self.analyse_folder = self._review_jobs.analyse_folder
         self.write_draft = self._review_jobs.write_draft

@@ -521,6 +521,21 @@ as a "Not processed" page with the reason). **Cancel** stops the scan; the pages
 so far are kept and **Process them now** turns them into photos later. Closing the window during
 a scan asks to cancel first, and the settings you used are remembered for next time.
 
+For a processed photo with its retained original, **Review red eyes** opens a separate editor.
+Select a suggested eye and **Accept** or **Reject** it; suggestions start unaccepted. Use
+**Add eye: click or draw ellipse** for a missed eye, adjust **Strength**, and compare
+**Before / After** or **Selected eye · 1:1**. **Undo** restores the previous edit and **Reset**
+restores the recipe as it was opened. The editor works from the retained cropped, upright JPEG, rather
+than raw scanner data or the enhanced `_a` copy. Missing originals and unprocessed sheets
+cannot be edited.
+
+**Save new copy** writes a numbered `_edit-0001.jpg` and matching JSON recipe beside the
+source, without replacing the original, enhanced copy or back. Keep both new files to reopen
+that edit through **Open saved photo edit**. Leaving with unsaved changes asks before
+discarding them. These edits contain red-eye corrections only; they do not inherit earlier
+colour restoration from the enhanced copy. Automatic red-eye correction during scanning
+remains experimental and off by default.
+
 A **Photos | Documents** switch at the top of the form chooses what the feeder holds. **Documents**
 reviews the scanned stack before saving PDFs: a name, Auto / Colour / Grey / Black and white,
 200 / 300 / 600 dpi (300 is the default), **Both sides (drop blank pages)** (off scans one side),
@@ -602,7 +617,7 @@ by root or by you and nobody else can write to it (otherwise it says why it igno
 never runs `brew` from it); it never uses `sudo`, and `--uninstall` leaves Homebrew packages alone
 (`--with-tesseract` is ignored with `--uninstall`, and the installer says so).
 
-Not done yet: editing photos after the scan (rotate, fix the date, re-run the enhancement), the
+Not done yet: further photo edits (rotate, fix the date, re-run the enhancement), the
 scanner's Start button, and processing while still scanning. A scan through the app on real
 hardware is still to be tried.
 

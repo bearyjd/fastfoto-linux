@@ -22,6 +22,7 @@ from fastfoto_linux.gui.form import (
     absolute_folder,
     validate_filesystem,
 )
+from fastfoto_linux.gui.photoeditjobs import PhotoEditTools, new_cache_dir
 from fastfoto_linux.gui.power import PowerResult, PowerTools
 from fastfoto_linux.gui.prefs import (
     load_document_form,
@@ -32,6 +33,7 @@ from fastfoto_linux.gui.prefs import (
     save_mode,
 )
 from fastfoto_linux.gui.qt.documents_view import DocumentsView
+from fastfoto_linux.gui.qt.photo_edit_view import PhotoEditView
 from fastfoto_linux.gui.qt.photos_model import PhotosModel, file_url
 from fastfoto_linux.gui.qt.power_view import PowerView
 from fastfoto_linux.gui.qt.review_view import ReviewView
@@ -120,12 +122,21 @@ class Bridge(QObject):
         mode: Mode | None = None,
         documents: DocumentTools | None = None,
         power: PowerTools | None = None,
+        photo_edits: PhotoEditTools | None = None,
     ) -> None:
         super().__init__()
         self._photos = PhotosModel(self)
         tools = documents or DocumentTools()
+        photo_cache_dir = new_cache_dir()
         self._worker = Worker(
-            self, discover=discover, session=session, process=process, documents=tools, power=power
+            self,
+            discover=discover,
+            session=session,
+            process=process,
+            documents=tools,
+            power=power,
+            photo_edits=photo_edits,
+            photo_cache_dir=photo_cache_dir,
         )
         start = form if form is not None else (load_form() if remember else ScanForm())
         self.controller = Controller(
@@ -134,6 +145,8 @@ class Bridge(QObject):
             save_form=save_form if remember else None,
             on_change=self._on_change,
             disk_check=self._start_disk_check,
+            photo_edits=photo_edits,
+            photo_cache_dir=photo_cache_dir,
             documents=DocumentSetup(
                 form=load_document_form() if remember else DocumentForm(),
                 mode=mode if mode is not None else (load_mode() if remember else Mode.PHOTOS),
@@ -145,8 +158,10 @@ class Bridge(QObject):
         self._documents = DocumentsView(self.controller, self)
         self._languages = self._documents.languages
         self._review = ReviewView(self)
+        self._photo_edit = PhotoEditView(self)
         self._power = PowerView(self)
         self.on_review_preview = lambda answer: self._send("on_review_preview", answer)
+        self.on_photo_edit_result = lambda answer: self._send("on_photo_edit_result", answer)
         self._close_signalled = False
         self._closed = False
         # Guards ``_closed`` and every emit from a thread. Not re-entrant, on purpose: that is safe
@@ -253,6 +268,7 @@ class Bridge(QObject):
         self._photos.set_items(self.controller.photos)
         self._documents.refresh()
         self._review.refresh()
+        self._photo_edit.refresh()
         self._power.refresh()
         self.changed.emit()
         if self.controller.close_ready and not self._close_signalled:
@@ -401,6 +417,10 @@ class Bridge(QObject):
     def review(self) -> ReviewView:
         return self._review
 
+    @Property(QObject, constant=True)
+    def photoEdit(self) -> PhotoEditView:
+        return self._photo_edit
+
     @Property("QVariantList", constant=True)
     def dpiChoices(self) -> list[int]:
         return list(SUPPORTED_DPI)
@@ -512,6 +532,8 @@ class Bridge(QObject):
         self._shut_down = True
         self._languages.stop()
         self._review.stop()
+        self._photo_edit.stop()
+        self._worker.cleanup_photo_edit_cache()
         self._close_events()
         self._worker.cancel()
         deadline = time.monotonic() + SHUTDOWN_WAIT

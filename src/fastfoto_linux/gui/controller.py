@@ -25,6 +25,8 @@ from fastfoto_linux.gui.form import (
     validate_syntax,
 )
 from fastfoto_linux.gui.modes import ModeSide, PhotosSide, View, WorkerPort
+from fastfoto_linux.gui.photoeditjobs import PhotoEditResult, PhotoEditTools, new_cache_dir
+from fastfoto_linux.gui.photoeditside import PhotoEditSide
 from fastfoto_linux.gui.photos import PhotoItem, item_from_files
 from fastfoto_linux.gui.power import RESTART_MESSAGE, PowerSettings
 from fastfoto_linux.gui.report import (
@@ -74,6 +76,8 @@ class Controller:
         on_change: Callable[[], None] | None = None,
         disk_check: DiskCheck | None = None,
         documents: DocumentSetup | None = None,
+        photo_edits: PhotoEditTools | None = None,
+        photo_cache_dir: Path | None = None,
     ) -> None:
         self._worker = worker
         self._disk_check = disk_check
@@ -99,9 +103,14 @@ class Controller:
         self._documents: tuple[DocumentItem, ...] = ()
         self._other_views: dict[Mode, View] = {}
         self.review = ReviewSide(self)
+        self.photo_edit = PhotoEditSide(
+            self, cache_dir=photo_cache_dir or new_cache_dir(), tools=photo_edits
+        )
         self.power = PowerSettings(
             worker,
-            busy=lambda: self.busy or bool(getattr(self._worker, "busy", False)),
+            busy=lambda: (
+                self.busy or self.photo_edit.active or bool(getattr(self._worker, "busy", False))
+            ),
             changed=self._changed,
         )
         self.on_power = self.power.complete
@@ -184,12 +193,15 @@ class Controller:
             and not self.starting_scan
             and not self.busy
             and not self.power.reconnect_required
+            and not self.photo_edit.active
             and not bool(getattr(self._worker, "busy", False))
         )
 
     @property
     def scan_blocker(self) -> str:
         """Why Scan is disabled, in words for the user; empty when it is enabled or a job runs."""
+        if self.photo_edit.active:
+            return "Close the photo edit review before starting a scan."
         if self.starting_scan:
             return CHECKING_DISK_TEXT
         if self.power.reconnect_required:
@@ -212,13 +224,18 @@ class Controller:
 
     @property
     def can_check(self) -> bool:
-        return not self.busy and not self.power.reconnect_required
+        return not self.busy and not self.power.reconnect_required and not self.photo_edit.active
 
     @property
     def can_process_kept(self) -> bool:
         """True while the last result is a cancelled scan whose raw pages are waiting."""
         result = self._result
-        return not self.busy and result is not None and self._side_of(result).offers_kept(result)
+        return (
+            not self.photo_edit.active
+            and not self.busy
+            and result is not None
+            and self._side_of(result).offers_kept(result)
+        )
 
     @property
     def kept_text(self) -> str:
@@ -291,6 +308,8 @@ class Controller:
             raise ValueError(f"unknown mode {mode!r}; use one of {choices}") from None
         if wanted is self._mode:
             return
+        if self.photo_edit.active:
+            raise ActionBlockedError("Close the photo edit review before changing the mode.")
         if not self.review.leaving():
             return
         if self.busy:
@@ -430,7 +449,7 @@ class Controller:
 
     def request_close(self) -> bool:
         """True when the window may close now; otherwise cancels and waits (``close_ready``)."""
-        if not self.review.leaving():
+        if not self.review.leaving() or not self.photo_edit.close():
             return False
         if self._state in _RUNNING:
             self.cancel()
@@ -441,6 +460,9 @@ class Controller:
         return False
 
     # -- what the worker reports ---------------------------------------------------------
+
+    def on_photo_edit_result(self, result: PhotoEditResult) -> None:
+        self.photo_edit.complete(result)
 
     def on_scanner(self, error: Exception | None) -> None:
         if self._state is not State.CHECKING:
@@ -572,6 +594,8 @@ class Controller:
             self._scanner_message = LOST_TEXT if repeated else error_text(error)
 
     def _why_not_scan(self) -> str:
+        if self.photo_edit.active:
+            return "close the photo edit review first"
         if self.power.reconnect_required:
             return RESTART_MESSAGE
         if self.errors:

@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Dialogs
 import QtQuick.Layouts
 import QtQuick.Controls as QQC2
 import org.kde.kirigami as Kirigami
@@ -33,6 +34,14 @@ ColumnLayout {
         }
 
         QQC2.Button {
+            objectName: "openSavedPhotoEditButton"
+            text: qsTr("Open saved photo edit")
+            enabled: !bridge.busy && !bridge.photoEdit.active
+            Accessible.name: qsTr("Open saved photo edit")
+            onClicked: savedPhotoDialog.open()
+        }
+
+        QQC2.Button {
             objectName: "openFolderButton"
             text: qsTr("Open folder")
             icon.name: "document-open-folder"
@@ -54,7 +63,7 @@ ColumnLayout {
             clip: true
             model: bridge.photos
             cellWidth: Kirigami.Units.gridUnit * 13
-            cellHeight: Kirigami.Units.gridUnit * 12
+            cellHeight: Kirigami.Units.gridUnit * 15
             activeFocusOnTab: true
             keyNavigationEnabled: true
             highlightFollowsCurrentItem: true
@@ -72,6 +81,13 @@ ColumnLayout {
             QQC2.ScrollBar.vertical: QQC2.ScrollBar {}
 
             delegate: PhotoCell {
+                required property int index
+                required property bool canReviewRedEyes
+                required property string reviewRedEyesReason
+                photoRow: index
+                reviewEligible: canReviewRedEyes
+                reviewReason: reviewRedEyesReason
+                editReview: bridge.photoEdit
                 width: grid.cellWidth
                 height: grid.cellHeight
                 showEnhanced: results.showEnhanced
@@ -87,5 +103,12 @@ ColumnLayout {
             text: qsTr("No photos yet")
             explanation: qsTr("Load photos in the feeder, check the settings and press Scan. Each photo appears here as it is saved.")
         }
+    }
+    FileDialog {
+        id: savedPhotoDialog
+        title: qsTr("Open saved photo edit")
+        fileMode: FileDialog.OpenFile
+        nameFilters: [qsTr("Photo edit recipes (*.json)")]
+        onAccepted: bridge.photoEdit.openSavedEdit(selectedFile)
     }
 }

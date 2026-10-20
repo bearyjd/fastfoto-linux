@@ -1,6 +1,7 @@
 """Normative numpy reference for the straighten warp: the definition production must equal."""
 
 import numpy as np
+
 from fastfoto_linux.photo_edits.straighten import sample_coords, straightened_size
 
 SUBPIXEL_BITS = 5

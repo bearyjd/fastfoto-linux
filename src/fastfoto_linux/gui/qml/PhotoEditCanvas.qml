@@ -61,9 +61,12 @@ Item {
         const ys = [across(a.y, top, h, sourceHeight), across(b.y, top, h, sourceHeight)].sort((p, q) => p - q);
         const box = [Math.floor(xs[0]), Math.floor(ys[0]),
                      Math.min(sourceWidth, Math.ceil(xs[1])), Math.min(sourceHeight, Math.ceil(ys[1]))];
-        if (box[2] - box[0] < Math.max(1, minCropWidth) || box[3] - box[1] < Math.max(1, minCropHeight))
-            return null;
-        return box;
+        return box.every(isFinite) ? box : null;
+    }
+
+    // A real box that is under the minimum crop; sourceCrop's null (unusable canvas) is not this.
+    function tooSmall(box: var): bool {
+        return box[2] - box[0] < Math.max(1, minCropWidth) || box[3] - box[1] < Math.max(1, minCropHeight);
     }
 
     function commitEllipse(x0: real, y0: real, x1: real, y1: real): void {
@@ -172,8 +175,9 @@ Item {
             if (wasCropping) {
                 if (Math.hypot(mouse.x - start.x, mouse.y - start.y) < canvas.clickTolerance) return;
                 const box = canvas.sourceCrop(start.x, start.y, mouse.x, mouse.y);
-                if (box !== null) canvas.cropRequested(box[0], box[1], box[2], box[3]);
-                else canvas.cropRejected();
+                if (box === null) return;
+                if (canvas.tooSmall(box)) canvas.cropRejected();
+                else canvas.cropRequested(box[0], box[1], box[2], box[3]);
                 return;
             }
             if (!canvas.showEyes) return;

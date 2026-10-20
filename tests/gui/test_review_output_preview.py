@@ -261,3 +261,92 @@ def test_a_non_page_edit_during_an_inflight_preview_still_ends_in_a_matching_pre
     side.preview_ready(PreviewCompletion(calls[-1][0], output))
     assert len(calls) == 2
     assert side.preview_path == output and side._preview_requested is None
+
+
+@pytest.mark.parametrize("edit", [("move", 1, 2), ("move", 2, 0), ("toggle_split", 1)])
+def test_reordering_or_splitting_keeps_the_shown_output_because_page_numbers_are_stable(out, edit):
+    # A page number names its raw page (draft.pages[number - 1], edits keyed by number); move
+    # and split only change the output order, so they cannot change the pixels of a page.
+    side, page = opened(out)
+    calls = []
+    page.worker.preview_page = lambda *args: calls.append(args)
+    side.preview(1, "output")
+    output = out / "previews" / "page-0001-output-colour-r0.jpg"
+    side.preview_ready(PreviewCompletion(calls[-1][0], output))
+    before = side.state.draft
+    side.edit(*edit)
+    after = side.state.draft
+    assert after.pages is before.pages and dict(after.edits) == dict(before.edits)
+    assert side.preview_path == output and side.preview_number == 1
+    assert len(calls) == 1 and side._preview_requested is None
+
+
+@pytest.mark.parametrize("busy", [True, False])
+def test_a_newer_request_is_not_dispatched_twice_when_an_old_completion_arrives(out, busy):
+    side, page = opened(out)
+    calls = []
+    page.worker.preview_page = lambda *args: calls.append(args)
+    side.preview(1, "output")
+    old = calls[-1][0]
+    page.worker.busy = False
+    side.preview(2, "output")  # the worker finished the old job, so this dispatches at once
+    newest = calls[-1][0]
+    page.worker.busy = busy  # the old completion is reported while that job runs, or after it
+    path = out / "previews" / "page-0001-output-colour-r0.jpg"
+    side.preview_ready(PreviewCompletion(old, path))
+    assert len(calls) == 2 and side.preview_path is None
+    page.worker.busy = False
+    newer = out / "previews" / "page-0002-output-colour-r0.jpg"
+    side.preview_ready(PreviewCompletion(newest, newer))
+    assert len(calls) == 2 and side.preview_path == newer and side.preview_number == 2
+
+
+def test_a_request_queued_while_busy_is_dispatched_when_the_running_one_completes(out):
+    side, page = opened(out)
+    calls = []
+    page.worker.preview_page = lambda *args: calls.append(args)
+    side.preview(1, "output")
+    first = calls[-1][0]
+    page.worker.busy = True
+    side.preview(2, "output")
+    assert len(calls) == 1
+    page.worker.busy = False  # the worker goes idle before the completion is reported
+    side.preview_ready(
+        PreviewCompletion(first, out / "previews" / "page-0001-output-colour-r0.jpg")
+    )
+    assert len(calls) == 2 and calls[-1][0].number == 2
+
+
+@pytest.mark.parametrize("by", ["global", "page"])
+def test_a_colour_policy_change_while_an_output_preview_is_in_flight_ends_on_the_new_policy(
+    out, by
+):
+    side, page = opened(out)
+    calls = []
+    page.worker.preview_page = lambda *args: calls.append(args)
+    side._settings = replace(side._settings, colour=ColourPolicy.AUTO)
+    side.preview(1, "output")
+    old = calls[-1][0]
+    page.worker.busy = True
+    if by == "global":
+        side._settings = replace(side._settings, colour=ColourPolicy.BW)
+        side.preview(1, "output")
+    else:
+        side.edit("set_colour", 1, ColourPolicy.BW)
+    page.worker.busy = False
+    stale = out / "previews" / "page-0001-output-colour-r0.jpg"
+    side.preview_ready(PreviewCompletion(old, stale))
+    assert side.preview_path is None and len(calls) == 2
+    latest = calls[-1][0]
+    assert latest is not old and page_policy(latest) is ColourPolicy.BW
+    fresh = out / "previews" / "page-0001-output-bw-r0.jpg"
+    side.preview_ready(PreviewCompletion(latest, fresh))
+    assert side.preview_path == fresh and side.preview_number == 1 and len(calls) == 2
+
+
+def page_policy(request):
+    """The policy the page is rendered with: its own override, else the request's policy."""
+    edit = request.draft.edits.get(request.number)
+    return ColourPolicy(
+        edit.colour if edit is not None and edit.colour is not None else request.policy
+    )

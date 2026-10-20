@@ -22,11 +22,19 @@ from fastfoto_linux.documents import write as write_module
 from fastfoto_linux.documents.analyse import analyse_document
 from fastfoto_linux.documents.write import write_document
 from tests import _fake_ocrmypdf as fake
-from tests.doc_synth import paper_scene
+from tests.doc_synth import paper_scene, write_png
 from tests.doc_synth_holes import SMALL_MM
 from tests.documents.draft_helpers import LiveCounter, hand_draft
 from tests.documents.golden_cases import build_cases, describe_result
-from tests.documents.helpers import FIXED_TIME, blank_scene, text_scene, write_pages
+from tests.documents.helpers import (
+    FIXED_TIME,
+    blank_scene,
+    expected_points,
+    page_size_pt,
+    reader,
+    text_scene,
+    write_pages,
+)
 from tests.documents.test_analyse import _png_files
 
 GOLDEN: dict[str, dict[str, Any]] = json.loads(
@@ -229,3 +237,26 @@ def test_a_cancel_set_while_the_pdf_is_assembled_publishes_nothing(raw: Path, ou
     with pytest.raises(DocumentCancelledError, match="published"):
         write_document(draft, settings(out), cancel=cancel, clock=clock)
     assert list(out.iterdir()) == []
+
+
+@pytest.mark.parametrize("with_bytes", [True, False], ids=["from the bytes", "from the raw pages"])
+def test_a_png_without_dpi_is_written_at_the_dpi_the_analysis_used(
+    raw: Path, out: Path, with_bytes: bool
+) -> None:
+    # The analysis fixes page.dpi from the fallback of that moment; the write must not look at
+    # settings.fallback_dpi again, or the same draft would come out at another physical size.
+    raw.mkdir()
+    scene = text_scene(1)
+    path = write_png(raw / "page-01.png", scene.image, dpi=None)
+    analysed = settings(out, fallback_dpi=300, keep_blank=True)
+    draft = analyse_document([path], analysed)
+    assert draft.pages[0].dpi == 300
+    if not with_bytes:
+        draft = replace(draft, pages=(replace(draft.pages[0], encoded=None),))
+    later = settings(out, fallback_dpi=150, keep_blank=True)
+    result = write_document(draft, later, clock=lambda: FIXED_TIME)
+    pdf = reader(result.pdf.read_bytes())
+    height, width = scene.image.shape[:2]
+    assert page_size_pt(pdf, 0) == pytest.approx(
+        (expected_points(width, 300), expected_points(height, 300)), abs=0.5
+    )

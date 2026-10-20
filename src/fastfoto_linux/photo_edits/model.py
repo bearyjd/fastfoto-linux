@@ -6,6 +6,8 @@ from pathlib import Path
 
 import numpy as np
 
+# SCHEMA_VERSION and ALGORITHM_VERSION are the CURRENT versions: what new drafts are written with.
+# The legacy pair below is still readable and is kept for an unchanged older draft.
 SCHEMA_VERSION = 2
 ALGORITHM_VERSION = "photo-tone-v1"
 LEGACY_SCHEMA_VERSION = 1

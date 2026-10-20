@@ -9,7 +9,7 @@ from typing import Any
 import numpy as np
 
 from fastfoto_linux.photo_edits.model import (
-    ALGORITHM_VERSION,
+    GEOMETRY_SCHEMA_VERSION,
     LEGACY_SCHEMA_VERSION,
     MAX_EYES,
     MAX_MASK_PIXELS,
@@ -17,11 +17,13 @@ from fastfoto_linux.photo_edits.model import (
     MAX_SOURCE_BYTES,
     MAX_SOURCE_PIXELS,
     POINT_COORDINATES,
+    RECIPE_VERSIONS,
     ROI_COORDINATES,
-    SCHEMA_VERSION,
+    TONE_SCHEMA_VERSION,
     EyeEdit,
     PhotoEditError,
     PhotoEditRecipe,
+    PhotoGeometry,
     PhotoSource,
     PhotoTone,
     digest,
@@ -32,6 +34,7 @@ from fastfoto_linux.photo_edits.model import (
 )
 
 TONE_KEYS = frozenset({"brightness", "contrast", "saturation", "strength"})
+GEOMETRY_KEYS = frozenset({"quarter_turns", "crop"})
 ROOT_KEYS = frozenset({"schema_version", "algorithm_version", "quality", "source", "eyes"})
 SOURCE_KEYS = (
     "sha256",
@@ -74,8 +77,14 @@ def recipe_object(recipe: PhotoEditRecipe) -> dict[str, Any]:
         "source": source_identity(recipe.source),
         "eyes": [_eye_dict(eye) for eye in recipe.eyes],
     }
-    if recipe.schema_version == SCHEMA_VERSION:
+    if recipe.schema_version >= TONE_SCHEMA_VERSION:
         payload["tone"] = asdict(recipe.tone)
+    if recipe.schema_version == GEOMETRY_SCHEMA_VERSION:
+        crop = recipe.geometry.crop
+        payload["geometry"] = {
+            "crop": None if crop is None else list(crop),
+            "quarter_turns": recipe.geometry.quarter_turns,
+        }
     return payload
 
 
@@ -115,8 +124,8 @@ def read_object(data: bytes) -> dict[str, Any]:
     return _read_checked(data)[0]
 
 
-def _read_checked(data: bytes) -> tuple[dict[str, Any], PhotoTone]:
-    """The validated recipe object and its tone, which is validated here and only here."""
+def _read_checked(data: bytes) -> tuple[dict[str, Any], PhotoTone, PhotoGeometry]:
+    """The validated recipe object with its tone and geometry, validated here and only here."""
     if not isinstance(data, bytes) or not 0 < len(data) <= MAX_RECIPE_BYTES:
         raise PhotoEditError("photo recipe exceeds its byte limit or is empty")
     try:
@@ -127,16 +136,18 @@ def _read_checked(data: bytes) -> tuple[dict[str, Any], PhotoTone]:
         raise PhotoEditError("photo recipe must be an object")
     validate_version(value.get("schema_version"), value.get("algorithm_version"))
     expected = ROOT_KEYS | ({"output"} if "output" in value else set())
-    if value["schema_version"] == SCHEMA_VERSION:
+    if value["schema_version"] >= TONE_SCHEMA_VERSION:
         expected |= {"tone"}
+    if value["schema_version"] == GEOMETRY_SCHEMA_VERSION:
+        expected |= {"geometry"}
     fields(value, expected, "photo recipe")
     integer(value["quality"], 1, 100, "JPEG quality")
-    tone = _read_tone(value)
+    tone, geometry = _read_tone(value), _read_geometry(value)
     if "output" in value:
         output = fields(value["output"], {"name", "sha256"}, "output identity")
         sibling_name(output["name"])
         digest(output["sha256"])
-    return value, tone
+    return value, tone, geometry
 
 
 def _read_tone(payload: dict[str, Any]) -> PhotoTone:
@@ -144,6 +155,16 @@ def _read_tone(payload: dict[str, Any]) -> PhotoTone:
         return PhotoTone()
     tone = fields(payload["tone"], TONE_KEYS, "photo tone")
     return PhotoTone(**tone)
+
+
+def _read_geometry(payload: dict[str, Any]) -> PhotoGeometry:
+    if payload["schema_version"] != GEOMETRY_SCHEMA_VERSION:
+        return PhotoGeometry()
+    geometry = fields(payload["geometry"], GEOMETRY_KEYS, "photo geometry")
+    crop = geometry["crop"]
+    if crop is not None and not isinstance(crop, list):
+        raise PhotoEditError("crop must be null or a list of four integers")
+    return PhotoGeometry(geometry["quarter_turns"], None if crop is None else tuple(crop))
 
 
 def _mask_shape(payload: dict[str, Any]) -> tuple[int, int]:
@@ -213,7 +234,7 @@ def _eye(value: object) -> EyeEdit:
 
 def parse_recipe(data: bytes, source: PhotoSource) -> PhotoEditRecipe:
     """Decode a bounded recipe only when its retained source identity matches."""
-    payload, tone = _read_checked(data)
+    payload, tone, geometry = _read_checked(data)
     stored_source = fields(payload["source"], {"name", *SOURCE_KEYS}, "source identity")
     sibling_name(stored_source["name"])
     if any(type(stored_source[key]) is bool for key in SOURCE_KEYS):
@@ -239,15 +260,34 @@ def parse_recipe(data: bytes, source: PhotoSource) -> PhotoEditRecipe:
         algorithm_version=payload["algorithm_version"],
         quality=payload["quality"],
         tone=tone,
+        geometry=geometry,
     )
 
 
 def update_tone(recipe: PhotoEditRecipe, tone: PhotoTone) -> PhotoEditRecipe:
-    """Preserve no-op identity; upgrade a changed legacy draft without mutating it."""
+    """Preserve no-op identity; upgrade a changed v1 draft without mutating it or downgrading v3."""
     if not isinstance(recipe, PhotoEditRecipe) or not isinstance(tone, PhotoTone):
         raise PhotoEditError("tone updates require a recipe and validated photo adjustments")
     if recipe.tone == tone:
         return recipe
+    schema = max(recipe.schema_version, TONE_SCHEMA_VERSION)
     return replace(
-        recipe, tone=tone, schema_version=SCHEMA_VERSION, algorithm_version=ALGORITHM_VERSION
+        recipe, tone=tone, schema_version=schema, algorithm_version=RECIPE_VERSIONS[schema]
+    )
+
+
+def update_geometry(recipe: PhotoEditRecipe, geometry: PhotoGeometry) -> PhotoEditRecipe:
+    """Preserve no-op identity; any change moves a v1/v2 draft to schema 3, and v3 stays v3."""
+    if not isinstance(recipe, PhotoEditRecipe) or not isinstance(geometry, PhotoGeometry):
+        raise PhotoEditError("geometry updates require a recipe and validated geometry")
+    crop = geometry.crop
+    if crop == (0, 0, recipe.source.width, recipe.source.height):
+        geometry = PhotoGeometry(geometry.quarter_turns)
+    if geometry == recipe.geometry:
+        return recipe
+    return replace(
+        recipe,
+        geometry=geometry,
+        schema_version=GEOMETRY_SCHEMA_VERSION,
+        algorithm_version=RECIPE_VERSIONS[GEOMETRY_SCHEMA_VERSION],
     )

@@ -3,6 +3,7 @@
 import hashlib
 import io
 import math
+from dataclasses import replace
 from pathlib import Path
 from threading import Event
 
@@ -12,6 +13,7 @@ from PIL import Image
 from fastfoto_linux.documents.private_io import ensure_private_dir, write_private_atomic
 from fastfoto_linux.enhance import redeye
 from fastfoto_linux.enhance.faces import FaceDetector
+from fastfoto_linux.photo_edits.geometry import apply_geometry
 from fastfoto_linux.photo_edits.model import (
     MAX_MASK_PIXELS,
     PREVIEW_MAX_PX,
@@ -19,6 +21,7 @@ from fastfoto_linux.photo_edits.model import (
     PhotoEditCancelledError,
     PhotoEditError,
     PhotoEditRecipe,
+    PhotoGeometry,
     PhotoPreview,
     PhotoSource,
     PhotoTone,
@@ -126,7 +129,7 @@ def _overlap(left: EyeEdit, right: EyeEdit) -> bool:
 
 
 def render(source: PhotoSource, recipe: PhotoEditRecipe, *, cancel: Event) -> np.ndarray:
-    """Render accepted eye corrections then tone, without changing source pixels."""
+    """Render eye corrections, then crop and turn, then tone, without changing source pixels."""
     check_cancel(cancel)
     _same_source(source, recipe)
     accepted = tuple(edit for edit in recipe.eyes if edit.accepted)
@@ -142,6 +145,10 @@ def render(source: PhotoSource, recipe: PhotoEditRecipe, *, cancel: Event) -> np
         result[y0:y1, x0:x1] = redeye.apply_fixes(
             source.pixels[y0:y1, x0:x1], (fix,), strength=edit.strength / 100
         )
+    check_cancel(cancel)
+    if recipe.geometry != PhotoGeometry():
+        result = apply_geometry(result, recipe.geometry)
+        check_cancel(cancel)
     _apply_tone(result, recipe.tone, cancel)
     check_cancel(cancel)
     return result
@@ -161,16 +168,25 @@ def _preview_jpeg(
 def _preview_images(
     source: PhotoSource, recipe: PhotoEditRecipe, selected_id: str | None, cancel: Event
 ) -> tuple[list[bytes], tuple[int, int]]:
-    after = render(source, recipe, cancel=cancel)
-    before_blob, size = _preview_jpeg(source.pixels, bounded=True, icc_profile=source.icc_profile)
-    after_blob, _ = _preview_jpeg(after, bounded=True, icc_profile=source.icc_profile)
-    blobs = [before_blob, after_blob]
+    """Blobs in order: before, after, working, then the optional eye crops (pre-geometry)."""
+    neutral = recipe.geometry == PhotoGeometry()
+    working = render(source, replace(recipe, geometry=PhotoGeometry()), cancel=cancel)
+    before_blob, _ = _preview_jpeg(source.pixels, bounded=True, icc_profile=source.icc_profile)
+    working_blob, working_size = _preview_jpeg(
+        working, bounded=True, icc_profile=source.icc_profile
+    )
+    after_blob, size = working_blob, working_size
+    if not neutral:
+        after = apply_geometry(working, recipe.geometry)
+        check_cancel(cancel)
+        after_blob, size = _preview_jpeg(after, bounded=True, icc_profile=source.icc_profile)
+    blobs = [before_blob, after_blob, working_blob]
     if selected_id is not None:
         selected = next((eye for eye in recipe.eyes if eye.id == selected_id), None)
         if selected is None:
             raise PhotoEditError("selected eye is no longer in the draft")
         x0, y0, x1, y1 = selected.roi
-        for pixels in (source.pixels, after):
+        for pixels in (source.pixels, working):
             blobs.append(
                 _preview_jpeg(pixels[y0:y1, x0:x1], bounded=False, icc_profile=source.icc_profile)[
                     0
@@ -216,6 +232,7 @@ def make_preview(  # noqa: PLR0913 - preview geometry and cancellation are expli
         *size,
         source.sha256,
         generation,
-        paths[2] if selected_id is not None else None,
         paths[3] if selected_id is not None else None,
+        paths[4] if selected_id is not None else None,
+        working=paths[2],
     )

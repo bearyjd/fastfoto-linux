@@ -9,7 +9,7 @@ from PIL import Image
 
 from fastfoto_linux.output.errors import OutputCollisionError
 from fastfoto_linux.output.files import locked_folder, write_new_files
-from fastfoto_linux.photo_edits.metadata import derivative_exif, derivative_xmp
+from fastfoto_linux.photo_edits.metadata import _frame, derivative_exif, derivative_xmp
 from fastfoto_linux.photo_edits.model import (
     MAX_RECIPE_BYTES,
     MAX_SOURCE_BYTES,
@@ -36,16 +36,17 @@ MAX_VERSIONS = 9999
 def _encode(source: PhotoSource, recipe: PhotoEditRecipe, cancel: Event) -> bytes:
     pixels = render(source, recipe, cancel=cancel)
     check_cancel(cancel)
+    *_, dpi_x, dpi_y = _frame(source, recipe.geometry)
     buffer = io.BytesIO()
     Image.fromarray(pixels).save(
         buffer,
         "JPEG",
         quality=recipe.quality,
         subsampling=0,
-        exif=derivative_exif(source),
-        xmp=derivative_xmp(source),
+        exif=derivative_exif(source, recipe.geometry),
+        xmp=derivative_xmp(source, recipe.geometry),
         icc_profile=source.icc_profile,
-        dpi=(source.dpi_x, source.dpi_y),
+        dpi=(dpi_x, dpi_y),
     )
     check_cancel(cancel)
     return buffer.getvalue()

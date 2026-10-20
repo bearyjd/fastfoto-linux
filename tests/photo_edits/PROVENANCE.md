@@ -24,3 +24,11 @@ hashes. The derivative fixture is copied from that same synthetic JPEG at test r
 The legacy RGB correction baseline is nine `(10,10,10)` pixels, frozen before tone implementation.
 Metadata fixtures use generated EXIF/XMP notes and a locally created standard sRGB ICC profile.
 No fixture claims photo quality improvement or uses a private image or downloaded profile.
+
+E05b (2026-10-19) adds generated geometry cases: a literal 2 by 3 array for each clockwise
+quarter turn, a 4 by 5 counting array for exact crop slices, and the 160 by 100 eye image for
+render, preview and metadata checks (a 300 by 600 DPI variant with generated EXIF and XMP
+geometry fields). `fixtures/legacy-v2.json` is the canonical schema 2 sidecar generated once from
+`legacy-v1.json` with non-neutral tone (25, -35, 60, 75) by the code at commit fd48197; it shares
+`legacy.jpg` and the same exact source and output hashes. These fixtures check lossless pixel
+arithmetic and format compatibility only; none uses a private image or claims photo quality.

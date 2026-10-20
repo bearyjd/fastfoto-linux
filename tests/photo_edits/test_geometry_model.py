@@ -193,3 +193,16 @@ def test_older_schemas_accept_neutral_geometry_and_v3_accepts_anything_valid(
     for schema in (1, 2, 3):
         _recipe(source, PhotoGeometry(), schema)
     assert _recipe(source, PhotoGeometry(3, (5, 5, 90, 90))).geometry.quarter_turns == 3
+
+
+@pytest.mark.parametrize("geometry", [None, (1, None), {"quarter_turns": 1}, 1])
+def test_recipe_geometry_must_be_a_photo_geometry_even_in_v3(
+    tmp_path: Path, geometry: object
+) -> None:
+    with pytest.raises(PhotoEditError, match="validated crop and rotation"):
+        PhotoEditRecipe(
+            source_at(tmp_path),
+            schema_version=3,
+            algorithm_version="photo-geometry-v1",
+            geometry=geometry,  # type: ignore[arg-type]
+        )

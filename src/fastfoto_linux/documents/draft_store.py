@@ -153,8 +153,9 @@ def load_draft(
 
 
 def restore_edits(draft: DocumentDraft, stored: StoredReview) -> DocumentDraft:
-    """``draft`` (a new analysis of the same pages) with the edits, order, splits and part names
-    of ``stored``, put back by raw number."""
+    """``draft`` (a new analysis of the same pages) with the edits, order, splits, part names and
+    paper cleanup level of ``stored``, put back by raw number (a stale analysis never takes up the
+    level the settings now hold)."""
     saved = stored.draft
     return replace(
         draft,
@@ -162,6 +163,7 @@ def restore_edits(draft: DocumentDraft, stored: StoredReview) -> DocumentDraft:
         order=saved.order,
         splits=saved.splits,
         part_names=saved.part_names,
+        cleanup=saved.cleanup,
     )
 
 

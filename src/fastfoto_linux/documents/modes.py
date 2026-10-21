@@ -20,6 +20,14 @@ class ColourPolicy(StrEnum):
     BW = "bw"
 
 
+class CleanupPolicy(StrEnum):
+    """How far the paper tone of a grey or colour page is lightened. Off by default."""
+
+    OFF = "off"
+    LIGHT = "light"
+    STRONG = "strong"
+
+
 _RICHNESS = {ColourMode.COLOUR: 2, ColourMode.GREY: 1, ColourMode.BW: 0}
 
 

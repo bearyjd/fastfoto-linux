@@ -17,7 +17,6 @@ analysis (blank, holes, colour) never sees the cleaned pixels: this runs only wh
 rendered for the PDF or a preview.
 """
 
-import logging
 import threading
 from collections.abc import Iterator
 from enum import StrEnum
@@ -52,8 +51,6 @@ from fastfoto_linux.documents.units import mm_to_px
 
 if TYPE_CHECKING:
     from fastfoto_linux.documents.draft import DocumentDraft, PageAnalysis
-
-logger = logging.getLogger(__name__)
 
 
 class CleanupStatus(StrEnum):

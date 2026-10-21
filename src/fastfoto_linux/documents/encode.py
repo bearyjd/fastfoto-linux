@@ -94,8 +94,8 @@ def render_page(
     mode = output_mode(page.kind, actual_mode)
     if mode is not ColourMode.BW and cleanup is not CleanupPolicy.OFF:
         cleaned = clean_pixels(page.pixels, page.dpi, mode, cleanup, cancel=cancel)
+        logger.debug("cleanup %s", cleaned.status)
         if cleaned.pixels is not None:
-            logger.debug("cleanup %s", cleaned.status)
             return cleaned.pixels
     if mode is ColourMode.COLOUR:
         return page.pixels.copy()

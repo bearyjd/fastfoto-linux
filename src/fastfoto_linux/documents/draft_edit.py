@@ -18,7 +18,7 @@ from fastfoto_linux.documents.draft import (
     PageEdit,
 )
 from fastfoto_linux.documents.errors import DocumentEditError
-from fastfoto_linux.documents.modes import ColourPolicy
+from fastfoto_linux.documents.modes import CleanupPolicy, ColourPolicy
 from fastfoto_linux.output.errors import InvalidPrefixError
 from fastfoto_linux.output.naming import sanitise_prefix
 
@@ -196,3 +196,22 @@ def set_colour(draft: DocumentDraft, number: int, policy: ColourPolicy | None) -
 def _checked_colour(policy: ColourPolicy | None) -> None:
     if policy is not None and not isinstance(policy, ColourPolicy):
         raise DocumentEditError("page colour mode must be Auto, colour, grey or black and white")
+
+
+def set_cleanup(draft: DocumentDraft, number: int, policy: CleanupPolicy | None) -> DocumentDraft:
+    """Return a draft with this raw page's paper cleanup override, or cleared with None."""
+    _page(draft, number)
+    _checked_cleanup(policy, allow_none=True)
+    edit = draft.edits.get(number, PageEdit())
+    return _with_page_edit(draft, number, replace(edit, cleanup=policy))
+
+
+def set_document_cleanup(draft: DocumentDraft, policy: CleanupPolicy) -> DocumentDraft:
+    """Return a draft whose document paper cleanup level is ``policy``."""
+    _checked_cleanup(policy, allow_none=False)
+    return replace(draft, cleanup=policy)
+
+
+def _checked_cleanup(policy: CleanupPolicy | None, *, allow_none: bool) -> None:
+    if not isinstance(policy, CleanupPolicy) and not (allow_none and policy is None):
+        raise DocumentEditError("paper cleanup must be off, light or strong")

@@ -17,6 +17,7 @@ from types import MappingProxyType
 from typing import Any
 
 from fastfoto_linux.documents.assess import MAX_BOXES
+from fastfoto_linux.documents.cleanup_json import EDIT_KEYS, edit_json, uses_cleanup
 from fastfoto_linux.documents.colour_json import decode_decision, decode_policy, encode_decision
 from fastfoto_linux.documents.draft import (
     QUARTER_TURNS,
@@ -29,13 +30,15 @@ from fastfoto_linux.documents.draft import (
     sorted_flags,
 )
 from fastfoto_linux.documents.loader import MAX_DPI, MIN_DPI
-from fastfoto_linux.documents.modes import ColourMode, ColourPolicy
+from fastfoto_linux.documents.modes import CleanupPolicy, ColourMode, ColourPolicy
 from fastfoto_linux.documents.ocr import OcrMode, validate_langs
 from fastfoto_linux.documents.settings import DocumentSettings
 from fastfoto_linux.output.errors import InvalidPrefixError
 from fastfoto_linux.output.naming import sanitise_prefix
 
-FORMAT_VERSION = 2
+FORMAT_VERSION = 3
+DEFAULT_VERSION = 2  # what a draft with no paper cleanup is written as, byte for byte as before
+READ_VERSIONS = (1, 2, 3)
 MAX_PAGES = 2000  # a document of more pages than this is not reviewed from a file
 MAX_FILE_BYTES = 1 << 40  # the size of one page file
 MAX_MTIME_NS = 1 << 63
@@ -110,25 +113,25 @@ def encode_review(
     draft: DocumentDraft, settings: DocumentSettings | None, analysis_version: int
 ) -> bytes:
     """The JSON of ``draft`` (and the options of ``settings``, if given). The draft's read-only
-    maps are written out by hand."""
+    maps are written out by hand. The lowest format version that fits is written: version 3 only
+    when the draft holds paper cleanup state, else version 2 exactly as it always was."""
+    cleanup = uses_cleanup(draft)
     data: dict[str, Any] = {
-        "version": FORMAT_VERSION,
+        "version": FORMAT_VERSION if cleanup else DEFAULT_VERSION,
         "analysis_version": analysis_version,
         "duplex": draft.duplex,
         "keep_blank": draft.keep_blank,
         "pages": [_page_json(page) for page in draft.pages],
         "edits": {
-            str(number): {
-                "include": edit.include,
-                "turns": edit.quarter_turns,
-                "colour": None if edit.colour is None else edit.colour.value,
-            }
+            str(number): edit_json(edit, with_cleanup=cleanup)
             for number, edit in sorted(draft.edits.items())
         },
         "order": list(draft.order),
         "splits": sorted(draft.splits),
         "part_names": {str(number): name for number, name in sorted(draft.part_names.items())},
     }
+    if cleanup:
+        data["cleanup"] = draft.cleanup.value
     if settings is not None:
         data["fallback_dpi"] = settings.fallback_dpi
     options = None if settings is None else _options_json(settings)
@@ -252,16 +255,37 @@ def _page(value: Any, number: int, name: str, count: int, version: int) -> PageA
     )
 
 
+def _cleanup(value: Any, what: str) -> CleanupPolicy:
+    try:
+        if type(value) is not str:
+            raise ValueError(what)
+        return CleanupPolicy(value)
+    except ValueError as error:
+        raise ReviewFormatError(f"{what} must be off, light or strong") from error
+
+
 def _edits(value: Any, count: int, version: int) -> Mapping[int, PageEdit]:
     edits: dict[int, PageEdit] = {}
     for key, raw in _dict(value, "edits").items():
         number = _number_key(key, "edits", count)
         entry = _dict(raw, "an edit")
+        if version == FORMAT_VERSION:
+            if set(entry) != EDIT_KEYS:
+                raise ReviewFormatError("an edit must have exactly include, turns, colour, cleanup")
+        elif "cleanup" in entry:
+            raise ReviewFormatError("cleanup needs format version 3")
         include = entry.get("include")
         if include is not None:
             include = _flag(include, "include")
         turns = _whole(entry.get("turns"), "turns", 0, QUARTER_TURNS - 1)
-        edits[number] = PageEdit(include, turns, decode_policy(entry.get("colour"), version))
+        edits[number] = PageEdit(
+            include,
+            turns,
+            decode_policy(entry.get("colour"), version),
+            None
+            if entry.get("cleanup") is None
+            else _cleanup(entry["cleanup"], "an edit's cleanup"),
+        )
     return MappingProxyType(edits)
 
 
@@ -324,8 +348,11 @@ def _decode(data: bytes, names: Sequence[str]) -> StoredReview:
     count = len(names)
     if not 1 <= count <= MAX_PAGES:
         raise ReviewFormatError(f"{count} pages are not 1 to {MAX_PAGES}")
-    if top.get("version") not in (1, FORMAT_VERSION) or type(top.get("version")) is not int:
+    format_version = top.get("version")
+    if type(format_version) is not int or format_version not in READ_VERSIONS:
         raise ReviewFormatError("the format version is not one this program reads")
+    if format_version != FORMAT_VERSION and "cleanup" in top:
+        raise ReviewFormatError("cleanup needs format version 3")
     entries = _list(top.get("pages"), "pages", count)
     if len(entries) != count:
         raise ReviewFormatError(f"the file has {len(entries)} pages, the folder {count}")
@@ -342,6 +369,11 @@ def _decode(data: bytes, names: Sequence[str]) -> StoredReview:
         order=_order(top.get("order", []), count),
         splits=_splits(top.get("splits", []), count),
         part_names=_part_names(top.get("part_names", {}), count),
+        cleanup=(
+            _cleanup(top.get("cleanup"), "cleanup")
+            if top["version"] == FORMAT_VERSION
+            else CleanupPolicy.OFF
+        ),
     )
     version = _whole(top.get("analysis_version"), "analysis_version", 0, MAX_VERSION)
     dpi = top.get("fallback_dpi")

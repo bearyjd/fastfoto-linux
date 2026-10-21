@@ -855,3 +855,50 @@ originals and review edits available; nothing is deleted automatically. Deletion
 validated snapshot and never runs from an automatic state transition. The QML components are wheel
 package data and the real-window offscreen tests exercise the review actions and deletion choice
 using generated synthetic pages.
+
+
+## Paper cleanup
+
+Paper cleanup lightens the paper tone of grey and colour pages. It has three levels, Off, Light
+and Strong, and it is off by default. It lives on the draft: the document has a level
+(`DocumentDraft.cleanup`, seeded by `DocumentSettings.cleanup` when a scan is analysed) and a page
+may override it (`PageEdit.cleanup`, None follows the document). `write_document` reads the
+level from the draft, never from the settings, so a past scan never takes the level from a form.
+The command line keeps Off but honours a level stored in the review file.
+
+- **Where it runs.** `render_page` and `encode_page` take the level and clean after the mode is
+  rendered, only for grey or colour output. A page is turned before it is cleaned (the work grid
+  is anchored at the top left, so the order matters). Blank, hole and colour analysis keep seeing
+  the raw pixels; cleanup shows only in the PDF and in an output preview. `ANALYSIS_VERSION`
+  stays 3: cleanup is a render-time recipe, not analysis.
+- **What it does.** The background is the brightest pixel of each block (the page is reduced to about 150 dpi), closed
+  over a window of 10 mm, which is wider than any text stroke, then smoothed over 5 mm. The paper
+  level is the 90th percentile of that background. A pixel gets a gain of at most 1.10 (Light, target
+  245) or 1.25 (Strong, target 255) that grows from none at 80% (Light) or 75% (Strong) of the paper
+  level to the whole gain at 88% or 85%. A pixel at or below 78% of its local paper is ink and is
+  never changed, and the weight rises to the full gain at 90%. No pixel gets darker, the order of
+  tones is kept, and the contrast of a mark to its paper never drops. All of it is integer
+  arithmetic, so a repeat run gives the same bytes.
+- **What it leaves alone.** Black-and-white output is byte for byte what it was:
+  black-and-white pages are not changed, and coloured paper is left unchanged when the page is written in
+  colour: a colour page whose paper chroma is above 16 is skipped whole (in grey the hue is
+  gone, so cream or yellowed paper is whitened by choosing grey). A page whose paper level is
+  below 160 is skipped as too dark. Coloured marks keep their colour, because the gain fades with
+  the chroma over the paper's own. Photographs are protected in the page: cells of 4 mm in which
+  at least 20% of the pixels sit between 78% and 92% of the paper are protected with their
+  neighbours.
+- **Memory and time.** The full-resolution passes run in bands of 512 rows (the banded result is
+  the whole-page result) and a cancel is honoured before each band. The peak is the page, the
+  output and the low-resolution maps.
+- **The sidecar.** The review file is format version 3 only when the draft holds a cleanup level
+  or an override, and version 2 (byte for byte as before) otherwise. The decoder accepts versions
+  1, 2 and 3 strictly: version 3 has a required document level and edits with exactly the keys
+  include, turns, colour and cleanup; a cleanup key in version 1 or 2 is refused. Older files
+  open with cleanup Off, and a stale re-analysis keeps the saved level.
+- **Cached bytes.** A page that carries encoded bytes is reused only when its mode and its
+  effective cleanup level (Off for black and white) match what the draft now asks for.
+- **OCR.** OCRmyPDF still reads the assembled PDF, whose images are now the cleaned pages. There
+  is no OCR-only image, and no claim is made that OCR gets better or worse.
+- **Known limits.** A shaded box wider than 10 mm may lighten under Strong. A high-key photograph
+  lighter than 92% of the paper, or smaller than a 4 mm cell, is not detected. A protected region
+  has a less-whitened rim of about 4 to 8 mm. The quality evidence is synthetic pages only.

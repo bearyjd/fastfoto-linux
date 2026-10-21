@@ -11,7 +11,12 @@ from pathlib import Path
 from typing import Any
 
 from fastfoto_linux.cli.options import FEED_FACE_DOWN, FEED_FACE_UP
-from fastfoto_linux.gui.docform import DOCUMENT_COLOURS, DOCUMENT_FIELD_NAMES, DocumentForm
+from fastfoto_linux.gui.docform import (
+    DOCUMENT_CLEANUPS,
+    DOCUMENT_COLOURS,
+    DOCUMENT_FIELD_NAMES,
+    DocumentForm,
+)
 from fastfoto_linux.gui.form import (
     BACK_CHOICES,
     FEED_CHOICES,
@@ -37,7 +42,11 @@ OLD_FEED_KEY = (
 _FROM_OLD_FEED = {FEED_FACE_DOWN: FEED_FACE_UP, FEED_FACE_UP: FEED_FACE_DOWN}
 _CHOICES = {"loaded": FEED_CHOICES, "backs": BACK_CHOICES, "dpi": SUPPORTED_DPI}
 _TYPES = {field.name: field.type for field in fields(ScanForm)}
-_DOCUMENT_CHOICES = {"colour": DOCUMENT_COLOURS, "dpi": DOCUMENT_DPI}
+_DOCUMENT_CHOICES = {
+    "colour": DOCUMENT_COLOURS,
+    "dpi": DOCUMENT_DPI,
+    "cleanup": DOCUMENT_CLEANUPS,
+}
 _DOCUMENT_TYPES = {field.name: field.type for field in fields(DocumentForm)}
 
 

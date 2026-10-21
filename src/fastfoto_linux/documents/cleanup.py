@@ -7,9 +7,10 @@ far the pixel is from it: ink, anything dark against its paper (a pencil stroke,
 rule), is not touched, and the gain never makes a pixel darker. Photographs are found by cells
 that hold many mid-light pixels and are left alone with a soft rim, coloured marks are left
 alone by their chroma, and a colour page on coloured stock is left alone as a whole when it is
-written in colour (in grey the hue is gone, so it is cleaned). A page whose paper is dark, or whose work grid has more than
-``MAX_WORK_PIXELS`` pixels (a bound on memory), is left alone. Every step is integer arithmetic (see ``cleanup_tables``), so the same page always
-gives the same bytes, and the full-resolution passes run in bands that give the same pixels as
+written in colour (in grey the hue is gone, so it is cleaned). A page whose paper is dark, or
+whose work grid has more than ``MAX_WORK_PIXELS`` pixels (a bound on memory), is left alone. Every
+step is integer arithmetic (see ``cleanup_tables``), so the same page always gives the same
+bytes, and the full-resolution passes run in bands that give the same pixels as
 one pass over the page.
 
 The page is turned before it is cleaned (the work grid is anchored at the top left), and
@@ -247,7 +248,7 @@ def _apply(  # noqa: PLR0913 - what the second pass needs
     return out
 
 
-def clean_pixels(
+def clean_pixels(  # noqa: PLR0911 - one return for each status
     src: np.ndarray,
     dpi: int,
     output: ColourMode,

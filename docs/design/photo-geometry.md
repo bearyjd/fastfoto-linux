@@ -47,6 +47,11 @@ axis-aligned rectangle inscribed in the rotated picture, so there are no empty c
 fill colour. That straightened frame F has size `frame_size`; the crop is measured inside F and
 a full-F crop is stored as `null`. At angle 0, F is the source and v3 semantics are unchanged.
 
+"Largest" is per axis, not in area: the frame is grown one axis at a time, so on tiny images it
+can be smaller than the best rectangle (a 4x10 picture at 7.7 degrees gives 2x9 although 3x7 also
+fits). At realistic sizes the area is within 0.1% of the optimum. The frame always lies inside the
+rotated picture, so it is safe: no corner is ever empty.
+
 - Schema 4 stores `geometry` as exactly `crop`, `quarter_turns` and `straighten_tenths`. Only a
   non-zero angle moves a draft to schema 4, so edits without an angle stay readable by the
   previous release. Schema 4 never downgrades, and `photo-geometry-v2` is new because

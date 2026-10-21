@@ -98,7 +98,8 @@ def warp_tile(pixels: np.ndarray, x: np.ndarray, y: np.ndarray) -> np.ndarray:
     x0, y0 = int(x.min()) >> SUBPIXEL_BITS, int(y.min()) >> SUBPIXEL_BITS
     x1 = min(width, (int(x.max()) >> SUBPIXEL_BITS) + 2)
     y1 = min(height, (int(y.max()) >> SUBPIXEL_BITS) + 2)
-    assert x1 - x0 < ROI_LIMIT and y1 - y0 < ROI_LIMIT
+    if x1 - x0 >= ROI_LIMIT or y1 - y0 >= ROI_LIMIT:
+        raise ValueError("Straighten tile is too large for the fixed-point remap.")
     roi = np.ascontiguousarray(pixels[y0:y1, x0:x1])
     map1 = np.stack(((x >> SUBPIXEL_BITS) - x0, (y >> SUBPIXEL_BITS) - y0), axis=-1)
     map2 = ((y & SUBPIXEL_MASK) << SUBPIXEL_BITS) | (x & SUBPIXEL_MASK)

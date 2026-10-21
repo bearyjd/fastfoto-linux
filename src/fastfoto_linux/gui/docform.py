@@ -6,6 +6,7 @@ from pathlib import Path
 from fastfoto_linux.documents import (
     DEFAULT_LANGS,
     DEFAULT_NAME,
+    CleanupPolicy,
     ColourPolicy,
     DocumentSettings,
     OcrMode,
@@ -30,6 +31,7 @@ from fastfoto_linux.session import (
 )
 
 DOCUMENT_COLOURS = tuple(mode.value for mode in ColourPolicy)
+DOCUMENT_CLEANUPS = tuple(policy.value for policy in CleanupPolicy)
 FOLDER_FIELD = "output_folder"
 
 
@@ -45,6 +47,7 @@ class DocumentForm:
     keep_blank: bool = False
     searchable: bool = True
     langs: str = DEFAULT_LANGS
+    cleanup: str = CleanupPolicy.OFF.value
 
 
 DOCUMENT_FIELD_NAMES = tuple(field.name for field in fields(DocumentForm))
@@ -82,6 +85,7 @@ def validate_document_form(form: DocumentForm) -> dict[str, str]:
         ("name", _check_name(form)),
         ("colour", _choice("colour", form.colour, DOCUMENT_COLOURS)),
         ("dpi", _choice("resolution", form.dpi, DOCUMENT_DPI)),
+        ("cleanup", _choice("paper cleanup", form.cleanup, DOCUMENT_CLEANUPS)),
         ("langs", _check_langs(form)),
     )
     return {name: message for name, message in checks if message is not None}
@@ -132,6 +136,7 @@ def to_document_settings(
         ocr=ocr_mode(form, ocr_available=ocr_available),
         langs=form.langs,
         duplex=form.both_sides,
+        cleanup=CleanupPolicy(form.cleanup),
     )
 
 

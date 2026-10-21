@@ -5,6 +5,7 @@ from pathlib import Path
 
 from fastfoto_linux.documents import draft_edit
 from fastfoto_linux.documents.auto_colour import ColourReason, page_policy, resolve_colour
+from fastfoto_linux.documents.cleanup import page_cleanup
 from fastfoto_linux.documents.draft import (
     BoxN,
     DocumentDraft,
@@ -14,7 +15,7 @@ from fastfoto_linux.documents.draft import (
     sorted_flags,
 )
 from fastfoto_linux.documents.draft_store import THUMBS_DIR
-from fastfoto_linux.documents.modes import ColourMode, ColourPolicy
+from fastfoto_linux.documents.modes import CleanupPolicy, ColourMode, ColourPolicy
 
 FLAG_LABELS = {
     Flag.FEW_MARKS: "Only a few marks",
@@ -48,6 +49,12 @@ class ReviewState:
 
     def set_colour(self, number: int, policy: ColourPolicy | None) -> "ReviewState":
         return replace(self, draft=draft_edit.set_colour(self.draft, number, policy))
+
+    def set_cleanup(self, number: int, policy: CleanupPolicy | None) -> "ReviewState":
+        return replace(self, draft=draft_edit.set_cleanup(self.draft, number, policy))
+
+    def set_document_cleanup(self, policy: CleanupPolicy) -> "ReviewState":
+        return replace(self, draft=draft_edit.set_document_cleanup(self.draft, policy))
 
     def move(self, number: int, to: int) -> "ReviewState":
         return replace(self, draft=draft_edit.move(self.draft, number, to))
@@ -89,6 +96,8 @@ class ReviewItem:
     colour_reason: str = ""
     colour_override: str = ""
     colour_text: str = ""
+    cleanup_override: str = ""
+    cleanup_text: str = ""
 
 
 MODE_LABELS = {"colour": "Colour", "grey": "Grey", "bw": "Black and white"}
@@ -121,6 +130,19 @@ def colour_values(
     return policy.value, mode.value, reason.value, override, text
 
 
+def cleanup_values(draft: DocumentDraft, page: PageAnalysis, resolved_mode: str) -> tuple[str, str]:
+    """The page's own paper cleanup choice ("" when it follows the document) and its words."""
+    edit = draft.edits.get(page.number, PageEdit())
+    override = edit.cleanup.value if edit.cleanup is not None else ""
+    if resolved_mode == ColourMode.BW.value:
+        return override, "Paper cleanup: not used for black and white output"
+    level = page_cleanup(draft, page)
+    if level is CleanupPolicy.OFF:
+        return override, "Paper cleanup: off"
+    source = "this page" if edit.cleanup is not None else "document setting"
+    return override, f"Paper cleanup: {level.value.capitalize()} ({source})"
+
+
 def review_items(
     state: ReviewState, document_policy: ColourPolicy | ColourMode = ColourPolicy.COLOUR
 ) -> tuple[ReviewItem, ...]:
@@ -139,6 +161,7 @@ def review_items(
         included = draft.is_included(page)
         thumb = draft.raw_dir / THUMBS_DIR / page.thumb if draft.raw_dir and page.thumb else None
         flags = sorted_flags(page.flags)
+        colour = colour_values(draft, page, document_policy)
         rows.append(
             ReviewItem(
                 number,
@@ -152,7 +175,8 @@ def review_items(
                 number in starts,
                 part_numbers.get(number, 0),
                 page.blank and not included,
-                *colour_values(draft, page, document_policy),
+                *colour,
+                *cleanup_values(draft, page, colour[1]),
             )
         )
     return tuple(rows)

@@ -247,7 +247,8 @@ def test_an_old_or_missing_sidecar_never_gains_cleanup(out, sidecar):
     side.open_folder(folder)
     opened_settings = seen[0][1]
     assert opened_settings.cleanup is OFF
-    opened_draft = real_open(folder, opened_settings)
+    # The form asks for searchable text, which CI cannot provide; cleanup is what is under test.
+    opened_draft = real_open(folder, replace(opened_settings, ocr=OcrMode.OFF))
     assert opened_draft.cleanup is OFF
     assert all(edit.cleanup is None for edit in opened_draft.edits.values())
     # The unguarded settings would have leaked the form's level: this is what the guard prevents.
@@ -261,7 +262,7 @@ def test_a_v3_sidecar_keeps_its_own_cleanup_on_reopen(out):
     save_draft(replace(analysed, cleanup=LIGHT), settings)
     side, _page, seen = side_opening(folder)
     side.open_folder(folder)
-    assert real_open(folder, seen[0][1]).cleanup is LIGHT
+    assert real_open(folder, replace(seen[0][1], ocr=OcrMode.OFF)).cleanup is LIGHT
 
 
 def test_a_fresh_scan_still_takes_the_forms_level(out):

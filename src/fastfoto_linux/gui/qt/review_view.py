@@ -8,8 +8,10 @@ from typing import TYPE_CHECKING, Any
 
 from PySide6.QtCore import Property, QObject, QTimer, QUrl, Signal, Slot
 
+from fastfoto_linux.documents.cleanup import page_cleanup
+from fastfoto_linux.documents.draft import DocumentDraft, PageAnalysis
 from fastfoto_linux.documents.draft_edit import parts
-from fastfoto_linux.documents.modes import ColourPolicy
+from fastfoto_linux.documents.modes import CleanupPolicy, ColourMode, ColourPolicy
 from fastfoto_linux.gui.qt.photos_model import file_url
 from fastfoto_linux.gui.qt.review_model import ReviewModel
 from fastfoto_linux.gui.report import Banner
@@ -20,6 +22,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 AUTOSAVE_MS = 500
+CROP_CENTRE = 500  # permille: the middle of the page
 
 
 class ReviewView(QObject):
@@ -115,6 +118,40 @@ class ReviewView(QObject):
     def previewView(self) -> str:
         return self._side.preview_view
 
+    @Property(bool, notify=changed)
+    def previewCleaned(self) -> bool:
+        return self._side.preview_cleaned
+
+    @Property(bool, notify=changed)
+    def previewActual(self) -> bool:
+        return self._side.preview_crop is not None
+
+    @Property(int, notify=changed)
+    def previewCropX(self) -> int:
+        crop = self._side.preview_crop
+        return crop[0] if crop else CROP_CENTRE
+
+    @Property(int, notify=changed)
+    def previewCropY(self) -> int:
+        crop = self._side.preview_crop
+        return crop[1] if crop else CROP_CENTRE
+
+    @Property(bool, notify=changed)
+    def previewCleanupAvailable(self) -> bool:
+        """True when the previewed page has a cleanup level to compare with its original."""
+        state, number = self._side.state, self._side.preview_target
+        if state is None or not number:
+            return False
+        page = state.draft.pages[number - 1]
+        mode = colour_values(state.draft, page, self._side._settings.colour)[1]
+        return (
+            mode != ColourMode.BW.value and page_cleanup(state.draft, page) is not CleanupPolicy.OFF
+        )
+
+    @Property(str, notify=changed)
+    def documentCleanup(self) -> str:
+        return self._side.state.draft.cleanup.value if self._side.state else CleanupPolicy.OFF.value
+
     @Property(str, notify=changed)
     def previewLabel(self) -> str:
         if self._side.preview_view == "source":
@@ -127,7 +164,18 @@ class ReviewView(QObject):
         page = state.draft.pages[self._side.preview_number - 1]
         values = colour_values(state.draft, page, self._side._settings.colour)
         mode = MODE_LABELS.get(values[1], "")
-        return f"Output: {mode}" if mode else "Output preview"
+        label = f"Output: {mode}" if mode else "Output preview"
+        return label + self._preview_label_suffix(state.draft, page, values[1])
+
+    def _preview_label_suffix(self, draft: DocumentDraft, page: PageAnalysis, mode: str) -> str:
+        suffix = ""
+        level = page_cleanup(draft, page)
+        if mode != ColourMode.BW.value and level is not CleanupPolicy.OFF:
+            if self._side.preview_cleaned:
+                suffix = f" — paper cleanup {level.value.capitalize()}"
+            else:
+                suffix = " — without paper cleanup"
+        return suffix + (" — actual pixels" if self._side.preview_crop is not None else "")
 
     def _call(self, action: Callable[..., Any], *args: object) -> Any:
         try:
@@ -155,6 +203,17 @@ class ReviewView(QObject):
     def _set_colour(self, number: int, value: str) -> None:
         policy = ColourPolicy(value) if value else None
         self._side.edit("set_colour", number, policy)
+
+    @Slot(int, str)
+    def setCleanup(self, number: int, value: str) -> None:
+        self._call(self._set_cleanup, number, value)
+
+    def _set_cleanup(self, number: int, value: str) -> None:
+        self._side.edit("set_cleanup", number, CleanupPolicy(value) if value else None)
+
+    @Slot(str)
+    def setDocumentCleanup(self, value: str) -> None:
+        self._call(self._side.edit, "set_document_cleanup", CleanupPolicy(value))
 
     @Slot(int, int)
     def rotate(self, number: int, turns: int) -> None:
@@ -217,6 +276,14 @@ class ReviewView(QObject):
     @Slot(int, str, result=str)
     def previewMode(self, number: int, view: str) -> str:
         return self._call(self._side.preview, number, view) or ""
+
+    @Slot(int, bool, bool, int, int, result=str)
+    def previewOptions(self, number: int, cleaned: bool, actual: bool, x: int, y: int) -> str:
+        crop = (x, y) if actual else None
+        return self._call(self._preview_output, number, cleaned, crop) or ""
+
+    def _preview_output(self, number: int, cleaned: bool, crop: tuple[int, int] | None) -> str:
+        return self._side.preview(number, "output", cleaned=cleaned, crop=crop)
 
     @Slot(bool)
     def deleteOriginals(self, confirmed: bool = False) -> None:

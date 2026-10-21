@@ -10,17 +10,17 @@ require_qt()
 
 from PIL import Image
 from PySide6.QtCore import Q_ARG, QMetaObject, QPointF, Qt, QUrl
-from PySide6.QtQml import QQmlProperty, qmlContext
+from PySide6.QtQml import QQmlExpression, QQmlProperty, qmlContext
 from PySide6.QtTest import QTest
 
-from fastfoto_linux.documents import CleanupPolicy, ColourMode
+from fastfoto_linux.documents import CleanupPolicy, ColourMode, ColourPolicy
 from fastfoto_linux.documents.auto_colour import ColourDecision, ColourReason
 from fastfoto_linux.documents.draft import PageEdit
 from fastfoto_linux.gui.review import ReviewState
 from fastfoto_linux.gui.reviewjobs import PreviewCompletion
 from fastfoto_linux.session import DocumentSessionResult
 from tests.gui.qt import test_qml_documents, test_qml_review_window
-from tests.gui.qt.qt_helpers import child, invoke, settle
+from tests.gui.qt.qt_helpers import child, click, invoke, settle, wait_until
 
 pytestmark = pytest.mark.usefixtures("kirigami", "ocrmypdf_comes_with_the_app")
 
@@ -44,7 +44,9 @@ def cleanup_window(base_review_window):
             for page, decision in zip(source.pages, decisions, strict=True)
         ),
     )
-    bridge.controller.review.state = ReviewState(source)
+    side = bridge.controller.review
+    side._settings = replace(side._settings, colour=ColourPolicy.AUTO)
+    side.state = ReviewState(source)
     bridge.review.refresh()
     settle()
     return window, bridge, worker, source, warnings
@@ -182,7 +184,7 @@ def test_the_switch_toggles_between_cleaned_and_original_of_the_same_output(clea
     image = child(window, "reviewPreviewImage")
     assert image.property("source").toLocalFile() == str(cleaned)
     assert "paper cleanup Strong" in child(window, "reviewPreviewKindLabel").property("text")
-    switch.toggle()
+    click(switch)
     settle()
     second = worker.calls[-1][1][0]
     assert second.cleaned is False and second.view == "output"
@@ -196,7 +198,7 @@ def test_the_switch_toggles_between_cleaned_and_original_of_the_same_output(clea
     assert image.property("source").toLocalFile() == str(original)
     assert "without paper cleanup" in child(window, "reviewPreviewKindLabel").property("text")
     assert not switch.property("checked")
-    switch.toggle()
+    click(switch)
     settle()
     third = worker.calls[-1][1][0]
     assert third.cleaned is True
@@ -243,6 +245,7 @@ def painted_point(window, fraction_x, fraction_y):
     """The scene position at a fraction of the painted rectangle of the fitted preview."""
     image = child(window, "reviewPreviewImage")
     area = child(window, "reviewPreviewPickArea")
+    wait_until(lambda: image.property("paintedWidth") > 0, "the preview image to load")
     painted_w, painted_h = image.property("paintedWidth"), image.property("paintedHeight")
     origin = area.mapToScene(QPointF(0, 0))
     left = origin.x() + (area.width() - painted_w) / 2
@@ -304,19 +307,22 @@ def test_actual_pixels_show_an_uncapped_crop_and_hide_the_fitted_image(cleanup_w
     assert fitted.property("visible")
     switch = child(window, "reviewPreviewActualSwitch")
     assert accessible_name(switch) == "Actual pixels"
-    switch.toggle()
+    click(switch)
     settle()
     request = worker.calls[-1][1][0]
     assert request.crop == (500, 500) and request.cleaned is True
-    crop = deliver(bridge, source, request, "page-0001-output-grey-light-r0-crop.png", (300, 200))
+    crop = deliver(bridge, source, request, "page-0001-output-grey-light-r0-crop.png", (2000, 1500))
     assert flick.property("visible")
     assert not fitted.property("visible")
     assert crop_image.property("source").toLocalFile() == str(crop)
-    assert crop_image.property("sourceSize").width() == 0
-    assert crop_image.property("sourceSize").height() == 0
-    assert crop_image.property("fillMode") == 6  # Image.Pad: one image pixel is one screen pixel
+    wait_until(lambda: crop_image.property("width") > 0, "the crop to load")
+    size = crop_image.property("sourceSize")  # not capped at the fitted image's 1600
+    assert (size.width(), size.height()) == (2000, 1500)
+    assert (crop_image.property("width"), crop_image.property("height")) == (2000, 1500)
+    pad = QQmlExpression(qmlContext(crop_image), crop_image, "fillMode === Image.Pad")
+    assert pad.evaluate()[0] is True  # one image pixel is one screen pixel
     assert "actual pixels" in child(window, "reviewPreviewKindLabel").property("text")
-    switch.toggle()
+    click(switch)
     settle()
     assert worker.calls[-1][1][0].crop is None
     assert warnings == []

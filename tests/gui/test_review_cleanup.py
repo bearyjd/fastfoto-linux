@@ -8,7 +8,7 @@ from types import SimpleNamespace
 import pytest
 from PIL import Image
 
-from fastfoto_linux.documents import CleanupPolicy, DocumentSettings, OcrMode
+from fastfoto_linux.documents import CleanupPolicy, ColourPolicy, DocumentSettings, OcrMode
 from fastfoto_linux.documents.draft_store import REVIEW_FILE, save_draft
 from fastfoto_linux.gui.review import ReviewState, review_items
 from fastfoto_linux.gui.reviewjobs import PreviewCompletion, ReviewJobs
@@ -24,7 +24,7 @@ LIGHT, STRONG, OFF = CleanupPolicy.LIGHT, CleanupPolicy.STRONG, CleanupPolicy.OF
 
 
 def rows(state):
-    return {row.number: row for row in review_items(state)}
+    return {row.number: row for row in review_items(state, ColourPolicy.AUTO)}
 
 
 def test_items_say_where_the_level_comes_from(out):
@@ -184,7 +184,7 @@ def test_the_source_view_forces_cleaned_and_no_crop(out):
 def synthetic_folder(folder):
     for n in range(1, 4):
         path = folder / f"page-{n:04d}.png"
-        Image.new("RGB", (60, 80), "white").save(path, dpi=(300, 300))
+        Image.new("RGB", (600, 800), "white").save(path, dpi=(300, 300))
     return folder
 
 

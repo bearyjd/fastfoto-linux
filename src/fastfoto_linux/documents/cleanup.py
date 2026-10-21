@@ -7,8 +7,8 @@ far the pixel is from it: ink, anything dark against its paper (a pencil stroke,
 rule), is not touched, and the gain never makes a pixel darker. Photographs are found by cells
 that hold many mid-light pixels and are left alone with a soft rim, coloured marks are left
 alone by their chroma, and a colour page on coloured stock is left alone as a whole when it is
-written in colour (in grey the hue is gone, so it is cleaned). A page whose paper is dark is
-left alone. Every step is integer arithmetic (see ``cleanup_tables``), so the same page always
+written in colour (in grey the hue is gone, so it is cleaned). A page whose paper is dark, or whose work grid has more than
+``MAX_WORK_PIXELS`` pixels (a bound on memory), is left alone. Every step is integer arithmetic (see ``cleanup_tables``), so the same page always
 gives the same bytes, and the full-resolution passes run in bands that give the same pixels as
 one pass over the page.
 
@@ -33,6 +33,7 @@ from fastfoto_linux.documents.cleanup_tables import (
     CELL_MM,
     INK_HI_PCT,
     INK_LO_PCT,
+    MAX_WORK_PIXELS,
     PAPER_MIN_LEVEL,
     PAPER_PCT,
     Q_BITS,
@@ -58,6 +59,7 @@ class CleanupStatus(StrEnum):
 
     OFF = "off"
     BW = "bw"  # black and white is never cleaned
+    TOO_LARGE = "too_large"  # the work grid has more than MAX_WORK_PIXELS pixels
     DARK = "dark"  # the paper is darker than PAPER_MIN_LEVEL
     NO_PAPER = "no_paper"  # a colour page with no pixel that is paper
     STOCK = "stock"  # coloured paper, written in colour: the hue is kept as it is
@@ -260,8 +262,10 @@ def clean_pixels(
         return CleanupResult(CleanupStatus.OFF, None)
     if output is ColourMode.BW:
         return CleanupResult(CleanupStatus.BW, None)
+    grid = _grid(*src.shape[:2], dpi)
+    if (src.shape[0] // grid.f) * (src.shape[1] // grid.f) > MAX_WORK_PIXELS:
+        return CleanupResult(CleanupStatus.TOO_LARGE, None)
     grey = cv2.cvtColor(src, cv2.COLOR_RGB2GRAY) if src.ndim == 3 else src  # noqa: PLR2004
-    grid = _grid(*grey.shape, dpi)
     smooth = _background(grey, dpi, grid)
     paper = _paper_level(smooth)
     if paper < PAPER_MIN_LEVEL:

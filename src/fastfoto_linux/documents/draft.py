@@ -192,6 +192,10 @@ class DocumentDraft:
     part_names: Mapping[int, str] = _NO_NAMES
     cleanup: CleanupPolicy = CleanupPolicy.OFF
 
+    def __post_init__(self) -> None:
+        if not isinstance(self.cleanup, CleanupPolicy):
+            raise ValueError("document cleanup must be a known cleanup level")
+
     @property
     def has_edits(self) -> bool:
         """True when the reviewer changed which pages stay, their order or the parts."""

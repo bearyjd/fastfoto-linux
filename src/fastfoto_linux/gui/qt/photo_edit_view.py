@@ -175,6 +175,10 @@ class PhotoEditView(QObject):
         if side.recipe is None:
             return (0, 0)
         source = side.recipe.source
+        if not self._url("straightened"):
+            # Without a straightened file the image is the working one at the source size.
+            return (source.width, source.height)
+        # preview_tenths is None only before the first preview, when there is no image either.
         return straightened_size(source.width, source.height, side.preview_tenths or 0)
 
     @Property(int, notify=changed)

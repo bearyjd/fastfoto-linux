@@ -76,9 +76,15 @@ class PhotoGeometryActions:
         )
 
     def set_straighten(self: "PhotoEditSide", tenths: int) -> None:
-        """Set the angle in tenths of a degree; a new angle clears the crop (same undo entry)."""
+        """Set the angle in tenths of a degree; a new angle clears the crop (same undo entry).
+
+        Repeating the draft's angle changes nothing, except that it retries a preview that
+        failed or was cancelled (the held one is not current and none is on its way).
+        """
         recipe = self._require_geometry_edit()
         if tenths == recipe.geometry.straighten_tenths:
+            if not self.preview_current and self._inflight is None and self._pending is None:
+                self.request_preview()
             return
         self._set_geometry(PhotoGeometry(recipe.geometry.quarter_turns, None, tenths))
 

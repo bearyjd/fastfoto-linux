@@ -6,6 +6,7 @@ from tests.gui.qt import require_qt
 
 require_qt()
 
+from fastfoto_linux.gui.photoeditjobs import PhotoEditResult
 from tests.gui.qt import test_qml
 from tests.gui.qt.qt_helpers import child, settle
 from tests.gui.qt.straighten_helpers import land, save_landed, straighten_page
@@ -94,3 +95,63 @@ def test_the_shown_frame_survives_a_save_and_resets_on_close(make_bridge, out):
     assert shown(view) == angled == (view.frameWidth, view.frameHeight)
     view.stop()
     assert shown(view) == (0, 0)
+
+
+def test_the_shown_frame_is_the_source_when_an_angled_preview_has_no_straightened_file(
+    make_bridge, out
+):
+    bridge, view, _worker = open_editor(make_bridge, out, dpi=100)
+    view.setGeometryMode(True)
+    view.setStraighten(30)
+    land(bridge, out, straightened=False)
+    assert view.previewCurrent and view.straightenedUrl == view.workingUrl
+    # The image is the unstraightened working one, so its size must be the source size.
+    assert (
+        shown(view) == (view.sourceWidth, view.sourceHeight) != (view.frameWidth, view.frameHeight)
+    )
+
+
+def fail_latest(bridge, *, cancelled=False):
+    side = bridge.controller.photo_edit
+    request = bridge.controller._worker.requests[-1]
+    bridge.controller._worker.busy = False
+    bridge.controller.on_photo_edit_result(
+        PhotoEditResult(
+            "preview",
+            request.generation,
+            side.recipe,
+            error="" if cancelled else "boom",
+            cancelled=cancelled,
+        )
+    )
+    bridge.photoEdit.refresh()
+
+
+@pytest.mark.parametrize("cancelled", [False, True])
+def test_repeating_the_angle_after_a_failed_preview_retries_without_an_undo_entry(
+    make_bridge, out, cancelled
+):
+    bridge, view, worker = open_editor(make_bridge, out, dpi=100)
+    side = bridge.controller.photo_edit
+    view.setGeometryMode(True)
+    view.setStraighten(30)
+    fail_latest(bridge, cancelled=cancelled)
+    assert not view.previewCurrent
+    before = (len(worker.requests), len(side._undo), side.recipe)
+    view.setStraighten(30)
+    assert len(worker.requests) == before[0] + 1
+    assert (len(side._undo), side.recipe) == before[1:]
+    land(bridge, out)
+    assert view.previewCurrent
+    view.setStraighten(30)
+    assert len(worker.requests) == before[0] + 1  # current again: a repeat is a no-op
+
+
+def test_repeating_the_angle_while_a_preview_is_in_flight_does_not_queue_another(make_bridge, out):
+    bridge, view, worker = open_editor(make_bridge, out, dpi=100)
+    view.setGeometryMode(True)
+    view.setStraighten(30)
+    count = len(worker.requests)
+    view.setStraighten(30)
+    assert len(worker.requests) == count
+    assert bridge.controller.photo_edit._pending is None

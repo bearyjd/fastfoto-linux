@@ -48,7 +48,7 @@ fill colour. That straightened frame F has size `frame_size`; the crop is measur
 a full-F crop is stored as `null`. At angle 0, F is the source and v3 semantics are unchanged.
 
 "Largest" is per axis, not in area: the frame is grown one axis at a time, so on tiny images it
-can be smaller than the best rectangle (a 4x10 picture at 7.7 degrees gives 2x9 although 3x8 also
+can be smaller than the best rectangle (a 4x10 picture at 7.7 degrees gives 2x9 although 3x7 also
 fits). At realistic sizes the area is within 0.1% of the optimum. The frame always lies inside the
 rotated picture, so it is safe: no corner is ever empty.
 

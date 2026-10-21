@@ -125,6 +125,13 @@ def test_warp_tile_is_bit_identical_to_the_numpy_reference(
         )
 
 
+def test_warp_tile_refuses_a_region_beyond_the_remap_limit_even_under_python_O() -> None:
+    wide = np.zeros((1, st.ROI_LIMIT + 10, 3), dtype=np.uint8)
+    x = np.arange(wide.shape[1], dtype=np.int64)[None, :] * 32
+    with pytest.raises(ValueError, match="too large"):
+        st.warp_tile(wide, x, np.zeros_like(x))
+
+
 @pytest.mark.parametrize("tenths", [0, 1, 37, -150])
 def test_interpolation_is_exact_at_lattice_points(tenths: int) -> None:
     pixels = rgb(9, 13, 5)

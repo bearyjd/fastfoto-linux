@@ -145,6 +145,14 @@ uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr o
   colour; continuous tones, faint marks or uncertain thresholding keep grey. Black and white
   is chosen only when the analysis finds it safe. The default remains `colour`, and scanning
   still captures colour before output conversion. Auto does not change blank-page decisions.
+- **Paper cleanup** (`Off`, `Light` or `Strong`; off by default) lightens the paper tone of grey
+  and colour pages by a capped amount (at most 1.10x under Light, 1.25x under Strong). Ink, pencil,
+  stamps, coloured marks and photographs are not touched and no pixel gets darker;
+  black-and-white pages are not changed, a page with dark paper is left alone, and coloured paper
+  is left unchanged when the page is written in colour (in grey the hue is gone, so it is
+  lightened). It is a setting of the document with an optional override for one page, kept in the
+  review file (format version 3); documents saved earlier open with cleanup Off, and the command
+  line leaves it Off. The design note says what it cannot do; no claim is made about OCR results.
 - Only what is certainly empty is trimmed, blank white or the scanner's backing; when in doubt
   nothing is cut. Below the paper that is the scanner's white tail: flat rows at the bottom, 4 mm or longer and at least 4 levels
   brighter than the 10 mm above them, of which 3 mm stay. Anything in the tail columns that is

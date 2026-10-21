@@ -186,10 +186,9 @@ def test_a_page_cleanup_in_an_old_version_is_refused(version: int, value: Any) -
 
 @pytest.mark.parametrize("version", [0, 4, "3", 3.0, True, None])
 def test_other_versions_are_refused(version: Any) -> None:
-    data = v3()
-    data["version"] = version
-    with pytest.raises(ReviewFormatError):
-        decode(data)
+    for shape in (v3(), json.loads(MAIN_BYTES)):  # whatever else the file holds
+        with pytest.raises(ReviewFormatError):
+            decode({**shape, "version": version})
 
 
 # --- the store ---------------------------------------------------------------------------------

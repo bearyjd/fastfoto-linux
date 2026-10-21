@@ -272,6 +272,59 @@ def test_a_colour_page_with_no_paper_pixel_is_left_alone(monkeypatch: pytest.Mon
         assert result.status is cleanup.CleanupStatus.NO_PAPER and result.pixels is None
 
 
+EDGE_DPI = 127  # a 4 mm cell is exactly 20 pixels and the work grid is the page
+
+
+def edge_page(value: int, period: int) -> np.ndarray:
+    """Paper 200 with a one pixel line of ``value`` on every ``period``-th row (a line that thin
+    never reaches the background)."""
+    page = np.empty((200, 200, 3), np.uint8)
+    page[:] = 200
+    page[::period] = value
+    return page
+
+
+@pytest.mark.parametrize(
+    ("value", "period", "protected"),
+    [
+        (184, 4, False),  # exactly 92% of the paper: not a photograph pixel
+        (156, 4, False),  # exactly 78%: ink, not a photograph pixel
+        (170, 5, True),  # exactly 20% of every cell: protected
+        (170, 7, False),  # 15% of every cell: not
+    ],
+)
+def test_the_photograph_thresholds_are_strict_and_the_cell_share_is_inclusive(
+    value: int, period: int, protected: bool
+) -> None:
+    page = edge_page(value, period)
+    assert_matches_reference(page, EDGE_DPI, ColourMode.GREY, CleanupPolicy.STRONG)
+    out = cleanup.clean_pixels(page, EDGE_DPI, ColourMode.GREY, CleanupPolicy.STRONG).pixels
+    assert out is not None
+    if protected:
+        assert np.array_equal(out, page[..., 0])
+    else:
+        assert (out[1] > 200).all()
+
+
+def test_paper_pixels_at_exactly_90_percent_count_towards_the_paper_chroma() -> None:
+    page = np.empty((200, 200, 3), np.uint8)
+    page[:] = 200
+    page[np.arange(200) % 5 < 3] = (120, 205, 205)  # grey level 180, 90% of the paper
+    result = cleanup.clean_pixels(page, EDGE_DPI, ColourMode.COLOUR, CleanupPolicy.STRONG)
+    assert result.status is cleanup.CleanupStatus.STOCK
+    assert_matches_reference(page, EDGE_DPI, ColourMode.COLOUR, CleanupPolicy.STRONG)
+
+
+def test_a_pixel_brighter_than_the_paper_keeps_its_hue() -> None:
+    page = flat_page((232, 232, 232))
+    page[80:100, 60:100] = (243, 240, 238)
+    assert_matches_reference(page, 100, ColourMode.COLOUR, CleanupPolicy.STRONG)
+    out = cleanup.clean_pixels(page, 100, ColourMode.COLOUR, CleanupPolicy.STRONG).pixels
+    assert out is not None
+    red, green, blue = (int(v) for v in out[90, 80])
+    assert red > green > blue  # clipped to white channel by channel, it would not be
+
+
 # --- black and white, off ----------------------------------------------------------------------
 
 

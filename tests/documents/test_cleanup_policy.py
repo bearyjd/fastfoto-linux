@@ -49,6 +49,12 @@ def test_a_draft_follows_no_cleanup_by_default() -> None:
     assert draft_of(1).cleanup is CleanupPolicy.OFF
 
 
+@pytest.mark.parametrize("bad", ["light", None, 1])
+def test_a_draft_validates_its_cleanup(bad: object) -> None:
+    with pytest.raises(ValueError, match="document cleanup"):
+        replace(draft_of(1), cleanup=bad)
+
+
 def test_set_cleanup_is_pure_and_clears_with_none() -> None:
     draft = draft_of(3)
     changed = set_cleanup(draft, 2, CleanupPolicy.STRONG)

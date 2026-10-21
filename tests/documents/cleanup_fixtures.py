@@ -214,7 +214,10 @@ def odd_size_page(dpi: int = 600, height: int = 877, width: int = 1003) -> Fixtu
     ramp = np.linspace(236, 204, width)[None, :] + np.zeros((height, 1))
     paper = np.clip(np.rint(ramp) + rng.integers(-3, 4, (height, width)), 0, 255)
     page = np.repeat(paper[..., None], 3, axis=2).astype(np.uint8)
-    page[300:600, 250:700] = np.clip(np.linspace(185, 230, 450)[None, :, None], 0, 255)
-    page[100:130, 60:900:7] = (INK, INK, INK)
-    page[700:760, 100:400] = (200, 30, 30)
+    top, bottom = height * 34 // 100, height * 68 // 100
+    left, right = width // 4, width * 7 // 10
+    block = np.linspace(185, 230, right - left)[None, :, None]
+    page[top:bottom, left:right] = np.clip(block, 0, 255)
+    page[height // 9 : height // 9 + height // 30, width // 17 : width * 9 // 10 : 7] = INK
+    page[height * 8 // 10 : height * 87 // 100, width // 10 : width * 4 // 10] = (200, 30, 30)
     return Fixture(f"odd_{dpi}_{height}x{width}", page, dpi=dpi)

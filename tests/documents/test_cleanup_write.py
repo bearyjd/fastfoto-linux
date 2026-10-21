@@ -37,7 +37,6 @@ def pages(tmp_path: Path) -> list[Path]:
     folder = tmp_path / "pages"
     folder.mkdir()
     page = fx.odd_size_page(100, 400, 300).pixels
-    page[300:330, 20:80] = (200, 30, 30)
     return [write_png(folder / "page-0001.png", page, dpi=100)]
 
 
@@ -134,16 +133,22 @@ def test_the_written_pixels_are_the_turned_page_cleaned(
 
 
 def test_the_turn_comes_before_the_cleanup(
-    pages: list[Path], out: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, out: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """The work grid is anchored at the top left, so cleaning then turning gives other pixels."""
+    folder = tmp_path / "odd"
+    folder.mkdir()
+    page = fx.odd_size_page(300, 411, 307).pixels
+    pages = [write_png(folder / "page-0001.png", page, dpi=300)]
     settings = settings_of(out, ColourPolicy.GREY)
-    draft = rotate(replace(analyse_document(pages, settings, encode=False), cleanup=STRONG), 1, 1)
+    draft = analyse_document(pages, settings, encode=False)
+    draft = rotate(replace(draft, cleanup=STRONG), 1, 1)
     spy = Spy(monkeypatch)
     write_document(draft, settings)
-    page = draft.pages[0]
-    loaded = page.trim.apply(load_page(draft.raw_dir / page.name, fallback_dpi=page.dpi))  # type: ignore[operator]
-    after = np.ascontiguousarray(np.rot90(render_page(loaded, ColourMode.GREY, STRONG), -1))
-    assert not np.array_equal(spy.jpegs[0], after)
+    assert np.array_equal(spy.jpegs[0], expected(draft, ColourMode.GREY, STRONG, 1))
+    loaded = draft.pages[0].trim.apply(load_page(pages[0], fallback_dpi=300))
+    wrong = np.rot90(render_page(loaded, ColourMode.GREY, STRONG), -1)
+    assert not np.array_equal(spy.jpegs[0], wrong)
 
 
 def test_the_settings_level_is_never_read_at_write_time(

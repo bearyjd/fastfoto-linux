@@ -226,6 +226,52 @@ def test_the_effects_are_stronger_under_strong_than_light() -> None:
     assert (strong >= light).all() and (strong > light).any()
 
 
+# --- the limits of the skips -------------------------------------------------------------------
+
+
+def flat_page(paper: tuple[int, int, int]) -> np.ndarray:
+    page = np.empty((200, 160, 3), np.uint8)
+    page[:] = paper
+    return page
+
+
+@pytest.mark.parametrize(("level", "status"), [(159, "dark"), (160, "applied")])
+def test_paper_darker_than_160_is_skipped(level: int, status: str) -> None:
+    page = flat_page((level, level, level))
+    result = cleanup.clean_pixels(page, 100, ColourMode.GREY, CleanupPolicy.STRONG)
+    assert result.status.value == status
+    assert assert_matches_reference(page, 100, ColourMode.GREY, CleanupPolicy.STRONG) == status
+
+
+@pytest.mark.parametrize(
+    ("paper", "status"), [((232, 224, 216), "applied"), ((232, 224, 215), "stock")]
+)
+def test_paper_with_a_chroma_above_16_is_stock_in_colour(
+    paper: tuple[int, int, int], status: str
+) -> None:
+    page = flat_page(paper)
+    colour = cleanup.clean_pixels(page, 100, ColourMode.COLOUR, CleanupPolicy.STRONG)
+    assert colour.status.value == status
+    assert cleanup.clean_pixels(page, 100, ColourMode.GREY, CleanupPolicy.STRONG).status.value == (
+        "applied"
+    )
+
+
+def test_a_colour_page_with_no_paper_pixel_is_left_alone(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Provably unreachable on a real page (the brightest pixel is always paper), but it is a
+    status of the contract, so its guard is exercised with an empty chroma histogram."""
+    monkeypatch.setattr(
+        cleanup,
+        "_survey",
+        lambda work, cancel: (np.zeros((1, 1), np.int64), np.zeros(256, np.int64)),
+    )
+    for output in OUTPUTS:
+        result = cleanup.clean_pixels(
+            fx.shaded_paper().pixels, fx.DPI, output, CleanupPolicy.STRONG
+        )
+        assert result.status is cleanup.CleanupStatus.NO_PAPER and result.pixels is None
+
+
 # --- black and white, off ----------------------------------------------------------------------
 
 

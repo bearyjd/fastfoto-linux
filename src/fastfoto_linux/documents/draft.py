@@ -15,7 +15,7 @@ from types import MappingProxyType
 from fastfoto_linux.documents.auto_colour import ColourDecision
 from fastfoto_linux.documents.encode import EncodedPage
 from fastfoto_linux.documents.loader import LoadedPage
-from fastfoto_linux.documents.modes import ColourPolicy
+from fastfoto_linux.documents.modes import CleanupPolicy, ColourPolicy
 from fastfoto_linux.documents.trim import Trimmed
 
 
@@ -149,15 +149,19 @@ QUARTER_TURNS = 4  # a page turned four quarter turns is back where it was
 class PageEdit:
     """What the reviewer did to one page. ``include`` None follows the verdict (a page that
     looks blank is left out, any other stays); True or False overrides it. ``quarter_turns`` are
-    clockwise turns of 90 degrees, 0 to 3."""
+    clockwise turns of 90 degrees, 0 to 3. ``cleanup`` None follows the document's paper
+    cleanup; a level overrides it for this page."""
 
     include: bool | None = None
     quarter_turns: int = 0
     colour: ColourPolicy | None = None
+    cleanup: CleanupPolicy | None = None
 
     def __post_init__(self) -> None:
         if self.colour is not None and not isinstance(self.colour, ColourPolicy):
             raise ValueError("page colour must be a known output policy")
+        if self.cleanup is not None and not isinstance(self.cleanup, CleanupPolicy):
+            raise ValueError("page cleanup must be a known cleanup level")
         if not 0 <= self.quarter_turns < QUARTER_TURNS:
             raise ValueError(f"quarter turns must be 0 to 3, got {self.quarter_turns}")
 
@@ -174,7 +178,8 @@ class DocumentDraft:
     The reviewer's edits are all keyed by raw number: ``edits`` (a page left out or brought
     back, turned), ``order`` (a permutation of the raw numbers; empty is raw order), ``splits``
     (pages that start a new PDF) and ``part_names`` (the name of PDF number k, counting from 1
-    in output order). Use ``draft_edit`` to change them; the maps are read only.
+    in output order). Use ``draft_edit`` to change them; the maps are read only. ``cleanup`` is
+    the document's paper cleanup level (a page's edit may override it).
     """
 
     pages: tuple[PageAnalysis, ...]
@@ -185,6 +190,7 @@ class DocumentDraft:
     order: tuple[int, ...] = ()
     splits: frozenset[int] = frozenset()
     part_names: Mapping[int, str] = _NO_NAMES
+    cleanup: CleanupPolicy = CleanupPolicy.OFF
 
     @property
     def has_edits(self) -> bool:

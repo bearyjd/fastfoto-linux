@@ -8,6 +8,8 @@ from functools import cache
 
 import cv2
 import numpy as np
+
+from fastfoto_linux.documents import auto_colour
 from fastfoto_linux.documents.cleanup_tables import (
     BG_SMOOTH_MM,
     BG_WINDOW_MM,
@@ -22,8 +24,6 @@ from fastfoto_linux.documents.cleanup_tables import (
     TONAL_SHARE_PCT,
     Q,
 )
-
-from fastfoto_linux.documents import auto_colour
 from fastfoto_linux.documents.marks import WORK_DPI
 from fastfoto_linux.documents.modes import CleanupPolicy, ColourMode
 from fastfoto_linux.documents.units import mm_to_px
@@ -80,10 +80,7 @@ def _lowres(grey: np.ndarray, dpi: int):
     height, width = grey.shape
     f = max(1, min(dpi // WORK_DPI, height, width))
     sh, sw = height // f, width // f
-    small = grey[: sh * f : f, : sw * f : f].copy()
-    for dy in range(f):
-        for dx in range(f):
-            small = np.maximum(small, grey[dy : sh * f : f, dx : sw * f : f])
+    small = grey[: sh * f, : sw * f].reshape(sh, f, sw, f).max(axis=(1, 3))
     size = odd(mm_to_px(BG_WINDOW_MM, dpi / f))
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (size, size))
     closed = cv2.morphologyEx(small, cv2.MORPH_CLOSE, kernel)

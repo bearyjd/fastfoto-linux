@@ -4,7 +4,6 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
-from fastfoto_linux.documents.cleanup import page_cleanup
 
 from fastfoto_linux.documents import (
     CleanupPolicy,
@@ -15,6 +14,7 @@ from fastfoto_linux.documents import (
 )
 from fastfoto_linux.documents import analyse as analyse_module
 from fastfoto_linux.documents.analyse import ANALYSIS_VERSION, analyse_document
+from fastfoto_linux.documents.cleanup import page_cleanup
 from fastfoto_linux.documents.draft import PageEdit
 from fastfoto_linux.documents.draft_edit import PageEdits, set_cleanup, set_document_cleanup
 from fastfoto_linux.documents.errors import DocumentEditError
@@ -107,7 +107,6 @@ def test_the_command_line_edits_have_no_cleanup() -> None:
 def shaded_pages(folder: Path) -> list[Path]:
     folder.mkdir()
     page = fx.odd_size_page(100, 400, 300).pixels
-    page[300:330, 20:80] = (200, 30, 30)
     return [write_png(folder / f"page-{n:04d}.png", page, dpi=100) for n in (1, 2)]
 
 

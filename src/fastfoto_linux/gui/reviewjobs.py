@@ -117,6 +117,8 @@ def _preview_image(request: PreviewRequest, cancel: threading.Event) -> tuple[np
         loaded = replace(loaded, pixels=np.rot90(loaded.pixels, -turns).copy())
     cleanup = page_cleanup(draft, page) if request.cleaned else CleanupPolicy.OFF
     if cleanup is CleanupPolicy.OFF:
+        # Same pixels as render_page(loaded, mode, OFF, cancel=cancel); kept as the short call
+        # because tests that monkeypatch render_page expect it without the cleanup arguments.
         pixels = render_page(loaded, mode)
     else:
         pixels = render_page(loaded, mode, cleanup, cancel=cancel)

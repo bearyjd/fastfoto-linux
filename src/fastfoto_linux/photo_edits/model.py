@@ -6,6 +6,7 @@ from pathlib import Path
 
 import numpy as np
 
+from fastfoto_linux.photo_edits.straighten import STRAIGHTEN_LIMIT_TENTHS, straightened_size
 from fastfoto_linux.pipeline.geometry import mm_to_px
 
 # SCHEMA_VERSION and ALGORITHM_VERSION are the CURRENT versions: what new drafts are written with.
@@ -18,10 +19,13 @@ TONE_SCHEMA_VERSION = 2
 TONE_ALGORITHM_VERSION = "photo-tone-v1"
 GEOMETRY_SCHEMA_VERSION = 3
 GEOMETRY_ALGORITHM_VERSION = "photo-geometry-v1"
+STRAIGHTEN_SCHEMA_VERSION = 4
+STRAIGHTEN_ALGORITHM_VERSION = "photo-geometry-v2"
 RECIPE_VERSIONS = {
     LEGACY_SCHEMA_VERSION: LEGACY_ALGORITHM_VERSION,
     TONE_SCHEMA_VERSION: TONE_ALGORITHM_VERSION,
     GEOMETRY_SCHEMA_VERSION: GEOMETRY_ALGORITHM_VERSION,
+    STRAIGHTEN_SCHEMA_VERSION: STRAIGHTEN_ALGORITHM_VERSION,
 }
 MIN_CROP_MM = 5.0
 CROP_COORDINATES = 4
@@ -196,13 +200,24 @@ class PhotoTone:
 
 @dataclass(frozen=True)
 class PhotoGeometry:
-    """Quarter turns (clockwise) of a source-space crop; the crop is half-open pixel edges."""
+    """Straighten (tenths of a degree, clockwise), then a crop in that frame, then quarter turns.
+
+    The crop is half-open pixel edges inside the straightened frame; at angle 0 that frame is
+    the source itself.
+    """
 
     quarter_turns: int = 0
     crop: tuple[int, int, int, int] | None = None
+    straighten_tenths: int = 0
 
     def __post_init__(self) -> None:
         integer(self.quarter_turns, 0, 3, "quarter turns")
+        integer(
+            self.straighten_tenths,
+            -STRAIGHTEN_LIMIT_TENTHS,
+            STRAIGHTEN_LIMIT_TENTHS,
+            "straighten angle",
+        )
         if self.crop is None:
             return
         if not isinstance(self.crop, tuple) or len(self.crop) != CROP_COORDINATES:
@@ -214,24 +229,46 @@ class PhotoGeometry:
             raise PhotoEditError("crop edges must enclose a nonempty area")
 
 
-def min_crop_size(source: PhotoSource) -> tuple[int, int]:
-    """The smallest allowed crop (width, height): 5 mm at the source's effective DPI."""
+def frame_size(source: PhotoSource, geometry: PhotoGeometry) -> tuple[int, int]:
+    """The straightened frame (width, height) a crop is measured in."""
+    return straightened_size(source.width, source.height, geometry.straighten_tenths)
+
+
+def min_crop_size(
+    source: PhotoSource,
+    geometry: PhotoGeometry = PhotoGeometry(),  # noqa: B008 - frozen value
+) -> tuple[int, int]:
+    """The smallest allowed crop (width, height): 5 mm at the effective DPI, within the frame."""
+    frame_w, frame_h = frame_size(source, geometry)
     try:
         pixels = max(1, mm_to_px(MIN_CROP_MM, source.effective_dpi))
     except OverflowError:  # an absurd DPI: the minimum exceeds any source, so clamp to its extent
-        return source.width, source.height
-    return min(pixels, source.width), min(pixels, source.height)
+        return frame_w, frame_h
+    return min(pixels, frame_w), min(pixels, frame_h)
 
 
-def _check_crop(source: PhotoSource, crop: tuple[int, int, int, int]) -> None:
-    left, top, right, bottom = crop
-    if right > source.width or bottom > source.height:
+def _check_crop(source: PhotoSource, geometry: PhotoGeometry) -> None:
+    left, top, right, bottom = geometry.crop
+    frame_w, frame_h = frame_size(source, geometry)
+    if right > frame_w or bottom > frame_h:
         raise PhotoEditError("crop lies outside the retained source")
-    if (left, top, right, bottom) == (0, 0, source.width, source.height):
+    if (left, top, right, bottom) == (0, 0, frame_w, frame_h):
         raise PhotoEditError("full-frame crop must be stored as no crop")
-    min_width, min_height = min_crop_size(source)
+    min_width, min_height = min_crop_size(source, geometry)
     if right - left < min_width or bottom - top < min_height:
         raise PhotoEditError(f"crop is smaller than the {MIN_CROP_MM:g} mm minimum")
+
+
+def _check_straighten(recipe: "PhotoEditRecipe") -> None:
+    source = recipe.source
+    if recipe.schema_version < STRAIGHTEN_SCHEMA_VERSION:
+        raise PhotoEditError("recipe version cannot contain straighten")
+    if source.dpi_x != source.dpi_y:
+        raise PhotoEditError("straighten needs square pixels")
+    min_w, min_h = min_crop_size(source)
+    frame_w, frame_h = frame_size(source, recipe.geometry)
+    if frame_w < min_w or frame_h < min_h:
+        raise PhotoEditError(f"straighten angle leaves less than the {MIN_CROP_MM:g} mm minimum")
 
 
 @dataclass(frozen=True, eq=False)
@@ -256,10 +293,12 @@ class PhotoEditRecipe:
             raise PhotoEditError("legacy recipes cannot contain tone adjustments")
         if not isinstance(self.geometry, PhotoGeometry):
             raise PhotoEditError("recipe geometry requires a validated crop and rotation")
+        if self.geometry.straighten_tenths:
+            _check_straighten(self)
         if self.schema_version < GEOMETRY_SCHEMA_VERSION and self.geometry != PhotoGeometry():
             raise PhotoEditError("recipe version cannot contain geometry")
         if self.geometry.crop is not None:
-            _check_crop(self.source, self.geometry.crop)
+            _check_crop(self.source, self.geometry)
         integer(self.quality, 1, 100, "JPEG quality")
         if not isinstance(self.eyes, tuple) or len(self.eyes) > MAX_EYES:
             raise PhotoEditError("too many eye corrections")
@@ -291,6 +330,7 @@ class PhotoPreview:
     roi_before: Path | None = None
     roi_after: Path | None = None
     working: Path | None = field(default=None, kw_only=True)
+    straightened: Path | None = field(default=None, kw_only=True)
 
 
 @dataclass(frozen=True)

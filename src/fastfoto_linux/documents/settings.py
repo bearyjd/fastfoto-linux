@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from fastfoto_linux.documents.errors import DocumentSettingsError, OcrMissingError
-from fastfoto_linux.documents.modes import ColourMode, ColourPolicy
+from fastfoto_linux.documents.modes import CleanupPolicy, ColourMode, ColourPolicy
 from fastfoto_linux.documents.ocr import (
     DEFAULT_LANGS,
     OcrMode,
@@ -30,6 +30,7 @@ class DocumentSettings:
     fallback_dpi: int | None = None
     ocr_timeout_s: float | None = None  # None: a limit that grows with the page count
     duplex: bool = True  # pages are sheets' sides in order, (1, 2), (3, 4) ...; False: all fronts
+    cleanup: CleanupPolicy = CleanupPolicy.OFF  # paper cleanup a new analysis starts with
 
 
 @dataclass(frozen=True)
@@ -60,6 +61,8 @@ def check_settings(settings: DocumentSettings) -> CheckedSettings:
         ColourPolicy(settings.colour)
     except (TypeError, ValueError) as error:
         raise DocumentSettingsError("colour mode must be auto, colour, grey or bw") from error
+    if not isinstance(settings.cleanup, CleanupPolicy):
+        raise DocumentSettingsError("cleanup must be off, light or strong")
     try:
         validate_langs(settings.langs)
     except ValueError as error:

@@ -14,11 +14,12 @@ from PIL import Image
 
 from fastfoto_linux.documents import DocumentCancelledError, DocumentError, DocumentSettings
 from fastfoto_linux.documents.auto_colour import page_colour
+from fastfoto_linux.documents.cleanup import page_cleanup
 from fastfoto_linux.documents.draft import DocumentDraft, PageEdit
 from fastfoto_linux.documents.draft_store import THUMBS_DIR, open_draft
 from fastfoto_linux.documents.encode import render_page
 from fastfoto_linux.documents.loader import load_page
-from fastfoto_linux.documents.modes import ColourMode, ColourPolicy
+from fastfoto_linux.documents.modes import CleanupPolicy, ColourMode, ColourPolicy
 from fastfoto_linux.documents.private_io import ensure_private_dir, write_private_atomic
 from fastfoto_linux.documents.write import write_document
 from fastfoto_linux.gui.docreport import os_error_words
@@ -33,6 +34,8 @@ logger = logging.getLogger(__name__)
 PREVIEW_DIR = "previews"
 PREVIEW_MAX_PX = 1600
 PREVIEW_QUALITY = 90
+PREVIEW_CROP_PX = 1024  # the actual-pixel crop: a window of the output, never scaled
+CROP_SCALE = 1000  # the crop centre is given in permille of the page
 Job = Callable[[threading.Event], Callable[[], None]]
 
 
@@ -44,11 +47,23 @@ class PreviewRequest:
     number: int
     policy: ColourPolicy | ColourMode = ColourPolicy.COLOUR
     view: str = "source"
+    cleaned: bool = True
+    crop: tuple[int, int] | None = None
 
     def __post_init__(self) -> None:
         ColourPolicy(self.policy)
         if self.view not in {"source", "output"}:
             raise ValueError("choose a source or output preview")
+        if self.crop is not None and not _valid_crop(self.crop):
+            raise ValueError("the crop centre is two whole numbers from 0 to 1000")
+
+
+def _valid_crop(crop: object) -> bool:
+    try:
+        x, y = crop  # type: ignore[misc]
+    except (TypeError, ValueError):
+        return False
+    return isinstance(crop, tuple) and all(type(v) is int and 0 <= v <= CROP_SCALE for v in (x, y))
 
 
 @dataclass(frozen=True)
@@ -62,57 +77,99 @@ PreviewResult = tuple[DocumentDraft, int, Path | None, str] | PreviewCompletion
 
 
 def output_preview_names(number: int) -> tuple[str, ...]:
-    """Only these bounded generated variants may be accepted or removed with originals."""
-    return tuple(
+    """Only these bounded generated variants may be accepted or removed with originals.
+
+    The legacy names (made before paper cleanup existed) stay, so old previews are still removed.
+    """
+    legacy = tuple(
         f"page-{number:04d}-output-{mode.value}{suffix}.jpg"
         for mode in ColourMode
         for suffix in ("", "-r0", "-r1", "-r2", "-r3")
     )
+    current = tuple(
+        f"page-{number:04d}{_output_suffix(mode, level, turns)}{extension}"
+        for mode in ColourMode
+        for level in CleanupPolicy
+        for turns in range(4)
+        for extension in (".jpg", "-crop.png")
+    )
+    return legacy + current
 
 
-def _preview_image(request: PreviewRequest, cancel: threading.Event) -> tuple[Image.Image, str]:
+def _output_suffix(mode: ColourMode, cleanup: CleanupPolicy, turns: int) -> str:
+    return f"-output-{mode.value}-{cleanup.value}-r{turns}"
+
+
+def _preview_image(request: PreviewRequest, cancel: threading.Event) -> tuple[np.ndarray, str]:
+    """The pixels to show and the file-name suffix that tells which variant they are."""
     draft, number = request.draft, request.number
     page = draft.pages[number - 1]
     loaded = page.trim.apply(load_page(draft.raw_dir / page.name, fallback_dpi=page.dpi))
     if cancel.is_set():
         raise DocumentCancelledError("preview cancelled")
     if request.view == "source":
-        return Image.fromarray(loaded.pixels), ""
+        return loaded.pixels, ""
     mode = page_colour(draft, page, request.policy)
     if cancel.is_set():
         raise DocumentCancelledError("preview cancelled")
     turns = draft.edits.get(number, PageEdit()).quarter_turns
     if turns:
         loaded = replace(loaded, pixels=np.rot90(loaded.pixels, -turns).copy())
-    return Image.fromarray(render_page(loaded, mode)), f"-output-{mode.value}-r{turns}"
+    cleanup = page_cleanup(draft, page) if request.cleaned else CleanupPolicy.OFF
+    if cleanup is CleanupPolicy.OFF:
+        pixels = render_page(loaded, mode)
+    else:
+        pixels = render_page(loaded, mode, cleanup, cancel=cancel)
+    return pixels, _output_suffix(mode, cleanup, turns)
 
 
-def make_preview(
+def _crop_window(pixels: np.ndarray, centre: tuple[int, int]) -> np.ndarray:
+    """The ``PREVIEW_CROP_PX`` square (or the whole page if smaller) around a permille centre."""
+    height, width = pixels.shape[:2]
+    window_w, window_h = min(PREVIEW_CROP_PX, width), min(PREVIEW_CROP_PX, height)
+    left = min(max(0, centre[0] * width // CROP_SCALE - window_w // 2), width - window_w)
+    top = min(max(0, centre[1] * height // CROP_SCALE - window_h // 2), height - window_h)
+    return pixels[top : top + window_h, left : left + window_w]
+
+
+def _encode_preview(pixels: np.ndarray, crop: tuple[int, int] | None) -> tuple[bytes, str]:
+    """A bounded JPEG of the page, or a lossless PNG of the actual pixels around ``crop``."""
+    buffer = io.BytesIO()
+    if crop is not None:
+        Image.fromarray(np.ascontiguousarray(_crop_window(pixels, crop))).save(buffer, "PNG")
+        return buffer.getvalue(), "-crop.png"
+    image = Image.fromarray(pixels)
+    image.thumbnail((PREVIEW_MAX_PX, PREVIEW_MAX_PX))
+    image.save(buffer, "JPEG", quality=PREVIEW_QUALITY)
+    return buffer.getvalue(), ".jpg"
+
+
+def make_preview(  # noqa: PLR0913 - the request's own fields, passed through
     draft: DocumentDraft,
     number: int,
     cancel: threading.Event,
     *,
     policy: ColourPolicy | ColourMode = ColourPolicy.COLOUR,
     view: str = "source",
+    cleaned: bool = True,
+    crop: tuple[int, int] | None = None,
 ) -> Path:
     """Trim raw pixels, optionally render full output, then write a bounded private preview."""
-    request = PreviewRequest(draft, number, policy, view)
+    request = PreviewRequest(draft, number, policy, view, cleaned, crop)
     if draft.raw_dir is None or not 1 <= number <= len(draft.pages):
         raise ValueError("the preview needs a page in its original folder")
     if cancel.is_set():
         raise DocumentCancelledError("preview cancelled")
-    image, suffix = _preview_image(request, cancel)
+    pixels, suffix = _preview_image(request, cancel)
     if cancel.is_set():
         raise DocumentCancelledError("preview cancelled")
-    image.thumbnail((PREVIEW_MAX_PX, PREVIEW_MAX_PX))
-    buffer = io.BytesIO()
-    image.save(buffer, "JPEG", quality=PREVIEW_QUALITY)
+    data, extension = _encode_preview(pixels, crop if view == "output" else None)
     if cancel.is_set():
         raise DocumentCancelledError("preview cancelled")
     folder = draft.raw_dir / PREVIEW_DIR
     ensure_private_dir(folder)
-    path = folder / f"page-{number:04d}{suffix}.jpg"
-    write_private_atomic(path, buffer.getvalue())
+    path = folder / f"page-{number:04d}{suffix}{extension}"
+    write_private_atomic(path, data)
     return path
 
 
@@ -209,7 +266,13 @@ class ReviewJobs:
     ) -> Callable[[], None]:
         try:
             path = self._preview(
-                request.draft, request.number, cancel, policy=request.policy, view=request.view
+                request.draft,
+                request.number,
+                cancel,
+                policy=request.policy,
+                view=request.view,
+                cleaned=request.cleaned,
+                crop=request.crop,
             )
             answer = PreviewCompletion(request, path)
         except (DocumentError, OSError, ValueError) as error:

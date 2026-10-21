@@ -115,6 +115,51 @@ Kirigami.ScrollablePage {
                 }
             }
 
+            RowLayout {
+                Layout.fillWidth: true
+                QQC2.Label {
+                    text: qsTr("Paper cleanup:")
+                    textFormat: Text.PlainText
+                }
+                QQC2.ComboBox {
+                    objectName: "reviewDocumentCleanupBox"
+                    readonly property var cleanupChoices: [
+                        { "text": qsTr("Off"), "value": "off" },
+                        { "text": qsTr("Light"), "value": "light" },
+                        { "text": qsTr("Strong"), "value": "strong" }
+                    ]
+                    model: cleanupChoices
+                    textRole: "text"
+                    valueRole: "value"
+                    currentIndex: Math.max(0, cleanupChoices.findIndex(choice => choice.value === (bridge.review.documentCleanup ?? "off")))
+                    Accessible.name: qsTr("Paper cleanup for the document")
+                    onActivated: bridge.review.setDocumentCleanup(currentValue)
+                }
+                QQC2.ComboBox {
+                    objectName: "reviewCleanupBox"
+                    enabled: !!page.selectedItem.number
+                    readonly property var cleanupChoices: [
+                        { "text": qsTr("Document setting"), "value": "" },
+                        { "text": qsTr("Off"), "value": "off" },
+                        { "text": qsTr("Light"), "value": "light" },
+                        { "text": qsTr("Strong"), "value": "strong" }
+                    ]
+                    model: cleanupChoices
+                    textRole: "text"
+                    valueRole: "value"
+                    currentIndex: Math.max(0, cleanupChoices.findIndex(choice => choice.value === (page.selectedItem.cleanupOverride ?? "")))
+                    Accessible.name: qsTr("Selected page paper cleanup")
+                    onActivated: bridge.review.setCleanup(page.selectedItem.number, currentValue)
+                }
+                QQC2.Label {
+                    objectName: "reviewCleanupExplanation"
+                    Layout.fillWidth: true
+                    text: page.selectedItem.cleanupText ?? ""
+                    textFormat: Text.PlainText
+                    wrapMode: Text.WordWrap
+                }
+            }
+
             Repeater {
                 id: names
                 objectName: "reviewPartNames"

@@ -11,6 +11,7 @@ from fastfoto_linux.gui.doctools import FLATPAK_OCR_HINT, NATIVE_OCR_HINT
 from fastfoto_linux.session import DOCUMENT_DPI
 
 ROOT = Path(__file__).resolve().parents[2]
+QML_DIR = ROOT / "src" / "fastfoto_linux" / "gui" / "qml"
 README = (ROOT / "README.md").read_text(encoding="utf-8")
 DESIGN = (ROOT / "docs" / "design" / "documents.md").read_text(encoding="utf-8")
 
@@ -61,3 +62,18 @@ def test_the_design_note_words_the_raw_folder_error_as_the_app_does() -> None:
     assert banner.text.startswith("The scan failed.")
     decisions = " ".join(DESIGN.split("## Decisions in the desktop app (D3)")[-1].split())
     assert 'an `OSError` for the raw folder as "The scan failed.' in decisions
+
+
+def test_the_readme_names_paper_cleanup_and_the_presets_the_qml_offers() -> None:
+    assert "**Paper cleanup**" in README
+    form = (QML_DIR / "DocumentFormPanel.qml").read_text(encoding="utf-8")
+    review = (QML_DIR / "ReviewPage.qml").read_text(encoding="utf-8")
+    for label in ("Off", "Light", "Strong"):
+        assert f'qsTr("{label}")' in form
+        assert f'qsTr("{label}")' in review
+        assert f"`{label}`" in README
+
+
+def test_the_readme_says_cleanup_is_off_by_default_and_the_form_agrees() -> None:
+    assert "off by default" in README
+    assert DocumentForm().cleanup == "off"

@@ -142,6 +142,43 @@ QQC2.ScrollView {
         }
 
         QQC2.ComboBox {
+            objectName: "docCleanupBox"
+            implicitWidth: Kirigami.Units.gridUnit * 16
+            Kirigami.FormData.label: qsTr("Paper cleanup:")
+            Layout.fillWidth: true
+            readonly property var cleanupChoices: [
+                {
+                    "text": qsTr("Off"),
+                    "value": "off"
+                },
+                {
+                    "text": qsTr("Light"),
+                    "value": "light"
+                },
+                {
+                    "text": qsTr("Strong"),
+                    "value": "strong"
+                }
+            ]
+            model: cleanupChoices
+            textRole: "text"
+            valueRole: "value"
+            currentIndex: Math.max(0, cleanupChoices.findIndex(choice => choice.value === bridge.documents.form.cleanup))
+            enabled: panel.editable
+            Accessible.name: qsTr("Paper cleanup")
+            onActivated: bridge.setDocumentField("cleanup", currentValue)
+        }
+
+        QQC2.Label {
+            objectName: "docCleanupHint"
+            Layout.fillWidth: true
+            text: qsTr("Off by default. Light and Strong lighten the paper tone of grey and colour pages; black-and-white pages are not changed. Check the result in the review preview.")
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+            color: Kirigami.Theme.disabledTextColor
+        }
+
+        QQC2.ComboBox {
             objectName: "docDpiBox"
             implicitWidth: Kirigami.Units.gridUnit * 16
             Kirigami.FormData.label: qsTr("Resolution:")

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from fastfoto_linux.documents import DocumentSettings
 from fastfoto_linux.documents.draft import DocumentDraft
 from fastfoto_linux.documents.draft_store import save_draft
-from fastfoto_linux.documents.modes import ColourPolicy
+from fastfoto_linux.documents.modes import CleanupPolicy, ColourPolicy
 from fastfoto_linux.gui.docform import to_document_settings
 from fastfoto_linux.gui.docreport import document_error_banner
 from fastfoto_linux.gui.report import Banner
@@ -29,7 +29,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 # Operations that can change a page's output pixels; each names its page number first.
-PAGE_AFFECTING = frozenset({"toggle", "rotate", "set_colour"})
+PAGE_AFFECTING = frozenset({"toggle", "rotate", "set_colour", "set_cleanup"})
+# Operations that can change every page's output pixels; they take no page number.
+DOCUMENT_AFFECTING = frozenset({"set_document_cleanup"})
 _OPENABLE = frozenset(
     {State.READY, State.NO_SCANNER, State.DONE, State.FAILED, State.CANCELLED, State.REVIEWING}
 )
@@ -51,6 +53,8 @@ class ReviewSide:
         self.preview_path: Path | None = None
         self.preview_number = 0
         self.preview_view = "source"
+        self.preview_cleaned = True
+        self.preview_crop: tuple[int, int] | None = None
         self._preview_requested: PreviewRequest | None = None
         self._preview_running: PreviewRequest | None = None
         self._preview_cached: PreviewRequest | None = None
@@ -93,10 +97,14 @@ class ReviewSide:
             request = self._preview_requested
             number = self.preview_number or (request.number if request else 0)
             # These operations name their page first; another page's edit leaves this preview alone.
-            affects = operation in PAGE_AFFECTING and bool(args) and args[0] == number
+            affects = operation in DOCUMENT_AFFECTING or (
+                operation in PAGE_AFFECTING and bool(args) and args[0] == number
+            )
             if number and affects and (self.preview_view == "output" or request is not None):
                 self._preview_requested = None
-                self.preview(number, self.preview_view)
+                self.preview(
+                    number, self.preview_view, cleaned=self.preview_cleaned, crop=self.preview_crop
+                )
             elif request is not None:
                 # Re-point at the new draft so a stale in-flight result cannot be re-dispatched
                 # forever; the next dispatch renders the current draft and then matches.
@@ -131,7 +139,9 @@ class ReviewSide:
         if not self.leaving():
             return False
         c.set_mode(Mode.DOCUMENTS)
-        self._opening_settings = self._current_settings()
+        # A past scan starts with cleanup Off: the form's level only seeds new scans, and an old or
+        # missing sidecar would otherwise take it. Only a version 3 sidecar can say otherwise.
+        self._opening_settings = replace(self._current_settings(), cleanup=CleanupPolicy.OFF)
         c._worker.analyse_folder(folder, self._opening_settings)
         self._pending = "open"
         self._preview_requested = None
@@ -227,27 +237,54 @@ class ReviewSide:
             return True
         return False
 
-    def _preview_matches(self, request: PreviewRequest | None, number: int, view: str) -> bool:
+    def _preview_matches(
+        self,
+        request: PreviewRequest | None,
+        number: int,
+        view: str,
+        cleaned: bool,
+        crop: tuple[int, int] | None,
+    ) -> bool:
         return bool(
             request is not None
             and self.state is not None
             and request.draft is self.state.draft
             and request.number == number
             and request.view == view
+            and request.cleaned is cleaned
+            and request.crop == crop
             and ColourPolicy(request.policy) is ColourPolicy(self._settings.colour)
         )
 
-    def preview(self, number: int, view: str = "source") -> str:
+    @property
+    def preview_target(self) -> int:
+        """The page the preview is showing or being made for (0 when there is none)."""
+        request = self._preview_requested
+        return self.preview_number or (request.number if request else 0)
+
+    def preview(
+        self,
+        number: int,
+        view: str = "source",
+        *,
+        cleaned: bool = True,
+        crop: tuple[int, int] | None = None,
+    ) -> str:
         if not self.active or self.state is None:
             raise ActionBlockedError("there is no page to preview")
+        if view == "source":
+            cleaned, crop = True, None
         self.state.focused(number)
-        request = PreviewRequest(self.state.draft, number, self._settings.colour, view)
-        if self._preview_matches(self._preview_cached, number, view) and self.preview_path:
+        request = PreviewRequest(
+            self.state.draft, number, self._settings.colour, view, cleaned, crop
+        )
+        identity = (number, view, cleaned, crop)
+        if self._preview_matches(self._preview_cached, *identity) and self.preview_path:
             return self.preview_path.as_uri()
-        if self._preview_matches(self._preview_requested, number, view):
+        if self._preview_matches(self._preview_requested, *identity):
             return ""
         self._preview_requested = request
-        self.preview_view = view
+        self.preview_view, self.preview_cleaned, self.preview_crop = view, cleaned, crop
         self.preview_path, self.preview_number = None, 0
         self._preview_cached = None
         if not self._worker_busy:
@@ -298,7 +335,7 @@ class ReviewSide:
         if request is self._preview_running:
             self._preview_running = None
         if request is self._preview_requested and self._preview_matches(
-            request, request.number, self.preview_view
+            request, request.number, self.preview_view, self.preview_cleaned, self.preview_crop
         ):
             self._preview_requested = None
             if completion.error:

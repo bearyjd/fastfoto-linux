@@ -77,7 +77,12 @@ def test_view_exposes_the_geometry_contract(make_bridge, out):
         assert meta.indexOfSlot(slot) >= 0, slot
     assert view.geometryMode is False and view.geometryNeutral is True
     assert view.canEditEyes is True
-    assert view.geometry == {"quarterTurns": 0, "cropped": False, "crop": FULL}
+    assert view.geometry == {
+        "quarterTurns": 0,
+        "cropped": False,
+        "crop": FULL,
+        "straightenTenths": 0,
+    }
     assert (view.outputWidth, view.outputHeight) == (100, 60)
     assert view.minCropWidth == view.minCropHeight == 59
 
@@ -221,6 +226,19 @@ def test_a_sub_minimum_drag_shows_a_hint_until_the_next_valid_edit(make_bridge, 
     assert hint.property("visible")
     click(child(page, "photoRotateRight"))
     assert not hint.property("visible")
+    assert warnings == []
+
+
+@pytest.mark.parametrize("name", ["sourceWidth", "sourceHeight"])
+def test_an_unusable_canvas_gives_no_too_small_hint(make_bridge, open_window, out, name):
+    _bridge, view, window, page, warnings = editor_page(make_bridge, open_window, out)
+    enter_mode(page)
+    start, end = canvas_point(page, 0.1, 0.0), canvas_point(page, 0.9, 1.0)
+    canvas = child(page, "photoEditCanvas")
+    canvas.setProperty(name, 0)  # as if the source size were not known yet
+    drag(window, start, end)
+    assert not child(page, "photoCropHint").property("visible")
+    assert not view.geometry["cropped"] and not view.error
     assert warnings == []
 
 

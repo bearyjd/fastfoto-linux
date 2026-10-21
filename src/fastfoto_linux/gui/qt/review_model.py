@@ -31,6 +31,8 @@ _ROLES = (
     "colourReason",
     "colourOverride",
     "colourText",
+    "cleanupOverride",
+    "cleanupText",
 )
 
 
@@ -52,6 +54,8 @@ def _values(item: ReviewItem) -> dict[str, object]:
         "colourReason": item.colour_reason,
         "colourOverride": item.colour_override,
         "colourText": item.colour_text,
+        "cleanupOverride": item.cleanup_override,
+        "cleanupText": item.cleanup_text,
     }
 
 

@@ -150,7 +150,7 @@ uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr o
   darkens a pixel. Dark ink and strongly coloured marks are not touched at all; faint marks such
   as pencil, grey stamps and pale rules are lightened a little but keep their contrast to the
   paper; a photograph is protected only when it is detected;
-  black-and-white pages are not changed, a page with dark paper is left alone, and coloured paper is left unchanged when the
+  black-and-white pages are not changed, a page with dark paper is left alone, a very large page (a work grid above 12 million pixels, such as 6600 x 4680 pixels at 200 dpi) is left alone to bound memory, and coloured paper is left unchanged when the
   page is written in colour (in grey the hue is gone, so it is lightened). It is a setting of the
   document with an optional override for one page, kept in the review file (format version 3);
   documents saved earlier open with cleanup Off, and `doc process` applies the level a review

@@ -1,4 +1,5 @@
-"""Paper cleanup in the review: edits with undo, the words, the preview identity, reopening."""
+"""Paper cleanup in the review: edits (a document review keeps no undo history), the words,
+the preview identity, reopening."""
 
 import json
 import threading

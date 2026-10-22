@@ -16,6 +16,10 @@ from fastfoto_linux.documents.modes import CleanupPolicy
 Q_BITS = 12
 Q = 1 << Q_BITS
 BAND_ROWS = 512  # full-resolution passes work this many rows at a time
+# A page whose work grid (the page at WORK_DPI, or at its own dpi when that is lower) has more
+# pixels than this is left alone: the integer box sums cost about 42 bytes per work pixel at the
+# peak (measured 486 MiB at 12 million), so this bounds the peak near half a gibibyte.
+MAX_WORK_PIXELS = 12_000_000
 
 BG_WINDOW_MM = 10.0  # wider than any text stroke: the background estimate never holds ink
 BG_SMOOTH_MM = 5.0

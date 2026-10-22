@@ -50,3 +50,11 @@ def test_the_design_note_states_the_numbers() -> None:
 def test_the_readme_makes_no_claim_about_ocr_accuracy() -> None:
     assert OCR_CLAIM.search(text_of("README")) is None
     assert OCR_CLAIM.search(text_of("design note")) is None
+
+
+def test_the_size_limit_and_the_tone_order_are_stated_as_the_code_has_them() -> None:
+    text = text_of("design note")
+    assert f"{tables.MAX_WORK_PIXELS // 1_000_000} million pixels" in text
+    assert "too_large" in text
+    assert "never reversed" in text and "order of tones is kept" not in text
+    assert f"{tables.MAX_WORK_PIXELS // 1_000_000} million pixels" in text_of("README")

@@ -877,7 +877,8 @@ The command line keeps Off but honours a level stored in the review file.
   245) or 1.25 (Strong, target 255) that grows from none at 80% (Light) or 75% (Strong) of the paper
   level to the whole gain at 88% or 85%. A pixel at or below 78% of its local paper is ink and is
   never changed, and the weight rises to the full gain at 90%. No pixel gets darker, the order of
-  tones is kept, and the contrast of a mark to its paper never drops. All of it is integer
+  tones is never reversed (a lighter pixel never comes out darker than a darker one, though
+  both can reach 255), and the contrast of a mark to its paper never drops. All of it is integer
   arithmetic, so a repeat run gives the same bytes.
 - **What it leaves alone.** Black-and-white output is byte for byte what it was:
   black-and-white pages are not changed, and coloured paper is left unchanged when the page is written in
@@ -889,7 +890,12 @@ The command line keeps Off but honours a level stored in the review file.
   neighbours.
 - **Memory and time.** The full-resolution passes run in bands of 512 rows (the banded result is
   the whole-page result) and a cancel is honoured before each band. The peak is the page, the
-  output and the low-resolution maps.
+  output and the low-resolution maps. The integer box sums of the work grid cost about 42 bytes
+  per work pixel at the peak (the page at 150 dpi, or at its own resolution when that is lower),
+  so a page whose work grid has more than 12 million pixels (for example 6600 x 4680 pixels at
+  200 dpi, which peaked at 1.2 GiB) is left as it is, with the status `too_large`, noted in the
+  debug log; an A4 page at up to 300 dpi is cleaned (about 360 MiB at 299 dpi). The check comes
+  after Off and black and white, and before the paper level is looked at.
 - **The sidecar.** The review file is format version 3 only when the draft holds a cleanup level
   or an override, and version 2 (byte for byte as before) otherwise. The decoder accepts versions
   1, 2 and 3 strictly: version 3 has a required document level and edits with exactly the keys

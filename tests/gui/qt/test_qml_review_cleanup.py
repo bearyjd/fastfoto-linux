@@ -328,6 +328,38 @@ def test_actual_pixels_show_an_uncapped_crop_and_hide_the_fitted_image(cleanup_w
     assert warnings == []
 
 
+def test_a_second_spot_replaces_the_first_crop_in_the_same_file(cleanup_window):
+    window, bridge, worker, source, warnings = cleanup_window
+    choose(child(window, "reviewDocumentCleanupBox"), 1)
+    first = open_output_preview(window, bridge, worker)
+    deliver(bridge, source, first, "page-0001-output-grey-light-r0.jpg", size=(400, 600))
+    point = painted_point(window, 0.25, 0.75)
+    QTest.mouseClick(
+        window, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, point.toPoint()
+    )
+    settle()
+    one = worker.calls[-1][1][0]
+    crop_image = child(window, "reviewPreviewCropImage")
+    assert crop_image.property("cache") is False
+    name = "page-0001-output-grey-light-r0-crop.png"
+    path = deliver(bridge, source, one, name, (300, 200))
+    assert bridge.review.previewUrl == path.as_uri()
+    wait_until(lambda: crop_image.property("width") == 300, "the first crop to load")
+    # The pick area is hidden while the crop shows, so the second click is what its handler sends.
+    bridge.review.previewOptions(1, True, True, 800, 200)
+    settle()
+    two = worker.calls[-1][1][0]
+    assert two is not one and two.crop is not None
+    assert abs(two.crop[0] - 800) <= 1 and abs(two.crop[1] - 200) <= 1
+    assert bridge.review.previewUrl == ""  # cleared until the new file is ready
+    assert (bridge.review.previewCropX, bridge.review.previewCropY) == two.crop
+    again = deliver(bridge, source, two, name, (320, 240))
+    assert again == path and bridge.review.previewUrl == path.as_uri()
+    wait_until(lambda: crop_image.property("width") == 320, "the second crop to load")
+    assert (crop_image.property("width"), crop_image.property("height")) == (320, 240)
+    assert warnings == []
+
+
 def test_the_dialog_for_the_source_view_hides_the_cleanup_controls(cleanup_window):
     window, _bridge, _worker, _source, _warnings = cleanup_window
     invoke(child(window, "reviewGrid"), "forceActiveFocus")

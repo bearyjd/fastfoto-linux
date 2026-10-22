@@ -114,6 +114,22 @@ def test_the_crop_is_the_lossless_actual_pixel_window_of_the_render(out, turns, 
         assert np.array_equal(np.asarray(image), full[top : top + ch, left : left + cw])
 
 
+def test_a_second_crop_replaces_the_first_in_the_same_file(out):
+    draft = analysed(out)
+    first = preview(draft, crop=(0, 0))
+    with Image.open(first) as image:
+        first_window = np.asarray(image).copy()
+    second = preview(draft, crop=(1000, 1000))
+    assert second == first  # one file per page, mode, level and turns
+    full = expected(draft, STRONG)
+    left, top = WIDTH - PREVIEW_CROP_PX, HEIGHT - PREVIEW_CROP_PX
+    with Image.open(second) as image:
+        window = np.asarray(image)
+    assert np.array_equal(window, full[top:, left:])
+    assert not np.array_equal(window, first_window)
+    assert sorted(path.name for path in second.parent.iterdir()) == [second.name]
+
+
 def test_the_crop_of_the_original_side_is_the_uncleaned_render(out):
     draft = analysed(out)
     path = preview(draft, cleaned=False, crop=(500, 500))

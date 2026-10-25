@@ -72,7 +72,7 @@ def checked_preview_path(folder: Path, name: str) -> Path:
     ``ensure_private_dir`` (``O_NOFOLLOW``) must have run on ``folder`` first: it refuses a
     ``folder`` that is itself a link. The containment is judged on resolved paths, but the path
     returned is ``folder / name`` as the caller spelled it, so callers that compare it with their
-    own ``folder`` still match when an ancestor of ``folder`` is a link (``/home -> /var/home``).
+    own ``folder`` still match when an ancestor of ``folder`` is a link (a linked home folder is common on immutable distributions).
     A link planted at the name is removed (not followed), so the write replaces the link itself.
     """
     root = folder.resolve(strict=True)

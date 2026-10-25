@@ -15,7 +15,7 @@ from PySide6.QtQuick import QQuickItem
 from fastfoto_linux.documents import OcrCancelledError, OcrStatus, ocr_languages
 from fastfoto_linux.documents.ocr_languages import Inventory, Language
 from tests.gui.doc_helpers import ScriptedDocumentSession, clean_document
-from tests.gui.qt import test_qml_documents
+from tests.gui.qt import test_qml_documents, test_qml_languages
 from tests.gui.qt.qt_helpers import child, click, settle, wait_until
 
 pytestmark = pytest.mark.usefixtures("kirigami", "ocrmypdf_comes_with_the_app")
@@ -146,13 +146,36 @@ def test_collapsing_moves_focus_from_the_hidden_search_field_to_the_toggle(
     assert window.activeFocusItem() is toggle
 
 
+def test_collapsing_moves_focus_from_a_language_checkbox_to_the_toggle(
+    monkeypatch: pytest.MonkeyPatch, make_doc_bridge: Any, open_window: Any
+) -> None:
+    inventory = Inventory((Language("eng", "English", 100, installed=True),))
+    monkeypatch.setattr(ocr_languages, "discover_languages", lambda **_k: inventory)
+    bridge = make_doc_bridge()
+    wait_until(lambda: bridge.documents.languages.ready, "installed languages")
+    window, _ = open_window(bridge)
+    settle()
+    _, toggle, _, _ = picker_parts(window)
+    click(toggle)
+    settle()
+    box = test_qml_languages.language_box(window, "eng")
+    box.forceActiveFocus()
+    settle()
+    assert window.activeFocusItem() is box
+    click(toggle)
+    settle()
+    assert window.activeFocusItem() is toggle
+
+
 # -- headers at the narrowest window --------------------------------------------------------------
 
 
 def check_header(window: Any, heading: Any, flow: Any, warnings: list[str]) -> None:
     first = flow.childItems()[0]
     assert fits(heading) and fits(flow)
-    assert heading.property("truncated") in (True, False)  # exposed by Qt for the tooltip
+    heading.setProperty("text", "A very long heading " * 20)
+    settle()
+    assert heading.property("truncated") is True  # so the hover tooltip has a reason to show
     assert overflowing(flow) == []
     assert flow.height() >= first.height()
     assert warnings == []  # no binding or polish loops from the Flow in the ColumnLayout

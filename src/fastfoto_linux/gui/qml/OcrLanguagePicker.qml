@@ -22,7 +22,7 @@ ColumnLayout {
 
     onOpenChanged: {
         if (!open && (holdsFocus(languageSearch) || holdsFocus(languageScroll)))
-            languageToggle.forceActiveFocus();
+            Qt.callLater(() => languageToggle.forceActiveFocus());
     }
     Layout.fillWidth: true
     Layout.preferredWidth: Kirigami.Units.gridUnit * 16
@@ -51,7 +51,7 @@ ColumnLayout {
             icon.name: picker.open ? "arrow-up" : "arrow-down"
             display: QQC2.AbstractButton.IconOnly
             enabled: !bridge.documents.languages.busy
-            Accessible.name: text
+            Accessible.name: qsTr("Languages")
             Accessible.checkable: true
             Accessible.checked: picker.open
             QQC2.ToolTip.text: text

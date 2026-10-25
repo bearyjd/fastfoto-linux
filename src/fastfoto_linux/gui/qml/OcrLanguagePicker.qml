@@ -41,6 +41,11 @@ ColumnLayout {
             text: bridge.documents.languages.summary
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
+
+            TapHandler {
+                enabled: languageToggle.enabled
+                onTapped: languageToggle.clicked()
+            }
         }
 
         QQC2.ToolButton {
@@ -49,14 +54,12 @@ ColumnLayout {
             text: bridge.documents.languages.busy ? qsTr("Languages (working…)")
                   : (picker.open ? qsTr("Hide languages") : qsTr("Show languages"))
             icon.name: picker.open ? "arrow-up" : "arrow-down"
-            display: QQC2.AbstractButton.IconOnly
+            // Text always shows: an icon-only button is blank where the icon theme lacks the icon.
+            display: QQC2.AbstractButton.TextBesideIcon
             enabled: !bridge.documents.languages.busy
             Accessible.name: qsTr("Languages")
             Accessible.checkable: true
             Accessible.checked: picker.open
-            QQC2.ToolTip.text: text
-            QQC2.ToolTip.visible: hovered
-            QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
             onClicked: picker.expanded = !picker.expanded
         }
     }

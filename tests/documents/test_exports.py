@@ -13,6 +13,8 @@ HINT = "sudo dnf install tesseract tesseract-osd"
 
 def test_the_one_error_for_a_missing_output_folder_is_exported() -> None:
     assert "OutputFolderMissingError" in documents.__all__
+    assert documents.PageCrop is not None and documents.CROP_UNITS == 10_000
+    assert {"PageCrop", "CROP_UNITS"} <= set(documents.__all__)
     assert getattr(documents, "OutputFolderMissingError", None) is OutputFolderMissingError
 
 

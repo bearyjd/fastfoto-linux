@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from fastfoto_linux.documents.draft import PageEdit
+from fastfoto_linux.documents.loader import LoadedPage
 from fastfoto_linux.documents.modes import ColourMode
 from fastfoto_linux.documents.page_crop import (
     CROP_UNITS,
@@ -13,7 +14,7 @@ from fastfoto_linux.documents.page_crop import (
     to_units,
 )
 from fastfoto_linux.documents.units import mm_to_px
-from tests.documents.crop_helpers import loaded
+from tests.documents.crop_helpers import CORNER_VALUES, loaded
 
 U = CROP_UNITS
 KINDS = (ColourMode.GREY, ColourMode.COLOUR)
@@ -166,6 +167,30 @@ def test_the_markers_show_where_a_crop_cut() -> None:
     page = loaded(ColourMode.GREY)
     height, width = page.pixels.shape
     result = edited_page(page, PageEdit(crop=PageCrop(0, 0, 5000, 5000)))
-    assert result.pixels[0, 0] == page.pixels[0, 0]  # the top left marker stays
-    assert result.pixels.shape == (5000 * height // U, 5000 * width // U)
-    assert not (result.pixels[-30:, -30:] == 220).all()  # the bottom right marker is cut away
+    rows, cols = 5000 * height // U, 5000 * width // U
+    assert result.pixels.shape == (rows, cols)
+    assert np.array_equal(result.pixels, page.pixels[:rows, :cols])
+    assert (result.pixels[:35, :35] == CORNER_VALUES[0]).all()  # the top left marker stays
+
+
+@pytest.mark.parametrize("dpi", [1, 2, 2400])
+def test_extreme_resolutions_never_raise_and_stay_inside_the_page(dpi: int) -> None:
+    for width, height in [(1, 1), (7, 3), (60, 40), (3000, 2000)]:
+        for crop in (
+            PageCrop(0, 0, 10, 10),
+            PageCrop(U - 10, U - 10, U, U),
+            PageCrop(4000, 4000, 4100, 4100),
+        ):
+            left, top, right, bottom = crop_box(width, height, dpi, crop)
+            assert 0 <= left < right <= width and 0 <= top < bottom <= height
+            least = max(1, mm_to_px(5, dpi))
+            assert right - left >= min(least, width) or right - left == width
+            assert bottom - top >= min(least, height)
+
+
+@pytest.mark.parametrize("dpi", [1, 2400])
+def test_edited_page_at_extreme_resolutions(dpi: int) -> None:
+    page = LoadedPage(np.zeros((300, 200), np.uint8), ColourMode.GREY, dpi)
+    result = edited_page(page, PageEdit(quarter_turns=1, crop=PageCrop(4000, 4000, 4100, 4100)))
+    left, top, right, bottom = crop_box(200, 300, dpi, PageCrop(4000, 4000, 4100, 4100))
+    assert result.pixels.shape == (right - left, bottom - top)

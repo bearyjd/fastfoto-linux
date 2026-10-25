@@ -16,7 +16,7 @@ from fastfoto_linux.documents.loader import load_page
 from fastfoto_linux.documents.modes import CleanupPolicy, ColourMode, ColourPolicy
 from fastfoto_linux.documents.page_crop import PageCrop, crop_box, edited_page
 from fastfoto_linux.documents.write import write_document
-from tests.documents.crop_helpers import DPI, crop_draft, trimmed_size
+from tests.documents.crop_helpers import DPI, TRIM, crop_draft, marked_pixels, trimmed_size
 from tests.documents.helpers import page_size_pt, reader
 from tests.documents.store_helpers import store_settings
 
@@ -152,3 +152,22 @@ def test_writing_never_analyses_again(
     monkeypatch.setattr(analyse_module, "analyse_document", refuse)
     kind = ColourMode.COLOUR
     write_document(set_crop(crop_draft(tmp_path / "raw", kind), 1, CROP), settings_of(out, kind))
+
+
+@pytest.mark.parametrize("turns", [0, 1, 2, 3])
+def test_the_written_pixels_are_the_cut_page_turned_by_hand(
+    tmp_path: Path, out: Path, monkeypatch: pytest.MonkeyPatch, turns: int
+) -> None:
+    """An oracle that does not use ``edited_page``: slice the trimmed page, then rot90."""
+    kind = ColourMode.GREY
+    draft = rotate(set_crop(crop_draft(tmp_path / "raw", kind), 1, CROP), 1, turns)
+    spy = Spy(monkeypatch)
+    write_document(draft, settings_of(out, kind))
+    raw = marked_pixels(kind)
+    height, width = raw.shape
+    trimmed = raw[TRIM.top : height - TRIM.bottom, TRIM.left : width - TRIM.right]
+    th, tw = trimmed.shape
+    left, right = -(-CROP.left * tw // 10_000), CROP.right * tw // 10_000
+    top, bottom = -(-CROP.top * th // 10_000), CROP.bottom * th // 10_000
+    expected = np.rot90(trimmed[top:bottom, left:right], -turns)
+    assert np.array_equal(spy.jpegs[0], expected)

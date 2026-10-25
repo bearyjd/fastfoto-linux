@@ -214,6 +214,8 @@ def test_the_form_shows_the_documents_settings_and_none_of_the_photo_ones(
 ) -> None:
     bridge = make_doc_bridge()
     window, _ = open_window(bridge)
+    click(child(window, "docLanguageToggle"))  # the language list starts folded away
+    settle()
     for name in (
         "docFolderField",
         "docNameField",

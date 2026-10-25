@@ -192,12 +192,24 @@ QQC2.ScrollView {
         }
 
         QQC2.CheckBox {
+            id: docBothSidesBoxControl
             objectName: "docBothSidesBox"
+            Layout.fillWidth: true
+            Layout.minimumWidth: 0
             text: qsTr("Both sides (drop blank pages)")
             checked: bridge.documents.form.both_sides
             enabled: panel.editable
             Accessible.name: qsTr("Both sides (drop blank pages)")
             onToggled: bridge.setDocumentField("both_sides", checked)
+
+            contentItem: QQC2.Label {
+                leftPadding: docBothSidesBoxControl.indicator.width + docBothSidesBoxControl.spacing
+                text: docBothSidesBoxControl.text
+                textFormat: Text.PlainText
+                wrapMode: Text.WordWrap
+                verticalAlignment: Text.AlignVCenter
+                opacity: docBothSidesBoxControl.enabled ? 1 : 0.5
+            }
         }
 
         // A detail of "Both sides": set in and smaller, so that it is not read as a second main choice.
@@ -207,12 +219,24 @@ QQC2.ScrollView {
             }
 
             QQC2.CheckBox {
+                id: docKeepBlankBoxControl
                 objectName: "docKeepBlankBox"
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
                 text: qsTr("Keep blank pages")
                 checked: bridge.documents.form.keep_blank
                 enabled: panel.editable
                 Accessible.name: qsTr("Keep blank pages")
                 onToggled: bridge.setDocumentField("keep_blank", checked)
+
+                contentItem: QQC2.Label {
+                    leftPadding: docKeepBlankBoxControl.indicator.width + docKeepBlankBoxControl.spacing
+                    text: docKeepBlankBoxControl.text
+                    textFormat: Text.PlainText
+                    wrapMode: Text.WordWrap
+                    verticalAlignment: Text.AlignVCenter
+                    opacity: docKeepBlankBoxControl.enabled ? 1 : 0.5
+                }
             }
         }
 
@@ -222,12 +246,24 @@ QQC2.ScrollView {
         }
 
         QQC2.CheckBox {
+            id: docSearchableBoxControl
             objectName: "docSearchableBox"
+            Layout.fillWidth: true
+            Layout.minimumWidth: 0
             text: qsTr("Searchable text")
             checked: bridge.documents.searchableChecked
             enabled: panel.editable && bridge.documents.ocrAvailable
             Accessible.name: qsTr("Searchable text")
             onToggled: bridge.setDocumentField("searchable", checked)
+
+            contentItem: QQC2.Label {
+                leftPadding: docSearchableBoxControl.indicator.width + docSearchableBoxControl.spacing
+                text: docSearchableBoxControl.text
+                textFormat: Text.PlainText
+                wrapMode: Text.WordWrap
+                verticalAlignment: Text.AlignVCenter
+                opacity: docSearchableBoxControl.enabled ? 1 : 0.5
+            }
         }
 
         QQC2.Label {

@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING
 from fastfoto_linux.documents.draft_edit import DocumentEditError
 from fastfoto_linux.documents.page_crop import PageCrop
 from fastfoto_linux.gui.doccropcoords import crop_rect, drag_to_crop
-from fastfoto_linux.gui.report import Banner
 
 if TYPE_CHECKING:
     from fastfoto_linux.gui.reviewside import ReviewSide
@@ -95,6 +94,5 @@ def _edit(side: "ReviewSide", number: int, crop: PageCrop | None) -> bool:
 
 
 def _refused(side: "ReviewSide") -> bool:
-    side._controller._banner = Banner("error", CROP_FAILED)
-    side._controller._changed()
+    side.report_error(CROP_FAILED)
     return False

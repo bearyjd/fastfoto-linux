@@ -4,7 +4,7 @@ from fastfoto_linux.documents.draft import PageEdit
 from fastfoto_linux.documents.page_crop import CROP_UNITS, PageCrop
 from fastfoto_linux.gui import reviewcrop
 from fastfoto_linux.gui.review import ReviewState, review_items
-from fastfoto_linux.gui.reviewjobs import PreviewCompletion
+from fastfoto_linux.gui.reviewjobs import PreviewCompletion, PreviewMeta
 from fastfoto_linux.gui.reviewside import PAGE_AFFECTING
 from tests.gui.review_helpers import draft
 from tests.gui.test_reviewside import opened
@@ -74,13 +74,28 @@ def test_the_source_size_and_dpi_come_with_the_source_preview(out):
     assert side.preview_size is None and side.preview_dpi is None
 
 
-def test_a_legacy_tuple_answer_may_carry_the_size_and_dpi(out):
+def test_a_legacy_tuple_answer_may_carry_a_named_measure(out):
+    side, page = opened(out)
+    page.worker.preview_page = lambda *args: None
+    side.preview(1)
+    path = out / "previews" / "page-0001.jpg"
+    side.preview_ready((side.state.draft, 1, path, "", PreviewMeta(1200, 1800, 300)))
+    assert (side.preview_size, side.preview_dpi) == ((1200, 1800), 300)
+
+
+def test_anything_else_in_the_fifth_place_is_not_a_measure(out):
     side, page = opened(out)
     page.worker.preview_page = lambda *args: None
     side.preview(1)
     path = out / "previews" / "page-0001.jpg"
     side.preview_ready((side.state.draft, 1, path, "", (1200, 1800, 300)))
-    assert (side.preview_size, side.preview_dpi) == ((1200, 1800), 300)
+    assert (side.preview_size, side.preview_dpi) == (None, None)
+
+
+def test_an_error_can_be_reported_through_the_side(out):
+    side, page = opened(out)
+    side.report_error("Nope.")
+    assert page.controller._banner.kind == "error" and page.controller._banner.text == "Nope."
 
 
 def test_the_cropped_output_names_are_accepted_for_their_own_page_only(out):

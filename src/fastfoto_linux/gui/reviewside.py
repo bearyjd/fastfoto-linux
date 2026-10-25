@@ -17,6 +17,7 @@ from fastfoto_linux.gui.review import ReviewState
 from fastfoto_linux.gui.reviewdelete import SavedOriginals, capture_originals, delete_originals
 from fastfoto_linux.gui.reviewjobs import (
     PreviewCompletion,
+    PreviewMeta,
     PreviewRequest,
     PreviewResult,
 )
@@ -118,6 +119,11 @@ class ReviewSide:
                 self._preview_requested = replace(request, draft=self.state.draft)
         self._controller._changed()
         return True
+
+    def report_error(self, text: str) -> None:
+        """Show ``text`` as the error banner."""
+        self._controller._banner = Banner("error", text)
+        self._controller._changed()
 
     def flush(self) -> bool:
         if not self.dirty or self.state is None:
@@ -323,9 +329,8 @@ class ReviewSide:
         if request.draft is not source or request.number != number:
             return None
         size = dpi = None
-        if measured:
-            width, height, dpi = measured[0]
-            size = (width, height)
+        if measured and isinstance(measured[0], PreviewMeta):
+            size, dpi = (measured[0].width, measured[0].height), measured[0].dpi
         return PreviewCompletion(request, path, error, size=size, dpi=dpi)
 
     @staticmethod

@@ -69,15 +69,21 @@ def is_output_preview_name(number: int, name: object) -> bool:
 def checked_preview_path(folder: Path, name: str) -> Path:
     """Where to write ``name`` in the previews ``folder``: never through a link, never outside.
 
+    ``ensure_private_dir`` (``O_NOFOLLOW``) must have run on ``folder`` first: it refuses a
+    ``folder`` that is itself a link. The containment is judged on resolved paths, but the path
+    returned is ``folder / name`` as the caller spelled it, so callers that compare it with their
+    own ``folder`` still match when an ancestor of ``folder`` is a link (``/home -> /var/home``).
     A link planted at the name is removed (not followed), so the write replaces the link itself.
     """
     root = folder.resolve(strict=True)
-    path = root / name
-    if path.is_symlink():
-        path.unlink()
-    if path.parent != root or not path.resolve().is_relative_to(root):
+    if Path(name).name != name or name in {"", ".", ".."}:
         raise ValueError("the preview would be written outside its folder")
-    return path
+    if (root / name).is_symlink():
+        (root / name).unlink()
+    resolved = (root / name).resolve()
+    if resolved.parent != root or not resolved.is_relative_to(root):
+        raise ValueError("the preview would be written outside its folder")
+    return folder / name
 
 
 def cropped_previews(folder: Path, number: int) -> list[Path]:

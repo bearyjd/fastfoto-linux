@@ -12,6 +12,7 @@ from PySide6.QtQml import QQmlProperty, qmlContext
 from PySide6.QtTest import QTest
 
 from fastfoto_linux.documents.draft import PageEdit
+from fastfoto_linux.gui.reviewjobs import PreviewMeta
 from tests.gui.qt import test_qml_documents, test_qml_review_window
 from tests.gui.qt.qt_helpers import child, click, invoke, settle, wait_until
 
@@ -38,7 +39,7 @@ def source_preview(review_window):
     preview = source.raw_dir / "previews" / "page-0001.jpg"
     preview.parent.mkdir(exist_ok=True)
     Image.new("RGB", (40, 80), "white").save(preview)
-    bridge.controller.review.preview_ready((source, 1, preview, "", (100, 200, 300)))
+    bridge.controller.review.preview_ready((source, 1, preview, "", PreviewMeta(100, 200, 300)))
     settle()
     wait_until(lambda: child(window, "reviewPreviewImage").property("paintedWidth") > 0, "image")
     return window, bridge, worker, source, warnings
@@ -186,3 +187,81 @@ def test_a_bad_crop_from_outside_shows_a_plain_message(source_preview):
     assert crop_of(bridge) is None
     assert bridge.bannerKind == "error"
     assert not any(ch.isdigit() for ch in bridge.bannerText)
+
+
+def test_the_starting_rectangle_of_a_turned_cropped_page_is_the_stored_crop(source_preview):
+    window, bridge, _worker, _source, _warnings = source_preview
+    bridge.review.setCrop(1, 2000, 1000, 8000, 6000)
+    bridge.review.rotate(1, 1)
+    child(window, "reviewPreviewDialog").setProperty("turns", 1)
+    settle()
+    assert child(window, "reviewPreviewFrame").property("rotation") == 90
+    first = crop_of(bridge)
+    enter_crop_mode(window)
+    QTest.keyClick(window, Qt.Key.Key_Return)
+    settle()
+    crop = crop_of(bridge)
+    assert crop is not None and not child(window, "reviewCropTooSmall").property("visible")
+    for got, want in zip(
+        (crop.left, crop.top, crop.right, crop.bottom),
+        (first.left, first.top, first.right, first.bottom),
+        strict=True,
+    ):
+        assert abs(got - want) < 150
+
+
+def test_resizing_the_window_in_crop_mode_keeps_the_same_page_area(source_preview):
+    window, bridge, _worker, _source, _warnings = source_preview
+    enter_crop_mode(window)
+    window.resize(window.width() + 260, window.height() - 120)
+    settle()
+    wait_until(lambda: child(window, "reviewPreviewImage").property("paintedWidth") > 0, "image")
+    QTest.keyClick(window, Qt.Key.Key_Return)
+    settle()
+    crop = crop_of(bridge)
+    assert crop is not None
+    for got, want in zip(
+        (crop.left, crop.top, crop.right, crop.bottom), (1000, 1000, 9000, 9000), strict=True
+    ):
+        assert abs(got - want) < 250
+
+
+def test_escape_cancels_the_crop_from_a_button_and_leaves_the_dialog_open(source_preview):
+    window, bridge, _worker, _source, _warnings = source_preview
+    enter_crop_mode(window)
+    invoke(child(window, "reviewCropButton"), "forceActiveFocus")
+    QTest.keyClick(window, Qt.Key.Key_Escape)
+    settle()
+    assert not child(window, "reviewCropHint").property("visible")
+    assert child(window, "reviewPreviewDialog").property("visible")
+    assert crop_of(bridge) is None
+
+
+def accessible(item, name):
+    return QQmlProperty(item, f"Accessible.{name}", qmlContext(item)).read()
+
+
+def test_the_overlay_is_hidden_from_assistive_tools_until_the_mode_is_on(source_preview):
+    window, _bridge, _worker, _source, _warnings = source_preview
+    overlay, button = child(window, "reviewCropOverlay"), child(window, "reviewCropButton")
+    assert accessible(overlay, "ignored") is True and not overlay.property("enabled")
+    assert accessible(button, "checked") is False
+    enter_crop_mode(window)
+    assert accessible(overlay, "ignored") is False and overlay.property("enabled")
+    assert accessible(button, "checked") is True
+
+
+def test_a_drag_past_the_page_edge_stays_inside_the_page(source_preview):
+    window, _bridge, _worker, _source, _warnings = source_preview
+    enter_crop_mode(window)
+    image = child(window, "reviewPreviewImage")
+    QTest.mousePress(window, Qt.MouseButton.LeftButton, pos=point(window, 0.5, 0.5))
+    QTest.mouseMove(window, point(window, 1.5, 1.5), delay=20)
+    settle()
+    rect = child(window, "reviewCropRect")
+    right = (image.width() + image.property("paintedWidth")) / 2
+    bottom = (image.height() + image.property("paintedHeight")) / 2
+    assert rect.x() + rect.width() <= right + 0.5
+    assert rect.y() + rect.height() <= bottom + 0.5
+    QTest.mouseRelease(window, Qt.MouseButton.LeftButton, pos=point(window, 1.5, 1.5))
+    settle()

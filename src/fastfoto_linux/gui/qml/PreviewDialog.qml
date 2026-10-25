@@ -24,9 +24,14 @@ QQC2.Dialog {
     }
     function beginCrop() {
         cropRejected = false;
+        cropMode = true;  // first: the page is then shown unturned, as the crop is drawn on it
         cropOverlay.start();
-        cropMode = true;
         cropOverlay.forceActiveFocus();
+    }
+    Shortcut {
+        sequence: "Escape"
+        enabled: dialog.cropMode && dialog.visible
+        onActivated: dialog.endCrop()
     }
     onOutputViewChanged: endCrop()
     onPageNumberChanged: endCrop()
@@ -81,10 +86,15 @@ QQC2.Dialog {
             QQC2.Button {
                 objectName: "reviewCropButton"
                 text: qsTr("Crop")
-                highlighted: dialog.cropMode
+                checkable: true
+                checked: dialog.cropMode
                 enabled: bridge.review.previewCropMode ?? false
                 Accessible.name: qsTr("Crop")
-                onClicked: dialog.cropMode ? dialog.endCrop() : dialog.beginCrop()
+                Accessible.checked: dialog.cropMode
+                onClicked: {
+                    dialog.cropMode ? dialog.endCrop() : dialog.beginCrop();
+                    checked = Qt.binding(() => dialog.cropMode);
+                }
             }
             QQC2.Button {
                 objectName: "reviewCropResetButton"
@@ -174,63 +184,66 @@ QQC2.Dialog {
                     objectName: "reviewCropOverlay"
                     anchors.fill: parent
                     visible: !dialog.outputView
+                    enabled: dialog.cropMode
                     activeFocusOnTab: dialog.cropMode
                     Accessible.role: Accessible.Graphic
                     Accessible.name: qsTr("Crop area")
+                    Accessible.ignored: !dialog.cropMode
                     Accessible.description: qsTr("Drag a rectangle, or use the arrow keys to move it and Shift with the arrow keys to resize it. Enter applies the crop and Escape cancels.")
-                    // The painted page inside this item, and the rectangle being chosen, as
-                    // [left, top, right, bottom] in this item's pixels (null when none).
+                    // The rectangle is kept as fractions of the painted page, [left, top, right,
+                    // bottom] in 0..1 (null when none), so a resize or a turned layout cannot skew
+                    // it; it becomes pixels of this item only to be drawn or sent.
                     readonly property real padX: (width - fittedImage.paintedWidth) / 2
                     readonly property real padY: (height - fittedImage.paintedHeight) / 2
                     property var pending: null
                     readonly property var shown: pending !== null ? pending : committed()
                     readonly property real keyStep: 0.01
 
+                    function clamp01(v) { return Math.max(0, Math.min(1, v)); }
                     function committed() {
                         const r = dialog.cropRect;
                         const sw = bridge.review.previewSourceWidth;
                         const sh = bridge.review.previewSourceHeight;
                         if (r.length !== 4 || sw <= 0 || sh <= 0) return null;
-                        return [padX + r[0] * fittedImage.paintedWidth / sw, padY + r[1] * fittedImage.paintedHeight / sh,
-                                padX + r[2] * fittedImage.paintedWidth / sw, padY + r[3] * fittedImage.paintedHeight / sh];
+                        return [r[0] / sw, r[1] / sh, r[2] / sw, r[3] / sh];
                     }
                     function start() {
-                        const w = fittedImage.paintedWidth, h = fittedImage.paintedHeight;
-                        pending = committed() ?? [padX + 0.1 * w, padY + 0.1 * h, padX + 0.9 * w, padY + 0.9 * h];
+                        pending = committed() ?? [0.1, 0.1, 0.9, 0.9];
                     }
                     function apply() {
                         if (pending === null) return;
-                        const ok = bridge.review.cropFromDrag(dialog.pageNumber, pending[0], pending[1], pending[2], pending[3],
-                                                              fittedImage.paintedWidth, fittedImage.paintedHeight, width, height);
+                        const w = fittedImage.paintedWidth, h = fittedImage.paintedHeight;
+                        const ok = bridge.review.cropFromDrag(dialog.pageNumber,
+                            padX + pending[0] * w, padY + pending[1] * h, padX + pending[2] * w, padY + pending[3] * h,
+                            w, h, width, height);
                         if (ok) dialog.endCrop();
                         else dialog.cropRejected = true;
                     }
                     function nudge(dx, dy, resize) {
                         if (pending === null) return;
                         const p = pending.slice();
-                        const right = padX + fittedImage.paintedWidth, bottom = padY + fittedImage.paintedHeight;
                         if (resize) {
-                            p[2] = Math.max(p[0] + 1, Math.min(right, p[2] + dx));
-                            p[3] = Math.max(p[1] + 1, Math.min(bottom, p[3] + dy));
+                            p[2] = Math.max(p[0], Math.min(1, p[2] + dx));
+                            p[3] = Math.max(p[1], Math.min(1, p[3] + dy));
                         } else {
-                            const mx = Math.max(padX - p[0], Math.min(right - p[2], dx));
-                            const my = Math.max(padY - p[1], Math.min(bottom - p[3], dy));
+                            const mx = Math.max(-p[0], Math.min(1 - p[2], dx));
+                            const my = Math.max(-p[1], Math.min(1 - p[3], dy));
                             p[0] += mx; p[2] += mx; p[1] += my; p[3] += my;
                         }
                         pending = p;
                     }
+                    function fractionX(x) { return fittedImage.paintedWidth > 0 ? clamp01((x - padX) / fittedImage.paintedWidth) : 0; }
+                    function fractionY(y) { return fittedImage.paintedHeight > 0 ? clamp01((y - padY) / fittedImage.paintedHeight) : 0; }
 
                     Keys.onPressed: event => {
                         if (!dialog.cropMode) return;
-                        const dx = fittedImage.paintedWidth * keyStep, dy = fittedImage.paintedHeight * keyStep;
                         const resize = (event.modifiers & Qt.ShiftModifier) !== 0;
                         switch (event.key) {
-                        case Qt.Key_Left: nudge(-dx, 0, resize); break;
-                        case Qt.Key_Right: nudge(dx, 0, resize); break;
-                        case Qt.Key_Up: nudge(0, -dy, resize); break;
-                        case Qt.Key_Down: nudge(0, dy, resize); break;
+                        case Qt.Key_Left: nudge(-keyStep, 0, resize); break;
+                        case Qt.Key_Right: nudge(keyStep, 0, resize); break;
+                        case Qt.Key_Up: nudge(0, -keyStep, resize); break;
+                        case Qt.Key_Down: nudge(0, keyStep, resize); break;
                         case Qt.Key_Return: case Qt.Key_Enter: apply(); break;
-                        case Qt.Key_Escape: dialog.endCrop(); break;
                         default: return;
                         }
                         event.accepted = true;
@@ -239,10 +252,10 @@ QQC2.Dialog {
                     Rectangle {
                         objectName: "reviewCropRect"
                         visible: cropOverlay.shown !== null
-                        x: cropOverlay.shown ? cropOverlay.shown[0] : 0
-                        y: cropOverlay.shown ? cropOverlay.shown[1] : 0
-                        width: cropOverlay.shown ? cropOverlay.shown[2] - cropOverlay.shown[0] : 0
-                        height: cropOverlay.shown ? cropOverlay.shown[3] - cropOverlay.shown[1] : 0
+                        x: cropOverlay.shown ? cropOverlay.padX + cropOverlay.shown[0] * fittedImage.paintedWidth : 0
+                        y: cropOverlay.shown ? cropOverlay.padY + cropOverlay.shown[1] * fittedImage.paintedHeight : 0
+                        width: cropOverlay.shown ? (cropOverlay.shown[2] - cropOverlay.shown[0]) * fittedImage.paintedWidth : 0
+                        height: cropOverlay.shown ? (cropOverlay.shown[3] - cropOverlay.shown[1]) * fittedImage.paintedHeight : 0
                         color: "transparent"
                         border.width: 2
                         border.color: dialog.cropMode ? Kirigami.Theme.highlightColor : "#ffffff"
@@ -254,12 +267,17 @@ QQC2.Dialog {
                         cursorShape: Qt.CrossCursor
                         onPressed: mouse => {
                             cropOverlay.forceActiveFocus();
-                            origin = Qt.point(mouse.x, mouse.y);
+                            origin = Qt.point(cropOverlay.fractionX(mouse.x), cropOverlay.fractionY(mouse.y));
                         }
-                        onPositionChanged: mouse => cropOverlay.pending = [origin.x, origin.y, mouse.x, mouse.y]
+                        onPositionChanged: mouse => {
+                            const x = cropOverlay.fractionX(mouse.x), y = cropOverlay.fractionY(mouse.y);
+                            cropOverlay.pending = [Math.min(origin.x, x), Math.min(origin.y, y), Math.max(origin.x, x), Math.max(origin.y, y)];
+                        }
                         onReleased: mouse => {
-                            if (Math.hypot(mouse.x - origin.x, mouse.y - origin.y) < 3) return;
-                            cropOverlay.pending = [origin.x, origin.y, mouse.x, mouse.y];
+                            const x = cropOverlay.fractionX(mouse.x), y = cropOverlay.fractionY(mouse.y);
+                            const w = fittedImage.paintedWidth, h = fittedImage.paintedHeight;
+                            if (Math.hypot((x - origin.x) * w, (y - origin.y) * h) < 3) return;
+                            cropOverlay.pending = [Math.min(origin.x, x), Math.min(origin.y, y), Math.max(origin.x, x), Math.max(origin.y, y)];
                             cropOverlay.apply();
                         }
                     }

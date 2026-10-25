@@ -75,6 +75,15 @@ def _valid_crop(crop: object) -> bool:
 
 
 @dataclass(frozen=True)
+class PreviewMeta:
+    """What a source preview measured: the trimmed page's width and height and its dpi."""
+
+    width: int
+    height: int
+    dpi: int
+
+
+@dataclass(frozen=True)
 class PreviewCompletion:
     request: PreviewRequest
     path: Path | None
@@ -84,7 +93,7 @@ class PreviewCompletion:
     dpi: int | None = None  # the page's resolution, source view
 
 
-# The legacy tuple (draft, number, path, error) may end with (width, height, dpi).
+# The legacy tuple (draft, number, path, error) may end with a PreviewMeta.
 PreviewResult = tuple[DocumentDraft, int, Path | None, str] | PreviewCompletion
 __all__ = ["PREVIEW_DIR", "output_preview_names"]  # moved to reviewnames, still imported here
 
@@ -266,7 +275,7 @@ class ReviewJobs:
         )
         try:
             path = self._preview(draft, number, cancel, **metadata)
-            answer = (draft, number, path, "", *sizes[-1:])
+            answer = (draft, number, path, "", *(PreviewMeta(*size) for size in sizes[-1:]))
         except (DocumentError, OSError, ValueError) as error:
             answer = (draft, number, None, str(error))
         return functools.partial(self._sink.on_review_preview, answer)

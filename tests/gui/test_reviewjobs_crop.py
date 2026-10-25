@@ -14,7 +14,7 @@ from fastfoto_linux.documents.loader import load_page
 from fastfoto_linux.documents.page_crop import PageCrop, edited_page
 from fastfoto_linux.gui import reviewjobs
 from fastfoto_linux.gui.reviewdelete import capture_originals, delete_originals
-from fastfoto_linux.gui.reviewjobs import PREVIEW_DIR, make_preview
+from fastfoto_linux.gui.reviewjobs import PREVIEW_DIR, PreviewRequest, make_preview
 from fastfoto_linux.gui.reviewnames import (
     MAX_CROP_PREVIEWS,
     checked_preview_path,
@@ -22,6 +22,7 @@ from fastfoto_linux.gui.reviewnames import (
     is_output_preview_name,
     output_preview_names,
 )
+from fastfoto_linux.gui.reviewside import ReviewSide
 from tests.gui.crop_helpers import DPI, HEIGHT, WIDTH, crop_draft
 
 RIGHT_HALF = PageCrop(5000, 0, 10_000, 10_000)
@@ -208,3 +209,17 @@ def test_a_name_that_leaves_the_previews_folder_is_refused_before_any_write(out,
     folder.mkdir()
     with pytest.raises(ValueError):
         checked_preview_path(folder, name)
+
+
+def test_a_previews_folder_below_a_linked_ancestor_still_gets_its_previews(out):
+    real = out / "real"
+    real.mkdir()
+    (out / "link").symlink_to(real)
+    folder = out / "link" / "raw"
+    folder.mkdir()
+    draft = edited(crop_draft(folder), RIGHT_HALF)
+    path = make_preview(draft, 1, threading.Event(), policy="grey", view="output")
+    assert path.parent == draft.raw_dir / PREVIEW_DIR
+    request = PreviewRequest(draft, 1, "grey", "output")
+    assert ReviewSide._preview_path_valid(request, path)
+    assert path.resolve().is_relative_to(real)

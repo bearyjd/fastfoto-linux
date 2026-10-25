@@ -5,7 +5,7 @@ from pathlib import Path
 
 from fastfoto_linux.documents import draft_edit
 from fastfoto_linux.documents.auto_colour import ColourReason, page_policy, resolve_colour
-from fastfoto_linux.documents.cleanup import page_cleanup
+from fastfoto_linux.documents.cleanup import CleanupStatus, page_cleanup
 from fastfoto_linux.documents.draft import (
     BoxN,
     DocumentDraft,
@@ -111,6 +111,24 @@ REASON_LABELS = {
     ColourReason.BILEVEL: "clear dark marks on light paper",
 }
 
+CLEANUP_SKIP_LABELS = {
+    CleanupStatus.DARK: "paper too dark",
+    CleanupStatus.STOCK: "coloured paper preserved",
+    CleanupStatus.NO_PAPER: "no paper detected",
+    CleanupStatus.TOO_LARGE: "page exceeds cleanup size limit",
+    CleanupStatus.BW: "black and white output",
+    CleanupStatus.OFF: "cleanup off",
+}
+
+
+def preview_cleanup_text(level: CleanupPolicy, status: CleanupStatus | None) -> str:
+    """Describe worker results; legacy previews without metadata leave the result unknown."""
+    if status is CleanupStatus.APPLIED:
+        return f"paper cleanup {level.value.capitalize()} applied"
+    if status is not None:
+        return f"paper cleanup skipped: {CLEANUP_SKIP_LABELS[status]}"
+    return f"paper cleanup {level.value.capitalize()} requested (result unavailable)"
+
 
 def colour_values(
     draft: DocumentDraft, page: PageAnalysis, document_policy: ColourPolicy | ColourMode
@@ -140,7 +158,7 @@ def cleanup_values(draft: DocumentDraft, page: PageAnalysis, resolved_mode: str)
     if level is CleanupPolicy.OFF:
         return override, "Paper cleanup: off"
     source = "this page" if edit.cleanup is not None else "document setting"
-    return override, f"Paper cleanup: {level.value.capitalize()} ({source})"
+    return override, f"Paper cleanup: {level.value.capitalize()} requested ({source})"
 
 
 def review_items(

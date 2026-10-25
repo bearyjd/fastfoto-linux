@@ -15,6 +15,7 @@ from PySide6.QtTest import QTest
 
 from fastfoto_linux.documents import CleanupPolicy, ColourMode, ColourPolicy
 from fastfoto_linux.documents.auto_colour import ColourDecision, ColourReason
+from fastfoto_linux.documents.cleanup import CleanupStatus
 from fastfoto_linux.documents.draft import PageEdit
 from fastfoto_linux.gui.review import ReviewState
 from fastfoto_linux.gui.reviewjobs import PreviewCompletion
@@ -76,16 +77,46 @@ def open_output_preview(window, bridge, worker):
     return request
 
 
-def deliver(bridge, source, request, name, size=(40, 60)):
+def deliver(bridge, source, request, name, size=(40, 60), *, status=None):  # noqa: PLR0913
     path = source.raw_dir / "previews" / name
     path.parent.mkdir(exist_ok=True)
     Image.new("L", size, 128).save(path)
-    bridge.controller.review.preview_ready(PreviewCompletion(request, path))
+    bridge.controller.review.preview_ready(PreviewCompletion(request, path, cleanup_status=status))
     settle()
     return path
 
 
 # --- the Documents form -------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "status,expected",
+    [
+        (CleanupStatus.APPLIED, "paper cleanup Strong applied"),
+        (CleanupStatus.DARK, "paper cleanup skipped: paper too dark"),
+        (CleanupStatus.STOCK, "paper cleanup skipped: coloured paper preserved"),
+        (CleanupStatus.NO_PAPER, "paper cleanup skipped: no paper detected"),
+        (CleanupStatus.TOO_LARGE, "paper cleanup skipped: page exceeds cleanup size limit"),
+        (None, "paper cleanup Strong requested (result unavailable)"),
+    ],
+)
+def test_preview_words_describe_actual_cleanup_without_recomputing(
+    cleanup_window, monkeypatch, status, expected
+):
+    window, bridge, worker, source, _warnings = cleanup_window
+    bridge.review.setDocumentCleanup("strong")
+    request = open_output_preview(window, bridge, worker)
+    deliver(bridge, source, request, "page-0001-output-grey-strong-r0.jpg", status=status)
+
+    def forbidden(*_args, **_kwargs):
+        pytest.fail("UI properties must not read raw pages or run cleanup")
+
+    monkeypatch.setattr("fastfoto_linux.documents.cleanup.clean_pixels", forbidden)
+    monkeypatch.setattr("fastfoto_linux.documents.encode.clean_pixels", forbidden)
+    monkeypatch.setattr("fastfoto_linux.gui.reviewjobs.load_page", forbidden)
+    assert expected in bridge.review.previewLabel
+    bridge.review.refresh()
+    assert expected in child(window, "reviewPreviewKindLabel").property("text")
 
 
 def test_the_form_offers_off_light_strong_and_sets_the_field(make_doc_bridge, open_window):
@@ -128,12 +159,12 @@ def test_the_document_level_page_override_and_clearing_it(cleanup_window):
     choose(child(window, "reviewDocumentCleanupBox"), 1)
     assert draft_of(bridge).cleanup is LIGHT
     explanation = child(window, "reviewCleanupExplanation")
-    assert explanation.property("text") == "Paper cleanup: Light (document setting)"
+    assert explanation.property("text") == "Paper cleanup: Light requested (document setting)"
     page_box = child(window, "reviewCleanupBox")
     choose(page_box, 3)  # Strong for this page
     assert draft_of(bridge).edits[1].cleanup is STRONG
     assert draft_of(bridge).cleanup is LIGHT
-    assert explanation.property("text") == "Paper cleanup: Strong (this page)"
+    assert explanation.property("text") == "Paper cleanup: Strong requested (this page)"
     assert bridge.review.items.get(0)["cleanupOverride"] == "strong"
     assert bridge.review.items.get(1)["cleanupOverride"] == ""
     choose(page_box, 1)  # Off for this page beats the document level
@@ -141,7 +172,7 @@ def test_the_document_level_page_override_and_clearing_it(cleanup_window):
     assert explanation.property("text") == "Paper cleanup: off"
     choose(page_box, 0)  # the document setting again: the override is gone
     assert draft_of(bridge).edits.get(1, PageEdit()).cleanup is None
-    assert explanation.property("text") == "Paper cleanup: Light (document setting)"
+    assert explanation.property("text") == "Paper cleanup: Light requested (document setting)"
     choose(child(window, "reviewDocumentCleanupBox"), 0)
     assert draft_of(bridge).cleanup is OFF
     assert page_box.property("currentValue") == ""

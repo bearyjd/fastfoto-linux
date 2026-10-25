@@ -3,6 +3,7 @@
 import io
 import logging
 import threading
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import cv2
@@ -10,7 +11,7 @@ import numpy as np
 from PIL import Image
 
 from fastfoto_linux.documents.bilevel import binarise
-from fastfoto_linux.documents.cleanup import clean_pixels
+from fastfoto_linux.documents.cleanup import CleanupStatus, clean_pixels
 from fastfoto_linux.documents.loader import WHITE, LoadedPage
 from fastfoto_linux.documents.modes import CleanupPolicy, ColourMode, output_mode
 
@@ -85,6 +86,7 @@ def render_page(
     cleanup: CleanupPolicy = CleanupPolicy.OFF,
     *,
     cancel: threading.Event | None = None,
+    on_cleanup: Callable[[CleanupStatus], None] | None = None,
 ) -> np.ndarray:
     """Render full-resolution output pixels before encoding or preview downsampling.
 
@@ -92,11 +94,17 @@ def render_page(
     is never touched. A page cleanup leaves alone is the plain render, byte for byte.
     """
     mode = output_mode(page.kind, actual_mode)
+    status = CleanupStatus.BW if mode is ColourMode.BW else CleanupStatus.OFF
     if mode is not ColourMode.BW and cleanup is not CleanupPolicy.OFF:
         cleaned = clean_pixels(page.pixels, page.dpi, mode, cleanup, cancel=cancel)
         logger.debug("cleanup %s", cleaned.status)
+        status = cleaned.status
+        if on_cleanup is not None:
+            on_cleanup(status)
         if cleaned.pixels is not None:
             return cleaned.pixels
+    elif on_cleanup is not None:
+        on_cleanup(status)
     if mode is ColourMode.COLOUR:
         return page.pixels.copy()
     grey = _grey(page)

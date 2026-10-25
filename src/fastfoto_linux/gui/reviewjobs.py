@@ -14,7 +14,7 @@ from PIL import Image
 
 from fastfoto_linux.documents import DocumentCancelledError, DocumentError, DocumentSettings
 from fastfoto_linux.documents.auto_colour import page_colour
-from fastfoto_linux.documents.cleanup import page_cleanup
+from fastfoto_linux.documents.cleanup import CleanupStatus, page_cleanup
 from fastfoto_linux.documents.draft import DocumentDraft, PageEdit
 from fastfoto_linux.documents.draft_store import THUMBS_DIR, open_draft
 from fastfoto_linux.documents.encode import render_page
@@ -71,6 +71,7 @@ class PreviewCompletion:
     request: PreviewRequest
     path: Path | None
     error: str = ""
+    cleanup_status: CleanupStatus | None = None
 
 
 PreviewResult = tuple[DocumentDraft, int, Path | None, str] | PreviewCompletion
@@ -100,7 +101,11 @@ def _output_suffix(mode: ColourMode, cleanup: CleanupPolicy, turns: int) -> str:
     return f"-output-{mode.value}-{cleanup.value}-r{turns}"
 
 
-def _preview_image(request: PreviewRequest, cancel: threading.Event) -> tuple[np.ndarray, str]:
+def _preview_image(
+    request: PreviewRequest,
+    cancel: threading.Event,
+    on_cleanup: Callable[[CleanupStatus], None] | None = None,
+) -> tuple[np.ndarray, str]:
     """The pixels to show and the file-name suffix that tells which variant they are."""
     draft, number = request.draft, request.number
     page = draft.pages[number - 1]
@@ -116,7 +121,9 @@ def _preview_image(request: PreviewRequest, cancel: threading.Event) -> tuple[np
     if turns:
         loaded = replace(loaded, pixels=np.rot90(loaded.pixels, -turns).copy())
     cleanup = page_cleanup(draft, page) if request.cleaned else CleanupPolicy.OFF
-    if cleanup is CleanupPolicy.OFF:
+    if on_cleanup is not None:
+        pixels = render_page(loaded, mode, cleanup, cancel=cancel, on_cleanup=on_cleanup)
+    elif cleanup is CleanupPolicy.OFF:
         # Same pixels as render_page(loaded, mode, OFF, cancel=cancel); kept as the short call
         # because tests that monkeypatch render_page expect it without the cleanup arguments.
         pixels = render_page(loaded, mode)
@@ -155,6 +162,7 @@ def make_preview(  # noqa: PLR0913 - the request's own fields, passed through
     view: str = "source",
     cleaned: bool = True,
     crop: tuple[int, int] | None = None,
+    on_cleanup: Callable[[CleanupStatus], None] | None = None,
 ) -> Path:
     """Trim raw pixels, optionally render full output, then write a bounded private preview."""
     request = PreviewRequest(draft, number, policy, view, cleaned, crop)
@@ -162,7 +170,7 @@ def make_preview(  # noqa: PLR0913 - the request's own fields, passed through
         raise ValueError("the preview needs a page in its original folder")
     if cancel.is_set():
         raise DocumentCancelledError("preview cancelled")
-    pixels, suffix = _preview_image(request, cancel)
+    pixels, suffix = _preview_image(request, cancel, on_cleanup)
     if cancel.is_set():
         raise DocumentCancelledError("preview cancelled")
     data, extension = _encode_preview(pixels, crop if view == "output" else None)
@@ -266,6 +274,9 @@ class ReviewJobs:
     def _snapshot_previewed(
         self, request: PreviewRequest, cancel: threading.Event
     ) -> Callable[[], None]:
+        statuses: list[CleanupStatus] = []
+        # Custom preview providers keep their Path-only contract; absent metadata stays unknown.
+        metadata = {"on_cleanup": statuses.append} if self._preview is make_preview else {}
         try:
             path = self._preview(
                 request.draft,
@@ -275,8 +286,11 @@ class ReviewJobs:
                 view=request.view,
                 cleaned=request.cleaned,
                 crop=request.crop,
+                **metadata,
             )
-            answer = PreviewCompletion(request, path)
+            answer = PreviewCompletion(
+                request, path, cleanup_status=statuses[-1] if statuses else None
+            )
         except (DocumentError, OSError, ValueError) as error:
             answer = PreviewCompletion(request, None, str(error))
         return functools.partial(self._sink.on_review_preview, answer)

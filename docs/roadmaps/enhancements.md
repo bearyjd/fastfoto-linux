@@ -1,17 +1,37 @@
 # Photo and document enhancement roadmap
 
-Date: 2026-10-18. Baseline: `39910afd9d6094935c8db246ed5f438e17f8d98d`.
-Status: research/roadmap independently reviewed and approved; implementation pending user decision. This artifact does not authorize a feature rollout, model download, new dependency, or use of private scans.
+Research date: 2026-10-18. Historical baseline: `39910afd9d6094935c8db246ed5f438e17f8d98d`.
+Progress updated: 2026-10-25, against shipped commit `88f7cf7`. Several bounded portions of E00–E06 have shipped; the broader benchmark, preservation and enhancement work remains open. The original research and proposed package scopes below remain historical planning context, not a claim that every package or acceptance gate is complete. This artifact does not authorize a feature rollout, model download, new dependency, or use of private scans.
 
 ## Goal and decision
 
 Improve everyday scanned photographs and documents with predictable local tools, strong review controls and measurable quality. Build on the existing Python/OpenCV/Pillow pipeline and Kirigami review UI. Start with safer red-eye correction and per-page Auto color/grayscale/B&W, then add basic adjustments, cleanup and quality feedback. Prefer CPU/offline operation for the normal workflow.
 
-The initial ordering balances photos and documents. A preference question was offered; this ordering can change without repeating the research.
+The original ordering balanced photos and documents. Implementation has since delivered both photo editing and document Auto/cleanup; remaining work can be prioritized without repeating the research.
 
-## Evidence and current baseline
+## Shipped progress and remaining scope (2026-10-25)
 
-See the [source inventory](../research/enhancement-current-capabilities-2026-10-18.md), [photo research](../research/photo-enhancements-2026-10-18.md), [document research](../research/document-enhancements-2026-10-18.md), and [preservation/workflow research](../research/enhancement-preservation-workflow-2026-10-18.md). File references below refer to the baseline checkout. Abbreviated module paths in tables are relative to `src/fastfoto_linux/`; paths beginning with `tests/` or `pyproject.toml` are repository-relative.
+“Shipped” here means merged in the repository. It does not establish real-scan quality, attended scanner behavior or completion of the original package scope. Evidence includes merged changes #41–#58, the [tone design](../design/photo-tone.md), [geometry design](../design/photo-geometry.md), [document design](../design/documents.md#paper-cleanup) and [synthetic photo-fixture provenance](../../tests/photo_edits/PROVENANCE.md).
+
+| Package | Shipped portion | Remaining work / evidence limit |
+|---|---|---|
+| E00 — quality baseline | Synthetic invariant, recipe, pixel-rendering and compatibility coverage for the shipped features; bounded geometry timing/memory measurements are recorded in the geometry design. | No completed rights-cleared, held-out real-image benchmark or broad CPU/memory report. Synthetic tests do not measure red-eye accuracy, photographic preference or OCR improvement. |
+| E01 — edit/source contract | Hash-checked retained photo source, versioned JSON recipes, undo/reset, bounded previews, saved derivative copies and reopening without redetection (#41 and later extensions). Metadata handling includes EXIF/XMP dimensions, DPI and available ICC. | The source is the existing cropped, upright JPEG, not an untouched acquisition master. Default acquisition-master retention/storage policy and the full native/Flatpak metadata and preservation matrix remain open. |
+| E02 — red-eye review | Per-eye accept/reject and strength, manual click/ellipse correction, close-up comparison, undo/reset and saved replay (#41, #44). | Held-out positive/negative evaluation and evidence for changing experimental defaults remain outstanding; UI controls are not an accuracy benchmark. |
+| E03 — Auto document engine | Conservative per-page Auto classification, selected mode/reason, richer-mode fallback and retained source-kind semantics (#42, #44). | Real-scan calibration remains needed: the current classifier can retain colour too conservatively. Meaningful-mark preservation and OCR/content quality need corpus evaluation. |
+| E04 — Auto review controls | GUI and CLI Auto requests, per-page mode overrides, persisted review decisions, output previews and export/OCR integration (#42, #44). | Broad real-scan and attended workflow validation remains open; these controls do not complete the E00 quality gate. |
+| E05 — basic photo editor | Brightness, contrast, saturation and adjustment strength (#43); free crop and quarter turns (#45–#47); straighten slider up to ±15° with version-4 recipes (#53–#55). | White balance/tint, restoration-strength controls, presets and crop aspect presets are not implemented. Adjustment strength controls tone only. Straighten has no line tool; its inscribed frame has a documented tiny-image area limitation, and each keyboard angle step is a separate undo entry. |
+| E06 — document cleanup | Optional Off/Light/Strong paper whitening, off by default, with document/page choices, persisted recipes, original/output preview toggle and actual-pixel preview crop (#56–#58). Large work grids are skipped above 12 million pixels. | Otsu/Sauvola/Wolf alternatives, despeckle, software deskew, an OCR-only working image and a cleanup CLI flag remain unimplemented. Cleanup quality evidence is synthetic; it does not prove better OCR. |
+
+The shipped photo render order is accepted red-eye corrections → straighten → crop → quarter turns → tone, always replayed from the retained source. This implements a bounded editor; it does not replace the original research hypothesis about future denoise, restoration and sharpening stages.
+
+**Follow-up implemented, not released:** document-review rows now label the requested cleanup level explicitly. The built-in output preview reports whether cleanup was applied or skipped, with a reason for dark paper, coloured paper, no paper estimate or the size limit. These changes are outside the shipped baseline `88f7cf7` and have passed independent code and roadmap review; they are not released.
+
+For the next feature, choose a bounded scope: real-scan Auto calibration and benchmark coverage; the acquisition-master retention decision; missing tone/geometry controls; or one of the unimplemented document cleanup tools. Per-page manual crop/rotate in document review also remains open. E07–E11 remain backlog proposals, and E09's broader export presets/PDF/A validation remain open despite the metadata handling already delivered. No delivery dates are assigned.
+
+## Historical evidence and baseline (2026-10-18)
+
+See the [source inventory](../research/enhancement-current-capabilities-2026-10-18.md), [photo research](../research/photo-enhancements-2026-10-18.md), [document research](../research/document-enhancements-2026-10-18.md), and [preservation/workflow research](../research/enhancement-preservation-workflow-2026-10-18.md). The table describes the historical baseline, not current limitations. File references below refer to the baseline checkout. Abbreviated module paths in tables are relative to `src/fastfoto_linux/`; paths beginning with `tests/` or `pyproject.toml` are repository-relative.
 
 | Already available | Actual limitation to address |
 |---|---|
@@ -25,7 +45,7 @@ See the [source inventory](../research/enhancement-current-capabilities-2026-10-
 
 Current project license is GPL-3.0-or-later (`pyproject.toml:10`). YuNet has its own bundled notice. The exact selected library, model and dataset revisions require separate license checks.
 
-## Recommended feature priorities
+## Original recommended feature priorities (2026-10-18)
 
 | Priority | Addition | Why / chosen starting approach | Difficulty |
 |---|---|---|---|
@@ -45,7 +65,7 @@ Current project license is GPL-3.0-or-later (`pyproject.toml:10`). YuNet has its
 
 Difficulty is relative engineering scope, not a delivery-time estimate. No accuracy, speed or disk-size improvement has been measured in this research.
 
-## Algorithm and dependency decisions
+## Original algorithm and dependency decisions (2026-10-18)
 
 1. **Red-eye:** keep face/eye localization plus local redness/shape/contrast masks, feathering and highlight protection as the baseline. Compare established reference implementations before replacing it. Add candidate reasons, a full-resolution ROI overlay and a manual seed/ellipse fallback. Do not apply a whole-image “remove red” rule. Pet eyes/white or green flash reflections are a separate mode requiring their own corpus.
 2. **Document Auto:** add `auto` as a requested policy without changing the meaning of `LoadedPage.kind`. Analyze chroma, meaningful colored components, continuous tones and threshold damage; choose a richer representation when uncertain. Persist selected mode, reason and user override. A page that looks neutral in a downscaled thumbnail may still contain a small colored mark.
@@ -56,9 +76,9 @@ Difficulty is relative engineering scope, not a delivery-time estimate. No accur
 
 The FF-680W is specified as 600 dpi optical with 24-bit external RGB/8-bit external gray. Keep internal arithmetic sufficiently precise, but do not advertise 16-bit hardware capture or interpolated output as additional captured detail. [Epson specifications](https://epson.com/For-Home/Scanners/Photo-Scanners/FastFoto-FF-680W-Wireless-High-speed-Photo-Scanning-System/p/B11B237201)
 
-## Delivery sequence and implementation seams
+## Original delivery sequence and implementation seams
 
-Each package needs its own bounded specification, tests before behavior changes, independent review, applicable full/Qt gates and required CI. Package IDs are proposed work units, not already-created issues or branches. Dependencies below are logical prerequisites; research spikes may run independently.
+The following table preserves the original intended scope, not current completion status; use the progress table above to see what shipped. Each further slice needs its own bounded specification, tests before behavior changes, independent review, applicable full/Qt gates and required CI. Package IDs are planning units, not issue or branch identifiers. Dependencies below were proposed logical prerequisites; the full E00 corpus has not been completed even though bounded E01–E06 work shipped.
 
 | Package | Concrete result and likely areas | Depends on |
 |---|---|---|
@@ -75,13 +95,13 @@ Each package needs its own bounded specification, tests before behavior changes,
 | E10 — optional practical tools | Independently specified descreen, masked spot repair, separators, captions/back OCR/date suggestions; add only the tools supported by evaluation and user demand. | Relevant earlier packages |
 | E11 — research experiments | Compare dewarp/debleed/restoration/super-resolution candidates with archived-project, model-license, identity/text-change, CPU and bundle-size checks. Promote one only after an explicit acceptance decision. | E00 and an approved experiment spec |
 
-**Suggested first release:** E00 + the smallest usable E01 + E02 and E03/E04. Document Auto can proceed alongside photo source/review work after the corpus is defined. Follow with E05/E06, then E07–E09. E10/E11 are a separate backlog, not prerequisites for the first useful release.
+**Historical suggested first release (2026-10-18):** E00 + the smallest usable E01 + E02 and E03/E04. Document Auto can proceed alongside photo source/review work after the corpus is defined. Follow with E05/E06, then E07–E09. E10/E11 are a separate backlog, not prerequisites for the first useful release.
 
 Photo processing order is a hypothesis to benchmark: source/color normalization → geometry → local repair/denoise → tone/color → final sharpening → export. In particular, compare red-eye detection on source pixels with detection after restoration; do not silently move the current restore→red-eye order without evidence. Keep all masks in a well-defined coordinate space.
 
 ## Testable acceptance gates
 
-These are proposed release criteria, not results already achieved. Record baseline and held-out results before choosing numeric performance/recall targets.
+These are the original proposed release criteria, not a completed checklist. Shipped slices have invariant and compatibility tests, but the retained acquisition-master, held-out quality, metadata matrix and broad performance gates are still open. Record baseline and held-out results before choosing numeric performance/recall targets.
 
 ### All edits
 
@@ -126,14 +146,14 @@ Do not adopt a library solely because it implements the named algorithm. Confirm
 - Red-eye, auto-color and quality warnings are not perfect detectors. Abstention, review and a reversible source are product behavior, not exceptional error paths.
 - Preservation guidance informs design; no FADGI, archival or color-calibration conformance claim is made by this roadmap. [FADGI evaluation context](https://www.digitizationguidelines.gov/guidelines/digitize-technical.html)
 
-## Open decisions before implementation
+## Remaining decisions for further implementation
 
-1. Confirm balanced versus photo-first/document-first release priority.
+1. Choose the next bounded feature slice; photo and document features have both shipped, and the local cleanup-label follow-up has passed independent review but remains uncommitted and unreleased.
 2. Choose the default photo acquisition-master retention policy and explain its storage cost; preserve current explicit document deletion controls.
 3. Approve the rights-cleared benchmark corpus and minimum evaluation coverage before changing experimental red-eye defaults.
 4. Decide which export presets and metadata fields belong in the first UI; advanced target-based scanner calibration remains separate.
 5. Select external libraries/models only after the benchmark spikes and exact packaging/license checks.
 
-## Independent review
+## Historical independent review
 
-[Critic review](../research/enhancement-roadmap-review-2026-10-18.md) approved this research/roadmap artifact with two minor corrections, now applied: clarify module-path roots and correct the source inventory's dark-on-dark B&W limitation. No blocking findings remain. Approval concerns the plan artifact, not authorization to implement every package.
+[Critic review](../research/enhancement-roadmap-review-2026-10-18.md) approved this research/roadmap artifact with two minor corrections, now applied: clarify module-path roots and correct the source inventory's dark-on-dark B&W limitation. That review found no remaining blockers in the original plan. It does not cover this dated progress update or authorize implementation of every package.

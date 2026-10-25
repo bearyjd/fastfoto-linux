@@ -937,5 +937,10 @@ The command line keeps Off but honours a level stored in the review file.
   edits with exactly the keys include, turns, colour, cleanup and crop; crop is null or four
   whole numbers. A crop key in version 1, 2 or 3 is refused. Older files never gain a crop, and a
   stale re-analysis keeps the saved crop.
+- **Preview files.** A cropped output preview is named `page-NNNN-output-<mode>-<cleanup>-r<turns>-c<hash>`
+  from a 12 digit hash of the crop and turns only, never from a user or file value; the review
+  keeps at most 8 per page (the oldest go), and a name is accepted or deleted only if it matches
+  that pattern exactly. Links in `previews/` are never followed. A crop that is too small, or
+  cannot be stored, shows a plain message with no page or box sizes.
 - **Known limits.** OCRmyPDF reads the cropped page, so a crop with little text may rotate
   oddly. The quality evidence is synthetic pages only.

@@ -16,6 +16,7 @@ from fastfoto_linux.documents.draft import (
 )
 from fastfoto_linux.documents.draft_store import THUMBS_DIR
 from fastfoto_linux.documents.modes import CleanupPolicy, ColourMode, ColourPolicy
+from fastfoto_linux.documents.page_crop import PageCrop
 
 FLAG_LABELS = {
     Flag.FEW_MARKS: "Only a few marks",
@@ -55,6 +56,9 @@ class ReviewState:
 
     def set_document_cleanup(self, policy: CleanupPolicy) -> "ReviewState":
         return replace(self, draft=draft_edit.set_document_cleanup(self.draft, policy))
+
+    def set_crop(self, number: int, crop: PageCrop | None) -> "ReviewState":
+        return replace(self, draft=draft_edit.set_crop(self.draft, number, crop))
 
     def move(self, number: int, to: int) -> "ReviewState":
         return replace(self, draft=draft_edit.move(self.draft, number, to))
@@ -98,8 +102,11 @@ class ReviewItem:
     colour_text: str = ""
     cleanup_override: str = ""
     cleanup_text: str = ""
+    cropped: bool = False
+    crop_text: str = ""
 
 
+CROP_TEXT = "Cropped by hand"
 MODE_LABELS = {"colour": "Colour", "grey": "Grey", "bw": "Black and white"}
 REASON_LABELS = {
     ColourReason.SOURCE_BW: "black and white source",
@@ -180,6 +187,7 @@ def review_items(
         thumb = draft.raw_dir / THUMBS_DIR / page.thumb if draft.raw_dir and page.thumb else None
         flags = sorted_flags(page.flags)
         colour = colour_values(draft, page, document_policy)
+        cropped = draft.edits.get(number, PageEdit()).crop is not None
         rows.append(
             ReviewItem(
                 number,
@@ -195,6 +203,8 @@ def review_items(
                 page.blank and not included,
                 *colour,
                 *cleanup_values(draft, page, colour[1]),
+                cropped,
+                CROP_TEXT if cropped else "",
             )
         )
     return tuple(rows)

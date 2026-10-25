@@ -20,9 +20,18 @@ from fastfoto_linux.documents.draft_store import THUMBS_DIR, open_draft
 from fastfoto_linux.documents.encode import render_page
 from fastfoto_linux.documents.loader import load_page
 from fastfoto_linux.documents.modes import CleanupPolicy, ColourMode, ColourPolicy
+from fastfoto_linux.documents.page_crop import edited_page
 from fastfoto_linux.documents.private_io import ensure_private_dir, write_private_atomic
 from fastfoto_linux.documents.write import write_document
 from fastfoto_linux.gui.docreport import os_error_words
+from fastfoto_linux.gui.reviewnames import (
+    PREVIEW_DIR,
+    checked_preview_path,
+    crop_tag,
+    output_preview_names,
+    output_suffix,
+    prune_crop_previews,
+)
 from fastfoto_linux.session import DocumentRawReason, DocumentSessionResult, Stage
 from fastfoto_linux.session.raw import list_pages
 
@@ -31,7 +40,6 @@ if TYPE_CHECKING:
     from fastfoto_linux.gui.worker import WorkerSink
 
 logger = logging.getLogger(__name__)
-PREVIEW_DIR = "previews"
 PREVIEW_MAX_PX = 1600
 PREVIEW_QUALITY = 90
 PREVIEW_CROP_PX = 1024  # the actual-pixel crop: a window of the output, never scaled
@@ -67,44 +75,34 @@ def _valid_crop(crop: object) -> bool:
 
 
 @dataclass(frozen=True)
+class PreviewMeta:
+    """What a source preview measured: the trimmed page's width and height and its dpi."""
+
+    width: int
+    height: int
+    dpi: int
+
+
+@dataclass(frozen=True)
 class PreviewCompletion:
     request: PreviewRequest
     path: Path | None
     error: str = ""
     cleanup_status: CleanupStatus | None = None
+    size: tuple[int, int] | None = None  # the trimmed page's width and height, source view
+    dpi: int | None = None  # the page's resolution, source view
 
 
+# The legacy tuple (draft, number, path, error) may end with a PreviewMeta.
 PreviewResult = tuple[DocumentDraft, int, Path | None, str] | PreviewCompletion
-
-
-def output_preview_names(number: int) -> tuple[str, ...]:
-    """Only these bounded generated variants may be accepted or removed with originals.
-
-    The legacy names (made before paper cleanup existed) stay, so old previews are still removed.
-    """
-    legacy = tuple(
-        f"page-{number:04d}-output-{mode.value}{suffix}.jpg"
-        for mode in ColourMode
-        for suffix in ("", "-r0", "-r1", "-r2", "-r3")
-    )
-    current = tuple(
-        f"page-{number:04d}{_output_suffix(mode, level, turns)}{extension}"
-        for mode in ColourMode
-        for level in CleanupPolicy
-        for turns in range(4)
-        for extension in (".jpg", "-crop.png")
-    )
-    return legacy + current
-
-
-def _output_suffix(mode: ColourMode, cleanup: CleanupPolicy, turns: int) -> str:
-    return f"-output-{mode.value}-{cleanup.value}-r{turns}"
+__all__ = ["PREVIEW_DIR", "output_preview_names"]  # moved to reviewnames, still imported here
 
 
 def _preview_image(
     request: PreviewRequest,
     cancel: threading.Event,
     on_cleanup: Callable[[CleanupStatus], None] | None = None,
+    on_size: Callable[[int, int, int], None] | None = None,
 ) -> tuple[np.ndarray, str]:
     """The pixels to show and the file-name suffix that tells which variant they are."""
     draft, number = request.draft, request.number
@@ -113,13 +111,14 @@ def _preview_image(
     if cancel.is_set():
         raise DocumentCancelledError("preview cancelled")
     if request.view == "source":
+        if on_size is not None:
+            on_size(loaded.pixels.shape[1], loaded.pixels.shape[0], loaded.dpi)
         return loaded.pixels, ""
     mode = page_colour(draft, page, request.policy)
     if cancel.is_set():
         raise DocumentCancelledError("preview cancelled")
-    turns = draft.edits.get(number, PageEdit()).quarter_turns
-    if turns:
-        loaded = replace(loaded, pixels=np.rot90(loaded.pixels, -turns).copy())
+    edit = draft.edits.get(number, PageEdit())
+    loaded = edited_page(loaded, edit)
     cleanup = page_cleanup(draft, page) if request.cleaned else CleanupPolicy.OFF
     if on_cleanup is not None:
         pixels = render_page(loaded, mode, cleanup, cancel=cancel, on_cleanup=on_cleanup)
@@ -129,7 +128,10 @@ def _preview_image(
         pixels = render_page(loaded, mode)
     else:
         pixels = render_page(loaded, mode, cleanup, cancel=cancel)
-    return pixels, _output_suffix(mode, cleanup, turns)
+    suffix = output_suffix(mode, cleanup, edit.quarter_turns)
+    if edit.crop is not None:
+        suffix += f"-c{crop_tag(edit.crop, edit.quarter_turns)}"
+    return pixels, suffix
 
 
 def _crop_window(pixels: np.ndarray, centre: tuple[int, int]) -> np.ndarray:
@@ -163,6 +165,7 @@ def make_preview(  # noqa: PLR0913 - the request's own fields, passed through
     cleaned: bool = True,
     crop: tuple[int, int] | None = None,
     on_cleanup: Callable[[CleanupStatus], None] | None = None,
+    on_size: Callable[[int, int, int], None] | None = None,
 ) -> Path:
     """Trim raw pixels, optionally render full output, then write a bounded private preview."""
     request = PreviewRequest(draft, number, policy, view, cleaned, crop)
@@ -170,7 +173,7 @@ def make_preview(  # noqa: PLR0913 - the request's own fields, passed through
         raise ValueError("the preview needs a page in its original folder")
     if cancel.is_set():
         raise DocumentCancelledError("preview cancelled")
-    pixels, suffix = _preview_image(request, cancel, on_cleanup)
+    pixels, suffix = _preview_image(request, cancel, on_cleanup, on_size)
     if cancel.is_set():
         raise DocumentCancelledError("preview cancelled")
     data, extension = _encode_preview(pixels, crop if view == "output" else None)
@@ -178,8 +181,9 @@ def make_preview(  # noqa: PLR0913 - the request's own fields, passed through
         raise DocumentCancelledError("preview cancelled")
     folder = draft.raw_dir / PREVIEW_DIR
     ensure_private_dir(folder)
-    path = folder / f"page-{number:04d}{suffix}{extension}"
+    path = checked_preview_path(folder, f"page-{number:04d}{suffix}{extension}")
     write_private_atomic(path, data)
+    prune_crop_previews(folder, number)
     return path
 
 
@@ -265,8 +269,13 @@ class ReviewJobs:
     def _previewed(
         self, draft: DocumentDraft, number: int, cancel: threading.Event
     ) -> Callable[[], None]:
+        sizes: list[tuple[int, int, int]] = []
+        metadata = (
+            {"on_size": lambda *size: sizes.append(size)} if self._preview is make_preview else {}
+        )
         try:
-            answer = (draft, number, self._preview(draft, number, cancel), "")
+            path = self._preview(draft, number, cancel, **metadata)
+            answer = (draft, number, path, "", *(PreviewMeta(*size) for size in sizes[-1:]))
         except (DocumentError, OSError, ValueError) as error:
             answer = (draft, number, None, str(error))
         return functools.partial(self._sink.on_review_preview, answer)
@@ -275,8 +284,13 @@ class ReviewJobs:
         self, request: PreviewRequest, cancel: threading.Event
     ) -> Callable[[], None]:
         statuses: list[CleanupStatus] = []
+        sizes: list[tuple[int, int, int]] = []
         # Custom preview providers keep their Path-only contract; absent metadata stays unknown.
-        metadata = {"on_cleanup": statuses.append} if self._preview is make_preview else {}
+        metadata = (
+            {"on_cleanup": statuses.append, "on_size": lambda *size: sizes.append(size)}
+            if self._preview is make_preview
+            else {}
+        )
         try:
             path = self._preview(
                 request.draft,
@@ -289,7 +303,11 @@ class ReviewJobs:
                 **metadata,
             )
             answer = PreviewCompletion(
-                request, path, cleanup_status=statuses[-1] if statuses else None
+                request,
+                path,
+                cleanup_status=statuses[-1] if statuses else None,
+                size=sizes[-1][:2] if sizes else None,
+                dpi=sizes[-1][2] if sizes else None,
             )
         except (DocumentError, OSError, ValueError) as error:
             answer = PreviewCompletion(request, None, str(error))

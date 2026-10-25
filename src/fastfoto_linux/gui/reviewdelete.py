@@ -7,7 +7,7 @@ from pathlib import Path
 
 from fastfoto_linux.documents.draft import DocumentDraft
 from fastfoto_linux.documents.draft_store import REVIEW_FILE, THUMBS_DIR
-from fastfoto_linux.gui.reviewjobs import PREVIEW_DIR, output_preview_names
+from fastfoto_linux.gui.reviewnames import PREVIEW_DIR, cropped_previews, output_preview_names
 
 Stamp = tuple[int, int, int, int]
 
@@ -48,6 +48,7 @@ def capture_originals(draft: DocumentDraft) -> SavedOriginals:
             )
         )
         names.extend(f"{PREVIEW_DIR}/{name}" for name in output_preview_names(page.number))
+        names.extend(_cropped_names(folder, page.number))
     artifacts = []
     for name in names:
         path = folder / name
@@ -58,6 +59,19 @@ def capture_originals(draft: DocumentDraft) -> SavedOriginals:
         except (OSError, ValueError):
             continue
     return SavedOriginals(folder, (info.st_dev, info.st_ino), tuple(originals), tuple(artifacts))
+
+
+def _cropped_names(folder: Path, number: int) -> list[str]:
+    """The cropped previews of a page, found by their strict name (their names are hashes). A
+    link or any other file is not listed; the preview folder itself must not be a link."""
+    root = folder / PREVIEW_DIR
+    if root.is_symlink():
+        return []
+    return [
+        f"{PREVIEW_DIR}/{path.name}"
+        for path in cropped_previews(root, number)
+        if path.resolve().is_relative_to(root.resolve())
+    ]
 
 
 def delete_originals(saved: SavedOriginals) -> None:

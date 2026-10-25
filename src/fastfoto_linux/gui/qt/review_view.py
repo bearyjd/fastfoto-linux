@@ -1,5 +1,6 @@
 """The QML review contract and its debounced sidecar autosave."""
 
+import functools
 import logging
 from collections.abc import Callable
 from contextlib import suppress
@@ -12,6 +13,7 @@ from fastfoto_linux.documents.cleanup import page_cleanup
 from fastfoto_linux.documents.draft import DocumentDraft, PageAnalysis
 from fastfoto_linux.documents.draft_edit import parts
 from fastfoto_linux.documents.modes import CleanupPolicy, ColourMode, ColourPolicy
+from fastfoto_linux.gui import reviewcrop
 from fastfoto_linux.gui.qt.photos_model import file_url
 from fastfoto_linux.gui.qt.review_model import ReviewModel
 from fastfoto_linux.gui.report import Banner
@@ -129,6 +131,26 @@ class ReviewView(QObject):
         return self._side.preview_cleaned
 
     @Property(bool, notify=changed)
+    def previewCropMode(self) -> bool:
+        """True when the source preview and its size are here, so a crop can be drawn on it."""
+        side = self._side
+        return bool(
+            side.preview_view == "source" and side.preview_path and side.preview_size is not None
+        )
+
+    @Property("QVariantList", notify=changed)
+    def previewCropRect(self) -> list[int]:
+        return reviewcrop.crop_rectangle(self._side)
+
+    @Property(int, notify=changed)
+    def previewSourceWidth(self) -> int:
+        return self._side.preview_size[0] if self._side.preview_size else 0
+
+    @Property(int, notify=changed)
+    def previewSourceHeight(self) -> int:
+        return self._side.preview_size[1] if self._side.preview_size else 0
+
+    @Property(bool, notify=changed)
     def previewActual(self) -> bool:
         return self._side.preview_crop is not None
 
@@ -224,6 +246,37 @@ class ReviewView(QObject):
     @Slot(int, int)
     def rotate(self, number: int, turns: int) -> None:
         self._call(self._side.edit, "rotate", number, turns)
+
+    @Slot(int, int, int, int, int, result=bool)
+    def setCrop(self, number: int, left: int, top: int, right: int, bottom: int) -> bool:
+        return bool(self._call(reviewcrop.store_crop, self._side, number, left, top, right, bottom))
+
+    @Slot(int, result=bool)
+    def clearCrop(self, number: int) -> bool:
+        return bool(self._call(reviewcrop.clear_crop, self._side, number))
+
+    @Slot(int, float, float, float, float, float, float, float, float, result=bool)
+    def cropFromDrag(  # noqa: PLR0913, PLR0917 - the drag and the painted geometry
+        self,
+        number: int,
+        x0: float,
+        y0: float,
+        x1: float,
+        y1: float,
+        pw: float,
+        ph: float,
+        iw: float,
+        ih: float,
+    ) -> bool:
+        """False when the drag is under 5 mm on a side (or unusable): nothing is stored."""
+        drag = functools.partial(
+            reviewcrop.crop_from_drag,
+            painted_width=pw,
+            painted_height=ph,
+            item_width=iw,
+            item_height=ih,
+        )
+        return bool(self._call(drag, self._side, number, x0, y0, x1, y1))
 
     @Slot(int, int)
     def move(self, number: int, to: int) -> None:

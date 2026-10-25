@@ -128,6 +128,13 @@ def test_a_drag_under_five_millimetres_is_refused_and_changes_nothing(out):
     assert side.state.draft.edits.get(1, PageEdit()).crop is None
 
 
+def test_a_drag_while_the_output_view_is_showing_is_refused(out):
+    side = sourced(out)
+    side.preview_view = "output"
+    assert drag(side) is False
+    assert reviewcrop.crop_rectangle(side) == []
+
+
 def test_a_drag_without_a_source_preview_of_that_page_is_refused(out):
     side = sourced(out)
     assert drag(side, number=2) is False

@@ -17,6 +17,7 @@ from fastfoto_linux.gui.reviewdelete import capture_originals, delete_originals
 from fastfoto_linux.gui.reviewjobs import PREVIEW_DIR, make_preview
 from fastfoto_linux.gui.reviewnames import (
     MAX_CROP_PREVIEWS,
+    checked_preview_path,
     crop_tag,
     is_output_preview_name,
     output_preview_names,
@@ -182,6 +183,7 @@ def test_eviction_never_follows_a_link_out_of_the_previews_folder(out):
     for crop in crops(MAX_CROP_PREVIEWS + 2):
         make_preview(edited(draft, crop), 1, threading.Event(), view="output")
     assert victim.read_bytes() == b"precious"
+    assert link.is_symlink()  # not counted, not removed
 
 
 def test_deleting_originals_removes_the_cropped_previews_and_nothing_else(out):
@@ -198,3 +200,11 @@ def test_deleting_originals_removes_the_cropped_previews_and_nothing_else(out):
     assert not path.exists()
     assert other.read_bytes() == b"mine" and victim.read_bytes() == b"precious"
     assert link.is_symlink()
+
+
+@pytest.mark.parametrize("name", ["../outside.jpg", "sub/../../outside.jpg", "a/b.jpg", "/abs.jpg"])
+def test_a_name_that_leaves_the_previews_folder_is_refused_before_any_write(out, name):
+    folder = out / PREVIEW_DIR
+    folder.mkdir()
+    with pytest.raises(ValueError):
+        checked_preview_path(folder, name)

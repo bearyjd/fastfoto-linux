@@ -13,7 +13,9 @@ from fastfoto_linux.documents import (
     ColourPolicy,
     DocumentSettings,
     OcrMode,
+    encode,
 )
+from fastfoto_linux.documents.cleanup import CleanupResult, CleanupStatus
 from fastfoto_linux.documents.draft_edit import rotate, set_cleanup
 from fastfoto_linux.documents.draft_store import open_draft
 from fastfoto_linux.documents.encode import render_page
@@ -26,6 +28,7 @@ from fastfoto_linux.gui.reviewjobs import (
     output_preview_names,
 )
 from fastfoto_linux.session.raw import list_pages
+from tests.gui.test_reviewjobs import jobs_for
 
 STRONG, OFF = CleanupPolicy.STRONG, CleanupPolicy.OFF
 WIDTH, HEIGHT = 1300, 1150
@@ -172,3 +175,69 @@ def test_deleting_the_originals_removes_a_crop_preview(out):
     saved = capture_originals(draft)
     delete_originals(saved)
     assert not crop.exists()
+
+
+@pytest.mark.parametrize("status", list(CleanupStatus))
+def test_worker_completion_carries_the_single_render_result(out, monkeypatch, status):
+    draft = analysed(out)
+    calls = []
+
+    def clean(pixels, _dpi, _mode, _level, *, cancel):
+        calls.append(cancel)
+        return CleanupResult(status, pixels.copy() if status is CleanupStatus.APPLIED else None)
+
+    monkeypatch.setattr(encode, "clean_pixels", clean)
+    worker, tasks, sink = jobs_for(out)
+    answers = []
+    sink.on_review_preview = answers.append
+    request = PreviewRequest(draft, 1, ColourPolicy.GREY, "output")
+    worker.preview_page(request)
+    cancel = threading.Event()
+    tasks[0](cancel)()
+    answer = answers[0]
+    assert answer.cleanup_status is status
+    assert answer.path.is_file() and not answer.error
+    assert calls == [cancel]  # status comes from the render, never a second cleanup pass
+
+
+@pytest.mark.parametrize(
+    "view,cleaned,expected_status",
+    [
+        ("source", True, None),
+        ("output", False, CleanupStatus.OFF),
+    ],
+)
+def test_worker_source_and_without_cleanup_results(out, view, cleaned, expected_status):
+    worker, tasks, sink = jobs_for(out)
+    answers = []
+    sink.on_review_preview = answers.append
+    worker.preview_page(PreviewRequest(analysed(out), 1, ColourPolicy.GREY, view, cleaned))
+    tasks[0](threading.Event())()
+    assert answers[0].cleanup_status is expected_status
+
+
+def test_real_dark_page_is_reported_as_skipped(out):
+    draft = analysed(out)
+    Image.new("RGB", (WIDTH, HEIGHT), (80, 80, 80)).save(out / draft.pages[0].name)
+    worker, tasks, sink = jobs_for(out)
+    answers = []
+    sink.on_review_preview = answers.append
+    worker.preview_page(PreviewRequest(draft, 1, ColourPolicy.GREY, "output"))
+    tasks[0](threading.Event())()
+    assert answers[0].cleanup_status is CleanupStatus.DARK
+
+
+def test_cancel_after_cleanup_status_does_not_publish_pixels_or_status(out, monkeypatch):
+    def clean(_pixels, _dpi, _mode, _level, *, cancel):
+        cancel.set()
+        return CleanupResult(CleanupStatus.DARK, None)
+
+    monkeypatch.setattr(encode, "clean_pixels", clean)
+    worker, tasks, sink = jobs_for(out)
+    answers = []
+    sink.on_review_preview = answers.append
+    worker.preview_page(PreviewRequest(analysed(out), 1, ColourPolicy.GREY, "output"))
+    tasks[0](threading.Event())()
+    assert answers[0].path is None and "cancel" in answers[0].error
+    assert answers[0].cleanup_status is None
+    assert not (out / "previews").exists()

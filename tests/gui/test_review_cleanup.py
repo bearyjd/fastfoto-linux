@@ -10,6 +10,7 @@ import pytest
 from PIL import Image
 
 from fastfoto_linux.documents import CleanupPolicy, ColourPolicy, DocumentSettings, OcrMode
+from fastfoto_linux.documents.cleanup import CleanupStatus
 from fastfoto_linux.documents.draft_store import REVIEW_FILE, save_draft
 from fastfoto_linux.gui.review import ReviewState, review_items
 from fastfoto_linux.gui.reviewjobs import PreviewCompletion, ReviewJobs
@@ -33,9 +34,9 @@ def test_items_say_where_the_level_comes_from(out):
     assert rows(base)[1].cleanup_text == "Paper cleanup: off"
     assert rows(base)[1].cleanup_override == ""
     document = base.set_document_cleanup(LIGHT)
-    assert rows(document)[1].cleanup_text == "Paper cleanup: Light (document setting)"
+    assert rows(document)[1].cleanup_text == "Paper cleanup: Light requested (document setting)"
     page = document.set_cleanup(1, STRONG)
-    assert rows(page)[1].cleanup_text == "Paper cleanup: Strong (this page)"
+    assert rows(page)[1].cleanup_text == "Paper cleanup: Strong requested (this page)"
     assert rows(page)[1].cleanup_override == "strong"
     assert rows(page)[3].cleanup_override == ""
 
@@ -49,7 +50,7 @@ def test_a_page_override_of_off_beats_the_document_level(out):
     state = ReviewState(decided_draft(out)).set_document_cleanup(STRONG).set_cleanup(1, OFF)
     assert rows(state)[1].cleanup_text == "Paper cleanup: off"
     assert rows(state)[1].cleanup_override == "off"
-    assert rows(state)[3].cleanup_text == "Paper cleanup: Strong (document setting)"
+    assert rows(state)[3].cleanup_text == "Paper cleanup: Strong requested (document setting)"
 
 
 def test_edits_are_pure_and_clearing_restores_the_document_level(out):
@@ -58,7 +59,7 @@ def test_edits_are_pure_and_clearing_restores_the_document_level(out):
     assert original.draft.cleanup is OFF and original.draft.edits == {}
     assert changed.draft.cleanup is LIGHT
     cleared = changed.set_cleanup(1, None)
-    assert rows(cleared)[1].cleanup_text == "Paper cleanup: Light (document setting)"
+    assert rows(cleared)[1].cleanup_text == "Paper cleanup: Light requested (document setting)"
     assert cleared.draft.edits.get(1) is None or cleared.draft.edits[1].cleanup is None
 
 
@@ -157,6 +158,23 @@ def test_a_late_answer_for_the_other_side_of_the_toggle_is_ignored(out):
     side.preview_ready(PreviewCompletion(cleaned, output))
     assert side.preview_path is None
     assert side.preview_cleaned is False
+
+
+def test_cleanup_status_is_cached_then_cleared_and_stale_results_are_ignored(out):
+    side, page = opened(out)
+    calls = preview_calls(side, page)
+    side.preview(1, "output")
+    first = calls[-1][0]
+    path = out / "previews" / "page-0001-output-grey-off-r0.jpg"
+    side.preview_ready(PreviewCompletion(first, path, cleanup_status=CleanupStatus.DARK))
+    assert side.preview_cleanup_status is CleanupStatus.DARK
+    assert side.preview(1, "output") == path.as_uri()
+    assert side.preview_cleanup_status is CleanupStatus.DARK
+    side.preview(2, "output")
+    assert side.preview_cleanup_status is None
+    side.preview_ready(PreviewCompletion(first, path, cleanup_status=CleanupStatus.STOCK))
+    assert side.preview_cleanup_status is None
+    assert side.preview_path is None
 
 
 def test_an_edit_refresh_keeps_cleaned_and_crop(out):

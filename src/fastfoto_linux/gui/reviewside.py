@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from fastfoto_linux.documents import DocumentSettings
+from fastfoto_linux.documents.cleanup import CleanupStatus
 from fastfoto_linux.documents.draft import DocumentDraft
 from fastfoto_linux.documents.draft_store import save_draft
 from fastfoto_linux.documents.modes import CleanupPolicy, ColourPolicy
@@ -51,6 +52,7 @@ class ReviewSide:
         self._originals: SavedOriginals | None = None
         self._saving_originals: SavedOriginals | None = None
         self.preview_path: Path | None = None
+        self.preview_cleanup_status: CleanupStatus | None = None
         self.preview_number = 0
         self.preview_view = "source"
         self.preview_cleaned = True
@@ -224,6 +226,7 @@ class ReviewSide:
         self.state = ReviewState(draft)
         self.dirty = True
         self.preview_path, self.preview_number = None, 0
+        self.preview_cleanup_status = None
         self.preview_view = "source"
         self._preview_requested = self._preview_running = self._preview_cached = None
         self._originals = None
@@ -286,6 +289,7 @@ class ReviewSide:
         self._preview_requested = request
         self.preview_view, self.preview_cleaned, self.preview_crop = view, cleaned, crop
         self.preview_path, self.preview_number = None, 0
+        self.preview_cleanup_status = None
         self._preview_cached = None
         if not self._worker_busy:
             self._dispatch_preview(request)
@@ -344,6 +348,7 @@ class ReviewSide:
                 )
             else:
                 self.preview_path, self.preview_number = completion.path, request.number
+                self.preview_cleanup_status = completion.cleanup_status
                 self._preview_cached = request
             self._controller._changed()
         pending = self._preview_requested

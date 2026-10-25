@@ -15,7 +15,13 @@ from fastfoto_linux.documents.modes import CleanupPolicy, ColourMode, ColourPoli
 from fastfoto_linux.gui.qt.photos_model import file_url
 from fastfoto_linux.gui.qt.review_model import ReviewModel
 from fastfoto_linux.gui.report import Banner
-from fastfoto_linux.gui.review import MODE_LABELS, colour_values, review_items, review_summary
+from fastfoto_linux.gui.review import (
+    MODE_LABELS,
+    colour_values,
+    preview_cleanup_text,
+    review_items,
+    review_summary,
+)
 
 if TYPE_CHECKING:
     from fastfoto_linux.gui.qt.bridge import Bridge
@@ -172,7 +178,7 @@ class ReviewView(QObject):
         level = page_cleanup(draft, page)
         if mode != ColourMode.BW.value and level is not CleanupPolicy.OFF:
             if self._side.preview_cleaned:
-                suffix = f" — paper cleanup {level.value.capitalize()}"
+                suffix = " — " + preview_cleanup_text(level, self._side.preview_cleanup_status)
             else:
                 suffix = " — without paper cleanup"
         return suffix + (" — actual pixels" if self._side.preview_crop is not None else "")

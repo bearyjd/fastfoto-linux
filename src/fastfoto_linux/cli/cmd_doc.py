@@ -37,6 +37,7 @@ from fastfoto_linux.documents import (
     DEFAULT_LANGS,
     DEFAULT_NAME,
     AllPagesBlankError,
+    CleanupPolicy,
     ColourMode,
     DocumentSettings,
     DocumentSettingsError,
@@ -50,7 +51,12 @@ from fastfoto_linux.documents import (
 from fastfoto_linux.documents.analyse import analyse_document
 from fastfoto_linux.documents.auto_colour import page_colour
 from fastfoto_linux.documents.draft import DocumentDraft
-from fastfoto_linux.documents.draft_edit import PageEdits, parts, with_edits
+from fastfoto_linux.documents.draft_edit import (
+    PageEdits,
+    parts,
+    set_document_cleanup,
+    with_edits,
+)
 from fastfoto_linux.documents.draft_store import open_draft
 from fastfoto_linux.documents.errors import DocumentEditError
 from fastfoto_linux.documents.ocr_tools import ocr_fix_hint
@@ -176,6 +182,18 @@ def _edited(
     return write_document(draft, settings)
 
 
+def _with_cleanup(draft: DocumentDraft, args: argparse.Namespace) -> DocumentDraft:
+    """``draft`` at the paper cleanup level ``--cleanup`` names (the draft as it is when the
+    option is not given). A page's own level in the review file still wins over it. Nothing is
+    saved: the command never writes the review file."""
+    if args.cleanup is None:
+        return draft
+    try:
+        return set_document_cleanup(draft, CleanupPolicy(args.cleanup))
+    except DocumentEditError as error:
+        raise CliError(str(error), EXIT_USAGE) from error
+
+
 def _process_pages(args: argparse.Namespace) -> tuple[Path | None, list[Path]]:
     """The raw folder, if the input is one, and the pages to process."""
     folder = raw_folder(args.pages)
@@ -196,7 +214,7 @@ def run_process(args: argparse.Namespace) -> int:
         prepare_output_root(args)
     try:
         if folder is not None:
-            draft = open_draft(folder, pages, settings, fresh=args.fresh)
+            draft = _with_cleanup(open_draft(folder, pages, settings, fresh=args.fresh), args)
             result: DocumentResult | None = _edited(draft, settings, edits, dry_run=args.dry_run)
         elif edits == PageEdits() and not args.dry_run:
             result = build_document(pages, settings)
@@ -271,6 +289,7 @@ def process_command(pages: Sequence[Path], request: DocumentScanRequest, root: P
     settings = request.settings
     options = (
         (settings.colour != ColourMode.COLOUR, ["--colour", settings.colour.value]),
+        (settings.cleanup is not CleanupPolicy.OFF, ["--cleanup", settings.cleanup.value]),
         (settings.name != DEFAULT_NAME, ["--name", settings.name]),
         (settings.ocr is not OcrMode.AUTO, ["--ocr", settings.ocr.value]),
         (settings.langs != DEFAULT_LANGS, ["--lang", settings.langs]),

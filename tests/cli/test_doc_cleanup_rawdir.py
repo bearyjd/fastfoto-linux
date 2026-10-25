@@ -5,9 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from fastfoto_linux.cli import main
+from fastfoto_linux.cli import cmd_doc, main
 from fastfoto_linux.documents.draft_edit import set_cleanup, set_document_cleanup
 from fastfoto_linux.documents.draft_store import REVIEW_FILE, save_draft
+from fastfoto_linux.documents.errors import DocumentEditError
 from fastfoto_linux.documents.modes import CleanupPolicy
 from tests.cli.doc_cleanup_helpers import (
     LIGHT,
@@ -125,3 +126,14 @@ def test_fresh_drops_the_stored_level_and_the_flag_still_applies(
 def test_the_flag_is_not_saved_into_a_folder_that_has_no_sidecar(raw, out, monkeypatch) -> None:
     assert levels_of(raw, out, monkeypatch, "--cleanup", "strong") == [STRONG, STRONG]
     assert not (raw[0] / REVIEW_FILE).exists()
+
+
+def test_a_level_the_draft_refuses_is_a_usage_error(raw, out, monkeypatch, capsys) -> None:
+    def refuse(draft: object, policy: object) -> object:
+        raise DocumentEditError("paper cleanup must be off, light or strong")
+
+    monkeypatch.setattr(cmd_doc, "set_document_cleanup", refuse)
+    argv = ["doc", "process", str(raw[0]), "--out", str(out), *OCR_OFF, "--cleanup", "light"]
+    assert main(argv) == 2
+    assert "paper cleanup must be" in capsys.readouterr().err
+    assert not list(out.glob("*.pdf"))

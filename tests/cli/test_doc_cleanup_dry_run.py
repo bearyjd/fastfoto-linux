@@ -11,7 +11,7 @@ from fastfoto_linux.documents.draft_store import save_draft
 from fastfoto_linux.documents.modes import CleanupPolicy
 from fastfoto_linux.documents.page_crop import PageCrop
 from tests.cli.doc_cleanup_helpers import LIGHT, OCR_OFF, STRONG, raw_folder_of, shaded_pages
-from tests.documents.store_helpers import analysed, store_settings
+from tests.documents.store_helpers import analysed, raw_folder, store_settings
 
 pytestmark = pytest.mark.usefixtures("no_real_ocr")
 
@@ -94,3 +94,13 @@ def test_without_cleanup_or_a_crop_the_table_has_neither_word(tmp_path, out, cap
     assert "cleanup" not in text
     assert "cropped" not in text
     assert "override" not in text
+
+
+def test_a_page_that_is_left_out_has_no_cleanup_word(tmp_path, out, capsys) -> None:
+    folder, pages = raw_folder(tmp_path)
+    settings = store_settings(out, duplex=False)
+    save_draft(set_document_cleanup(analysed(folder, pages, settings), LIGHT), settings)
+    text = dry_run(capsys, out, [folder])
+    assert "left out (looks blank)" in row(text, 2)
+    assert "cleanup" not in row(text, 2)
+    assert row(text, 1).endswith("; cleanup=light")

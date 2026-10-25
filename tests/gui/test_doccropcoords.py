@@ -3,9 +3,9 @@
 import math
 
 import pytest
-from fastfoto_linux.gui.doccropcoords import crop_rect, drag_to_crop
 
 from fastfoto_linux.documents.page_crop import PageCrop
+from fastfoto_linux.gui.doccropcoords import crop_rect, drag_to_crop
 
 # A 1000 x 2000 px page at 254 dpi (5 mm = 50 px) painted 500 x 1000 inside a 600 x 1200 item:
 # 50 px of margin left and right, 100 px above and below.

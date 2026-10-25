@@ -19,6 +19,7 @@ from fastfoto_linux.documents.draft import (
 )
 from fastfoto_linux.documents.errors import DocumentEditError
 from fastfoto_linux.documents.modes import CleanupPolicy, ColourPolicy
+from fastfoto_linux.documents.page_crop import CROP_UNITS, PageCrop
 from fastfoto_linux.output.errors import InvalidPrefixError
 from fastfoto_linux.output.naming import sanitise_prefix
 
@@ -215,3 +216,15 @@ def set_document_cleanup(draft: DocumentDraft, policy: CleanupPolicy) -> Documen
 def _checked_cleanup(policy: CleanupPolicy | None, *, allow_none: bool) -> None:
     if not isinstance(policy, CleanupPolicy) and not (allow_none and policy is None):
         raise DocumentEditError("paper cleanup must be off, light or strong")
+
+
+def set_crop(draft: DocumentDraft, number: int, crop: PageCrop | None) -> DocumentDraft:
+    """Return a draft with this raw page's crop (of its trimmed page), or cleared with None.
+    The whole page is no crop. A crop does not change which pages stay."""
+    _page(draft, number)
+    if crop is not None and not isinstance(crop, PageCrop):
+        raise DocumentEditError("a page crop must be a PageCrop or None")
+    if crop == PageCrop(0, 0, CROP_UNITS, CROP_UNITS):
+        crop = None
+    edit = draft.edits.get(number, PageEdit())
+    return _with_page_edit(draft, number, replace(edit, crop=crop))

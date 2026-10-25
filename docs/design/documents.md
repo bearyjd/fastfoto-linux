@@ -908,3 +908,34 @@ The command line keeps Off but honours a level stored in the review file.
 - **Known limits.** A shaded box wider than 10 mm may lighten under Strong. A high-key photograph
   lighter than 92% of the paper, or smaller than a 4 mm cell, is not detected. A protected region
   has a less-whitened rim of about 4 to 8 mm. The quality evidence is synthetic pages only.
+
+## Manual crop
+
+- **What it is.** In the desktop review a reviewer drags a rectangle on a page's source view
+  (the trimmed, unturned page) to keep only that area. Crop is a per-page edit, `PageEdit.crop`;
+  the command line has none. Rotation stays in 90 degree steps; there is no straighten.
+- **Order.** `load_page`, `trim.apply`, `edited_page` (crop, then the quarter turns), then
+  `render_page` or `encode_page`, where the paper cleanup runs. The preview and the PDF both call
+  `edited_page` (`documents/page_crop.py`), so they share one transform.
+- **Not analysed again.** A crop never re-runs the blank, flag, colour or hole analysis; the
+  page is not analysed again and `ANALYSIS_VERSION` stays 3. An Auto colour page keeps its
+  stored decision.
+- **Units.** A crop is `PageCrop(left, top, right, bottom)`, whole numbers from 0 to 10 000 of the
+  trimmed page's width and height, half open. Units, not pixels, so a stale sidecar that is
+  analysed again with another trim box or dpi still lands inside the page. `to_units` rounds a
+  pixel box outward and `crop_box` rounds inward, which gives the same pixels back for a page of
+  up to 10 000 pixels a side. A side shorter than 5 mm (only after a re-analysis shrank the page)
+  grows around its centre to at least 5 mm, or to the whole axis if the page is smaller; a crop
+  is never dropped. The whole page is no crop.
+- **Size and dpi.** The cropped page keeps the page's dpi, so the PDF page is the crop's physical
+  size. The encoded bytes made at analysis are reused only for an uncropped page.
+- **Cleanup on a crop.** The paper level, the `too_large` limit and the `dark` verdict are judged
+  on the cropped pixels, so a crop can turn a `too_large` page into an applied one, or a crop that
+  is mostly photograph into `dark`. Preview and PDF agree because both use `edited_page`.
+- **The sidecar.** The review file is format version 4 only when a page is cropped (else 3 for
+  cleanup, else 2, byte for byte as before). Version 4 has a required document cleanup level and
+  edits with exactly the keys include, turns, colour, cleanup and crop; crop is null or four
+  whole numbers. A crop key in version 1, 2 or 3 is refused. Older files never gain a crop, and a
+  stale re-analysis keeps the saved crop.
+- **Known limits.** OCRmyPDF reads the cropped page, so a crop with little text may rotate
+  oddly. The quality evidence is synthetic pages only.

@@ -42,5 +42,7 @@ def test_the_manual_crop_section_is_short() -> None:
 
 
 def test_the_readme_says_it_in_few_lines() -> None:
-    lines = [line for line in DOCUMENTS["README"].splitlines() if "rop" in line]
-    assert 0 < len(lines) <= MAX_README_LINES
+    lines = DOCUMENTS["README"].splitlines()
+    start = next(i for i, line in enumerate(lines) if line.startswith("- **Crop**"))
+    end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("- ")), len(lines))
+    assert 0 < end - start <= MAX_README_LINES

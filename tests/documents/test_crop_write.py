@@ -6,7 +6,6 @@ from typing import Any
 
 import numpy as np
 import pytest
-from fastfoto_linux.documents.page_crop import PageCrop, crop_box, edited_page
 
 from fastfoto_linux.documents import analyse as analyse_module
 from fastfoto_linux.documents import encode, write
@@ -15,6 +14,7 @@ from fastfoto_linux.documents.draft_edit import rotate, set_crop
 from fastfoto_linux.documents.encode import render_page
 from fastfoto_linux.documents.loader import load_page
 from fastfoto_linux.documents.modes import CleanupPolicy, ColourMode, ColourPolicy
+from fastfoto_linux.documents.page_crop import PageCrop, crop_box, edited_page
 from fastfoto_linux.documents.write import write_document
 from tests.documents.crop_helpers import DPI, crop_draft, trimmed_size
 from tests.documents.helpers import page_size_pt, reader
@@ -67,7 +67,7 @@ def preview_pixels(draft: DocumentDraft, kind: ColourMode, cleanup: CleanupPolic
 @pytest.mark.parametrize("kind", [ColourMode.GREY, ColourMode.COLOUR])
 @pytest.mark.parametrize("turns", [0, 1, 2, 3])
 @pytest.mark.parametrize("cropped", [False, True])
-def test_the_written_pixels_are_the_previewed_pixels(
+def test_the_written_pixels_are_the_previewed_pixels(  # noqa: PLR0913, PLR0917 - the grid
     tmp_path: Path,
     out: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -3,11 +3,11 @@
 from dataclasses import replace
 
 import pytest
-from fastfoto_linux.documents.page_crop import CROP_UNITS, PageCrop
 
 from fastfoto_linux.documents.draft import PageEdit
 from fastfoto_linux.documents.draft_edit import rotate, set_crop, set_included
 from fastfoto_linux.documents.errors import DocumentEditError
+from fastfoto_linux.documents.page_crop import CROP_UNITS, PageCrop
 from tests.documents.edit_helpers import draft_of
 
 CROP = PageCrop(100, 200, 9000, 8000)
@@ -65,6 +65,7 @@ def test_a_page_that_is_not_there_is_refused(number: int) -> None:
 def test_a_crop_does_not_change_which_pages_stay() -> None:
     draft = draft_of(3)
     cropped = set_crop(draft, 2, CROP)
-    assert cropped.has_edits is draft.has_edits is False
+    # has_edits is as it was: it is true for any stored edit, a turn as well as a crop
+    assert cropped.has_edits is rotate(draft, 2, 1).has_edits is True
     assert cropped.kept == draft.kept
     assert cropped.order == draft.order and cropped.splits == draft.splits

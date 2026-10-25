@@ -1,12 +1,13 @@
 """Write a document: assemble the PDFs from an analysed draft, add searchable text, publish.
 
 The pages that stay are put in one PDF for each part of the draft as it holds them: a page that
-carries its encoded bytes (and is not turned) is used as it is, any other is read again from the
-raw pages, cut with its trim box, turned and encoded, one decoded page at a time. The OCR runs
-on each finished plain PDF *before* the output folder is locked (it can take minutes; the lock
-is for numbering and writing only), with a limit that grows with that part's page count, and a
-failed or timed-out OCR falls back to publishing the plain PDF. Every part is made before any is
-published: a cancel or an error at any point up to the publishing publishes nothing.
+carries its encoded bytes (and is not turned or cropped) is used as it is, any other is read
+again from the raw pages, cut with its trim box, cropped, turned and encoded, one decoded page at
+a time. The OCR runs on each finished plain PDF *before* the output folder is locked (it can
+take minutes; the lock is for numbering and writing only), with a limit that grows with that
+part's page count, and a failed or timed-out OCR falls back to publishing the plain PDF. Every
+part is made before any is published: a cancel or an error at any point up to the publishing
+publishes nothing.
 """
 
 import logging
@@ -16,8 +17,6 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 
-import numpy as np
-
 from fastfoto_linux.documents.auto_colour import (
     classify_colour,
     page_colour,
@@ -25,7 +24,7 @@ from fastfoto_linux.documents.auto_colour import (
     resolve_colour,
 )
 from fastfoto_linux.documents.cleanup import page_cleanup
-from fastfoto_linux.documents.draft import DocumentDraft, OutputPart, PageAnalysis
+from fastfoto_linux.documents.draft import DocumentDraft, OutputPart, PageAnalysis, PageEdit
 from fastfoto_linux.documents.draft_edit import parts
 from fastfoto_linux.documents.encode import EncodedPage, effective_cleanup, encode_page
 from fastfoto_linux.documents.errors import (
@@ -38,6 +37,7 @@ from fastfoto_linux.documents.loader import LoadedPage, load_page
 from fastfoto_linux.documents.modes import CleanupPolicy, ColourMode, ColourPolicy
 from fastfoto_linux.documents.ocr import OcrMode, OcrOutcome, OcrStatus, run_ocr
 from fastfoto_linux.documents.ocr_tools import ocr_missing_text
+from fastfoto_linux.documents.page_crop import edited_page
 from fastfoto_linux.documents.pdf import assemble_pdf
 from fastfoto_linux.documents.publish import publish_pdfs
 from fastfoto_linux.documents.settings import DocumentSettings, check_settings
@@ -138,14 +138,13 @@ def _searchable(  # noqa: PLR0913 - what OCR needs, and the one hook, in one pla
 
 def _turned(page: LoadedPage, turns: int) -> LoadedPage:
     """``page`` turned ``turns`` quarter turns clockwise, exactly (no resampling)."""
-    if turns == 0:
-        return page
-    return replace(page, pixels=np.ascontiguousarray(np.rot90(page.pixels, -turns)))
+    return edited_page(page, PageEdit(quarter_turns=turns))
 
 
-def _read_page(page: PageAnalysis, turns: int, draft: DocumentDraft) -> LoadedPage:
-    """The raw page read, cut with its trim box and turned. The raw pixels are released on
-    return when the page is turned, so one decoded page is held while it is encoded."""
+def _read_page(page: PageAnalysis, edit: PageEdit, draft: DocumentDraft) -> LoadedPage:
+    """The raw page read, cut with its trim box, cropped and turned (``edited_page``). The raw
+    pixels are released on return when the page is edited, so one decoded page is held while it
+    is encoded."""
     raw_dir = draft.raw_dir
     if raw_dir is None:
         raise DocumentError(
@@ -155,7 +154,7 @@ def _read_page(page: PageAnalysis, turns: int, draft: DocumentDraft) -> LoadedPa
     # page.dpi is what the analysis settled on; settings.fallback_dpi may differ by now, and
     # re-reading with it would change the printed size of a PNG that declares no resolution.
     loaded = load_page(raw_dir / page.name, fallback_dpi=page.dpi)
-    return _turned(page.trim.apply(loaded), turns)
+    return edited_page(page.trim.apply(loaded), edit)
 
 
 @dataclass(frozen=True)
@@ -171,20 +170,20 @@ class _Run:
     on_ocr: Callable[[], None] | None
 
 
-def _encoded(run: "_Run", page: PageAnalysis, turns: int) -> EncodedPage:
-    """The page as it goes into the PDF: the bytes it carries (when it is not turned), or the
-    raw page read again, cut, turned and encoded (one decoded page at a time; a cancel is
-    honoured before each such page)."""
+def _encoded(run: "_Run", page: PageAnalysis, edit: PageEdit) -> EncodedPage:
+    """The page as it goes into the PDF: the bytes it carries (when it is neither turned nor
+    cropped), or the raw page read again, cut, cropped, turned and encoded (one decoded page at a
+    time; a cancel is honoured before each such page)."""
     stop_if_cancelled(run.cancel, f"page {page.number} of {len(run.draft.pages)} was written")
     policy = page_policy(run.draft, page, run.settings.colour)
     cleanup = page_cleanup(run.draft, page)  # the draft's level: settings.cleanup is never read
-    kept = page.encoded if turns == 0 else None
+    kept = page.encoded if edit.quarter_turns == 0 and edit.crop is None else None
     mode: ColourMode | None = None
     if page.colour is not None or policy is not ColourPolicy.AUTO:
         mode = page_colour(run.draft, page, run.settings.colour)
         if _reusable(kept, mode, cleanup):
             return kept  # type: ignore[return-value]
-    loaded = _read_page(page, turns, run.draft)
+    loaded = _read_page(page, edit, run.draft)
     if mode is None:  # Auto on a page that was not analysed: classify it once, here
         mode = resolve_colour(classify_colour(loaded), policy)
         if _reusable(kept, mode, cleanup):
@@ -204,7 +203,8 @@ def _reusable(kept: EncodedPage | None, mode: ColourMode, cleanup: CleanupPolicy
 def _make_part(run: _Run, part: OutputPart, name: str) -> tuple[str, bytes, int, OcrOutcome]:
     """The PDF of one part, with searchable text when it can have it: its name, the bytes to
     publish, its page count and how the OCR went."""
-    encoded = [_encoded(run, page, turns) for page, turns in part.pages]
+    edits = run.draft.edits
+    encoded = [_encoded(run, page, edits.get(page.number, PageEdit())) for page, _ in part.pages]
     plain = assemble_pdf(encoded, title=name, created=(run.clock or _now)())
     outcome = _searchable(
         plain, run.executable, run.settings, len(encoded), cancel=run.cancel, on_ocr=run.on_ocr
@@ -241,8 +241,8 @@ def write_document(  # noqa: PLR0913 - the hooks are the interface
     (OcrCancelledError during OCR) is raised, or anything else fails, nothing is published.
 
     ``on_page(number, total)`` is called before each page that is read again from the raw pages
-    (a page that carries its bytes and is not turned needs no work) and ``on_ocr()`` before the
-    searchable text of each part is made. Both run on the calling thread.
+    (a page that carries its bytes and is neither turned nor cropped needs no work) and
+    ``on_ocr()`` before the searchable text of each part is made. Both run on the calling thread.
     """
     checked = check_settings(settings)
     output = parts(draft)

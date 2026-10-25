@@ -21,10 +21,12 @@ from fastfoto_linux.documents.ocr import (
     find_ocrmypdf,
     validate_langs,
 )
+from fastfoto_linux.documents.page_crop import CROP_UNITS, PageCrop
 from fastfoto_linux.documents.settings import DEFAULT_NAME, DocumentSettings, check_settings
 from fastfoto_linux.documents.write import DocumentResult, PartResult
 
 __all__ = [
+    "CROP_UNITS",
     "DEFAULT_LANGS",
     "DEFAULT_NAME",
     "AllPagesBlankError",
@@ -43,6 +45,7 @@ __all__ = [
     "OcrOutcome",
     "OcrStatus",
     "OutputFolderMissingError",
+    "PageCrop",
     "PartResult",
     "UnsupportedPageError",
     "build_document",

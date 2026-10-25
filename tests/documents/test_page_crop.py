@@ -2,6 +2,9 @@
 
 import numpy as np
 import pytest
+
+from fastfoto_linux.documents.draft import PageEdit
+from fastfoto_linux.documents.modes import ColourMode
 from fastfoto_linux.documents.page_crop import (
     CROP_UNITS,
     PageCrop,
@@ -9,9 +12,6 @@ from fastfoto_linux.documents.page_crop import (
     edited_page,
     to_units,
 )
-
-from fastfoto_linux.documents.draft import PageEdit
-from fastfoto_linux.documents.modes import ColourMode
 from fastfoto_linux.documents.units import mm_to_px
 from tests.documents.crop_helpers import loaded
 

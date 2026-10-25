@@ -5,9 +5,9 @@ from dataclasses import replace
 from typing import Any
 
 import pytest
-from fastfoto_linux.documents.page_crop import PageCrop, crop_box
 
 from fastfoto_linux.documents.analyse import ANALYSIS_VERSION
+from fastfoto_linux.documents.crop_json import CropFormatError, parse_crop
 from fastfoto_linux.documents.draft import DocumentDraft, PageEdit, TrimBox
 from fastfoto_linux.documents.draft_edit import set_crop, set_document_cleanup
 from fastfoto_linux.documents.draft_json import (
@@ -20,6 +20,7 @@ from fastfoto_linux.documents.draft_json import (
 )
 from fastfoto_linux.documents.draft_store import restore_edits
 from fastfoto_linux.documents.modes import CleanupPolicy, ColourPolicy
+from fastfoto_linux.documents.page_crop import PageCrop, crop_box
 from tests.documents.edit_helpers import draft_of
 from tests.documents.test_cleanup_sidecar import MAIN_BYTES, NAMES, plain
 
@@ -170,3 +171,9 @@ def test_a_crop_survives_a_new_analysis_with_a_different_trim_box() -> None:
 def test_the_stored_colour_edits_are_kept_beside_a_crop() -> None:
     draft = set_crop(replace(draft_of(3), edits={1: PageEdit(True, 1, ColourPolicy.GREY)}), 1, CROP)
     assert decode_review(encode_review(draft, None, 3), NAMES[:3]).draft.edits == draft.edits
+
+
+@pytest.mark.parametrize("value", [[0, 0, 9000, 9000, 1], [False, 0, 9000, 9000], [0, 0, 9000]])
+def test_parse_crop_refuses_these_by_itself(value: list) -> None:
+    with pytest.raises(CropFormatError):
+        parse_crop(value, "a crop")

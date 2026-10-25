@@ -16,6 +16,7 @@ from fastfoto_linux.documents.auto_colour import ColourDecision
 from fastfoto_linux.documents.encode import EncodedPage
 from fastfoto_linux.documents.loader import LoadedPage
 from fastfoto_linux.documents.modes import CleanupPolicy, ColourPolicy
+from fastfoto_linux.documents.page_crop import PageCrop
 from fastfoto_linux.documents.trim import Trimmed
 
 
@@ -156,12 +157,15 @@ class PageEdit:
     quarter_turns: int = 0
     colour: ColourPolicy | None = None
     cleanup: CleanupPolicy | None = None
+    crop: PageCrop | None = None
 
     def __post_init__(self) -> None:
         if self.colour is not None and not isinstance(self.colour, ColourPolicy):
             raise ValueError("page colour must be a known output policy")
         if self.cleanup is not None and not isinstance(self.cleanup, CleanupPolicy):
             raise ValueError("page cleanup must be a known cleanup level")
+        if self.crop is not None and not isinstance(self.crop, PageCrop):
+            raise ValueError("page crop must be a page crop")
         if not 0 <= self.quarter_turns < QUARTER_TURNS:
             raise ValueError(f"quarter turns must be 0 to 3, got {self.quarter_turns}")
 

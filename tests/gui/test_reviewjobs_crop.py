@@ -7,12 +7,6 @@ from dataclasses import replace
 
 import numpy as np
 import pytest
-from fastfoto_linux.gui.reviewnames import (
-    MAX_CROP_PREVIEWS,
-    crop_tag,
-    is_output_preview_name,
-    output_preview_names,
-)
 from PIL import Image
 
 from fastfoto_linux.documents.draft import PageEdit
@@ -21,6 +15,12 @@ from fastfoto_linux.documents.page_crop import PageCrop, edited_page
 from fastfoto_linux.gui import reviewjobs
 from fastfoto_linux.gui.reviewdelete import capture_originals, delete_originals
 from fastfoto_linux.gui.reviewjobs import PREVIEW_DIR, make_preview
+from fastfoto_linux.gui.reviewnames import (
+    MAX_CROP_PREVIEWS,
+    crop_tag,
+    is_output_preview_name,
+    output_preview_names,
+)
 from tests.gui.crop_helpers import DPI, HEIGHT, WIDTH, crop_draft
 
 RIGHT_HALF = PageCrop(5000, 0, 10_000, 10_000)
@@ -76,7 +76,7 @@ def test_an_uncropped_output_keeps_its_fixed_name(out):
 
 def test_a_cropped_name_is_built_from_the_page_the_mode_and_a_short_hash(out):
     draft = edited(crop_draft(out), RIGHT_HALF)
-    path = make_preview(draft, 1, threading.Event(), view="output")
+    path = make_preview(draft, 1, threading.Event(), policy="grey", view="output")
     assert re.fullmatch(r"page-0001-output-grey-off-r0-c[0-9a-f]{12}\.jpg", path.name)
     assert is_output_preview_name(1, path.name)
     assert not is_output_preview_name(2, path.name)
@@ -156,7 +156,7 @@ def test_a_planted_link_at_the_preview_name_is_replaced_not_followed(out):
     folder.mkdir()
     name = f"page-0001-output-grey-off-r0-c{crop_tag(RIGHT_HALF, 0)}.jpg"
     (folder / name).symlink_to(victim)
-    path = make_preview(draft, 1, threading.Event(), view="output")
+    path = make_preview(draft, 1, threading.Event(), policy="grey", view="output")
     assert path.name == name and not path.is_symlink()
     assert victim.read_bytes() == b"precious"
 

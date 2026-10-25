@@ -16,10 +16,13 @@ from fastfoto_linux.gui.report import Banner
 from fastfoto_linux.gui.review import ReviewState
 from fastfoto_linux.gui.reviewdelete import SavedOriginals, capture_originals, delete_originals
 from fastfoto_linux.gui.reviewjobs import (
-    PREVIEW_DIR,
     PreviewCompletion,
     PreviewRequest,
     PreviewResult,
+)
+from fastfoto_linux.gui.reviewnames import (
+    PREVIEW_DIR,
+    is_output_preview_name,
     output_preview_names,
 )
 from fastfoto_linux.gui.state import ActionBlockedError, Mode, State, transition
@@ -30,7 +33,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 # Operations that can change a page's output pixels; each names its page number first.
-PAGE_AFFECTING = frozenset({"toggle", "rotate", "set_colour", "set_cleanup"})
+PAGE_AFFECTING = frozenset({"toggle", "rotate", "set_colour", "set_cleanup", "set_crop"})
 # Operations that can change every page's output pixels; they take no page number.
 DOCUMENT_AFFECTING = frozenset({"set_document_cleanup"})
 _OPENABLE = frozenset(
@@ -57,6 +60,8 @@ class ReviewSide:
         self.preview_view = "source"
         self.preview_cleaned = True
         self.preview_crop: tuple[int, int] | None = None
+        self.preview_size: tuple[int, int] | None = None  # the trimmed page, source view
+        self.preview_dpi: int | None = None
         self._preview_requested: PreviewRequest | None = None
         self._preview_running: PreviewRequest | None = None
         self._preview_cached: PreviewRequest | None = None
@@ -290,6 +295,7 @@ class ReviewSide:
         self.preview_view, self.preview_cleaned, self.preview_crop = view, cleaned, crop
         self.preview_path, self.preview_number = None, 0
         self.preview_cleanup_status = None
+        self.preview_size = self.preview_dpi = None
         self._preview_cached = None
         if not self._worker_busy:
             self._dispatch_preview(request)
@@ -310,24 +316,29 @@ class ReviewSide:
     def _preview_completion(self, answer: PreviewResult) -> PreviewCompletion | None:
         if isinstance(answer, PreviewCompletion):
             return answer
-        source, number, path, error = answer
+        source, number, path, error, *measured = answer
         request = self._preview_running
         if request is None or request.view != "source":
             return None
         if request.draft is not source or request.number != number:
             return None
-        return PreviewCompletion(request, path, error)
+        size = dpi = None
+        if measured:
+            width, height, dpi = measured[0]
+            size = (width, height)
+        return PreviewCompletion(request, path, error, size=size, dpi=dpi)
 
     @staticmethod
     def _preview_path_valid(request: PreviewRequest, path: Path | None) -> bool:
         if path is None:
             return True
-        names = (
-            (f"page-{request.number:04d}.jpg",)
-            if request.view == "source"
-            else output_preview_names(request.number)
-        )
-        return path.parent == request.draft.raw_dir / PREVIEW_DIR and path.name in names
+        if request.view == "source":
+            allowed = path.name == f"page-{request.number:04d}.jpg"
+        else:
+            allowed = path.name in output_preview_names(request.number) or is_output_preview_name(
+                request.number, path.name
+            )
+        return path.parent == request.draft.raw_dir / PREVIEW_DIR and allowed
 
     def preview_ready(self, answer: PreviewResult) -> None:
         if not self.active or self.state is None:
@@ -349,6 +360,7 @@ class ReviewSide:
             else:
                 self.preview_path, self.preview_number = completion.path, request.number
                 self.preview_cleanup_status = completion.cleanup_status
+                self.preview_size, self.preview_dpi = completion.size, completion.dpi
                 self._preview_cached = request
             self._controller._changed()
         pending = self._preview_requested

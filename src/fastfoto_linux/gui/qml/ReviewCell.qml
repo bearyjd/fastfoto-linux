@@ -119,6 +119,13 @@ Item {
             QQC2.ToolTip.text: cell.outputText
             HoverHandler { id: outputHover }
         }
+        QQC2.Label {
+            objectName: "reviewCellCropped"
+            visible: cell.model.cropped ?? false
+            text: qsTr("Cropped")
+            textFormat: Text.PlainText
+            font: Kirigami.Theme.smallFont
+        }
         RowLayout {
             spacing: 2
             QQC2.Button {

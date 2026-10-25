@@ -11,6 +11,26 @@ QQC2.Dialog {
     readonly property bool outputView: (bridge.review.previewView ?? "source") === "output"
     readonly property bool cleaned: bridge.review.previewCleaned ?? true
     readonly property bool actualView: outputView && (bridge.review.previewActual ?? false)
+    // The hand crop is drawn on the source view, which is the trimmed page, not turned.
+    property bool cropMode: false
+    property bool cropRejected: false
+    readonly property var cropRect: bridge.review.previewCropRect ?? []
+    readonly property bool cropped: cropRect.length === 4
+
+    function endCrop() {
+        cropMode = false;
+        cropRejected = false;
+        cropOverlay.pending = null;
+    }
+    function beginCrop() {
+        cropRejected = false;
+        cropOverlay.start();
+        cropMode = true;
+        cropOverlay.forceActiveFocus();
+    }
+    onOutputViewChanged: endCrop()
+    onPageNumberChanged: endCrop()
+    onVisibleChanged: if (!visible) endCrop()
 
     function pick(cleaned, actual) {
         bridge.review.previewOptions(dialog.pageNumber, cleaned, actual, bridge.review.previewCropX ?? 500, bridge.review.previewCropY ?? 500);
@@ -57,6 +77,44 @@ QQC2.Dialog {
         }
         RowLayout {
             Layout.fillWidth: true
+            visible: !dialog.outputView
+            QQC2.Button {
+                objectName: "reviewCropButton"
+                text: qsTr("Crop")
+                highlighted: dialog.cropMode
+                enabled: bridge.review.previewCropMode ?? false
+                Accessible.name: qsTr("Crop")
+                onClicked: dialog.cropMode ? dialog.endCrop() : dialog.beginCrop()
+            }
+            QQC2.Button {
+                objectName: "reviewCropResetButton"
+                text: qsTr("Reset crop")
+                enabled: dialog.cropped
+                Accessible.name: qsTr("Reset crop")
+                onClicked: {
+                    dialog.endCrop();
+                    bridge.review.clearCrop(dialog.pageNumber);
+                }
+            }
+            QQC2.Label {
+                objectName: "reviewCropHint"
+                Layout.fillWidth: true
+                visible: dialog.cropMode
+                text: qsTr("Drag a rectangle on the page to keep only that area. The page is not analysed again.")
+                textFormat: Text.PlainText
+                wrapMode: Text.WordWrap
+            }
+            QQC2.Label {
+                objectName: "reviewCropTooSmall"
+                visible: dialog.cropMode && dialog.cropRejected
+                text: qsTr("The crop must be at least 5 mm on each side.")
+                textFormat: Text.PlainText
+                color: Kirigami.Theme.negativeTextColor
+                wrapMode: Text.WordWrap
+            }
+        }
+        RowLayout {
+            Layout.fillWidth: true
             visible: dialog.outputView
             QQC2.Switch {
                 id: cleanupSwitch
@@ -96,7 +154,7 @@ QQC2.Dialog {
                 objectName: "reviewPreviewFrame"
                 visible: !dialog.actualView
                 anchors.centerIn: parent
-                readonly property int displayTurns: dialog.outputView ? 0 : dialog.turns
+                readonly property int displayTurns: dialog.outputView || dialog.cropMode ? 0 : dialog.turns
                 width: displayTurns % 2 ? parent.height : parent.width
                 height: displayTurns % 2 ? parent.width : parent.height
                 rotation: displayTurns * 90
@@ -110,6 +168,101 @@ QQC2.Dialog {
                     asynchronous: true
                     cache: false
                     fillMode: Image.PreserveAspectFit
+                }
+                Item {
+                    id: cropOverlay
+                    objectName: "reviewCropOverlay"
+                    anchors.fill: parent
+                    visible: !dialog.outputView
+                    activeFocusOnTab: dialog.cropMode
+                    Accessible.role: Accessible.Graphic
+                    Accessible.name: qsTr("Crop area")
+                    Accessible.description: qsTr("Drag a rectangle, or use the arrow keys to move it and Shift with the arrow keys to resize it. Enter applies the crop and Escape cancels.")
+                    // The painted page inside this item, and the rectangle being chosen, as
+                    // [left, top, right, bottom] in this item's pixels (null when none).
+                    readonly property real padX: (width - fittedImage.paintedWidth) / 2
+                    readonly property real padY: (height - fittedImage.paintedHeight) / 2
+                    property var pending: null
+                    readonly property var shown: pending !== null ? pending : committed()
+                    readonly property real keyStep: 0.01
+
+                    function committed() {
+                        const r = dialog.cropRect;
+                        const sw = bridge.review.previewSourceWidth;
+                        const sh = bridge.review.previewSourceHeight;
+                        if (r.length !== 4 || sw <= 0 || sh <= 0) return null;
+                        return [padX + r[0] * fittedImage.paintedWidth / sw, padY + r[1] * fittedImage.paintedHeight / sh,
+                                padX + r[2] * fittedImage.paintedWidth / sw, padY + r[3] * fittedImage.paintedHeight / sh];
+                    }
+                    function start() {
+                        const w = fittedImage.paintedWidth, h = fittedImage.paintedHeight;
+                        pending = committed() ?? [padX + 0.1 * w, padY + 0.1 * h, padX + 0.9 * w, padY + 0.9 * h];
+                    }
+                    function apply() {
+                        if (pending === null) return;
+                        const ok = bridge.review.cropFromDrag(dialog.pageNumber, pending[0], pending[1], pending[2], pending[3],
+                                                              fittedImage.paintedWidth, fittedImage.paintedHeight, width, height);
+                        if (ok) dialog.endCrop();
+                        else dialog.cropRejected = true;
+                    }
+                    function nudge(dx, dy, resize) {
+                        if (pending === null) return;
+                        const p = pending.slice();
+                        const right = padX + fittedImage.paintedWidth, bottom = padY + fittedImage.paintedHeight;
+                        if (resize) {
+                            p[2] = Math.max(p[0] + 1, Math.min(right, p[2] + dx));
+                            p[3] = Math.max(p[1] + 1, Math.min(bottom, p[3] + dy));
+                        } else {
+                            const mx = Math.max(padX - p[0], Math.min(right - p[2], dx));
+                            const my = Math.max(padY - p[1], Math.min(bottom - p[3], dy));
+                            p[0] += mx; p[2] += mx; p[1] += my; p[3] += my;
+                        }
+                        pending = p;
+                    }
+
+                    Keys.onPressed: event => {
+                        if (!dialog.cropMode) return;
+                        const dx = fittedImage.paintedWidth * keyStep, dy = fittedImage.paintedHeight * keyStep;
+                        const resize = (event.modifiers & Qt.ShiftModifier) !== 0;
+                        switch (event.key) {
+                        case Qt.Key_Left: nudge(-dx, 0, resize); break;
+                        case Qt.Key_Right: nudge(dx, 0, resize); break;
+                        case Qt.Key_Up: nudge(0, -dy, resize); break;
+                        case Qt.Key_Down: nudge(0, dy, resize); break;
+                        case Qt.Key_Return: case Qt.Key_Enter: apply(); break;
+                        case Qt.Key_Escape: dialog.endCrop(); break;
+                        default: return;
+                        }
+                        event.accepted = true;
+                    }
+
+                    Rectangle {
+                        objectName: "reviewCropRect"
+                        visible: cropOverlay.shown !== null
+                        x: cropOverlay.shown ? cropOverlay.shown[0] : 0
+                        y: cropOverlay.shown ? cropOverlay.shown[1] : 0
+                        width: cropOverlay.shown ? cropOverlay.shown[2] - cropOverlay.shown[0] : 0
+                        height: cropOverlay.shown ? cropOverlay.shown[3] - cropOverlay.shown[1] : 0
+                        color: "transparent"
+                        border.width: 2
+                        border.color: dialog.cropMode ? Kirigami.Theme.highlightColor : "#ffffff"
+                    }
+                    MouseArea {
+                        property point origin: Qt.point(0, 0)
+                        anchors.fill: parent
+                        enabled: dialog.cropMode
+                        cursorShape: Qt.CrossCursor
+                        onPressed: mouse => {
+                            cropOverlay.forceActiveFocus();
+                            origin = Qt.point(mouse.x, mouse.y);
+                        }
+                        onPositionChanged: mouse => cropOverlay.pending = [origin.x, origin.y, mouse.x, mouse.y]
+                        onReleased: mouse => {
+                            if (Math.hypot(mouse.x - origin.x, mouse.y - origin.y) < 3) return;
+                            cropOverlay.pending = [origin.x, origin.y, mouse.x, mouse.y];
+                            cropOverlay.apply();
+                        }
+                    }
                 }
                 MouseArea {
                     objectName: "reviewPreviewPickArea"

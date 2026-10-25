@@ -206,6 +206,11 @@ Kirigami.Page {
                 textFormat: Text.PlainText
                 horizontalAlignment: Text.AlignRight
                 elide: Text.ElideRight
+
+                QQC2.ToolTip.text: text
+                QQC2.ToolTip.visible: tipHover.hovered && truncated
+                QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
+                HoverHandler { id: tipHover }
             }
 
             QQC2.BusyIndicator {

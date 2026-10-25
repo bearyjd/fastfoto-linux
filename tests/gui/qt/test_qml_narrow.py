@@ -88,7 +88,7 @@ def test_the_language_picker_starts_collapsed_and_opens_with_its_toggle(
     assert warnings == []
 
 
-def test_the_language_picker_is_forced_open_while_busy_and_while_a_message_shows(
+def test_only_a_running_job_forces_the_picker_open_and_a_message_can_be_collapsed(
     monkeypatch: pytest.MonkeyPatch, make_doc_bridge: Any, open_window: Any
 ) -> None:
     inventory = Inventory(
@@ -107,22 +107,55 @@ def test_the_language_picker_is_forced_open_while_busy_and_while_a_message_shows
     wait_until(lambda: not bridge.documents.languages.busy, "languages")
     window, _ = open_window(bridge)
     settle()
-    picker, _, search, scroll = picker_parts(window)
-    assert picker.property("expanded") is False
+    picker, toggle, search, scroll = picker_parts(window)
+    assert picker.property("expanded") is False and toggle.property("enabled") is True
     bridge.documents.languages.setSelected("spa", True)
     click(child(window, "docDownloadLanguagesButton"))
     assert entered.wait(2)
     settle()
     assert search.property("visible") and scroll.property("visible")  # busy: forced open
+    assert toggle.property("enabled") is False
+    assert "working" in toggle.property("text")  # says why it is grey
     click(child(window, "docCancelLanguageDownloadButton"))
     wait_until(lambda: not bridge.documents.languages.busy, "cancel")
     settle()
-    assert bridge.documents.languages.message  # the message keeps it open
-    assert search.property("visible") and scroll.property("visible")
-    assert picker.property("expanded") is False  # forced, not toggled
+    assert bridge.documents.languages.message
+    assert toggle.property("enabled") is True  # a message alone does not lock it
+    assert not search.property("visible") and not scroll.property("visible")
+    click(toggle)
+    settle()
+    assert search.property("visible")
+    click(toggle)
+    settle()
+    assert not search.property("visible")
+
+
+def test_collapsing_moves_focus_from_the_hidden_search_field_to_the_toggle(
+    make_doc_bridge: Any, open_window: Any
+) -> None:
+    window, _ = open_window(make_doc_bridge())
+    settle()
+    _, toggle, search, _ = picker_parts(window)
+    click(toggle)
+    settle()
+    search.forceActiveFocus()
+    settle()
+    assert window.activeFocusItem() is search
+    click(toggle)
+    settle()
+    assert window.activeFocusItem() is toggle
 
 
 # -- headers at the narrowest window --------------------------------------------------------------
+
+
+def check_header(window: Any, heading: Any, flow: Any, warnings: list[str]) -> None:
+    first = flow.childItems()[0]
+    assert fits(heading) and fits(flow)
+    assert heading.property("truncated") in (True, False)  # exposed by Qt for the tooltip
+    assert overflowing(flow) == []
+    assert flow.height() >= first.height()
+    assert warnings == []  # no binding or polish loops from the Flow in the ColumnLayout
 
 
 def test_the_documents_header_and_rows_fit_the_narrowest_window(
@@ -130,29 +163,36 @@ def test_the_documents_header_and_rows_fit_the_narrowest_window(
 ) -> None:
     session = ScriptedDocumentSession(out, result=clean_document(out, pages=3, ocr=OcrStatus.DONE))
     bridge = make_doc_bridge(session=session)
-    window, _ = open_window(bridge)
+    window, warnings = open_window(bridge)
     test_qml_documents.ready(bridge)
     bridge.startScan()
     wait_until(lambda: bridge.state == "done", "the scan to end")
     narrow(window)
-    results = child(window, "documentsResults")
-    assert fits(results)
-    assert overflowing(results.childItems()[0]) == []
-    assert overflowing(child(window, "openDocumentsFolderButton").parentItem()) == []
+    assert fits(child(window, "documentsResults"))
+    flow = child(window, "openDocumentsFolderButton").parentItem()
+    check_header(window, child(window, "documentsHeading"), flow, warnings)
     row = test_qml_documents.in_row(window, "documentPages").parentItem().parentItem()
     assert overflowing(row) == []
 
 
-def test_the_photos_header_fits_the_narrowest_window(
+def test_the_photos_header_wraps_its_actions_at_the_narrowest_window(
     make_doc_bridge: Any, open_window: Any
 ) -> None:
     bridge = make_doc_bridge(mode="photos")
-    window, _ = open_window(bridge)
+    window, warnings = open_window(bridge)
     narrow(window)
-    view = child(window, "photosHeading").parentItem().parentItem()
-    assert fits(view)
-    for name in ("photosHeading", "enhancedSwitch", "openSavedPhotoEditButton", "openFolderButton"):
-        item = child(window, name)
-        owner = item.parentItem()
-        assert item.x() + item.width() <= owner.width() + 1, name
-        assert item.x() >= -1, name
+    flow = child(window, "enhancedSwitch").parentItem()
+    check_header(window, child(window, "photosHeading"), flow, warnings)
+    assert fits(child(window, "photosHeading").parentItem())
+
+
+def test_the_actions_wrap_onto_a_second_row_when_the_pane_is_too_narrow_for_one(
+    make_doc_bridge: Any, open_window: Any
+) -> None:
+    window, _ = open_window(make_doc_bridge(mode="photos"))
+    narrow(window)
+    flow = child(window, "enhancedSwitch").parentItem()
+    one_row = max(item.height() for item in flow.childItems())
+    flow.setWidth(child(window, "openSavedPhotoEditButton").width() + 10)
+    settle()
+    assert flow.implicitHeight() > one_row * 1.5

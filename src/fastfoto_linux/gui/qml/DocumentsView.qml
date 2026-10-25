@@ -18,6 +18,11 @@ ColumnLayout {
         text: bridge.documents.heading
         textFormat: Text.PlainText
         elide: Text.ElideRight
+
+        QQC2.ToolTip.text: text
+        QQC2.ToolTip.visible: tipHover.hovered && truncated
+        QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
+        HoverHandler { id: tipHover }
     }
 
     // The actions wrap onto further lines when the window is narrow.
@@ -126,6 +131,11 @@ ColumnLayout {
                             text: row.pagesText
                             textFormat: Text.PlainText
                             elide: Text.ElideRight
+
+                            QQC2.ToolTip.text: text
+                            QQC2.ToolTip.visible: tipHover.hovered && truncated
+                            QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
+                            HoverHandler { id: tipHover }
                         }
 
                         QQC2.Label {

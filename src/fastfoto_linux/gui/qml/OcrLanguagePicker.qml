@@ -7,10 +7,23 @@ ColumnLayout {
     id: picker
     objectName: "docLanguagePicker"
     property bool editable: !bridge.busy && !bridge.documents.languages.busy
-    // Folded away by default; a running check or download and any message keep it open.
+    // Folded away by default; only a running check or download holds it open.
     property bool expanded: false
     readonly property bool open: expanded || bridge.documents.languages.busy
-                                 || bridge.documents.languages.message !== ""
+
+    function holdsFocus(item) {
+        let focused = Window.window ? Window.window.activeFocusItem : null;
+        while (focused) {
+            if (focused === item) return true;
+            focused = focused.parent;
+        }
+        return false;
+    }
+
+    onOpenChanged: {
+        if (!open && (holdsFocus(languageSearch) || holdsFocus(languageScroll)))
+            languageToggle.forceActiveFocus();
+    }
     Layout.fillWidth: true
     Layout.preferredWidth: Kirigami.Units.gridUnit * 16
     Layout.minimumWidth: 0
@@ -31,12 +44,16 @@ ColumnLayout {
         }
 
         QQC2.ToolButton {
+            id: languageToggle
             objectName: "docLanguageToggle"
-            text: picker.open ? qsTr("Hide languages") : qsTr("Show languages")
+            text: bridge.documents.languages.busy ? qsTr("Languages (working…)")
+                  : (picker.open ? qsTr("Hide languages") : qsTr("Show languages"))
             icon.name: picker.open ? "arrow-up" : "arrow-down"
             display: QQC2.AbstractButton.IconOnly
-            enabled: !(bridge.documents.languages.busy || bridge.documents.languages.message !== "")
+            enabled: !bridge.documents.languages.busy
             Accessible.name: text
+            Accessible.checkable: true
+            Accessible.checked: picker.open
             QQC2.ToolTip.text: text
             QQC2.ToolTip.visible: hovered
             QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
@@ -45,6 +62,7 @@ ColumnLayout {
     }
 
     QQC2.TextField {
+        id: languageSearch
         objectName: "docLanguageSearch"
         Layout.fillWidth: true
         implicitWidth: Kirigami.Units.gridUnit * 16
@@ -56,6 +74,7 @@ ColumnLayout {
     }
 
     QQC2.ScrollView {
+        id: languageScroll
         objectName: "docLanguageScroll"
         visible: picker.open
         Layout.fillWidth: true

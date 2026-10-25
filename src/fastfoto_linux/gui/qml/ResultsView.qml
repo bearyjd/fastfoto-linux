@@ -20,6 +20,11 @@ ColumnLayout {
         text: bridge.photosHeading
         textFormat: Text.PlainText
         elide: Text.ElideRight
+
+        QQC2.ToolTip.text: text
+        QQC2.ToolTip.visible: tipHover.hovered && truncated
+        QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
+        HoverHandler { id: tipHover }
     }
 
     // The actions wrap onto further lines when the window is narrow.

@@ -12,18 +12,26 @@ ColumnLayout {
 
     spacing: Kirigami.Units.smallSpacing
 
-    RowLayout {
+    Kirigami.Heading {
+        objectName: "photosHeading"
         Layout.fillWidth: true
+        Layout.minimumWidth: 0
+        level: 3
+        text: bridge.photosHeading
+        textFormat: Text.PlainText
+        elide: Text.ElideRight
 
-        Kirigami.Heading {
-            objectName: "photosHeading"
-            level: 3
-            text: bridge.photosHeading
-        }
+        QQC2.ToolTip.text: text
+        QQC2.ToolTip.visible: tipHover.hovered && truncated
+        QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
+        HoverHandler { id: tipHover }
+    }
 
-        Item {
-            Layout.fillWidth: true
-        }
+    // The actions wrap onto further lines when the window is narrow.
+    Flow {
+        Layout.fillWidth: true
+        Layout.minimumWidth: 0
+        spacing: Kirigami.Units.smallSpacing
 
         QQC2.Switch {
             objectName: "enhancedSwitch"

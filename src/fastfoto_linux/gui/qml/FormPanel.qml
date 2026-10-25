@@ -202,30 +202,66 @@ QQC2.ScrollView {
         }
 
         QQC2.CheckBox {
+            id: orientBoxControl
             objectName: "orientBox"
+            Layout.fillWidth: true
+            Layout.minimumWidth: 0
             text: qsTr("Turn upright by faces")
             checked: bridge.form.orient
             enabled: panel.editable
             Accessible.name: qsTr("Turn upright by faces")
             onToggled: bridge.setField("orient", checked)
+
+            contentItem: QQC2.Label {
+                leftPadding: orientBoxControl.indicator.width + orientBoxControl.spacing
+                text: orientBoxControl.text
+                textFormat: Text.PlainText
+                wrapMode: Text.WordWrap
+                verticalAlignment: Text.AlignVCenter
+                opacity: orientBoxControl.enabled ? 1 : 0.5
+            }
         }
 
         QQC2.CheckBox {
+            id: restoreBoxControl
             objectName: "restoreBox"
+            Layout.fillWidth: true
+            Layout.minimumWidth: 0
             text: qsTr("Restore faded colour")
             checked: bridge.form.restore
             enabled: panel.editable
             Accessible.name: qsTr("Restore faded colour")
             onToggled: bridge.setField("restore", checked)
+
+            contentItem: QQC2.Label {
+                leftPadding: restoreBoxControl.indicator.width + restoreBoxControl.spacing
+                text: restoreBoxControl.text
+                textFormat: Text.PlainText
+                wrapMode: Text.WordWrap
+                verticalAlignment: Text.AlignVCenter
+                opacity: restoreBoxControl.enabled ? 1 : 0.5
+            }
         }
 
         QQC2.CheckBox {
+            id: redeyeBoxControl
             objectName: "redeyeBox"
+            Layout.fillWidth: true
+            Layout.minimumWidth: 0
             text: qsTr("Remove red eyes (experimental)")
             checked: bridge.form.redeye
             enabled: panel.editable
             Accessible.name: qsTr("Remove red eyes (experimental)")
             onToggled: bridge.setField("redeye", checked)
+
+            contentItem: QQC2.Label {
+                leftPadding: redeyeBoxControl.indicator.width + redeyeBoxControl.spacing
+                text: redeyeBoxControl.text
+                textFormat: Text.PlainText
+                wrapMode: Text.WordWrap
+                verticalAlignment: Text.AlignVCenter
+                opacity: redeyeBoxControl.enabled ? 1 : 0.5
+            }
         }
 
         QQC2.Label {
@@ -241,12 +277,24 @@ QQC2.ScrollView {
         }
 
         QQC2.CheckBox {
+            id: keepOriginalBoxControl
             objectName: "keepOriginalBox"
+            Layout.fillWidth: true
+            Layout.minimumWidth: 0
             text: qsTr("Keep the plain original too")
             checked: bridge.form.keep_original
             enabled: panel.editable
             Accessible.name: qsTr("Keep the plain original too")
             onToggled: bridge.setField("keep_original", checked)
+
+            contentItem: QQC2.Label {
+                leftPadding: keepOriginalBoxControl.indicator.width + keepOriginalBoxControl.spacing
+                text: keepOriginalBoxControl.text
+                textFormat: Text.PlainText
+                wrapMode: Text.WordWrap
+                verticalAlignment: Text.AlignVCenter
+                opacity: keepOriginalBoxControl.enabled ? 1 : 0.5
+            }
         }
         QQC2.Label {
             Layout.fillWidth: true

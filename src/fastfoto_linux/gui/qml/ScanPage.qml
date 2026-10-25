@@ -199,11 +199,18 @@ Kirigami.Page {
 
             QQC2.Label {
                 objectName: "progressLabel"
-                Layout.fillWidth: !(!bridge.scannerOk && bridge.state !== "checking" && bridge.state !== "idle")
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
                 visible: bridge.progressText !== ""
                 text: bridge.progressText
                 textFormat: Text.PlainText
                 horizontalAlignment: Text.AlignRight
+                elide: Text.ElideRight
+
+                QQC2.ToolTip.text: text
+                QQC2.ToolTip.visible: tipHover.hovered && truncated
+                QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
+                HoverHandler { id: tipHover }
             }
 
             QQC2.BusyIndicator {

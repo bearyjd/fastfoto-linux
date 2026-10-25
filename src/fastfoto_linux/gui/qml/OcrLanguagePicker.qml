@@ -7,25 +7,66 @@ ColumnLayout {
     id: picker
     objectName: "docLanguagePicker"
     property bool editable: !bridge.busy && !bridge.documents.languages.busy
+    // Folded away by default; only a running check or download holds it open.
+    property bool expanded: false
+    readonly property bool open: expanded || bridge.documents.languages.busy
+
+    function holdsFocus(item) {
+        let focused = Window.window ? Window.window.activeFocusItem : null;
+        while (focused) {
+            if (focused === item) return true;
+            focused = focused.parent;
+        }
+        return false;
+    }
+
+    onOpenChanged: {
+        if (!open && (holdsFocus(languageSearch) || holdsFocus(languageScroll)))
+            Qt.callLater(() => languageToggle.forceActiveFocus());
+    }
     Layout.fillWidth: true
     Layout.preferredWidth: Kirigami.Units.gridUnit * 16
     Layout.minimumWidth: 0
     spacing: Kirigami.Units.smallSpacing
 
-    QQC2.Label {
-        objectName: "docLanguageSummary"
+    RowLayout {
         Layout.fillWidth: true
-        Layout.preferredWidth: Kirigami.Units.gridUnit * 16
         Layout.minimumWidth: 0
-        text: bridge.documents.languages.summary
-        textFormat: Text.PlainText
-        wrapMode: Text.WordWrap
+
+        QQC2.Label {
+            objectName: "docLanguageSummary"
+            Layout.fillWidth: true
+            Layout.preferredWidth: Kirigami.Units.gridUnit * 16
+            Layout.minimumWidth: 0
+            text: bridge.documents.languages.summary
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+        }
+
+        QQC2.ToolButton {
+            id: languageToggle
+            objectName: "docLanguageToggle"
+            text: bridge.documents.languages.busy ? qsTr("Languages (working…)")
+                  : (picker.open ? qsTr("Hide languages") : qsTr("Show languages"))
+            icon.name: picker.open ? "arrow-up" : "arrow-down"
+            display: QQC2.AbstractButton.IconOnly
+            enabled: !bridge.documents.languages.busy
+            Accessible.name: qsTr("Languages")
+            Accessible.checkable: true
+            Accessible.checked: picker.open
+            QQC2.ToolTip.text: text
+            QQC2.ToolTip.visible: hovered
+            QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
+            onClicked: picker.expanded = !picker.expanded
+        }
     }
 
     QQC2.TextField {
+        id: languageSearch
         objectName: "docLanguageSearch"
         Layout.fillWidth: true
         implicitWidth: Kirigami.Units.gridUnit * 16
+        visible: picker.open
         placeholderText: qsTr("Find a language by name or code")
         Accessible.name: qsTr("Find a text language")
         enabled: picker.editable
@@ -33,6 +74,9 @@ ColumnLayout {
     }
 
     QQC2.ScrollView {
+        id: languageScroll
+        objectName: "docLanguageScroll"
+        visible: picker.open
         Layout.fillWidth: true
         Layout.minimumWidth: 0
         Layout.preferredHeight: Kirigami.Units.gridUnit * 11
@@ -51,13 +95,24 @@ ColumnLayout {
                 spacing: 0
 
                 QQC2.CheckBox {
+                    id: languageBox
                     objectName: "docLanguageBox_" + modelData.code
                     Layout.fillWidth: true
+                    Layout.minimumWidth: 0
                     text: modelData.name + " (" + modelData.code + ")"
                     checked: modelData.selected
                     enabled: picker.editable
                     Accessible.name: text + ". " + modelData.status
                     onClicked: bridge.documents.languages.setSelected(modelData.code, checked)
+
+                    contentItem: QQC2.Label {
+                        leftPadding: languageBox.indicator.width + languageBox.spacing
+                        text: languageBox.text
+                        textFormat: Text.PlainText
+                        wrapMode: Text.WordWrap
+                        verticalAlignment: Text.AlignVCenter
+                        opacity: languageBox.enabled ? 1 : 0.5
+                    }
                 }
 
                 QQC2.Label {

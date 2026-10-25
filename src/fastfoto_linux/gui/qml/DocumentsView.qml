@@ -10,18 +10,26 @@ ColumnLayout {
     objectName: "documentsResults"
     spacing: Kirigami.Units.smallSpacing
 
-    RowLayout {
+    Kirigami.Heading {
+        objectName: "documentsHeading"
         Layout.fillWidth: true
+        Layout.minimumWidth: 0
+        level: 3
+        text: bridge.documents.heading
+        textFormat: Text.PlainText
+        elide: Text.ElideRight
 
-        Kirigami.Heading {
-            objectName: "documentsHeading"
-            level: 3
-            text: bridge.documents.heading
-        }
+        QQC2.ToolTip.text: text
+        QQC2.ToolTip.visible: tipHover.hovered && truncated
+        QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
+        HoverHandler { id: tipHover }
+    }
 
-        Item {
-            Layout.fillWidth: true
-        }
+    // The actions wrap onto further lines when the window is narrow.
+    Flow {
+        Layout.fillWidth: true
+        Layout.minimumWidth: 0
+        spacing: Kirigami.Units.smallSpacing
 
         QQC2.Button {
             objectName: "openDocumentsFolderButton"
@@ -31,11 +39,7 @@ ColumnLayout {
             Accessible.name: qsTr("Open folder")
             onClicked: Qt.openUrlExternally(bridge.outputUrl)
         }
-    }
 
-    RowLayout {
-        Layout.fillWidth: true
-        visible: bridge.review.canReopen || bridge.review.canDeleteOriginals
         QQC2.Button {
             objectName: "reviewAgainButton"
             text: qsTr("Review again")
@@ -43,6 +47,7 @@ ColumnLayout {
             visible: bridge.review.canReopen
             onClicked: bridge.review.reopen()
         }
+
         QQC2.Button {
             objectName: "deleteOriginalPagesButton"
             text: qsTr("Delete the original pages")
@@ -125,6 +130,12 @@ ColumnLayout {
                             Layout.fillWidth: true
                             text: row.pagesText
                             textFormat: Text.PlainText
+                            elide: Text.ElideRight
+
+                            QQC2.ToolTip.text: text
+                            QQC2.ToolTip.visible: tipHover.hovered && truncated
+                            QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
+                            HoverHandler { id: tipHover }
                         }
 
                         QQC2.Label {

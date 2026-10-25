@@ -24,6 +24,12 @@ open_window = test_qml_documents.open_window
 make_doc_bridge = test_qml_documents.make_doc_bridge
 
 
+def expand(window: Any) -> None:
+    """Open the folded-away language list, as a user does."""
+    click(child(window, "docLanguageToggle"))
+    settle()
+
+
 def language_box(window: Any, code: str) -> Any:
     def find(item: Any) -> Any:
         if item.objectName() == f"docLanguageBox_{code}":
@@ -55,6 +61,7 @@ def test_checkboxes_and_search_preserve_order_and_custom_installed_codes(
     bridge.setDocumentField("langs", "spa+custom+eng")
     window, warnings = open_window(bridge)
     settle()
+    expand(window)
     assert language_box(window, "eng").property("checked")
     search = child(window, "docLanguageSearch")
     search.setProperty("text", "SPAN")
@@ -101,6 +108,7 @@ def test_explicit_download_shows_orientation_size_progress_cancel_and_retry(
     wait_until(lambda: not bridge.documents.languages.busy, "languages")
     window, warnings = open_window(bridge)
     settle()
+    expand(window)
     click(language_box(window, "spa"))
     settle()
     summary = child(window, "docLanguageDownloadSummary").property("text")

@@ -17,8 +17,14 @@ from types import MappingProxyType
 from typing import Any
 
 from fastfoto_linux.documents.assess import MAX_BOXES
-from fastfoto_linux.documents.cleanup_json import EDIT_KEYS, edit_json, uses_cleanup
-from fastfoto_linux.documents.colour_json import decode_decision, decode_policy, encode_decision
+from fastfoto_linux.documents.cleanup_json import EDIT_KEYS, uses_cleanup
+from fastfoto_linux.documents.colour_json import decode_decision, decode_policy
+from fastfoto_linux.documents.crop_json import (
+    CROP_EDIT_KEYS,
+    CropFormatError,
+    parse_crop,
+    uses_crop,
+)
 from fastfoto_linux.documents.draft import (
     QUARTER_TURNS,
     BoxN,
@@ -27,18 +33,20 @@ from fastfoto_linux.documents.draft import (
     PageAnalysis,
     PageEdit,
     TrimBox,
-    sorted_flags,
 )
+from fastfoto_linux.documents.draft_encode import edit_page_json, options_json, page_json
 from fastfoto_linux.documents.loader import MAX_DPI, MIN_DPI
 from fastfoto_linux.documents.modes import CleanupPolicy, ColourMode, ColourPolicy
 from fastfoto_linux.documents.ocr import OcrMode, validate_langs
+from fastfoto_linux.documents.page_crop import PageCrop
 from fastfoto_linux.documents.settings import DocumentSettings
 from fastfoto_linux.output.errors import InvalidPrefixError
 from fastfoto_linux.output.naming import sanitise_prefix
 
-FORMAT_VERSION = 3
+FORMAT_VERSION = 4
+CLEANUP_VERSION = 3  # the first version that holds paper cleanup
 DEFAULT_VERSION = 2  # what a draft with no paper cleanup is written as, byte for byte as before
-READ_VERSIONS = (1, 2, 3)
+READ_VERSIONS = (1, 2, 3, 4)
 MAX_PAGES = 2000  # a document of more pages than this is not reviewed from a file
 MAX_FILE_BYTES = 1 << 40  # the size of one page file
 MAX_MTIME_NS = 1 << 63
@@ -79,51 +87,23 @@ class StoredReview:
 # --- writing -------------------------------------------------------------------------------
 
 
-def _page_json(page: PageAnalysis) -> dict[str, Any]:
-    return {
-        "name": page.name,
-        "size": page.size,
-        "mtime_ns": page.mtime_ns,
-        "dpi": page.dpi,
-        "trim": [page.trim.left, page.trim.right, page.trim.top, page.trim.bottom],
-        "band_bottom": page.trim.band_bottom,
-        "blank": page.blank,
-        "partner": page.partner,
-        "flags": [str(flag) for flag in sorted_flags(page.flags)],
-        "marks": [[box.x0, box.y0, box.x1, box.y1] for box in page.marks],
-        "detail": list(page.detail),
-        "colour": encode_decision(page.colour),
-    }
-
-
-def _options_json(settings: DocumentSettings) -> dict[str, str] | None:
-    try:
-        name = sanitise_prefix(settings.name)
-    except InvalidPrefixError:
-        return None
-    return {
-        "name": name,
-        "colour": settings.colour.value,
-        "ocr": settings.ocr.value,
-        "langs": settings.langs,
-    }
-
-
 def encode_review(
     draft: DocumentDraft, settings: DocumentSettings | None, analysis_version: int
 ) -> bytes:
     """The JSON of ``draft`` (and the options of ``settings``, if given). The draft's read-only
-    maps are written out by hand. The lowest format version that fits is written: version 3 only
-    when the draft holds paper cleanup state, else version 2 exactly as it always was."""
-    cleanup = uses_cleanup(draft)
+    maps are written out by hand. The lowest format version that fits is written: version 4 only
+    when a page is cropped, version 3 when the draft holds paper cleanup state, else version 2
+    exactly as it always was."""
+    cropped = uses_crop(draft)
+    cleanup = cropped or uses_cleanup(draft)
     data: dict[str, Any] = {
-        "version": FORMAT_VERSION if cleanup else DEFAULT_VERSION,
+        "version": FORMAT_VERSION if cropped else CLEANUP_VERSION if cleanup else DEFAULT_VERSION,
         "analysis_version": analysis_version,
         "duplex": draft.duplex,
         "keep_blank": draft.keep_blank,
-        "pages": [_page_json(page) for page in draft.pages],
+        "pages": [page_json(page) for page in draft.pages],
         "edits": {
-            str(number): edit_json(edit, with_cleanup=cleanup)
+            str(number): edit_page_json(edit, cleanup=cleanup, cropped=cropped)
             for number, edit in sorted(draft.edits.items())
         },
         "order": list(draft.order),
@@ -134,7 +114,7 @@ def encode_review(
         data["cleanup"] = draft.cleanup.value
     if settings is not None:
         data["fallback_dpi"] = settings.fallback_dpi
-    options = None if settings is None else _options_json(settings)
+    options = None if settings is None else options_json(settings)
     if options is not None:
         data["options"] = options
     return json.dumps(data, separators=(",", ":"), allow_nan=False).encode("utf-8")
@@ -264,16 +244,30 @@ def _cleanup(value: Any, what: str) -> CleanupPolicy:
         raise ReviewFormatError(f"{what} must be off, light or strong") from error
 
 
+def _check_keys(entry: dict[str, Any], version: int) -> None:
+    if version < FORMAT_VERSION and "crop" in entry:
+        raise ReviewFormatError("crop needs format version 4")
+    if version == FORMAT_VERSION and set(entry) != CROP_EDIT_KEYS:
+        raise ReviewFormatError("an edit must have exactly include, turns, colour, cleanup, crop")
+    if version == CLEANUP_VERSION and set(entry) != EDIT_KEYS:
+        raise ReviewFormatError("an edit must have exactly include, turns, colour, cleanup")
+    if version < CLEANUP_VERSION and "cleanup" in entry:
+        raise ReviewFormatError("cleanup needs format version 3")
+
+
+def _crop(entry: dict[str, Any]) -> PageCrop | None:
+    try:
+        return parse_crop(entry.get("crop"), "an edit's crop")
+    except CropFormatError as error:
+        raise ReviewFormatError(str(error)) from error
+
+
 def _edits(value: Any, count: int, version: int) -> Mapping[int, PageEdit]:
     edits: dict[int, PageEdit] = {}
     for key, raw in _dict(value, "edits").items():
         number = _number_key(key, "edits", count)
         entry = _dict(raw, "an edit")
-        if version == FORMAT_VERSION:
-            if set(entry) != EDIT_KEYS:
-                raise ReviewFormatError("an edit must have exactly include, turns, colour, cleanup")
-        elif "cleanup" in entry:
-            raise ReviewFormatError("cleanup needs format version 3")
+        _check_keys(entry, version)
         include = entry.get("include")
         if include is not None:
             include = _flag(include, "include")
@@ -285,6 +279,7 @@ def _edits(value: Any, count: int, version: int) -> Mapping[int, PageEdit]:
             None
             if entry.get("cleanup") is None
             else _cleanup(entry["cleanup"], "an edit's cleanup"),
+            _crop(entry),
         )
     return MappingProxyType(edits)
 
@@ -351,7 +346,7 @@ def _decode(data: bytes, names: Sequence[str]) -> StoredReview:
     format_version = top.get("version")
     if type(format_version) is not int or format_version not in READ_VERSIONS:
         raise ReviewFormatError("the format version is not one this program reads")
-    if format_version != FORMAT_VERSION and "cleanup" in top:
+    if format_version < CLEANUP_VERSION and "cleanup" in top:
         raise ReviewFormatError("cleanup needs format version 3")
     entries = _list(top.get("pages"), "pages", count)
     if len(entries) != count:
@@ -371,7 +366,7 @@ def _decode(data: bytes, names: Sequence[str]) -> StoredReview:
         part_names=_part_names(top.get("part_names", {}), count),
         cleanup=(
             _cleanup(top.get("cleanup"), "cleanup")
-            if top["version"] == FORMAT_VERSION
+            if top["version"] >= CLEANUP_VERSION
             else CleanupPolicy.OFF
         ),
     )

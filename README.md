@@ -155,6 +155,12 @@ uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr o
   document with an optional override for one page, kept in the review file (format version 3);
   documents saved earlier open with cleanup Off, and `doc process` applies the level a review
   file holds. The design note lists the limits; no claim is made about OCR results.
+- **Crop** (desktop review, source view): drag a rectangle on a page to keep only that area, at
+  least 5 mm on each side. The crop is cut from the trimmed page before the page is turned and
+  cleaned, so the preview and the PDF agree. The page is not analysed again, so its blank,
+  flag and colour verdicts stay; **Reset crop** brings the whole page back. A crop is kept in the
+  review file (format version 4, written only when a page is cropped); there is no command-line
+  option for it.
 - Only what is certainly empty is trimmed, blank white or the scanner's backing; when in doubt
   nothing is cut. Below the paper that is the scanner's white tail: flat rows at the bottom, 4 mm or longer and at least 4 levels
   brighter than the 10 mm above them, of which 3 mm stay. Anything in the tail columns that is

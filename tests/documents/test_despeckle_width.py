@@ -85,8 +85,8 @@ def test_the_overlap_limit_is_four() -> None:
     assert BAND_OVERLAP == 4
 
 
-def test_a_wide_page_whose_bands_would_relabel_it_over_four_times_is_left_alone() -> None:
-    dpi = 600
+@pytest.mark.parametrize("dpi", [300, 600])  # 63 rows divide by 3 exactly; 127 do not
+def test_a_wide_page_whose_bands_would_relabel_it_over_four_times_is_left_alone(dpi: int) -> None:
     guard_rows = speck_px(dpi) + 2 * guard_px(dpi)  # the rows a window adds to the rows it owns
     owned = -(-guard_rows // (BAND_OVERLAP - 1))  # the fewest rows a band may own
     ok_width = MAX_BAND_PIXELS // (guard_rows + owned)

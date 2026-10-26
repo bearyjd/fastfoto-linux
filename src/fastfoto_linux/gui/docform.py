@@ -115,6 +115,8 @@ def update_document_field(form: DocumentForm, name: str, value: object) -> Docum
     """A copy of ``form`` with one field set from a UI value (text, number or switch)."""
     if name not in DOCUMENT_FIELD_NAMES:
         raise ValueError(f"the documents form has no field {name!r}")
+    if name == "despeckle" and type(value) is not bool:
+        raise ValueError("Remove specks must be on or off")
     if name in _BOOL_FIELDS:
         return replace(form, **{name: bool(value)})
     if name == "dpi":

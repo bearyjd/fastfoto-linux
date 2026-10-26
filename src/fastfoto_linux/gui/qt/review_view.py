@@ -21,6 +21,7 @@ from fastfoto_linux.gui.review import (
     MODE_LABELS,
     colour_values,
     preview_cleanup_text,
+    preview_despeckle_text,
     review_items,
     review_summary,
 )
@@ -177,6 +178,16 @@ class ReviewView(QObject):
             return state.draft.despeckle
         return page_cleanup(state.draft, page) is not CleanupPolicy.OFF
 
+    @Property(bool, notify=changed)
+    def previewSwitchSpecks(self) -> bool:
+        """True when the preview switch compares specks removal (a black and white page), not
+        paper cleanup, which black and white never has."""
+        state, number = self._side.state, self._side.preview_target
+        if state is None or not number:
+            return False
+        page = state.draft.pages[number - 1]
+        return colour_values(state.draft, page, self._side._settings.colour)[1] == "bw"
+
     @Property(str, notify=changed)
     def documentCleanup(self) -> str:
         return self._side.state.draft.cleanup.value if self._side.state else CleanupPolicy.OFF.value
@@ -204,8 +215,10 @@ class ReviewView(QObject):
         suffix = ""
         level = page_cleanup(draft, page)
         if mode == ColourMode.BW.value and draft.despeckle:
-            # The switch is "Paper cleanup": its original side has no specks removal either.
-            suffix = " — specks removed" if self._side.preview_cleaned else NO_CLEANUP_TEXT
+            if self._side.preview_cleaned:
+                suffix = " — " + preview_despeckle_text(self._side.preview_despeckle_status)
+            else:
+                suffix = " — without removing specks"
         elif mode != ColourMode.BW.value and level is not CleanupPolicy.OFF:
             if self._side.preview_cleaned:
                 suffix = " — " + preview_cleanup_text(level, self._side.preview_cleanup_status)
@@ -253,7 +266,7 @@ class ReviewView(QObject):
 
     @Slot(bool)
     def setDocumentDespeckle(self, value: bool) -> None:
-        self._call(self._side.edit, "set_document_despeckle", bool(value))
+        self._call(self._side.edit, "set_document_despeckle", value)
 
     @Slot(int, int)
     def rotate(self, number: int, turns: int) -> None:

@@ -958,8 +958,9 @@ document level for this run only, a page's own level still wins, and `--fresh` d
   there is no per-page control and no status in the window. A scan opened again from its
   original pages is analysed with it off, so only a version 5 review file can turn it on. The
   output preview renders the draft's switch on its cleaned side and leaves it off on the original
-  side (the "Paper cleanup" switch, enabled for a black-and-white page when specks are on, with
-  the same mode, turns and crop). The preview name gains `-s` after the turns, only for black
+  side (a switch named "Remove specks" on a black-and-white page, enabled when specks are on, with
+  the same mode, turns and crop). Its caption comes from the render's status, not the request:
+  "specks removed" only when some were, else "no specks removed: <reason>". The preview name gains `-s` after the turns, only for black
   and white, which has no cleanup level and is named `bw-off` (`...-bw-off-r1-s.jpg`, `-s-crop.png`).
 - **Known limits.** A deliberate isolated dot more than 2.5 mm from any ink, dotted leaders
   spaced over 2.5 mm, and a lone decimal point in a sparse table are removed; dust over 0.30 mm

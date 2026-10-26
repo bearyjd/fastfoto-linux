@@ -106,7 +106,7 @@ def test_the_cleanup_hint_is_unchanged_and_one_sentence_explains_the_box(
 ):
     window, _warnings = open_window(make_doc_bridge())
     hint = child(window, "docCleanupHint").property("text")
-    assert hint.startswith("Off by default.") and hint.endswith("review preview.")
+    assert hint.startswith("Off by default.") and hint.endswith("Check it in the preview.")
     assert "black-and-white pages are not changed by paper cleanup" in hint
     assert len(hint) <= len(ORIGINAL_HINT)
     assert child(window, "docDespeckleHint").property("text") == (

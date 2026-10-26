@@ -172,7 +172,7 @@ QQC2.ScrollView {
         QQC2.Label {
             objectName: "docCleanupHint"
             Layout.fillWidth: true
-            text: qsTr("Off by default. Light and Strong lighten the paper tone of grey and colour pages; black-and-white pages are not changed. Check the result in the review preview.")
+            text: qsTr("Off by default. Light and Strong lighten paper tone of grey and colour pages; black-and-white pages are not changed by paper cleanup. Check it in the preview.")
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
             color: Kirigami.Theme.disabledTextColor

@@ -29,7 +29,9 @@ def test_the_readme_names_the_desktop_controls_the_qml_offers() -> None:
 def test_the_readme_says_the_preview_switch_covers_specks_and_off_by_default() -> None:
     desktop = README.split("## Desktop app (preview)")[1].split("### Flatpak")[0]
     assert "off by default" in desktop.split(FORM_LABEL)[1][:600]
-    assert "Paper cleanup** switch" in desktop.split(FORM_LABEL)[1]
+    after = desktop.split(FORM_LABEL)[1]
+    assert "**Paper cleanup**" in after and "**Remove specks**" in after
+    assert "only when some were" in after
 
 
 def test_the_design_note_describes_the_desktop_controls_and_the_preview_names() -> None:

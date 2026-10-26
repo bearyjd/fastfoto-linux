@@ -604,9 +604,9 @@ every other setting is remembered separately for each mode.
 
 **Remove specks (black and white pages)** (off by default) is a checkbox under the form's
 paper cleanup, and **Remove specks** is a checkbox on the review screen; both are the document
-setting described under Documents above. In the review preview, the **Paper cleanup** switch
-shows a black-and-white page with and without its specks removed; the label then reads "specks
-removed". A scan opened again from its original pages starts with it off unless its review file
+setting described under Documents above. In the review preview, the switch (**Paper cleanup** on grey and colour pages, **Remove specks**
+on black-and-white ones) shows the page with and without it; the label says "specks removed" only
+when some were, and otherwise why not (for example "no specks removed: resolution too low"). A scan opened again from its original pages starts with it off unless its review file
 holds it. Grey and colour pages are not changed, and no claim is made about OCR.
 
 Use the explicit download action to fetch the missing models for the selected languages before

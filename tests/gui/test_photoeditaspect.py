@@ -416,3 +416,26 @@ def test_a_shaped_frame_sized_box_at_the_minimum_is_accepted_unchanged():
                 if is_shaped(fw, fh, ratio):
                     assert fit((0, 0, fw, fh), ratio, (fw, fh), (fw, fh)) == (0, 0, fw, fh)
                     assert fit((0, 0, fw, fh), ratio, (fw, fh), (fw - 1, fh - 1)) == (0, 0, fw, fh)
+
+
+def test_fitting_finds_intermediate_sizes_not_only_full_width_or_height():
+    assert fit((0, 0, 7, 3), (16, 9), (7, 3)) == (0, 0, 6, 3)
+    assert swap_box((0, 0, 3, 7), (16, 9), frame=(7, 3), minimum=FREE_MIN) == (0, 0, 6, 3)
+
+
+def test_fitting_is_the_largest_shaped_box_over_every_small_size():
+    for ratio in RATIOS:
+        for width in range(1, 25):
+            for height in range(1, 25):
+                best = max(
+                    (
+                        w * h
+                        for w in range(1, width + 1)
+                        for h in range(1, height + 1)
+                        if is_shaped(w, h, ratio)
+                    ),
+                    default=0,
+                )
+                got = fit((0, 0, width, height), ratio, (width, height))
+                area = 0 if got is None else (got[2] - got[0]) * (got[3] - got[1])
+                assert area == best, (ratio, width, height, got)

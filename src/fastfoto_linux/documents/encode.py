@@ -12,7 +12,12 @@ from PIL import Image
 
 from fastfoto_linux.documents.bilevel import binarise
 from fastfoto_linux.documents.cleanup import CleanupStatus, clean_pixels
-from fastfoto_linux.documents.despeckle import DespeckleStatus, abstain_status, despeckle_white
+from fastfoto_linux.documents.despeckle import (
+    DespeckleResult,
+    DespeckleStatus,
+    abstain_status,
+    despeckle_white,
+)
 from fastfoto_linux.documents.loader import WHITE, LoadedPage
 from fastfoto_linux.documents.modes import CleanupPolicy, ColourMode, output_mode
 
@@ -122,6 +127,8 @@ def render_page(  # noqa: PLR0913 - the hooks are the interface
         if on_cleanup is not None:
             on_cleanup(status)
         if cleaned.pixels is not None:
+            if on_despeckle is not None:
+                on_despeckle(DespeckleStatus.NOT_BW if despeckle else DespeckleStatus.OFF)
             return cleaned.pixels
     elif on_cleanup is not None:
         on_cleanup(status)
@@ -135,20 +142,27 @@ def render_page(  # noqa: PLR0913 - the hooks are the interface
         if on_despeckle is not None:
             on_despeckle(DespeckleStatus.OFF)
         return plain
+    return _despeckled(page, plain, cancel, on_despeckle)
+
+
+def _despeckled(
+    page: LoadedPage,
+    plain: np.ndarray,
+    cancel: threading.Event | None,
+    on_despeckle: Callable[[DespeckleStatus], None] | None,
+) -> np.ndarray:
+    """``plain`` (the 1-bit render) without its specks, or ``plain`` itself when despeckle
+    leaves the page alone; the status goes to ``on_despeckle`` either way."""
     abstain = abstain_status(*plain.shape, page.dpi)  # before the page-sized mask is built
     if abstain is not None:
-        logger.debug("despeckle %s", abstain)
-        if on_despeckle is not None:
-            on_despeckle(abstain)
-        return plain
-    source = page.pixels if page.kind is ColourMode.COLOUR else None
-    result = despeckle_white(plain == WHITE, page.dpi, source=source, cancel=cancel)
+        result = DespeckleResult(abstain, None, 0)
+    else:
+        source = page.pixels if page.kind is ColourMode.COLOUR else None
+        result = despeckle_white(plain == WHITE, page.dpi, source=source, cancel=cancel)
     logger.debug("despeckle %s removed %d", result.status, result.removed)
     if on_despeckle is not None:
         on_despeckle(result.status)
-    if result.pixels is None:
-        return plain
-    return _white_to_pixels(result.pixels)
+    return plain if result.pixels is None else _white_to_pixels(result.pixels)
 
 
 def _binarised(grey: np.ndarray, dpi: int) -> np.ndarray:

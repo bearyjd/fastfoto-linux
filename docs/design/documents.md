@@ -945,9 +945,9 @@ document level for this run only, a page's own level still wins, and `--fresh` d
   45 MiB at 300 dpi, 110 MiB at 600 dpi, and 155 MiB on a 512 x 30000 pixel page.
 - **Does nothing, byte for byte,** when the switch is off, the page is grey or colour, the dpi is
   under 150, the work grid has more than 12 million pixels, the page more than 80 million (A3 at
-  600 dpi is 69.6 million; despeckle works at full resolution) or so wide that one row of its
-  window passes 6 million, the first pass finds over 1000 specks (not dust), removal is still
-  going after 4 passes, or nothing qualifies.
+  600 dpi is 69.6 million; despeckle works at full resolution) or so wide that its bands would
+  label it over 4 times (unless it fits one 6 million pixel window), the first pass finds over
+  1000 specks (not dust), removal is still going after 4 passes, or nothing qualifies.
 - **The sidecar.** The review file is format version 5 only when despeckle is on: the shape of
   version 4 plus a required top-level `despeckle` true or false. A cropped draft without it still
   writes version 4. Versions 1 to 4 refuse a `despeckle` key and open with it off; a stale

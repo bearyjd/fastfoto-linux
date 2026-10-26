@@ -34,6 +34,7 @@ import numpy as np
 
 from fastfoto_linux.documents.cleanup import work_too_large
 from fastfoto_linux.documents.despeckle_tables import (
+    BAND_OVERLAP,
     BAND_ROWS,
     CONNECTIVITY,
     MAX_BAND_PIXELS,
@@ -155,24 +156,39 @@ def _band(
     return rows + first, cols, int(wanted.sum())
 
 
-def _band_rows(width: int, sizes: _Sizes) -> int:
-    """The rows a band owns: ``BAND_ROWS``, fewer when the page is wide enough that the window
-    (those rows and the guard rows around them) would pass ``MAX_BAND_PIXELS``."""
-    guard_rows = sizes.cap + 2 * sizes.guard
-    return max(1, min(BAND_ROWS, MAX_BAND_PIXELS // width - guard_rows))
+def _fit_rows(height: int, width: int, sizes: _Sizes) -> int:
+    """The rows a band could own within ``MAX_BAND_PIXELS``, guard rows included: the whole page
+    when it fits in one window, else what the budget leaves after the guard rows (0 or less:
+    not even one row)."""
+    if height * width <= MAX_BAND_PIXELS:
+        return height
+    return MAX_BAND_PIXELS // width - (sizes.cap + 2 * sizes.guard)
+
+
+def _band_rows(height: int, width: int, sizes: _Sizes) -> int:
+    """The rows a band owns: ``BAND_ROWS`` at most, fewer on a wide page."""
+    return max(1, min(BAND_ROWS, _fit_rows(height, width, sizes)))
 
 
 def abstain_status(height: int, width: int, dpi: int) -> DespeckleStatus | None:
     """Why a page of this size and resolution is left alone before any pixel is looked at, or
-    None. Cheap and allocation free: ``render_page`` asks before it builds the page's mask."""
+    None. Cheap and allocation free: ``render_page`` asks before it builds the page's mask.
+
+    Too large: over ``MAX_DESPECKLE_PIXELS``, over cleanup's work-grid limit, or so wide that its
+    bands would label the page over ``BAND_OVERLAP`` times (each band labels the guard rows
+    around the rows it owns, so a band owning fewer than guard rows / (``BAND_OVERLAP`` - 1)
+    rows costs more than the page is worth). A page that fits one window is labelled once.
+    """
     sizes = _Sizes(speck_px(dpi), guard_px(dpi))
     if dpi < MIN_DPI or sizes.cap < 1:
         return DespeckleStatus.LOW_DPI
-    narrowest = min(height, 1 + sizes.cap + 2 * sizes.guard) * width  # one owned row's window
+    guard_rows = sizes.cap + 2 * sizes.guard
+    fit = _fit_rows(height, width, sizes)
+    whole = height * width <= MAX_BAND_PIXELS
     if (
         height * width > MAX_DESPECKLE_PIXELS
         or work_too_large(height, width, dpi)
-        or narrowest > MAX_BAND_PIXELS
+        or (not whole and (fit < 1 or fit * (BAND_OVERLAP - 1) < guard_rows))
     ):
         return DespeckleStatus.TOO_LARGE
     return None
@@ -190,7 +206,7 @@ def _removable(
     rows: list[np.ndarray] = []
     cols: list[np.ndarray] = []
     total = 0
-    step = _band_rows(ink.shape[1], sizes)
+    step = _band_rows(*ink.shape, sizes)
     for top in range(0, ink.shape[0], step):
         if cancel is not None and cancel.is_set():
             raise DocumentCancelledError("despeckle cancelled")

@@ -11,6 +11,9 @@ BAND_ROWS = 512  # most rows decided at a time
 # page too wide for even one row of the window is left alone. A4 at 600 dpi (3.2 million) keeps
 # its 512 rows; one band then needs about 100 MiB at worst (a dot on every other pixel).
 MAX_BAND_PIXELS = 6_000_000
+# The bands of a page label at most this many times its area (guard rows are labelled again by
+# the next band); a page that would need more is left alone, unless it is labelled whole.
+BAND_OVERLAP = 4
 # Pixels of the page at full resolution: it works there, not on cleanup's coarser work grid. About
 # A3 at 600 dpi (69.6 million) with room to spare; the page-sized arrays (about 4 bytes a pixel,
 # 6 with a colour source) then stay near 0.5 GB. Larger pages are left as they are.

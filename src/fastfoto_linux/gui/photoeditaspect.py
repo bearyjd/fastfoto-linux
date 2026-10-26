@@ -174,8 +174,11 @@ def aspect_crop(  # noqa: PLR0913 - dimensions describe one explicit transform
     ay, py = (_across(v, top, painted_height, source_height) for v in (y0, y1))
     sx, start_x, dx, max_w = _drag_axis(ax, px, source_width)
     sy, start_y, dy, max_h = _drag_axis(ay, py, source_height)
-    w = min(max(dx, ceil_div(dy * rw, rh)), max_w, (max_h * rw) // rh)
-    h = half_up(w * rh, rw)
+    want = max(dx, ceil_div(dy * rw, rh))
+    if want <= min(max_w, _reach(max_h, rw, rh)):
+        w, h = want, half_up(want * rh, rw)
+    else:  # the smallest covering box does not fit: cut back to the largest shaped box in the room
+        w, h = _shape_in(max_w, max_h, ratio)
     if w < max(1, min_width) or h < max(1, min_height):
         return None
     x = start_x if sx > 0 else start_x - w

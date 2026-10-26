@@ -89,9 +89,19 @@ Item {
         };
         const ax = axis(across(a.x, left, w, sourceWidth), across(b.x, left, w, sourceWidth), sourceWidth);
         const ay = axis(across(a.y, top, h, sourceHeight), across(b.y, top, h, sourceHeight), sourceHeight);
-        const bw = Math.min(Math.max(ax.extent, Math.ceil(ay.extent * rw / rh)), ax.room,
-                            Math.floor(ay.room * rw / rh));
-        const bh = halfUp(bw * rh, rw);
+        const reach = (limit, a, b) => Math.floor(((2 * limit + 1) * a - 1) / (2 * b));
+        const shapeIn = (width, height) => {
+            const wa = Math.min(width, reach(height, rw, rh));
+            const hb = Math.min(height, reach(width, rh, rw));
+            const found = [[wa, halfUp(wa * rh, rw)], [halfUp(hb * rw, rh), hb]].filter(c => c[0] >= 1 && c[1] >= 1);
+            if (found.length === 0) return [0, 0];
+            const last = found[found.length - 1];
+            return last[0] * last[1] > found[0][0] * found[0][1] ? last : found[0];
+        };
+        const want = Math.max(ax.extent, Math.ceil(ay.extent * rw / rh));
+        const [bw, bh] = want <= Math.min(ax.room, reach(ay.room, rw, rh))
+            ? [want, halfUp(want * rh, rw)]
+            : shapeIn(ax.room, ay.room);
         if (!(bw >= 1 && bh >= 1)) return null;
         const bl = ax.sign > 0 ? ax.start : ax.start - bw;
         const bt = ay.sign > 0 ? ay.start : ay.start - bh;

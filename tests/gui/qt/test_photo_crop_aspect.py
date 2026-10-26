@@ -238,6 +238,9 @@ def parity_cases():
     ]
     for corners in ((0.2, 0.2, 0.8, 0.5), (0.8, 0.5, 0.2, 0.2), (0.2, 0.5, 0.8, 0.2)):
         cases.append(([4, 3], (1000, 600), 1, list(corners)))
+    for ratio in ratios:  # the whole frame, both ways: where the two rounding forms matter
+        cases += [(ratio, size, 1, [0, 0, 1, 1]) for size in [*sizes, (59, 78), (7, 3)]]
+        cases += [(ratio, size, 1, [1, 1, 0, 0]) for size in [*sizes, (59, 78), (7, 3)]]
     return cases
 
 

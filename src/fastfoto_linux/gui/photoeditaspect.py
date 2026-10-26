@@ -66,21 +66,27 @@ def default_portrait(box: Box, quarter_turns: int) -> bool:
     return out_w < out_h
 
 
-def _shape_in(width: int, height: int, ratio: Ratio) -> Size:
-    """The largest box of ``ratio`` inside ``width`` x ``height``; full width wins a tie.
+def _reach(limit: int, a: int, b: int) -> int:
+    """The largest ``x`` with ``half_up(x * b, a) <= limit``: ``x*b/a < limit + 1/2``."""
+    return ((2 * limit + 1) * a - 1) // (2 * b)
 
+
+def _shape_in(width: int, height: int, ratio: Ratio) -> Size:
+    """The largest shaped box inside ``width`` x ``height``; full width wins a tie.
+
+    Shaped: the height is the rounded width's share (A), or the width is the rounded height's
+    (B). The widest A and the tallest B are the only candidates, as area grows with either side.
     A very wide or tall ratio can leave no whole-pixel box inside a small one; that is (0, 0).
     """
     rw, rh = ratio
-    candidates = [
-        (w, h)
-        for w, h in ((width, half_up(width * rh, rw)), (half_up(height * rw, rh), height))
-        if w <= width and h <= height and w >= 1 and h >= 1
-    ]
+    wa = min(width, _reach(height, rw, rh))
+    hb = min(height, _reach(width, rh, rw))
+    first, second = (wa, half_up(wa * rh, rw)), (half_up(hb * rw, rh), hb)
+    candidates = [c for c in (first, second) if c[0] >= 1 and c[1] >= 1]
     if not candidates:
         return 0, 0
-    first, second = candidates[0], candidates[-1]
-    return second if second[0] * second[1] > first[0] * first[1] else first
+    best = candidates[0]
+    return candidates[-1] if candidates[-1][0] * candidates[-1][1] > best[0] * best[1] else best
 
 
 def _grown(ratio: Ratio, minimum: Size, frame: Size) -> Size:

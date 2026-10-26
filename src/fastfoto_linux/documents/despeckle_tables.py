@@ -7,6 +7,10 @@ MAX_SPECKS = 1000  # more removable specks than this in round 1: the page is not
 MAX_ROUNDS = 4  # removal rounds before the page counts as unstable
 SPECK_CHROMA = 40  # a component with a pixel this colourful (max - min of RGB) is deliberate
 BAND_ROWS = 512  # rows decided at a time
+# Pixels of the page at full resolution: it works there, not on cleanup's coarser work grid. About
+# A3 at 600 dpi (69.6 million) with room to spare; the page-sized arrays (about 4 bytes a pixel,
+# 6 with a colour source) then stay near 0.5 GB. Larger pages are left as they are.
+MAX_DESPECKLE_PIXELS = 80_000_000
 CONNECTIVITY = 8
 
 _UM_PER_INCH = 25400

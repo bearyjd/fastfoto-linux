@@ -13,13 +13,19 @@ test rejects it. The banded result therefore equals the whole-page result, and n
 depends on a label number. All removals of a round are applied only after every band was
 judged, so the result does not depend on the band order either.
 
+Memory: the labelling of a band is bounded by the band whatever the pattern (it runs on one
+thread, see ``_one_thread``); the arrays that span the page grow with it, and a page of more
+than ``MAX_DESPECKLE_PIXELS`` pixels is left as it is.
+
 Why it cannot remove punctuation: a mark over 0.30 mm on either side is kept by size, and a
 mark of 0.30 mm or less belongs to text small enough that a neighbouring glyph lies within
 2.5 mm, which keeps it by isolation. Limits: an isolated deliberate dot over 2.5 mm from any
 ink, and dotted leaders spaced over 2.5 mm, are removed; dust over 0.30 mm is kept.
 """
 
+import contextlib
 import threading
+from collections.abc import Iterator
 from enum import StrEnum
 from typing import NamedTuple
 
@@ -30,6 +36,7 @@ from fastfoto_linux.documents.cleanup import work_too_large
 from fastfoto_linux.documents.despeckle_tables import (
     BAND_ROWS,
     CONNECTIVITY,
+    MAX_DESPECKLE_PIXELS,
     MAX_ROUNDS,
     MAX_SPECKS,
     MIN_DPI,
@@ -80,6 +87,20 @@ def _chroma_mask(source: np.ndarray | None) -> np.ndarray | None:
     return (source.max(axis=2) - source.min(axis=2)) >= SPECK_CHROMA
 
 
+@contextlib.contextmanager
+def _one_thread() -> Iterator[None]:
+    """OpenCV labels on one thread inside the block, and the count it had is restored. With many
+    threads its labelling of a dense pattern (every other pixel black) allocated about a gigabyte
+    for one band of an A4 page; on one thread the peak is the band's own arrays. The count is
+    process-wide, so a labelling that other threads run at the same moment is slower, not wrong."""
+    previous = cv2.getNumThreads()
+    cv2.setNumThreads(1)
+    try:
+        yield
+    finally:
+        cv2.setNumThreads(previous)
+
+
 def _band(
     ink: np.ndarray, chroma: np.ndarray | None, rows: tuple[int, int], sizes: _Sizes
 ) -> tuple[np.ndarray, np.ndarray, int]:
@@ -89,9 +110,10 @@ def _band(
     height, width = ink.shape
     first, last = max(0, top - g), min(height, bottom + s + g)
     window = ink[first:last]
-    count, labels, stats, _ = cv2.connectedComponentsWithStats(
-        window, connectivity=CONNECTIVITY, ltype=cv2.CV_32S
-    )
+    with _one_thread():
+        count, labels, stats, _ = cv2.connectedComponentsWithStats(
+            window, connectivity=CONNECTIVITY, ltype=cv2.CV_32S
+        )
     none = np.empty(0, dtype=np.intp)
     if count < 2:  # noqa: PLR2004 - only the background
         return none, none, 0
@@ -154,7 +176,7 @@ def despeckle_white(
     sizes = _Sizes(speck_px(dpi), guard_px(dpi))
     if dpi < MIN_DPI or sizes.cap < 1:
         return DespeckleResult(DespeckleStatus.LOW_DPI, None, 0)
-    if work_too_large(white.shape[0], white.shape[1], dpi):
+    if white.size > MAX_DESPECKLE_PIXELS or work_too_large(white.shape[0], white.shape[1], dpi):
         return DespeckleResult(DespeckleStatus.TOO_LARGE, None, 0)
     chroma = _chroma_mask(source)
     current, total = white, 0

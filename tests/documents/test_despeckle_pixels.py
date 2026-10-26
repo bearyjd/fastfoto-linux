@@ -3,10 +3,10 @@
 import cv2
 import numpy as np
 import pytest
-from fastfoto_linux.documents.despeckle import DespeckleStatus, despeckle_white
-from fastfoto_linux.documents.despeckle_tables import guard_px, speck_px
 
 from fastfoto_linux.documents import cleanup, despeckle
+from fastfoto_linux.documents.despeckle import DespeckleStatus, despeckle_white
+from fastfoto_linux.documents.despeckle_tables import guard_px, speck_px
 from fastfoto_linux.documents.modes import CleanupPolicy, ColourMode
 from tests.documents import despeckle_fixtures as fx
 
@@ -153,3 +153,15 @@ def test_the_thresholds_never_pass_their_millimetres(dpi: int) -> None:
 def test_the_thresholds_at_the_common_resolutions() -> None:
     assert (speck_px(300), guard_px(300)) == (3, 30)
     assert (speck_px(600), guard_px(600)) == (7, 60)
+
+
+@pytest.mark.parametrize("rows", [512, 190, 7, 1])
+def test_a_round_judges_every_band_before_it_removes_anything(
+    monkeypatch: pytest.MonkeyPatch, rows: int
+) -> None:
+    """Y (row 170) and X (row 200) lie in different bands for 190: removing Y before X is judged
+    would let X go in the same round."""
+    monkeypatch.setattr(despeckle, "BAND_ROWS", rows)
+    monkeypatch.setattr(despeckle, "MAX_ROUNDS", 1)
+    result = despeckle_white(fx.asymmetric(), fx.DPI)
+    assert (result.status, result.pixels) == (DespeckleStatus.UNSTABLE, None)

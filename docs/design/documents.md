@@ -921,8 +921,8 @@ document level for this run only, a page's own level still wins, and `--fresh` d
 - **What it is.** "Remove specks" is a separate document switch (off by default), `--despeckle`
   or `--no-despeckle` on the command line, grouped with paper cleanup. It does not change the
   Off, Light or Strong presets, and there is no per-page override. It runs only when a page is
-  written in black and white: on the 1-bit render after the threshold, or on a 1-bit source.
-  Grey and colour pages are untouched, because removing a speck there would need an invented fill.
+  written in black and white (after the threshold, or on a 1-bit source); grey and colour pages
+  are untouched, as removing a speck there would need an invented fill.
 - **Algorithm.** Integer only, at full resolution. An 8-connected black component is removed
   when its box is at most 0.30 mm on each side, no other ink lies within 2.5 mm of its box, and
   (for a colour source) none of its pixels has a red, green and blue spread of 40 or more. Both
@@ -935,26 +935,27 @@ document level for this run only, a page's own level still wins, and `--fresh` d
   A rule or a pencil line is longer than 0.30 mm and is kept.
 - **Properties.** Only ink becomes white, whole components only, nothing above the cap is
   removed, the result is the same when run again and bit for bit the same each time. It works in
-  bands of 512 rows (the banded result is the whole-page result) and honours a cancel before
-  each band. The labelling of a band is bounded by the band, whatever the pattern: it runs on one
-  OpenCV thread (restored afterwards), because a dense dot pattern made many threads allocate
-  about a gigabyte for one band of an A4 page. The arrays that span the page grow with it (about
-  4 bytes a pixel, 6 with a colour source), and as it works at full resolution a page of more
-  than 80 million pixels (A3 at 600 dpi is 69.6 million) is left as it is, besides the work-grid
-  limit of paper cleanup. Synthetic A4 pages: 0.09 s at 300 dpi, 0.43 s at 600 dpi; a pattern of
-  every other pixel grew the process by about 75 MiB at 300 dpi and 175 MiB at 600 dpi.
-- **Does nothing, byte for byte,** when the switch is off, the page is grey or colour, the dpi
-  is under 150, the work grid has more than 12 million pixels or the page more than 80 million, the
-  first pass finds over 1000 specks (not dust), removal is still going after 4 passes, or nothing qualifies.
+  bands of at most 512 rows, fewer on a wide page so that a band and its guard rows stay within
+  6 million pixels (the banded result is the whole-page result), and honours a cancel before each
+  band. The labelling of a band is bounded by the band, whatever the pattern, and runs on one
+  OpenCV thread (overlapping runs share one pin, and the count is restored): a dense dot pattern
+  made many threads allocate about a gigabyte for one band of an A4 page. The arrays that span
+  the page grow with it (about 4 bytes a pixel, 6 with a colour source). Synthetic A4 pages take
+  0.1 s at 300 dpi and 0.5 s at 600 dpi; a pattern of every other pixel grew the process by
+  45 MiB at 300 dpi, 110 MiB at 600 dpi, and 155 MiB on a 512 x 30000 pixel page.
+- **Does nothing, byte for byte,** when the switch is off, the page is grey or colour, the dpi is
+  under 150, the work grid has more than 12 million pixels, the page more than 80 million (A3 at
+  600 dpi is 69.6 million; despeckle works at full resolution) or so wide that one row of its
+  window passes 6 million, the first pass finds over 1000 specks (not dust), removal is still
+  going after 4 passes, or nothing qualifies.
 - **The sidecar.** The review file is format version 5 only when despeckle is on: the shape of
   version 4 plus a required top-level `despeckle` true or false. A cropped draft without it still
   writes version 4. Versions 1 to 4 refuse a `despeckle` key and open with it off; a stale
-  re-analysis keeps the saved value and never takes it from the settings.
-- **Cached bytes** are reused only when their effective despeckle value matches the draft's.
+  re-analysis keeps the saved value and never takes it from the settings. Cached page bytes are
+  reused only when their effective despeckle value matches the draft's.
 - **Known limits.** A deliberate isolated dot more than 2.5 mm from any ink, dotted leaders
   spaced over 2.5 mm, and a lone decimal point in a sparse table are removed; dust over 0.30 mm
-  or within 2.5 mm of text stays. No claim is made about OCR results. The quality evidence is
-  synthetic pages only.
+  or within 2.5 mm of text stays. No claim is made about OCR results; the evidence is synthetic.
 
 ## Manual crop
 

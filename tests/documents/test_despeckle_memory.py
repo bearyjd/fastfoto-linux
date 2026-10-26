@@ -14,10 +14,10 @@ from fastfoto_linux.documents.despeckle import DespeckleStatus, despeckle_white
 from fastfoto_linux.documents.despeckle_tables import MAX_DESPECKLE_PIXELS
 from tests.documents import despeckle_fixtures as fx
 
-# Peak resident growth allowed for a halftone A4 page. The runs measured about 75 MiB at 300 dpi
-# and 175 MiB at 600 dpi; before the labelling was limited to one thread, 1.2 GiB and 2.3 GiB
+# Peak resident growth allowed for a halftone A4 page. The runs measured about 45 MiB at 300 dpi
+# and 110 MiB at 600 dpi; before the labelling was limited to one thread, 1.2 GiB and 2.3 GiB
 # with 22 threads.
-LIMITS_MIB = {300: 300, 600: 450}
+LIMITS_MIB = {300: 150, 600: 250}
 
 CHILD = textwrap.dedent(
     """

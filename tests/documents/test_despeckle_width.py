@@ -4,6 +4,7 @@ import subprocess
 import sys
 import textwrap
 
+import cv2
 import numpy as np
 import pytest
 
@@ -124,3 +125,24 @@ def test_any_band_budget_gives_the_same_pixels(
     assert (banded.pixels is None) == (whole.pixels is None)
     if whole.pixels is not None:
         assert np.array_equal(banded.pixels, whole.pixels)
+
+
+@pytest.mark.parametrize("width", [40, 1200, 20_000])
+def test_no_band_labels_more_pixels_than_the_budget(
+    monkeypatch: pytest.MonkeyPatch, width: int
+) -> None:
+    sizes: list[int] = []
+    original = cv2.connectedComponentsWithStats
+
+    def spy(window, *args, **kwargs):
+        sizes.append(window.size)
+        return original(window, *args, **kwargs)
+
+    monkeypatch.setattr(cv2, "connectedComponentsWithStats", spy)
+    budget = window_px(300, width) * 2
+    monkeypatch.setattr(despeckle, "MAX_BAND_PIXELS", budget)
+    white = np.ones((400, width), dtype=bool)
+    white[::7, ::7] = False
+    despeckle_white(white, 300)
+    assert len(sizes) > 1
+    assert max(sizes) <= budget

@@ -8,6 +8,7 @@ from fastfoto_linux.cli.options import add_transport_options
 from fastfoto_linux.documents import (
     DEFAULT_LANGS,
     DEFAULT_NAME,
+    CleanupPolicy,
     ColourMode,
     ColourPolicy,
     DocumentSettings,
@@ -55,6 +56,14 @@ def add_document_options(parser: argparse.ArgumentParser) -> None:
         choices=[mode.value for mode in ColourPolicy],
         default=ColourMode.COLOUR.value,
         help="auto per page, colour, grey or black and white (default: colour)",
+    )
+    pdf.add_argument(
+        "--cleanup",
+        choices=[policy.value for policy in CleanupPolicy],
+        default=None,
+        help="paper cleanup: off, light or strong lightens the paper tone of grey and colour "
+        "pages; black and white pages are not changed (default: off, or the level a raw "
+        "folder's review.json holds)",
     )
     pdf.add_argument(
         "--keep-blank", action="store_true", help="keep blank pages instead of dropping them"
@@ -119,6 +128,7 @@ def build_settings(args: argparse.Namespace) -> DocumentSettings:
         output_root=args.out,
         name=args.name,
         colour=ColourPolicy.AUTO if args.colour == ColourPolicy.AUTO else ColourMode(args.colour),
+        cleanup=CleanupPolicy(args.cleanup) if args.cleanup is not None else CleanupPolicy.OFF,
         keep_blank=args.keep_blank,
         ocr=OcrMode(args.ocr),
         langs=args.lang,

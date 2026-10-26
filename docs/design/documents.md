@@ -25,6 +25,7 @@ transport PR); software deskew (the scanner's own deskew stays on).
 ```
 ffscan doc scan    --out DIR [--mkdir] [--name NAME] [--colour auto|colour|grey|bw] [--dpi 200|300|600]
                    [--simplex] [--keep-blank] [--ocr auto|on|off] [--lang LANGS]
+                   [--cleanup off|light|strong]
                    [--keep-raw | --discard-raw] [--net HOST] [-v] [--debug]
 ffscan doc process PAGE.png ... --out DIR [--mkdir] [same output options]
 ```
@@ -782,6 +783,10 @@ What the third review pull request settled where the plan left room.
 - **Command line.** `--drop`, `--keep`, `--rotate`, `--split`, `--order`, `--page-colour`, `--part-name` and
   `--dry-run` belong to `ffscan doc process` only, are checked before any page is read where the
   page count is enough, and `--drop` wins over `--keep-blank`. A raw folder as the input is part D.
+  `--cleanup` is a document option of both commands, like `--colour`; a raw folder's stored crop
+  is applied by `doc process`, and `--fresh` ignores it.
+  The `--dry-run` listing adds `cleanup=<level>` (with `override` for a page's own level) and
+  `cropped` to each kept page's row.
 - **Per-page colour.** `--page-colour 2:grey,5:colour,7:auto,8:default` is keyed by the
   original raw page number. It sets a manual or Auto override; `default` clears the override.
   Reordering, rotation, splitting and restoring a dropped page retain that page's choice.
@@ -864,7 +869,9 @@ and Strong, and it is off by default. It lives on the draft: the document has a 
 (`DocumentDraft.cleanup`, seeded by `DocumentSettings.cleanup` when a scan is analysed) and a page
 may override it (`PageEdit.cleanup`, None follows the document). `write_document` reads the
 level from the draft, never from the settings, so a past scan never takes the level from a form.
-The command line keeps Off but honours a level stored in the review file.
+On the command line `--cleanup off|light|strong` sets the document level; not given, it is Off
+for page files and the stored level for a raw folder. For a raw folder the flag replaces the stored
+document level for this run only, a page's own level still wins, and `--fresh` drops both.
 
 - **Where it runs.** `render_page` and `encode_page` take the level and clean after the mode is
   rendered, only for grey or colour output. A page is turned before it is cleaned (the work grid

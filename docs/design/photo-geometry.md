@@ -2,7 +2,22 @@
 
 The photo editor can straighten by a small angle, crop to a free rectangle and turn the picture
 in quarter turns. Crop and turns are exact pixel operations; only a non-zero straighten angle
-resamples (see Interpolation). There are no aspect presets.
+resamples (see Interpolation).
+
+## Crop shapes (editor only)
+
+A crop shape (`Free`, `Original`, `1:1`, `4:3`, `3:2`, `16:9`, `5:7`) is a constraint of the editor
+and is not stored in the recipe: only the pixel box is, so there is no new key and no new schema
+version, and a reopened edit starts at `Free`.
+
+- The crop lives in the straightened frame, before the quarter turns, so a shape `w:h` of the saved
+  picture is `h:w` in that frame when the number of quarter turns is odd. Ratios are in pixels.
+- Choosing a shape fits the largest centred box of that shape inside the current crop (the whole
+  frame when there is none), grown to the 5 mm minimum; a frame too small for that is refused.
+- Arithmetic is integer only and rounds half up (`(2n + d) // 2d`), never Python `round`, so the QML
+  canvas and Python agree. `Original` on a frame such as 4000 by 2667 is exact to one pixel.
+- A drag keeps the shape. Any other change of geometry (an edge box, Clear crop, Reset, an angle
+  change, undo to another box) returns to `Free`.
 
 ## Order of operations
 

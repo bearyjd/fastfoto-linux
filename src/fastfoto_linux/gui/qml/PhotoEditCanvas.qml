@@ -14,6 +14,7 @@ Item {
     property bool showEyes: true
     property bool cropMode: false
     property var crop: [0, 0, 0, 0]
+    property var cropRatio: []  // [rw, rh] in the shown frame; [] = free
     property int minCropWidth: 1
     property int minCropHeight: 1
     property real defaultRadius: 1
@@ -62,6 +63,39 @@ Item {
         const box = [Math.floor(xs[0]), Math.floor(ys[0]),
                      Math.min(sourceWidth, Math.ceil(xs[1])), Math.min(sourceHeight, Math.ceil(ys[1]))];
         return box.every(isFinite) ? box : null;
+    }
+
+    // Mirrors photoeditaspect.aspect_crop (the ratio drag): the raw box, or null; the minimum is tooSmall's.
+    function aspectCrop(x0: real, y0: real, x1: real, y1: real): var {
+        const w = picture.paintedWidth;
+        const h = picture.paintedHeight;
+        if (cropRatio.length !== 2 || w <= 0 || h <= 0 || sourceWidth <= 0 || sourceHeight <= 0 ||
+                ![x0, y0, x1, y1].every(isFinite))
+            return null;
+        const rw = cropRatio[0], rh = cropRatio[1];
+        const left = (picture.width - w) / 2;
+        const top = (picture.height - h) / 2;
+        const a = picture.mapFromItem(canvas, x0, y0);
+        const b = picture.mapFromItem(canvas, x1, y1);
+        const across = (v, origin, painted, source) =>
+            Math.round((Math.min(Math.max(v, origin), origin + painted) - origin) * source / painted * 1e6) / 1e6;
+        const halfUp = (n, d) => Math.floor((2 * n + d) / (2 * d));
+        const axis = (anchor, pointer, source) => {
+            const sign = pointer >= anchor ? 1 : -1;
+            const start = sign > 0 ? Math.floor(anchor) : Math.ceil(anchor);
+            return { sign: sign, start: start,
+                     extent: Math.ceil(Math.round(Math.abs(pointer - start) * 1e6) / 1e6),
+                     room: sign > 0 ? source - start : start };
+        };
+        const ax = axis(across(a.x, left, w, sourceWidth), across(b.x, left, w, sourceWidth), sourceWidth);
+        const ay = axis(across(a.y, top, h, sourceHeight), across(b.y, top, h, sourceHeight), sourceHeight);
+        const bw = Math.min(Math.max(ax.extent, Math.ceil(ay.extent * rw / rh)), ax.room,
+                            Math.floor(ay.room * rw / rh));
+        const bh = halfUp(bw * rh, rw);
+        if (!(bw >= 1 && bh >= 1)) return null;
+        const bl = ax.sign > 0 ? ax.start : ax.start - bw;
+        const bt = ay.sign > 0 ? ay.start : ay.start - bh;
+        return [bl, bt, bl + bw, bt + bh];
     }
 
     // A real box that is under the minimum crop; sourceCrop's null (unusable canvas) is not this.
@@ -139,6 +173,20 @@ Item {
             border.color: "#ffffff"
             visible: valid
         }
+
+        Rectangle {
+            objectName: "photoAspectBand"
+            readonly property var box: pointer.cropping && canvas.cropRatio.length === 2
+                ? canvas.aspectCrop(pointer.start.x, pointer.start.y, pointer.current.x, pointer.current.y) : null
+            x: box ? (picture.width - picture.paintedWidth) / 2 + box[0] * picture.paintedWidth / canvas.sourceWidth : 0
+            y: box ? (picture.height - picture.paintedHeight) / 2 + box[1] * picture.paintedHeight / canvas.sourceHeight : 0
+            width: box ? (box[2] - box[0]) * picture.paintedWidth / canvas.sourceWidth : 0
+            height: box ? (box[3] - box[1]) * picture.paintedHeight / canvas.sourceHeight : 0
+            color: "transparent"
+            border.width: 2 / canvas.viewZoom
+            border.color: "#ffffff"
+            visible: box !== null
+        }
     }
 
     MouseArea {
@@ -174,7 +222,9 @@ Item {
             if (mouse.button !== Qt.LeftButton || !canvas.canEdit) return;
             if (wasCropping) {
                 if (Math.hypot(mouse.x - start.x, mouse.y - start.y) < canvas.clickTolerance) return;
-                const box = canvas.sourceCrop(start.x, start.y, mouse.x, mouse.y);
+                const box = canvas.cropRatio.length === 2
+                    ? canvas.aspectCrop(start.x, start.y, mouse.x, mouse.y)
+                    : canvas.sourceCrop(start.x, start.y, mouse.x, mouse.y);
                 if (box === null) return;
                 if (canvas.tooSmall(box)) canvas.cropRejected();
                 else canvas.cropRequested(box[0], box[1], box[2], box[3]);
@@ -217,7 +267,7 @@ Item {
         y: Math.min(pointer.start.y, pointer.current.y)
         width: Math.abs(pointer.start.x - pointer.current.x)
         height: Math.abs(pointer.start.y - pointer.current.y)
-        visible: pointer.cropping
+        visible: pointer.cropping && canvas.cropRatio.length !== 2
         color: "transparent"
         border.color: "white"
         border.width: 1

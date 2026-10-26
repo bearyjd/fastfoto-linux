@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 from PySide6.QtCore import Property, QObject, QUrl, Signal, Slot
 
+from fastfoto_linux.gui.qt.photo_aspect_view import PhotoAspectView
 from fastfoto_linux.gui.qt.photos_model import file_url
 from fastfoto_linux.gui.state import ActionBlockedError
 from fastfoto_linux.photo_edits import (
@@ -55,6 +56,12 @@ class PhotoEditView(QObject):
     def __init__(self, bridge: "Bridge") -> None:
         super().__init__(bridge)
         self._controller = bridge.controller
+        self._aspect = PhotoAspectView(self)
+        self.changed.connect(self._aspect.changed)
+
+    @Property(QObject, constant=True)
+    def aspect(self) -> QObject:
+        return self._aspect
 
     @property
     def _side(self) -> "PhotoEditSide":

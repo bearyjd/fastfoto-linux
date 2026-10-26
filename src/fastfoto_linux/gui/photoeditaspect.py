@@ -1,0 +1,162 @@
+"""Crop shapes (aspect presets) for the photo editor: pure integer geometry, no Qt, no numpy.
+
+A box is ``(left, top, right, bottom)`` in whole pixels, half-open, in the straightened frame
+before the quarter turns. A ratio ``(rw, rh)`` is in that same frame. Every division rounds with
+integers only, so Python and the QML canvas agree exactly.
+"""
+
+import math
+from dataclasses import dataclass
+
+Box = tuple[int, int, int, int]
+Ratio = tuple[int, int]
+Size = tuple[int, int]
+
+FRAME_MICRO = 6  # decimals kept when mapping the pointer, as in photoeditcoords.source_crop
+
+
+@dataclass(frozen=True)
+class AspectPreset:
+    id: str
+    label: str
+    long: int
+    short: int
+
+
+PRESETS: tuple[AspectPreset, ...] = (
+    AspectPreset("free", "Free", 0, 0),
+    AspectPreset("original", "Original", 0, 0),
+    AspectPreset("1:1", "1:1", 1, 1),
+    AspectPreset("4:3", "4:3", 4, 3),
+    AspectPreset("3:2", "3:2", 3, 2),
+    AspectPreset("16:9", "16:9", 16, 9),
+    AspectPreset("5:7", "5:7", 7, 5),
+)
+
+
+def half_up(n: int, d: int) -> int:
+    """``n / d`` rounded half up, for ``n >= 0`` and ``d > 0`` (``round`` goes to even)."""
+    return (2 * n + d) // (2 * d)
+
+
+def ceil_div(n: int, d: int) -> int:
+    return -(-n // d)
+
+
+def crop_ratio(preset_id: str, portrait: bool, *, frame: Size, quarter_turns: int) -> Ratio | None:
+    """The ratio a box needs in the unturned frame, so the turned picture has the chosen shape."""
+    preset = next((p for p in PRESETS if p.id == preset_id), None)
+    if preset is None:
+        raise ValueError("unknown crop shape")
+    if preset.id == "free":
+        return None
+    long, short = (
+        (max(frame), min(frame)) if preset.id == "original" else (preset.long, preset.short)
+    )
+    dw, dh = (short, long) if portrait else (long, short)
+    rw, rh = (dh, dw) if quarter_turns % 2 else (dw, dh)
+    divisor = math.gcd(rw, rh)
+    return rw // divisor, rh // divisor
+
+
+def default_portrait(box: Box, quarter_turns: int) -> bool:
+    """Whether the box is taller than wide once turned; a square counts as landscape."""
+    width, height = box[2] - box[0], box[3] - box[1]
+    out_w, out_h = (height, width) if quarter_turns % 2 else (width, height)
+    return out_w < out_h
+
+
+def _shape_in(width: int, height: int, ratio: Ratio) -> Size:
+    """The largest box of ``ratio`` inside ``width`` x ``height``; full width wins a tie.
+
+    A very wide or tall ratio can leave no whole-pixel box inside a small one; that is (0, 0).
+    """
+    rw, rh = ratio
+    candidates = [
+        (w, h)
+        for w, h in ((width, half_up(width * rh, rw)), (half_up(height * rw, rh), height))
+        if w <= width and h <= height and w >= 1 and h >= 1
+    ]
+    if not candidates:
+        return 0, 0
+    first, second = candidates[0], candidates[-1]
+    return second if second[0] * second[1] > first[0] * first[1] else first
+
+
+def fit_centred(box: Box, ratio: Ratio, *, frame: Size, minimum: Size) -> Box | None:
+    """The largest box of ``ratio`` centred in ``box``, grown to the minimum; None if too small."""
+    left, top, right, bottom = box
+    rw, rh = ratio
+    w, h = _shape_in(right - left, bottom - top, ratio)
+    min_w, min_h = max(1, minimum[0]), max(1, minimum[1])
+    if w >= min_w and h >= min_h:
+        x = left + (right - left - w) // 2
+        y = top + (bottom - top - h) // 2
+        return x, y, x + w, y + h
+    w = max(min_w, ceil_div(min_h * rw, rh))
+    h = half_up(w * rh, rw)
+    if w > frame[0] or h > frame[1]:
+        return None
+    x = min(max((left + right - w) // 2, 0), frame[0] - w)
+    y = min(max((top + bottom - h) // 2, 0), frame[1] - h)
+    return x, y, x + w, y + h
+
+
+def swap_box(box: Box, ratio_swapped: Ratio, *, frame: Size, minimum: Size) -> Box | None:
+    """The box turned from landscape to portrait (or back) about its centre, then re-fitted."""
+    left, top, right, bottom = box
+    width = min(bottom - top, frame[0])
+    height = min(right - left, frame[1])
+    x = min(max((left + right - width) // 2, 0), frame[0] - width)
+    y = min(max((top + bottom - height) // 2, 0), frame[1] - height)
+    return fit_centred((x, y, x + width, y + height), ratio_swapped, frame=frame, minimum=minimum)
+
+
+def _across(v: float, origin: float, painted: float, source: int) -> float:
+    clamped = min(max(v, origin), origin + painted)
+    return round((clamped - origin) * source / painted, FRAME_MICRO)
+
+
+def _drag_axis(anchor: float, pointer: float, source: int) -> tuple[int, int, int, int]:
+    """(sign, anchor pixel, pointer extent, room from the anchor) along one axis."""
+    sign = 1 if pointer >= anchor else -1
+    start = math.floor(anchor) if sign > 0 else math.ceil(anchor)
+    extent = math.ceil(round(abs(pointer - start), FRAME_MICRO))
+    return sign, start, extent, source - start if sign > 0 else start
+
+
+def aspect_crop(  # noqa: PLR0913 - dimensions describe one explicit transform
+    x0: float,
+    y0: float,
+    x1: float,
+    y1: float,
+    *,
+    ratio: Ratio,
+    min_width: int,
+    min_height: int,
+    source_width: int,
+    source_height: int,
+    painted_width: float,
+    painted_height: float,
+    item_width: float,
+    item_height: float,
+) -> Box | None:
+    """A ratio-locked drag: the smallest box of ``ratio`` covering it, anchored at the press."""
+    values = (x0, y0, x1, y1, source_width, source_height, painted_width, painted_height)
+    if not all(math.isfinite(value) for value in (*values, item_width, item_height)):
+        return None
+    rw, rh = ratio
+    if min(values[4:]) <= 0 or item_width <= 0 or item_height <= 0 or rw <= 0 or rh <= 0:
+        return None
+    left, top = (item_width - painted_width) / 2, (item_height - painted_height) / 2
+    ax, px = (_across(v, left, painted_width, source_width) for v in (x0, x1))
+    ay, py = (_across(v, top, painted_height, source_height) for v in (y0, y1))
+    sx, start_x, dx, max_w = _drag_axis(ax, px, source_width)
+    sy, start_y, dy, max_h = _drag_axis(ay, py, source_height)
+    w = min(max(dx, ceil_div(dy * rw, rh)), max_w, (max_h * rw) // rh)
+    h = half_up(w * rh, rw)
+    if w < max(1, min_width) or h < max(1, min_height):
+        return None
+    x = start_x if sx > 0 else start_x - w
+    y = start_y if sy > 0 else start_y - h
+    return x, y, x + w, y + h

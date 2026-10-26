@@ -568,6 +568,12 @@ saved framing and size. **Clear crop** removes the crop, **Reset geometry** remo
 and each change is one Undo step. Existing saved edits reopen unchanged; using crop or rotate saves a
 new version-3 recipe. See the [photo geometry contract](docs/design/photo-geometry.md).
 
+**Crop shape**, inside Crop and rotate, locks the crop to `Free` (the default), `Original`, `1:1`, `4:3`,
+`3:2`, `16:9` or `5:7`; the shape is that of the saved picture after any turns. Choosing one fits the
+largest centred box of that shape inside the current crop (at least 5 mm), and **Swap orientation**
+switches between portrait and landscape. Dragging keeps the shape; typing in an edge box returns to `Free`.
+The shape is not saved in the recipe, only the crop box, so a reopened edit starts at `Free`.
+
 **Straighten**, inside Crop and rotate, levels a slightly tilted photo with the slider or the angle
 box, from -15.0° to 15.0° in 0.1° steps (positive turns the picture clockwise). The result is trimmed
 to the largest upright rectangle that fits inside the turned picture, so there are no empty corners.

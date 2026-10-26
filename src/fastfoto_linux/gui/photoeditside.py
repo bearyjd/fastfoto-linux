@@ -5,6 +5,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from fastfoto_linux.gui.photoeditaspectactions import PhotoAspectActions
 from fastfoto_linux.gui.photoeditgeometry import PhotoGeometryActions
 from fastfoto_linux.gui.photoeditjobs import PhotoEditRequest, PhotoEditResult, PhotoEditTools
 from fastfoto_linux.gui.photos import PhotoItem
@@ -50,7 +51,7 @@ def _preview_paths(preview: PhotoPreview | None) -> set[Path]:
     }
 
 
-class PhotoEditSide(PhotoGeometryActions):
+class PhotoEditSide(PhotoGeometryActions, PhotoAspectActions):
     def __init__(
         self,
         controller: "Controller",

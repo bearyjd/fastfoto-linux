@@ -17,11 +17,11 @@ from fastfoto_linux.photo_edits import EyeEdit, PhotoEditRecipe, PhotoPreview, P
 from tests.gui.helpers import FakeWorker
 
 
-def source(folder: Path, *, dpi: int = 300) -> PhotoSource:
+def source(folder: Path, *, dpi: int = 300, size: tuple[int, int] = (100, 60)) -> PhotoSource:
     path = folder / "synthetic.jpg"
-    pixels = np.full((60, 100, 3), 100, dtype=np.uint8)
+    pixels = np.full((size[1], size[0], 3), 100, dtype=np.uint8)
     Image.fromarray(pixels).save(path, dpi=(dpi, dpi))
-    return PhotoSource(path, "a" * 64, path.stat().st_size, 100, 60, dpi, dpi, dpi, pixels)
+    return PhotoSource(path, "a" * 64, path.stat().st_size, *size, dpi, dpi, dpi, pixels)
 
 
 def eyes() -> tuple[EyeEdit, ...]:
@@ -62,8 +62,8 @@ class EditWorker(FakeWorker):
         return [value for name, value in self.calls if name == "photo_edit"]
 
 
-def setup(folder: Path):
-    src = source(folder)
+def setup(folder: Path, *, dpi: int = 300, size: tuple[int, int] = (100, 60)):
+    src = source(folder, dpi=dpi, size=size)
     worker = EditWorker()
     c = Controller(worker, ScanForm(output_folder=str(folder)))
     c._state = State.DONE
@@ -73,8 +73,8 @@ def setup(folder: Path):
     return SimpleNamespace(source=src, worker=worker, controller=c, side=side)
 
 
-def opened(folder: Path):
-    page = setup(folder)
+def opened(folder: Path, *, dpi: int = 300, size: tuple[int, int] = (100, 60)):
+    page = setup(folder, dpi=dpi, size=size)
     page.side.open_photo(0)
     request = page.worker.requests[-1]
     recipe = PhotoEditRecipe(page.source, eyes())

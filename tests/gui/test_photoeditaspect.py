@@ -439,3 +439,24 @@ def test_fitting_is_the_largest_shaped_box_over_every_small_size():
                 got = fit((0, 0, width, height), ratio, (width, height))
                 area = 0 if got is None else (got[2] - got[0]) * (got[3] - got[1])
                 assert area == best, (ratio, width, height, got)
+
+
+def frame_drag(sw, sh, ratio, x1=None, y1=None, minimum=(1, 1)):
+    return aspect_crop(
+        0, 0, sw if x1 is None else x1, sh if y1 is None else y1, ratio=ratio,
+        min_width=minimum[0], min_height=minimum[1], source_width=sw, source_height=sh,
+        painted_width=sw, painted_height=sh, item_width=sw, item_height=sh,
+    )  # fmt: skip
+
+
+def test_a_full_frame_drag_keeps_a_frame_that_only_the_width_side_rounds_to():
+    assert frame_drag(59, 78, (3, 4), minimum=(59, 59)) == (0, 0, 59, 78)
+    assert frame_drag(3, 2, (4, 3)) == (0, 0, 3, 2)
+
+
+def test_a_full_frame_drag_is_the_frame_whenever_fitting_accepts_it():
+    for ratio in RATIOS:
+        for sw in range(2, 40):
+            for sh in range(2, 40):
+                if is_shaped(sw, sh, ratio):
+                    assert frame_drag(sw, sh, ratio) == (0, 0, sw, sh), (ratio, sw, sh)

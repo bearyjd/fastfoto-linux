@@ -14,7 +14,6 @@ from PySide6.QtTest import QTest
 
 from fastfoto_linux.documents import CleanupPolicy, ColourMode, ColourPolicy
 from fastfoto_linux.documents.auto_colour import ColourDecision, ColourReason
-from fastfoto_linux.gui.docform import DocumentForm
 from fastfoto_linux.gui.review import ReviewState
 from tests.gui.qt import test_qml_documents, test_qml_review_window
 from tests.gui.qt.qt_helpers import child, click, invoke, settle
@@ -88,18 +87,21 @@ def test_the_form_has_the_box_under_the_cleanup_box_and_it_sets_the_field(
     assert warnings == []
 
 
-def test_the_box_follows_the_remembered_form(make_doc_bridge, open_window):
-    bridge = make_doc_bridge(form=DocumentForm(despeckle=True))
+def test_the_box_follows_the_form_it_is_opened_on(make_doc_bridge, open_window):
+    bridge = make_doc_bridge()
+    bridge.setDocumentField("despeckle", True)
     window, _warnings = open_window(bridge)
     assert child(window, "docDespeckleBox").property("checked") is True
 
 
-def test_the_hint_gains_one_sentence_and_keeps_the_cleanup_ones(make_doc_bridge, open_window):
+def test_the_cleanup_hint_is_unchanged_and_one_sentence_explains_the_box(
+    make_doc_bridge, open_window
+):
     window, _warnings = open_window(make_doc_bridge())
     hint = child(window, "docCleanupHint").property("text")
-    assert hint.startswith("Off by default.")
+    assert hint.startswith("Off by default.") and hint.endswith("in the review preview.")
     assert "black-and-white pages are not changed" in hint
-    assert hint.endswith(
+    assert child(window, "docDespeckleHint").property("text") == (
         "Remove specks deletes tiny isolated dots from black-and-white pages; "
         "dots near text are kept."
     )

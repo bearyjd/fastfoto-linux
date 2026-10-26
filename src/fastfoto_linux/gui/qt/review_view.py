@@ -31,6 +31,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 AUTOSAVE_MS = 500
 CROP_CENTRE = 500  # permille: the middle of the page
+NO_CLEANUP_TEXT = " — without paper cleanup"
 
 
 class ReviewView(QObject):
@@ -172,13 +173,17 @@ class ReviewView(QObject):
             return False
         page = state.draft.pages[number - 1]
         mode = colour_values(state.draft, page, self._side._settings.colour)[1]
-        return (
-            mode != ColourMode.BW.value and page_cleanup(state.draft, page) is not CleanupPolicy.OFF
-        )
+        if mode == ColourMode.BW.value:
+            return state.draft.despeckle
+        return page_cleanup(state.draft, page) is not CleanupPolicy.OFF
 
     @Property(str, notify=changed)
     def documentCleanup(self) -> str:
         return self._side.state.draft.cleanup.value if self._side.state else CleanupPolicy.OFF.value
+
+    @Property(bool, notify=changed)
+    def documentDespeckle(self) -> bool:
+        return self._side.state.draft.despeckle if self._side.state else False
 
     @Property(str, notify=changed)
     def previewLabel(self) -> str:
@@ -198,11 +203,14 @@ class ReviewView(QObject):
     def _preview_label_suffix(self, draft: DocumentDraft, page: PageAnalysis, mode: str) -> str:
         suffix = ""
         level = page_cleanup(draft, page)
-        if mode != ColourMode.BW.value and level is not CleanupPolicy.OFF:
+        if mode == ColourMode.BW.value and draft.despeckle:
+            # The switch is "Paper cleanup": its original side has no specks removal either.
+            suffix = " — specks removed" if self._side.preview_cleaned else NO_CLEANUP_TEXT
+        elif mode != ColourMode.BW.value and level is not CleanupPolicy.OFF:
             if self._side.preview_cleaned:
                 suffix = " — " + preview_cleanup_text(level, self._side.preview_cleanup_status)
             else:
-                suffix = " — without paper cleanup"
+                suffix = NO_CLEANUP_TEXT
         return suffix + (" — actual pixels" if self._side.preview_crop is not None else "")
 
     def _call(self, action: Callable[..., Any], *args: object) -> Any:
@@ -242,6 +250,10 @@ class ReviewView(QObject):
     @Slot(str)
     def setDocumentCleanup(self, value: str) -> None:
         self._call(self._side.edit, "set_document_cleanup", CleanupPolicy(value))
+
+    @Slot(bool)
+    def setDocumentDespeckle(self, value: bool) -> None:
+        self._call(self._side.edit, "set_document_despeckle", bool(value))
 
     @Slot(int, int)
     def rotate(self, number: int, turns: int) -> None:

@@ -160,6 +160,24 @@ Kirigami.ScrollablePage {
                 }
             }
 
+            RowLayout {
+                Layout.fillWidth: true
+                QQC2.CheckBox {
+                    objectName: "reviewDespeckleBox"
+                    text: qsTr("Remove specks")
+                    checked: bridge.review.documentDespeckle ?? false
+                    Accessible.name: qsTr("Remove specks for the document")
+                    onToggled: bridge.review.setDocumentDespeckle(checked)
+                }
+                QQC2.Label {
+                    objectName: "reviewDespeckleExplanation"
+                    Layout.fillWidth: true
+                    text: page.selectedItem.despeckleText ?? ""
+                    textFormat: Text.PlainText
+                    wrapMode: Text.WordWrap
+                }
+            }
+
             Repeater {
                 id: names
                 objectName: "reviewPartNames"

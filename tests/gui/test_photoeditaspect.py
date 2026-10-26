@@ -397,3 +397,23 @@ def test_ratio_drags_are_always_fixed_points_of_the_fit():
         assert 0 <= got[0] < got[2] <= sw and 0 <= got[1] < got[3] <= sh
         assert fit_centred(got, ratio, frame=(sw, sh), minimum=mn) == got
     assert produced > 300
+
+
+def is_shaped(width, height, ratio):
+    rw, rh = ratio
+    return height == half_up(width * rh, rw) or width == half_up(height * rw, rh)
+
+
+def test_growth_takes_the_smallest_width_whose_rounded_height_reaches_the_minimum():
+    assert fit((0, 0, 59, 59), (4, 3), (78, 59), (59, 59)) == (0, 0, 78, 59)
+    assert fit((0, 0, 59, 78), (3, 4), (59, 78), (59, 59)) == (0, 0, 59, 78)
+    assert fit((0, 0, 50, 50), (3, 4), (59, 78), (59, 59)) == (0, 0, 59, 78)
+
+
+def test_a_shaped_frame_sized_box_at_the_minimum_is_accepted_unchanged():
+    for ratio in RATIOS:
+        for fw in range(2, 50):
+            for fh in range(2, 50):
+                if is_shaped(fw, fh, ratio):
+                    assert fit((0, 0, fw, fh), ratio, (fw, fh), (fw, fh)) == (0, 0, fw, fh)
+                    assert fit((0, 0, fw, fh), ratio, (fw, fh), (fw - 1, fh - 1)) == (0, 0, fw, fh)

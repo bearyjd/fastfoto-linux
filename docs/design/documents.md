@@ -916,6 +916,40 @@ document level for this run only, a page's own level still wins, and `--fresh` d
   lighter than 92% of the paper, or smaller than a 4 mm cell, is not detected. A protected region
   has a less-whitened rim of about 4 to 8 mm. The quality evidence is synthetic pages only.
 
+### Despeckle
+
+- **What it is.** "Remove specks" is a separate document switch (off by default), `--despeckle`
+  or `--no-despeckle` on the command line, grouped with paper cleanup. It does not change the
+  Off, Light or Strong presets, and there is no per-page override. It runs only when a page is
+  written in black and white: on the 1-bit render after the threshold, or on a 1-bit source.
+  Grey and colour pages are untouched, because removing a speck there would need an invented fill.
+- **Algorithm.** Integer only, at full resolution. An 8-connected black component is removed
+  when its box is at most 0.30 mm on each side, no other ink lies within 2.5 mm of its box, and
+  (for a colour source) none of its pixels has a red, green and blue spread of 40 or more. Both
+  sizes are whole pixels from the page's dpi (floor for 0.30 mm, ceiling for 2.5 mm); at 300 dpi
+  that is 3 and 30 pixels. Removal repeats until nothing is left to remove (at most 4 rounds),
+  because removing an isolated speck can isolate another.
+- **Why punctuation survives.** A mark over 0.30 mm on either side is kept by its size. A mark of
+  0.30 mm or less belongs to text small enough for a neighbouring glyph to lie within 2.5 mm,
+  which keeps it by isolation. The two ranges overlap, so no punctuation size falls between them.
+  A rule or a pencil line is longer than 0.30 mm and is kept.
+- **Properties.** Only ink becomes white, whole components only, nothing above the cap is
+  removed, the result is the same when run again and bit for bit the same each time. It works in
+  bands of 512 rows (the banded result is the whole-page result) and honours a cancel before
+  each band. Memory is bounded by the same work-grid limit as paper cleanup.
+- **Does nothing, byte for byte,** when the switch is off, the page is grey or colour, the dpi
+  is under 150, the work grid has more than 12 million pixels, the first pass finds more than 1000
+  specks (the page is not dust), removal is still going after 4 passes, or nothing qualifies.
+- **The sidecar.** The review file is format version 5 only when despeckle is on: the shape of
+  version 4 plus a required top-level `despeckle` true or false. A cropped draft without it still
+  writes version 4. Versions 1 to 4 refuse a `despeckle` key and open with it off; a stale
+  re-analysis keeps the saved value and never takes it from the settings.
+- **Cached bytes** are reused only when their effective despeckle value matches the draft's.
+- **Known limits.** A deliberate isolated dot more than 2.5 mm from any ink, dotted leaders
+  spaced over 2.5 mm, and a lone decimal point in a sparse table are removed; dust over 0.30 mm
+  or within 2.5 mm of text stays. No claim is made about OCR results. The quality evidence is
+  synthetic pages only.
+
 ## Manual crop
 
 - **What it is.** In the desktop review a reviewer drags a rectangle on a page's source view

@@ -157,6 +157,12 @@ uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr o
   `ffscan doc scan` and `doc process`; without it, `doc process` applies the level a review file
   holds (else Off), and a page's own override in the review file still wins. The design note lists
   the limits; no claim is made about OCR results.
+- **Remove specks** (`--despeckle`; off by default) deletes tiny isolated dots from black and
+  white pages only: a dot is removed when it is at most 0.30 mm across and no other mark lies
+  within 2.5 mm, so full stops, i-dots and other punctuation next to text are kept. Grey and
+  colour pages are not changed, and a dot with colour in the source (a red tick) is kept. It is
+  a setting of the document (review file format version 5); `--no-despeckle` turns it off, and
+  without either flag `doc process` keeps what a review file holds. No claim is made about OCR.
 - **Crop** (desktop review, source view): drag a rectangle on a page to keep only that area, at
   least 5 mm on each side. The crop is cut from the trimmed page before the page is turned and
   cleaned, so the preview and the PDF agree. The page is not analysed again, so its blank,

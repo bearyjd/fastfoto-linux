@@ -97,7 +97,7 @@ def test_a_wide_page_whose_bands_would_relabel_it_over_four_times_is_left_alone(
     assert (result.status, result.pixels, result.removed) == (DespeckleStatus.TOO_LARGE, None, 0)
 
 
-def test_a_page_that_fits_the_budget_whole_is_one_band_however_wide() -> None:
+def test_a_page_that_fits_the_budget_is_not_left_alone_however_wide() -> None:
     for shape in [(100, 50_000), (125, 47_000)]:
         assert despeckle_white(np.ones(shape, dtype=bool), 600).status is DespeckleStatus.NONE
 

@@ -7,7 +7,7 @@ from typing import Any
 import numpy as np
 import pytest
 
-from fastfoto_linux.documents import despeckle
+from fastfoto_linux.documents import despeckle, encode
 from fastfoto_linux.documents.analyse import analyse_document
 from fastfoto_linux.documents.despeckle import DespeckleStatus
 from fastfoto_linux.documents.encode import encode_page, render_page
@@ -106,3 +106,50 @@ def test_the_off_status_is_reported_when_cleanup_succeeds() -> None:
     seen: list[DespeckleStatus] = []
     render_page(page, ColourMode.GREY, CleanupPolicy.LIGHT, on_despeckle=seen.append)
     assert seen == [DespeckleStatus.OFF]
+
+
+def test_without_despeckle_a_cancel_mid_page_still_lets_cleanup_finish(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Nothing changes when despeckle is off: cleanup in analysis never saw the cancel."""
+    page = write_png(tmp_path / "page-0001.png", np.full((600, 500), 230, dtype=np.uint8), dpi=DPI)
+    out = tmp_path / "out"
+    out.mkdir()
+    settings = store_settings(
+        out, keep_blank=True, duplex=False, colour=ColourPolicy.GREY, cleanup=CleanupPolicy.LIGHT
+    )
+    event = threading.Event()
+    original = encode.clean_pixels
+
+    def cancelled_mid_page(*args: Any, **kwargs: Any) -> Any:
+        event.set()
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(encode, "clean_pixels", cancelled_mid_page)
+    draft = analyse_document([page], settings, cancel=event)
+    assert draft.pages[0].encoded is not None
+    assert draft.pages[0].encoded.cleanup is CleanupPolicy.LIGHT
+
+
+def test_on_despeckle_is_not_called_when_the_cancel_stops_it() -> None:
+    page = LoadedPage(np.full((300, 300), 255, dtype=np.uint8), ColourMode.BW, DPI)
+    event = threading.Event()
+    event.set()
+    seen: list[DespeckleStatus] = []
+    with pytest.raises(DocumentCancelledError):
+        render_page(page, ColourMode.BW, despeckle=True, cancel=event, on_despeckle=seen.append)
+    assert seen == []
+
+
+def test_on_despeckle_is_not_called_when_despeckle_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def boom(*args: Any, **kwargs: Any) -> Any:
+        raise RuntimeError("failed")
+
+    monkeypatch.setattr(encode, "despeckle_white", boom)
+    page = LoadedPage(np.full((300, 300), 255, dtype=np.uint8), ColourMode.BW, DPI)
+    seen: list[DespeckleStatus] = []
+    with pytest.raises(RuntimeError):
+        render_page(page, ColourMode.BW, despeckle=True, on_despeckle=seen.append)
+    assert seen == []

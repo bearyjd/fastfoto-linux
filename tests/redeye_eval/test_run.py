@@ -13,7 +13,9 @@ from tests.redeye_eval.synth import (
     KeyedDetector,
     SynthItem,
     clean_heldout_set,
+    detection,
     disc,
+    eye_points,
     negative,
     positive,
     write_corpus,
@@ -79,6 +81,14 @@ def test_a_red_pupil_on_an_eye_labelled_non_red_is_a_non_red_false_positive(
     lie = SynthItem("lie", painted, base.faces, [], base.detections)
     result = evaluate_image(lie.arr, manifest_item(lie), KeyedDetector([lie]))
     assert result.fp_non_red == 1 and result.tp == 1 and result.fp_unmatched == 0
+
+
+def test_the_mask_centroid_not_the_landmark_decides_the_match(manifest_item) -> None:
+    synth = positive("off")
+    shifted = tuple((x + 12.5, y) for x, y in eye_points())  # beyond the 12 px tolerance
+    synth.detections[:] = [detection(shifted)]
+    result = evaluate_image(synth.arr, manifest_item(synth), KeyedDetector([synth]))
+    assert (result.predictions, result.tp, result.fp_unmatched) == (2, 2, 0)
 
 
 def test_a_tiny_face_is_skipped_small_and_its_red_eyes_are_missed(manifest_item) -> None:

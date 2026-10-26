@@ -17,7 +17,7 @@ from fastfoto_linux.documents.auto_colour import page_colour
 from fastfoto_linux.documents.cleanup import CleanupStatus, page_cleanup
 from fastfoto_linux.documents.draft import DocumentDraft, PageEdit
 from fastfoto_linux.documents.draft_store import THUMBS_DIR, open_draft
-from fastfoto_linux.documents.encode import render_page
+from fastfoto_linux.documents.encode import effective_despeckle, render_page
 from fastfoto_linux.documents.loader import load_page
 from fastfoto_linux.documents.modes import CleanupPolicy, ColourMode, ColourPolicy
 from fastfoto_linux.documents.page_crop import edited_page
@@ -120,15 +120,21 @@ def _preview_image(
     edit = draft.edits.get(number, PageEdit())
     loaded = edited_page(loaded, edit)
     cleanup = page_cleanup(draft, page) if request.cleaned else CleanupPolicy.OFF
+    # The original side keeps the mode, turns and crop but not the specks removal.
+    despeckle = effective_despeckle(draft.despeckle and request.cleaned, mode)
     if on_cleanup is not None:
-        pixels = render_page(loaded, mode, cleanup, cancel=cancel, on_cleanup=on_cleanup)
+        pixels = render_page(
+            loaded, mode, cleanup, despeckle=despeckle, cancel=cancel, on_cleanup=on_cleanup
+        )
+    elif despeckle:
+        pixels = render_page(loaded, mode, cleanup, despeckle=True, cancel=cancel)
     elif cleanup is CleanupPolicy.OFF:
         # Same pixels as render_page(loaded, mode, OFF, cancel=cancel); kept as the short call
         # because tests that monkeypatch render_page expect it without the cleanup arguments.
         pixels = render_page(loaded, mode)
     else:
         pixels = render_page(loaded, mode, cleanup, cancel=cancel)
-    suffix = output_suffix(mode, cleanup, edit.quarter_turns)
+    suffix = output_suffix(mode, cleanup, edit.quarter_turns, despeckle=despeckle)
     if edit.crop is not None:
         suffix += f"-c{crop_tag(edit.crop, edit.quarter_turns)}"
     return pixels, suffix

@@ -31,6 +31,7 @@ class DocumentSettings:
     ocr_timeout_s: float | None = None  # None: a limit that grows with the page count
     duplex: bool = True  # pages are sheets' sides in order, (1, 2), (3, 4) ...; False: all fronts
     cleanup: CleanupPolicy = CleanupPolicy.OFF  # paper cleanup a new analysis starts with
+    despeckle: bool = False  # remove small isolated specks from black and white pages
 
 
 @dataclass(frozen=True)
@@ -63,6 +64,8 @@ def check_settings(settings: DocumentSettings) -> CheckedSettings:
         raise DocumentSettingsError("colour mode must be auto, colour, grey or bw") from error
     if not isinstance(settings.cleanup, CleanupPolicy):
         raise DocumentSettingsError("cleanup must be off, light or strong")
+    if type(settings.despeckle) is not bool:
+        raise DocumentSettingsError("despeckle must be true or false")
     try:
         validate_langs(settings.langs)
     except ValueError as error:

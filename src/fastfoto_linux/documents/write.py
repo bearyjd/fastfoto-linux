@@ -26,7 +26,12 @@ from fastfoto_linux.documents.auto_colour import (
 from fastfoto_linux.documents.cleanup import page_cleanup
 from fastfoto_linux.documents.draft import DocumentDraft, OutputPart, PageAnalysis, PageEdit
 from fastfoto_linux.documents.draft_edit import parts
-from fastfoto_linux.documents.encode import EncodedPage, effective_cleanup, encode_page
+from fastfoto_linux.documents.encode import (
+    EncodedPage,
+    effective_cleanup,
+    effective_despeckle,
+    encode_page,
+)
 from fastfoto_linux.documents.errors import (
     AllPagesBlankError,
     DocumentError,
@@ -177,26 +182,33 @@ def _encoded(run: "_Run", page: PageAnalysis, edit: PageEdit) -> EncodedPage:
     stop_if_cancelled(run.cancel, f"page {page.number} of {len(run.draft.pages)} was written")
     policy = page_policy(run.draft, page, run.settings.colour)
     cleanup = page_cleanup(run.draft, page)  # the draft's level: settings.cleanup is never read
+    despeckle = run.draft.despeckle  # the draft's switch: settings.despeckle is never read
     kept = page.encoded if edit.quarter_turns == 0 and edit.crop is None else None
     mode: ColourMode | None = None
     if page.colour is not None or policy is not ColourPolicy.AUTO:
         mode = page_colour(run.draft, page, run.settings.colour)
-        if _reusable(kept, mode, cleanup):
+        if _reusable(kept, mode, cleanup, despeckle):
             return kept  # type: ignore[return-value]
     loaded = _read_page(page, edit, run.draft)
     if mode is None:  # Auto on a page that was not analysed: classify it once, here
         mode = resolve_colour(classify_colour(loaded), policy)
-        if _reusable(kept, mode, cleanup):
+        if _reusable(kept, mode, cleanup, despeckle):
             return kept  # type: ignore[return-value]
     if run.on_page is not None:
         run.on_page(page.number, len(run.draft.pages))
-    return encode_page(loaded, mode, cleanup, cancel=run.cancel)
+    return encode_page(loaded, mode, cleanup, despeckle=despeckle, cancel=run.cancel)
 
 
-def _reusable(kept: EncodedPage | None, mode: ColourMode, cleanup: CleanupPolicy) -> bool:
-    """The bytes a page carries are good when made in this mode at this cleanup level."""
+def _reusable(
+    kept: EncodedPage | None, mode: ColourMode, cleanup: CleanupPolicy, despeckle: bool
+) -> bool:
+    """The bytes a page carries are good when made in this mode at this cleanup level and with
+    this despeckle switch."""
     return (
-        kept is not None and kept.mode is mode and kept.cleanup is effective_cleanup(cleanup, mode)
+        kept is not None
+        and kept.mode is mode
+        and kept.cleanup is effective_cleanup(cleanup, mode)
+        and kept.despeckle is effective_despeckle(despeckle, mode)
     )
 
 

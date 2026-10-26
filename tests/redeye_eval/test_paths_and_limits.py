@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from fastfoto_linux.evaluation import redeye_images
+from fastfoto_linux.evaluation import redeye_images, redeye_output
 from fastfoto_linux.evaluation.redeye_images import ImageError, load_image, read_contained
 from fastfoto_linux.evaluation.redeye_manifest import ManifestError, check_relpath, load_manifest
 from fastfoto_linux.evaluation.redeye_output import resolve_out_dir, write_outputs
@@ -154,11 +154,12 @@ def test_out_dir_inside_the_manifest_root_is_refused(tmp_path) -> None:
             resolve_out_dir(manifest, inside, {})
 
 
-def test_out_dir_inside_a_project_checkout_is_refused(tmp_path) -> None:
+def test_out_dir_inside_a_project_checkout_is_refused(tmp_path, monkeypatch) -> None:
+    monkeypatch.setattr(redeye_output, "PROJECT_NAME", "fake-fastfoto")
     manifest = load_manifest(write_corpus(tmp_path / "corpus", [positive("a")]))
     checkout = tmp_path / "checkout"
     (checkout / ".git").mkdir(parents=True)
-    (checkout / "pyproject.toml").write_text('[project]\nname = "fastfoto-linux"\n')
+    (checkout / "pyproject.toml").write_text('[project]\nname = "fake-fastfoto"\n')
     with pytest.raises(ManifestError, match="checkout"):
         resolve_out_dir(manifest, checkout / "deep" / "results", {})
     other = tmp_path / "other"
@@ -167,7 +168,9 @@ def test_out_dir_inside_a_project_checkout_is_refused(tmp_path) -> None:
     assert resolve_out_dir(manifest, other / "results", {}) == other / "results"
 
 
-def test_default_out_dir_is_in_the_cache_and_keyed_by_the_manifest_hash(tmp_path) -> None:
+def test_default_out_dir_is_in_the_cache_and_keyed_by_the_manifest_hash(
+    tmp_path, outside_checkout
+) -> None:
     manifest = load_manifest(write_corpus(tmp_path / "corpus", [positive("a")]))
     cache = tmp_path / "cache"
     expected = cache / "fastfoto-linux" / "redeye-eval" / manifest.sha256[:12]

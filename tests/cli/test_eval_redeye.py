@@ -9,6 +9,7 @@ import pytest
 from fastfoto_linux.cli import cmd_eval, main
 from fastfoto_linux.evaluation.redeye_manifest import load_manifest
 from tests.redeye_eval.synth import (
+    outside_checkout,
     KeyedDetector,
     SynthItem,
     clean_heldout_set,
@@ -17,6 +18,7 @@ from tests.redeye_eval.synth import (
     write_corpus,
 )
 
+pytestmark = pytest.mark.usefixtures("outside_checkout")
 UNIQUE = "uniq-corpus-77c1"
 
 

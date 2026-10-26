@@ -14,9 +14,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
+import pytest
 from PIL import Image
 
 from fastfoto_linux.enhance.faces import Face
+from fastfoto_linux.evaluation import redeye_output
 from fastfoto_linux.evaluation.redeye_split import derived_split
 
 SALT = "0123456789abcdef"
@@ -77,6 +79,12 @@ def png_bytes(arr: np.ndarray) -> bytes:
 
 def pixel_key(arr: np.ndarray) -> str:
     return hashlib.sha256(arr.tobytes()).hexdigest()
+
+
+@pytest.fixture
+def outside_checkout(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Let results land in tmp_path even when pytest's basetemp is inside a checkout."""
+    monkeypatch.setattr(redeye_output, "PROJECT_NAME", "not-a-real-project")
 
 
 def tag(arr: np.ndarray, item_id: str) -> np.ndarray:

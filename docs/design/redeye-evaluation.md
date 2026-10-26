@@ -1,8 +1,7 @@
 # Red-eye evaluation harness
 
 `ffscan eval redeye MANIFEST.json` measures the automatic red-eye path against a labelled
-manifest. It is a measuring instrument: **the harness ships with no data and no accuracy has
-been measured.** Red-eye stays experimental and no default changes. Its self-tests use
+manifest. It is a measuring instrument: **the harness ships with no data; no accuracy has been measured.** Red-eye stays experimental and no default changes. Its self-tests use
 synthetic images painted in code with a stub face detector, so they check that the counting is
 right, not that red-eye works.
 
@@ -61,7 +60,7 @@ damage (G1), no change outside the fix regions (G2), the held-out split (G3), no
 (G4) and at least one negative image and one red eye (G5, else "insufficient data").
 `--min-precision` and `--min-recall` compare against the Wilson lower bound and are off by
 default. Exit code 5 means a gate failed. A pass reports "No damaging change observed in N
-frozen negatives (95% upper bound X%)" and never claims zero false positives.
+frozen negatives (95% upper bound X%)" and makes no claim about false-positive freedom.
 
 ## Outputs
 

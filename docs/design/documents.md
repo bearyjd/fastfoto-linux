@@ -936,10 +936,16 @@ document level for this run only, a page's own level still wins, and `--fresh` d
 - **Properties.** Only ink becomes white, whole components only, nothing above the cap is
   removed, the result is the same when run again and bit for bit the same each time. It works in
   bands of 512 rows (the banded result is the whole-page result) and honours a cancel before
-  each band. Memory is bounded by the same work-grid limit as paper cleanup.
+  each band. The labelling of a band is bounded by the band, whatever the pattern: it runs on one
+  OpenCV thread (restored afterwards), because a dense dot pattern made many threads allocate
+  about a gigabyte for one band of an A4 page. The arrays that span the page grow with it (about
+  4 bytes a pixel, 6 with a colour source), and as it works at full resolution a page of more
+  than 80 million pixels (A3 at 600 dpi is 69.6 million) is left as it is, besides the work-grid
+  limit of paper cleanup. Synthetic A4 pages: 0.09 s at 300 dpi, 0.43 s at 600 dpi; a pattern of
+  every other pixel grew the process by about 75 MiB at 300 dpi and 175 MiB at 600 dpi.
 - **Does nothing, byte for byte,** when the switch is off, the page is grey or colour, the dpi
-  is under 150, the work grid has more than 12 million pixels, the first pass finds more than 1000
-  specks (the page is not dust), removal is still going after 4 passes, or nothing qualifies.
+  is under 150, the work grid has more than 12 million pixels or the page more than 80 million, the
+  first pass finds over 1000 specks (not dust), removal is still going after 4 passes, or nothing qualifies.
 - **The sidecar.** The review file is format version 5 only when despeckle is on: the shape of
   version 4 plus a required top-level `despeckle` true or false. A cropped draft without it still
   writes version 4. Versions 1 to 4 refuse a `despeckle` key and open with it off; a stale

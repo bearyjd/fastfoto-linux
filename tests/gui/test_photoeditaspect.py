@@ -476,3 +476,12 @@ def test_a_fractional_click_without_movement_is_like_an_integer_one():
         assert click_at(at) is None, at
     assert click_at(0.5, 1.5) == (0, 0, 2, 2)
     assert click_at(2.5, 1.5) == (1, 1, 3, 3)
+
+
+def test_a_drag_in_a_thin_room_takes_the_smallest_covering_width_not_the_widest():
+    wide = {"source_width": 50, "source_height": 1, "painted_width": 50}
+    got = aspect_crop(
+        0, 0, 5, 1, ratio=(13, 3), min_width=1, min_height=1,
+        painted_height=1, item_width=50, item_height=1, **{k: v for k, v in wide.items()},
+    )  # fmt: skip
+    assert got == (0, 0, 5, 1)

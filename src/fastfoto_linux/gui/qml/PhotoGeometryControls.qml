@@ -70,6 +70,53 @@ ColumnLayout {
             onClicked: root.editor.rotateClockwise()
         }
     }
+    RowLayout {
+        visible: root.inMode
+        Layout.fillWidth: true
+        QQC2.Label { text: qsTr("Crop shape"); textFormat: Text.PlainText }
+        QQC2.ComboBox {
+            id: aspectBox
+            objectName: "photoCropAspect"
+            Layout.fillWidth: true
+            readonly property var ids: ["free", "original", "1:1", "4:3", "3:2", "16:9", "5:7"]
+            model: [qsTr("Free"), qsTr("Original"), qsTr("1:1"), qsTr("4:3"), qsTr("3:2"), qsTr("16:9"), qsTr("5:7")]
+            enabled: root.editor.canEdit
+            currentIndex: ids.indexOf(root.editor.aspect.preset)
+            Accessible.name: qsTr("Crop shape")
+            onActivated: index => root.editor.aspect.setPreset(ids[index])
+            // A user activation breaks the binding above; this shows a refused choice or a dropped lock.
+            Connections {
+                target: root.editor
+                function onChanged() {
+                    aspectBox.currentIndex = aspectBox.ids.indexOf(root.editor.aspect.preset);
+                }
+            }
+        }
+    }
+    QQC2.Button {
+        objectName: "photoCropAspectSwap"
+        visible: root.inMode
+        text: qsTr("Swap orientation")
+        Accessible.name: qsTr("Swap orientation")
+        enabled: root.editor.canEdit && root.editor.aspect.canSwap
+        onClicked: root.editor.aspect.swap()
+    }
+    QQC2.Label {
+        objectName: "photoCropAspectShape"
+        Layout.fillWidth: true
+        visible: root.inMode && root.editor.aspect.preset !== "free"
+        text: qsTr("Saved shape %1").arg(root.editor.aspect.shapeText)
+        textFormat: Text.PlainText
+        wrapMode: Text.WordWrap
+    }
+    QQC2.Label {
+        objectName: "photoCropAspectTurned"
+        Layout.fillWidth: true
+        visible: root.inMode && root.editor.aspect.preset !== "free" && root.editor.geometry.quarterTurns % 2 === 1
+        text: qsTr("The box is drawn on the unturned photo; Show result shows the saved shape.")
+        textFormat: Text.PlainText
+        wrapMode: Text.WordWrap
+    }
     QQC2.Label { visible: root.inMode; text: qsTr("Straighten"); textFormat: Text.PlainText }
     RowLayout {
         visible: root.inMode

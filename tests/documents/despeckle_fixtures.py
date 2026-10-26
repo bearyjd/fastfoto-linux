@@ -163,3 +163,29 @@ def random_page(seed: int) -> tuple[np.ndarray, int]:
             int(rng.integers(20, width // 2)),
         )
     return page, dpi
+
+
+def halftone_mask(dpi: int) -> np.ndarray:
+    """An A4 page (True where white) whose black pixels are every other pixel of every other row:
+    about a quarter of all pixels, each its own 8-connected component."""
+    height, width = (3508, 2480) if dpi == 300 else (7016, 4960)
+    white = np.ones((height, width), dtype=bool)
+    white[::2, ::2] = False
+    return white
+
+
+def dense_page(seed: int) -> tuple[np.ndarray, int]:
+    """A small seeded page of dot grids (pitch 2 to 4) with isolated specks around them."""
+    rng = np.random.default_rng(seed)
+    dpi = int(rng.choice([150, 300]))
+    height, width = int(rng.integers(120, 260)), int(rng.integers(120, 260))
+    page = blank(height, width)
+    for _ in range(int(rng.integers(1, 4))):
+        pitch = int(rng.integers(2, 5))
+        top, left = int(rng.integers(0, height // 2)), int(rng.integers(0, width // 2))
+        rows, cols = int(rng.integers(10, height // 2)), int(rng.integers(10, width // 2))
+        page[top : top + rows : pitch, left : left + cols : pitch] = False
+    for _ in range(int(rng.integers(5, 40))):
+        size = int(rng.integers(1, 4))
+        ink(page, int(rng.integers(0, height - 3)), int(rng.integers(0, width - 3)), size, size)
+    return page, dpi

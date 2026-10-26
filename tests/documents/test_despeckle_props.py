@@ -5,10 +5,10 @@ import threading
 import cv2
 import numpy as np
 import pytest
-from fastfoto_linux.documents.despeckle import DespeckleStatus, despeckle_white
-from fastfoto_linux.documents.despeckle_tables import guard_px, speck_px
 
 from fastfoto_linux.documents import despeckle
+from fastfoto_linux.documents.despeckle import DespeckleStatus, despeckle_white
+from fastfoto_linux.documents.despeckle_tables import guard_px, speck_px
 from fastfoto_linux.documents.errors import DocumentCancelledError
 from tests.documents import despeckle_fixtures as fx
 

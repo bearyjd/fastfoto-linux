@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 
 import pytest
+
 from fastfoto_linux.documents.despeckle_tables import GUARD_UM, SPECK_MAX_UM
 
 ROOT = Path(__file__).resolve().parents[2]

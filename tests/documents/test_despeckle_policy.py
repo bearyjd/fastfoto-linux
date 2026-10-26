@@ -6,9 +6,9 @@ from pathlib import Path
 import cv2
 import numpy as np
 import pytest
-from fastfoto_linux.documents.despeckle import DespeckleStatus
 
 from fastfoto_linux.documents.bilevel import binarise
+from fastfoto_linux.documents.despeckle import DespeckleStatus
 from fastfoto_linux.documents.draft import DocumentDraft
 from fastfoto_linux.documents.draft_edit import set_document_despeckle
 from fastfoto_linux.documents.encode import (

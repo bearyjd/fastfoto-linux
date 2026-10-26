@@ -41,6 +41,7 @@ def test_overlapping_pins_label_on_one_thread_and_restore_once(four_threads) -> 
         thread.start()
     for thread in threads:
         thread.join(30)
+        assert not thread.is_alive()
     assert seen["b"] == [1, 1]
     assert seen["a"][0] == 1
     assert cv2.getNumThreads() == 4  # restored, once, to what it was before either

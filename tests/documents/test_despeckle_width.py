@@ -10,7 +10,12 @@ import pytest
 
 from fastfoto_linux.documents import despeckle
 from fastfoto_linux.documents.despeckle import DespeckleStatus, despeckle_white
-from fastfoto_linux.documents.despeckle_tables import MAX_BAND_PIXELS, guard_px, speck_px
+from fastfoto_linux.documents.despeckle_tables import (
+    BAND_OVERLAP,
+    MAX_BAND_PIXELS,
+    guard_px,
+    speck_px,
+)
 
 # A 512 x 30000 page of every other pixel black grew the process by 680 MiB at both 300 and
 # 600 dpi when a band took every column of its 640 rows at once.
@@ -76,20 +81,61 @@ def window_px(dpi: int, width: int) -> int:
     return (1 + speck_px(dpi) + 2 * guard_px(dpi)) * width
 
 
-def test_the_narrowest_band_decides_whether_a_page_is_too_wide() -> None:
+def test_the_overlap_limit_is_four() -> None:
+    assert BAND_OVERLAP == 4
+
+
+def test_a_wide_page_whose_bands_would_relabel_it_over_four_times_is_left_alone() -> None:
     dpi = 600
-    ok_width = MAX_BAND_PIXELS // window_px(dpi, 1)
-    ok = np.ones((200, ok_width), dtype=bool)
+    guard_rows = speck_px(dpi) + 2 * guard_px(dpi)  # the rows a window adds to the rows it owns
+    owned = -(-guard_rows // (BAND_OVERLAP - 1))  # the fewest rows a band may own
+    ok_width = MAX_BAND_PIXELS // (guard_rows + owned)
+    ok = np.ones((400, ok_width), dtype=bool)
     assert despeckle_white(ok, dpi).status is DespeckleStatus.NONE
-    wide = np.ones((200, ok_width + 1), dtype=bool)
+    wide = np.ones((400, ok_width + 1), dtype=bool)
     result = despeckle_white(wide, dpi)
     assert (result.status, result.pixels, result.removed) == (DespeckleStatus.TOO_LARGE, None, 0)
 
 
-def test_a_short_page_is_judged_by_its_own_height() -> None:
-    dpi = 600  # 100 rows are fewer than the 128 of a full window
-    short = np.ones((100, 50_000), dtype=bool)
-    assert despeckle_white(short, dpi).status is DespeckleStatus.NONE
+def test_a_page_that_fits_the_budget_whole_is_one_band_however_wide() -> None:
+    for shape in [(100, 50_000), (125, 47_000)]:
+        assert despeckle_white(np.ones(shape, dtype=bool), 600).status is DespeckleStatus.NONE
+
+
+def test_the_200_by_46875_page_is_left_alone() -> None:
+    page = np.ones((200, 46_875), dtype=bool)
+    page[::2, ::2] = False
+    assert despeckle_white(page, 600).status is DespeckleStatus.TOO_LARGE
+
+
+def labelled_pixels(monkeypatch: pytest.MonkeyPatch, white: np.ndarray, dpi: int) -> list[int]:
+    sizes: list[int] = []
+    original = cv2.connectedComponentsWithStats
+
+    def spy(window, *args, **kwargs):
+        sizes.append(window.size)
+        return original(window, *args, **kwargs)
+
+    monkeypatch.setattr(cv2, "connectedComponentsWithStats", spy)
+    despeckle_white(white, dpi)
+    return sizes
+
+
+def test_a_short_wide_page_is_labelled_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    page = np.ones((125, 47_000), dtype=bool)
+    page[::2, ::2] = False
+    assert labelled_pixels(monkeypatch, page, 600) == [page.size]
+
+
+@pytest.mark.parametrize(("dpi", "shape"), [(600, (512, 30_000)), (300, (512, 30_000))])
+def test_the_bands_label_the_page_at_most_four_times(
+    monkeypatch: pytest.MonkeyPatch, dpi: int, shape: tuple[int, int]
+) -> None:
+    page = np.ones(shape, dtype=bool)
+    page[::2, ::2] = False
+    sizes = labelled_pixels(monkeypatch, page, dpi)
+    assert len(sizes) > 1
+    assert sum(sizes) <= BAND_OVERLAP * page.size
 
 
 def shaped_page(seed: int, *, tall: bool) -> tuple[np.ndarray, int]:
@@ -109,7 +155,7 @@ def shaped_page(seed: int, *, tall: bool) -> tuple[np.ndarray, int]:
 
 
 @pytest.mark.parametrize("tall", [True, False])
-@pytest.mark.parametrize("multiple", [1, 2, 5])
+@pytest.mark.parametrize("multiple", [2, 3, 5])
 @pytest.mark.parametrize("seed", range(15))
 def test_any_band_budget_gives_the_same_pixels(
     monkeypatch: pytest.MonkeyPatch, tall: bool, multiple: int, seed: int

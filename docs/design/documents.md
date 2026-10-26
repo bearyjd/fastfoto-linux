@@ -953,6 +953,14 @@ document level for this run only, a page's own level still wins, and `--fresh` d
   writes version 4. Versions 1 to 4 refuse a `despeckle` key and open with it off; a stale
   re-analysis keeps the saved value and never takes it from the settings. Cached page bytes are
   reused only when their effective despeckle value matches the draft's.
+- **In the desktop app.** The Documents form has a "Remove specks" checkbox under paper cleanup
+  (remembered with the form, off by default) and the review page has a document-level checkbox;
+  there is no per-page control and no status in the window. A scan opened again from its
+  original pages is analysed with it off, so only a version 5 review file can turn it on. The
+  output preview renders the draft's switch on its cleaned side and leaves it off on the original
+  side (the "Paper cleanup" switch, enabled for a black-and-white page when specks are on, with
+  the same mode, turns and crop). The preview name gains `-s` after the turns, only for black
+  and white, which has no cleanup level and is named `bw-off` (`...-bw-off-r1-s.jpg`, `-s-crop.png`).
 - **Known limits.** A deliberate isolated dot more than 2.5 mm from any ink, dotted leaders
   spaced over 2.5 mm, and a lone decimal point in a sparse table are removed; dust over 0.30 mm
   or within 2.5 mm of text stays. No claim is made about OCR results; the evidence is synthetic.

@@ -602,6 +602,13 @@ languages. Choose one or more languages by name; the picker shows which models a
 which need downloading, and their download sizes. The output folder is the same as in Photos mode;
 every other setting is remembered separately for each mode.
 
+**Remove specks (black and white pages)** (off by default) is a checkbox under the form's
+paper cleanup, and **Remove specks** is a checkbox on the review screen; both are the document
+setting described under Documents above. In the review preview, the **Paper cleanup** switch
+shows a black-and-white page with and without its specks removed; the label then reads "specks
+removed". A scan opened again from its original pages starts with it off unless its review file
+holds it. Grey and colour pages are not changed, and no claim is made about OCR.
+
 Use the explicit download action to fetch the missing models for the selected languages before
 scanning. If page-orientation data is missing, it is shown separately and must also be explicitly
 downloaded. Opening the picker, selecting a language, installing the app, or starting OCR never

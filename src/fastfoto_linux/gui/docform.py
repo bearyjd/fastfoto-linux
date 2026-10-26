@@ -48,6 +48,7 @@ class DocumentForm:
     searchable: bool = True
     langs: str = DEFAULT_LANGS
     cleanup: str = CleanupPolicy.OFF.value
+    despeckle: bool = False
 
 
 DOCUMENT_FIELD_NAMES = tuple(field.name for field in fields(DocumentForm))
@@ -73,6 +74,12 @@ def _check_langs(form: DocumentForm) -> str | None:
     return None
 
 
+def _check_despeckle(form: DocumentForm) -> str | None:
+    if type(form.despeckle) is bool:
+        return None
+    return f"Remove specks must be on or off, not {form.despeckle!r}."
+
+
 def _choice(name: str, value: object, choices: tuple[object, ...]) -> str | None:
     if value in choices:
         return None
@@ -86,6 +93,7 @@ def validate_document_form(form: DocumentForm) -> dict[str, str]:
         ("colour", _choice("colour", form.colour, DOCUMENT_COLOURS)),
         ("dpi", _choice("resolution", form.dpi, DOCUMENT_DPI)),
         ("cleanup", _choice("paper cleanup", form.cleanup, DOCUMENT_CLEANUPS)),
+        ("despeckle", _check_despeckle(form)),
         ("langs", _check_langs(form)),
     )
     return {name: message for name, message in checks if message is not None}
@@ -137,6 +145,7 @@ def to_document_settings(
         langs=form.langs,
         duplex=form.both_sides,
         cleanup=CleanupPolicy(form.cleanup),
+        despeckle=form.despeckle,
     )
 
 

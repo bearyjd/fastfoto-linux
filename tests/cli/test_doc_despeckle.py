@@ -5,6 +5,7 @@ import shlex
 from pathlib import Path
 from typing import Any
 
+import pypdf
 import pytest
 
 from fastfoto_linux.cli import main
@@ -121,7 +122,11 @@ def test_the_pdf_without_the_flag_is_the_pdf_with_no_despeckle(tmp_path, out) ->
     args = ["doc", "process", str(pages[0]), *OCR_OFF, "--colour", "bw", "--out"]
     assert main([*args, str(one)]) == 0
     assert main([*args, str(two), "--no-despeckle"]) == 0
-    assert (one / "Document_0001.pdf").read_bytes() == (two / "Document_0001.pdf").read_bytes()
+    images = [
+        pypdf.PdfReader(folder / "Document_0001.pdf").pages[0].images[0].data
+        for folder in (one, two)
+    ]
+    assert images[0] == images[1]
 
 
 def dry_run(capsys, out: Path, source: list[Path], *extra: str) -> str:

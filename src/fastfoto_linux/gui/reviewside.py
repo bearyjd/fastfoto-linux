@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 # Operations that can change a page's output pixels; each names its page number first.
 PAGE_AFFECTING = frozenset({"toggle", "rotate", "set_colour", "set_cleanup", "set_crop"})
 # Operations that can change every page's output pixels; they take no page number.
-DOCUMENT_AFFECTING = frozenset({"set_document_cleanup"})
+DOCUMENT_AFFECTING = frozenset({"set_document_cleanup", "set_document_despeckle"})
 _OPENABLE = frozenset(
     {State.READY, State.NO_SCANNER, State.DONE, State.FAILED, State.CANCELLED, State.REVIEWING}
 )
@@ -152,9 +152,12 @@ class ReviewSide:
         if not self.leaving():
             return False
         c.set_mode(Mode.DOCUMENTS)
-        # A past scan starts with cleanup Off: the form's level only seeds new scans, and an old or
-        # missing sidecar would otherwise take it. Only a version 3 sidecar can say otherwise.
-        self._opening_settings = replace(self._current_settings(), cleanup=CleanupPolicy.OFF)
+        # A past scan starts with cleanup Off and Remove specks off: the form's choices only seed
+        # new scans, and an old or missing sidecar would otherwise take them. Only a sidecar that
+        # holds them (version 3 for cleanup, 5 for despeckle) can say otherwise.
+        self._opening_settings = replace(
+            self._current_settings(), cleanup=CleanupPolicy.OFF, despeckle=False
+        )
         c._worker.analyse_folder(folder, self._opening_settings)
         self._pending = "open"
         self._preview_requested = None

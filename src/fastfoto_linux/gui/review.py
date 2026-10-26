@@ -57,6 +57,9 @@ class ReviewState:
     def set_document_cleanup(self, policy: CleanupPolicy) -> "ReviewState":
         return replace(self, draft=draft_edit.set_document_cleanup(self.draft, policy))
 
+    def set_document_despeckle(self, flag: bool) -> "ReviewState":
+        return replace(self, draft=draft_edit.set_document_despeckle(self.draft, flag))
+
     def set_crop(self, number: int, crop: PageCrop | None) -> "ReviewState":
         return replace(self, draft=draft_edit.set_crop(self.draft, number, crop))
 
@@ -104,6 +107,7 @@ class ReviewItem:
     cleanup_text: str = ""
     cropped: bool = False
     crop_text: str = ""
+    despeckle_text: str = ""
 
 
 CROP_TEXT = "Cropped by hand"
@@ -168,6 +172,13 @@ def cleanup_values(draft: DocumentDraft, page: PageAnalysis, resolved_mode: str)
     return override, f"Paper cleanup: {level.value.capitalize()} requested ({source})"
 
 
+def despeckle_words(draft: DocumentDraft, resolved_mode: str) -> str:
+    """Said of a page only when the document switch will act on it (black and white output)."""
+    if draft.despeckle and resolved_mode == ColourMode.BW.value:
+        return "Remove specks: on (document setting)"
+    return ""
+
+
 def review_items(
     state: ReviewState, document_policy: ColourPolicy | ColourMode = ColourPolicy.COLOUR
 ) -> tuple[ReviewItem, ...]:
@@ -205,6 +216,7 @@ def review_items(
                 *cleanup_values(draft, page, colour[1]),
                 cropped,
                 CROP_TEXT if cropped else "",
+                despeckle_words(draft, colour[1]),
             )
         )
     return tuple(rows)

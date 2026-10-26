@@ -81,6 +81,14 @@ class PhotoAspectActions:
         box = geometry.crop or (0, 0, *frame)
         return box, frame, min_crop_size(recipe.source, geometry)
 
+    def _renotify(self: "PhotoEditSide") -> None:
+        """Tell the page; a refusal or failure shown is stale now, so drop it and preview again."""
+        if self.error:
+            self.error = ""
+            self.request_preview()
+        else:
+            self._changed()
+
     def _apply_aspect(
         self: "PhotoEditSide",
         recipe: PhotoEditRecipe,
@@ -93,7 +101,7 @@ class PhotoAspectActions:
         self._aspect_preset, self._aspect_portrait = preset, portrait
         self._aspect_geometry = updated.geometry
         if updated is recipe:
-            self._changed()
+            self._renotify()
         else:
             self._change(updated)
 
@@ -105,7 +113,7 @@ class PhotoAspectActions:
         ratio = crop_ratio(preset_id, portrait, frame=frame, quarter_turns=turns)
         if ratio is None:
             self._aspect_preset = "free"
-            self._changed()
+            self._renotify()
             return
         fitted = fit_centred(box, ratio, frame=frame, minimum=minimum)
         if fitted is None:

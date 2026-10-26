@@ -6,9 +6,10 @@ import pytest
 
 from fastfoto_linux.gui import photoeditaspectactions as aspect_actions
 from fastfoto_linux.gui.photoeditaspect import fit_centred
+from fastfoto_linux.gui.photoeditjobs import PhotoEditResult
 from fastfoto_linux.gui.state import ActionBlockedError
 from fastfoto_linux.photo_edits import frame_size, min_crop_size, output_size, recipe_bytes
-from tests.gui.photoedit_helpers import opened, setup
+from tests.gui.photoedit_helpers import finish, opened, preview, setup
 
 TOO_SMALL = "This photo is too small for that crop shape at the 5 mm minimum."
 BLOCKED = "Turn on Crop and rotate to change the framing."
@@ -311,3 +312,29 @@ def test_the_page_is_told_only_after_the_lock_is_set(out):
     side.set_crop_aspect("original")  # an identity: the page is told once, directly
     side.set_crop_aspect("4:3")  # a change: told by the preview request
     assert seen == ["original", "4:3"]
+
+
+def refused_16_9(page, out):
+    side = page.side
+    side.set_crop_aspect("4:3")
+    request = page.worker.requests[-1]
+    shown = preview(side.recipe, request.generation, out)
+    finish(page, PhotoEditResult("preview", request.generation, side.recipe, shown))
+    assert side.can_save
+    with pytest.raises(ActionBlockedError):
+        side.set_crop_aspect("16:9")
+    side.report_error(TOO_SMALL)  # what the view's action wrapper does with a refusal
+    assert side.error == TOO_SMALL and not side.can_save
+    return side
+
+
+@pytest.mark.parametrize("again", ["4:3", "free"])
+def test_a_successful_choice_after_a_refusal_clears_the_stale_error(out, again):
+    page = opened(out, dpi=300)
+    page.side.set_geometry_mode(True)
+    side = refused_16_9(page, out)
+    draft, asked = side.recipe, len(page.worker.requests)
+    side.set_crop_aspect(again)
+    assert side.error == "" and side.recipe is draft
+    assert len(page.worker.requests) == asked + 1  # a fresh preview decides when Save is back
+    assert page.worker.requests[-1].recipe is draft

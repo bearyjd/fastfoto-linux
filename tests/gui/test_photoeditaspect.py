@@ -226,7 +226,6 @@ def test_fit_centred_properties_over_random_cases():
         inside = box[0] <= left and box[1] <= top and right <= box[2] and bottom <= box[3]
         if not inside:
             grown += 1
-            assert w == max(minimum[0], ceil_div(minimum[1] * rw, rh))
             continue
         bw, bh = box[2] - box[0], box[3] - box[1]
         for cw, ch in ((bw, half_up(bw * rh, rw)), (half_up(bh * rw, rh), bh)):
@@ -397,3 +396,92 @@ def test_ratio_drags_are_always_fixed_points_of_the_fit():
         assert 0 <= got[0] < got[2] <= sw and 0 <= got[1] < got[3] <= sh
         assert fit_centred(got, ratio, frame=(sw, sh), minimum=mn) == got
     assert produced > 300
+
+
+def is_shaped(width, height, ratio):
+    rw, rh = ratio
+    return height == half_up(width * rh, rw) or width == half_up(height * rw, rh)
+
+
+def test_growth_takes_the_smallest_width_whose_rounded_height_reaches_the_minimum():
+    assert fit((0, 0, 59, 59), (4, 3), (78, 59), (59, 59)) == (0, 0, 78, 59)
+    assert fit((0, 0, 59, 78), (3, 4), (59, 78), (59, 59)) == (0, 0, 59, 78)
+    assert fit((0, 0, 50, 50), (3, 4), (59, 78), (59, 59)) == (0, 0, 59, 78)
+
+
+def test_a_shaped_frame_sized_box_at_the_minimum_is_accepted_unchanged():
+    for ratio in RATIOS:
+        for fw in range(2, 50):
+            for fh in range(2, 50):
+                if is_shaped(fw, fh, ratio):
+                    assert fit((0, 0, fw, fh), ratio, (fw, fh), (fw, fh)) == (0, 0, fw, fh)
+                    assert fit((0, 0, fw, fh), ratio, (fw, fh), (fw - 1, fh - 1)) == (0, 0, fw, fh)
+
+
+def test_fitting_finds_intermediate_sizes_not_only_full_width_or_height():
+    assert fit((0, 0, 7, 3), (16, 9), (7, 3)) == (0, 0, 6, 3)
+    assert swap_box((0, 0, 3, 7), (16, 9), frame=(7, 3), minimum=FREE_MIN) == (0, 0, 6, 3)
+
+
+def test_fitting_is_the_largest_shaped_box_over_every_small_size():
+    for ratio in RATIOS:
+        for width in range(1, 25):
+            for height in range(1, 25):
+                best = max(
+                    (
+                        w * h
+                        for w in range(1, width + 1)
+                        for h in range(1, height + 1)
+                        if is_shaped(w, h, ratio)
+                    ),
+                    default=0,
+                )
+                got = fit((0, 0, width, height), ratio, (width, height))
+                area = 0 if got is None else (got[2] - got[0]) * (got[3] - got[1])
+                assert area == best, (ratio, width, height, got)
+
+
+def frame_drag(sw, sh, ratio, minimum=(1, 1)):
+    return aspect_crop(
+        0, 0, sw, sh, ratio=ratio,
+        min_width=minimum[0], min_height=minimum[1], source_width=sw, source_height=sh,
+        painted_width=sw, painted_height=sh, item_width=sw, item_height=sh,
+    )  # fmt: skip
+
+
+def test_a_full_frame_drag_keeps_a_frame_that_only_the_width_side_rounds_to():
+    assert frame_drag(59, 78, (3, 4), (59, 59)) == (0, 0, 59, 78)
+    assert frame_drag(3, 2, (4, 3)) == (0, 0, 3, 2)
+
+
+def test_a_full_frame_drag_is_the_frame_whenever_fitting_accepts_it():
+    for ratio in RATIOS:
+        for sw in range(2, 40):
+            for sh in range(2, 40):
+                if is_shaped(sw, sh, ratio):
+                    assert frame_drag(sw, sh, ratio) == (0, 0, sw, sh), (ratio, sw, sh)
+
+
+def click_at(start, end=None):
+    end = start if end is None else end
+    return aspect_crop(
+        start, start, end, end, ratio=(1, 1), min_width=1, min_height=1,
+        source_width=5, source_height=5, painted_width=5, painted_height=5,
+        item_width=5, item_height=5,
+    )  # fmt: skip
+
+
+def test_a_fractional_click_without_movement_is_like_an_integer_one():
+    for at in (0.0, 2.0, 5.0, 0.5, 2.5, 4.999):
+        assert click_at(at) is None, at
+    assert click_at(0.5, 1.5) == (0, 0, 2, 2)
+    assert click_at(2.5, 1.5) == (1, 1, 3, 3)
+
+
+def test_a_drag_in_a_thin_room_takes_the_smallest_covering_width_not_the_widest():
+    wide = {"source_width": 50, "source_height": 1, "painted_width": 50}
+    got = aspect_crop(
+        0, 0, 5, 1, ratio=(13, 3), min_width=1, min_height=1,
+        painted_height=1, item_width=50, item_height=1, **{k: v for k, v in wide.items()},
+    )  # fmt: skip
+    assert got == (0, 0, 5, 1)

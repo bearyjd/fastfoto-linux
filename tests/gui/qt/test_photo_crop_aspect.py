@@ -14,6 +14,8 @@ from PySide6.QtQml import QQmlEngine, QQmlExpression
 from PySide6.QtTest import QTest
 
 from fastfoto_linux.gui.photoeditaspect import PRESETS, aspect_crop
+from fastfoto_linux.gui.photoeditjobs import PhotoEditResult
+from tests.gui.photoedit_helpers import preview
 from tests.gui.qt import test_qml
 from tests.gui.qt.qt_helpers import child, invoke, settle
 from tests.gui.qt.test_photo_edit_view import open_editor
@@ -238,6 +240,9 @@ def parity_cases():
     ]
     for corners in ((0.2, 0.2, 0.8, 0.5), (0.8, 0.5, 0.2, 0.2), (0.2, 0.5, 0.8, 0.2)):
         cases.append(([4, 3], (1000, 600), 1, list(corners)))
+    for ratio in ratios:  # the whole frame, both ways: where the two rounding forms matter
+        cases += [(ratio, size, 1, [0, 0, 1, 1]) for size in [*sizes, (59, 78), (7, 3)]]
+        cases += [(ratio, size, 1, [1, 1, 0, 0]) for size in [*sizes, (59, 78), (7, 3)]]
     return cases
 
 
@@ -265,4 +270,42 @@ def test_the_canvas_drag_equals_the_python_drag_over_a_table(make_bridge, open_w
             assert got == list(want), (ratio, source, zoom, points)
             compared += 1
     assert compared >= 3
+    assert warnings == []
+
+
+def finish_preview(bridge, view, worker, out):
+    request = worker.requests[-1]
+    worker.busy = False
+    recipe = bridge.controller.photo_edit.recipe
+    shown = preview(recipe, request.generation, out)
+    bridge.controller.on_photo_edit_result(
+        PhotoEditResult("preview", request.generation, recipe, shown)
+    )
+    view.refresh()
+
+
+@pytest.mark.parametrize("again", ["4:3", "free"])
+def test_a_refusal_does_not_keep_save_disabled_after_a_good_choice(make_bridge, out, again):
+    bridge, view, worker = open_editor(make_bridge, out, dpi=300)
+    view.setGeometryMode(True)
+    view.aspect.setPreset("4:3")
+    finish_preview(bridge, view, worker, out)
+    view.aspect.setPreset("16:9")
+    assert view.error == TOO_SMALL and not view.canSave
+    view.aspect.setPreset(again)
+    assert view.error == ""
+    finish_preview(bridge, view, worker, out)
+    assert view.canSave
+
+
+def test_a_canvas_click_without_movement_makes_no_box(make_bridge, open_window, out):
+    _bridge, _view, _window, page, warnings = editor_page(make_bridge, open_window, out)
+    enter_mode(page)
+    canvas = child(page, "photoEditCanvas")
+    canvas.setProperty("sourceWidth", 1000)
+    canvas.setProperty("sourceHeight", 600)
+    canvas.setProperty("cropRatio", [4, 3])
+    for fx, fy in ((0.37, 0.41), (0.5, 0.5), (0.25, 0.75)):
+        x, y = fx * canvas.width(), fy * canvas.height()
+        assert js(canvas, f"aspectCrop({x!r}, {y!r}, {x!r}, {y!r})") is None
     assert warnings == []

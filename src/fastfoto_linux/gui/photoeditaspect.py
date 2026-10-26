@@ -66,36 +66,57 @@ def default_portrait(box: Box, quarter_turns: int) -> bool:
     return out_w < out_h
 
 
-def _shape_in(width: int, height: int, ratio: Ratio) -> Size:
-    """The largest box of ``ratio`` inside ``width`` x ``height``; full width wins a tie.
+def _reach(limit: int, a: int, b: int) -> int:
+    """The largest ``x`` with ``half_up(x * b, a) <= limit``: ``x*b/a < limit + 1/2``."""
+    return ((2 * limit + 1) * a - 1) // (2 * b)
 
+
+def _shape_in(width: int, height: int, ratio: Ratio) -> Size:
+    """The largest shaped box inside ``width`` x ``height``; full width wins a tie.
+
+    Shaped: the height is the rounded width's share (A), or the width is the rounded height's
+    (B). The widest A and the tallest B are the only candidates, as area grows with either side.
     A very wide or tall ratio can leave no whole-pixel box inside a small one; that is (0, 0).
     """
     rw, rh = ratio
-    candidates = [
-        (w, h)
-        for w, h in ((width, half_up(width * rh, rw)), (half_up(height * rw, rh), height))
-        if w <= width and h <= height and w >= 1 and h >= 1
-    ]
+    wa = min(width, _reach(height, rw, rh))
+    hb = min(height, _reach(width, rh, rw))
+    first, second = (wa, half_up(wa * rh, rw)), (half_up(hb * rw, rh), hb)
+    candidates = [c for c in (first, second) if c[0] >= 1 and c[1] >= 1]
     if not candidates:
         return 0, 0
-    first, second = candidates[0], candidates[-1]
-    return second if second[0] * second[1] > first[0] * first[1] else first
+    best = candidates[0]
+    return candidates[-1] if candidates[-1][0] * candidates[-1][1] > best[0] * best[1] else best
+
+
+def _grown(ratio: Ratio, minimum: Size, frame: Size) -> Size:
+    """The smallest shaped box reaching ``minimum`` inside ``frame``, or (0, 0).
+
+    Shaped means the height is the rounded width's share, or the width is the rounded height's.
+    The least width that rounds up to the minimum height is ``ceil((2*min_h - 1)*rw / (2*rh))``.
+    """
+    rw, rh = ratio
+    (min_w, min_h), (fw, fh) = minimum, frame
+    w = max(min_w, ceil_div((2 * min_h - 1) * rw, 2 * rh))
+    h = half_up(w * rh, rw)
+    if w <= fw and h <= fh:
+        return w, h
+    h = max(min_h, ceil_div((2 * min_w - 1) * rh, 2 * rw))
+    w = half_up(h * rw, rh)
+    return (w, h) if w <= fw and h <= fh else (0, 0)
 
 
 def fit_centred(box: Box, ratio: Ratio, *, frame: Size, minimum: Size) -> Box | None:
     """The largest box of ``ratio`` centred in ``box``, grown to the minimum; None if too small."""
     left, top, right, bottom = box
-    rw, rh = ratio
     w, h = _shape_in(right - left, bottom - top, ratio)
     min_w, min_h = max(1, minimum[0]), max(1, minimum[1])
     if w >= min_w and h >= min_h:
         x = left + (right - left - w) // 2
         y = top + (bottom - top - h) // 2
         return x, y, x + w, y + h
-    w = max(min_w, ceil_div(min_h * rw, rh))
-    h = half_up(w * rh, rw)
-    if w > frame[0] or h > frame[1]:
+    w, h = _grown(ratio, (min_w, min_h), frame)
+    if w == 0:
         return None
     x = min(max((left + right - w) // 2, 0), frame[0] - w)
     y = min(max((top + bottom - h) // 2, 0), frame[1] - h)
@@ -121,7 +142,7 @@ def _drag_axis(anchor: float, pointer: float, source: int) -> tuple[int, int, in
     """(sign, anchor pixel, pointer extent, room from the anchor) along one axis."""
     sign = 1 if pointer >= anchor else -1
     start = math.floor(anchor) if sign > 0 else math.ceil(anchor)
-    extent = math.ceil(round(abs(pointer - start), FRAME_MICRO))
+    extent = 0 if pointer == anchor else math.ceil(round(abs(pointer - start), FRAME_MICRO))
     return sign, start, extent, source - start if sign > 0 else start
 
 
@@ -153,8 +174,11 @@ def aspect_crop(  # noqa: PLR0913 - dimensions describe one explicit transform
     ay, py = (_across(v, top, painted_height, source_height) for v in (y0, y1))
     sx, start_x, dx, max_w = _drag_axis(ax, px, source_width)
     sy, start_y, dy, max_h = _drag_axis(ay, py, source_height)
-    w = min(max(dx, ceil_div(dy * rw, rh)), max_w, (max_h * rw) // rh)
-    h = half_up(w * rh, rw)
+    want = max(dx, ceil_div(dy * rw, rh))
+    if want <= min(max_w, _reach(max_h, rw, rh)):
+        w, h = want, half_up(want * rh, rw)
+    else:  # the smallest covering box does not fit: cut back to the largest shaped box in the room
+        w, h = _shape_in(max_w, max_h, ratio)
     if w < max(1, min_width) or h < max(1, min_height):
         return None
     x = start_x if sx > 0 else start_x - w

@@ -39,7 +39,7 @@ def js(item, script):
     expression = QQmlExpression(QQmlEngine.contextForObject(item), item, script)
     value, _undefined = expression.evaluate()
     assert not expression.hasError(), expression.error()
-    return None if value is None else value.toVariant()
+    return value.toVariant() if hasattr(value, "toVariant") else value
 
 
 def test_the_aspect_child_exposes_the_contract(make_bridge, out):
@@ -127,12 +127,12 @@ def test_a_refused_choice_and_a_dropped_lock_show_truthfully_in_the_combo(
     page = ready_page(window)
     enter_mode(page)
     combo = child(page, "photoCropAspect")
-    activate(combo, index_of("4:3"))
-    combo.setProperty("currentIndex", index_of("4:3"))
-    activate(combo, index_of("16:9"))
-    combo.setProperty("currentIndex", index_of("16:9"))
-    view.refresh()
-    settle()
+    # A user pick sets currentIndex (dropping its binding) and then fires `activated`.
+    for pick in ("4:3", "16:9"):
+        js(
+            combo, f"currentIndex = {index_of(pick)}"
+        )  # a JS write drops the binding, as a pick does
+        activate(combo, index_of(pick))
     assert view.aspect.preset == "4:3" and combo.property("currentIndex") == index_of("4:3")
     view.setCrop(10, 0, 89, 60)
     settle()

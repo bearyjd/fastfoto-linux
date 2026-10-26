@@ -9,10 +9,10 @@ import pytest
 from fastfoto_linux.cli import cmd_eval, main
 from fastfoto_linux.evaluation.redeye_manifest import load_manifest
 from tests.redeye_eval.synth import (
-    outside_checkout,
     KeyedDetector,
     SynthItem,
     clean_heldout_set,
+    outside_checkout,  # noqa: F401  (fixture used through pytestmark)
     positive,
     with_split,
     write_corpus,

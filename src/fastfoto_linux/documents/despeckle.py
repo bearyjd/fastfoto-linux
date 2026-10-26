@@ -177,7 +177,8 @@ def abstain_status(height: int, width: int, dpi: int) -> DespeckleStatus | None:
     Too large: over ``MAX_DESPECKLE_PIXELS``, over cleanup's work-grid limit, or so wide that its
     bands would label the page over ``BAND_OVERLAP`` times (each band labels the guard rows
     around the rows it owns, so a band owning fewer than guard rows / (``BAND_OVERLAP`` - 1)
-    rows costs more than the page is worth). A page that fits one window is labelled once.
+    rows costs more than the page is worth). A page that fits one window is never
+    left alone for its width (its bands are still at most ``BAND_ROWS`` rows).
     """
     sizes = _Sizes(speck_px(dpi), guard_px(dpi))
     if dpi < MIN_DPI or sizes.cap < 1:

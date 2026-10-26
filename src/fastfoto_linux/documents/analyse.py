@@ -135,7 +135,7 @@ def _analyse_sheet(  # noqa: PLR0913 - what a sheet needs, and the hooks, in one
                 resolve_colour(colour, settings.colour),
                 settings.cleanup,
                 despeckle=settings.despeckle,
-                cancel=None if already_cancelled else cancel,
+                cancel=cancel if settings.despeckle and not already_cancelled else None,
             )
             if encode and not blank
             else None

@@ -124,7 +124,7 @@ Documents mode too (see [Desktop app](#desktop-app-preview)). The design is in
 ```sh
 uv run ffscan doc scan --out ~/Documents/Scans --name "Tax Return" --colour grey --dpi 300
 uv run ffscan doc scan --out ~/Documents/Scans --simplex --ocr on --lang eng+deu
-uv run ffscan doc process page-*.png --out ~/Documents/Scans --name "Tax Return" --colour grey
+uv run ffscan doc process page-*.png --out ~/Documents/Scans --name "Tax Return" --colour grey --cleanup light
 uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr on --lang eng+deu
 ```
 
@@ -153,14 +153,16 @@ uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr o
   black-and-white pages are not changed, a page with dark paper is left alone, a very large page (a work grid above 12 million pixels, such as 6600 x 4680 pixels at 200 dpi) is left alone to bound memory, and coloured paper is left unchanged when the
   page is written in colour (in grey the hue is gone, so it is lightened). It is a setting of the
   document with an optional override for one page, kept in the review file (format version 3);
-  documents saved earlier open with cleanup Off, and `doc process` applies the level a review
-  file holds. The design note lists the limits; no claim is made about OCR results.
+  documents saved earlier open with cleanup Off. `--cleanup off|light|strong` sets the level for
+  `ffscan doc scan` and `doc process`; without it, `doc process` applies the level a review file
+  holds (else Off), and a page's own override in the review file still wins. The design note lists
+  the limits; no claim is made about OCR results.
 - **Crop** (desktop review, source view): drag a rectangle on a page to keep only that area, at
   least 5 mm on each side. The crop is cut from the trimmed page before the page is turned and
   cleaned, so the preview and the PDF agree. The page is not analysed again, so its blank,
   flag and colour verdicts stay; **Reset crop** brings the whole page back. A crop is kept in the
   review file (format version 4, written only when a page is cropped); there is no command-line
-  option for it.
+  option to set one; `ffscan doc process RAWDIR` applies a stored crop (`--fresh` ignores it).
 - Only what is certainly empty is trimmed, blank white or the scanner's backing; when in doubt
   nothing is cut. Below the paper that is the scanner's white tail: flat rows at the bottom, 4 mm or longer and at least 4 levels
   brighter than the 10 mm above them, of which 3 mm stay. Anything in the tail columns that is

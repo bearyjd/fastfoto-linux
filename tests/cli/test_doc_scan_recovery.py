@@ -86,6 +86,7 @@ def test_every_option_that_is_not_the_default_is_in_the_command(
 ) -> None:
     jam_after(doc_transport, 2)
     options = ["--colour", "grey", "--name", "Tax Return", "--keep-blank", "--dpi", "600"]
+    options += ["--cleanup", "light"]
     assert doc_scan(spaced, *options, "--lang", "eng+deu") == 1
     command = printed_command(capsys.readouterr().err)
     assert command == expected(
@@ -95,6 +96,8 @@ def test_every_option_that_is_not_the_default_is_in_the_command(
         "600",
         "--colour",
         "grey",
+        "--cleanup",
+        "light",
         "--name",
         "Tax Return",
         "--ocr",

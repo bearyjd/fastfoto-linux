@@ -185,6 +185,7 @@ def test_a_missing_output_folder_needs_mkdir(tmp_path) -> None:
         ["doc", "process", "x.png", "--out", "o", "--lang", "eng;rm"],
         ["doc", "process", "x.png", "--out", "o", "--colour", "sepia"],
         ["doc", "process", "x.png", "--out", "o", "--ocr", "maybe"],
+        ["doc", "process", "x.png", "--out", "o", "--cleanup", "medium"],
         ["doc", "process", "x.png", "--out", "o", "--dpi", "0"],
         ["doc", "process", "x.png", "--out", "o", "--name", ".."],
     ],

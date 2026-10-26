@@ -1,9 +1,11 @@
 """``ffscan doc process --dry-run``: what each page would become, and nothing written."""
 
 from fastfoto_linux.documents.auto_colour import page_colour
+from fastfoto_linux.documents.cleanup import page_cleanup
 from fastfoto_linux.documents.draft import DocumentDraft, PageAnalysis, sorted_flags
 from fastfoto_linux.documents.draft_edit import parts
-from fastfoto_linux.documents.modes import ColourMode, ColourPolicy
+from fastfoto_linux.documents.encode import effective_cleanup
+from fastfoto_linux.documents.modes import CleanupPolicy, ColourMode, ColourPolicy
 
 _COLUMNS = ("page", "verdict", "flags", "part", "what happens")
 NO_PDF_LINE = "no PDF would be written: no page is left"
@@ -17,6 +19,8 @@ def _what_happens(draft: DocumentDraft, page: PageAnalysis, turns: int, starts_p
     words = ["kept (brought back by you)" if chosen and page.blank else "kept"]
     if turns:
         words.append(f"turned {turns * 90}")
+    if edit is not None and edit.crop is not None:
+        words.append("cropped")
     if starts_part:
         words.append("starts a new PDF")
     return ", ".join(words)
@@ -52,6 +56,13 @@ def dry_run_lines(
             _colour_row(row, page, draft, policy)
             for row, page in zip(rows, draft.pages, strict=True)
         ]
+    if draft.cleanup is not CleanupPolicy.OFF or any(
+        edit.cleanup is not None for edit in draft.edits.values()
+    ):
+        rows = [
+            _cleanup_row(row, page, draft, policy)
+            for row, page in zip(rows, draft.pages, strict=True)
+        ]
     table = [_COLUMNS, *rows]
     widths = [max(len(row[column]) for row in table) for column in range(len(_COLUMNS) - 1)]
     lines = [
@@ -80,3 +91,18 @@ def _colour_row(
     override = draft.edits.get(page.number)
     chosen = " override" if override is not None and override.colour is not None else ""
     return (*row[:-1], f"{row[-1]}; colour={mode.value}{reason}{chosen}")
+
+
+def _cleanup_row(
+    row: tuple[str, ...],
+    page: PageAnalysis,
+    draft: DocumentDraft,
+    policy: ColourPolicy | ColourMode,
+) -> tuple[str, ...]:
+    """A kept page's row with the paper cleanup level the PDF will use (Off for black and white)."""
+    if not draft.is_included(page):
+        return row
+    level = effective_cleanup(page_cleanup(draft, page), page_colour(draft, page, policy))
+    override = draft.edits.get(page.number)
+    chosen = " override" if override is not None and override.cleanup is not None else ""
+    return (*row[:-1], f"{row[-1]}; cleanup={level.value}{chosen}")

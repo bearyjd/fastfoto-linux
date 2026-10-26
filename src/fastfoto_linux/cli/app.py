@@ -10,7 +10,7 @@ import traceback
 from collections.abc import Generator, Sequence
 from types import FrameType
 
-from fastfoto_linux.cli import cmd_devices, cmd_doc, cmd_library, cmd_process, cmd_scan
+from fastfoto_linux.cli import cmd_devices, cmd_doc, cmd_eval, cmd_library, cmd_process, cmd_scan
 from fastfoto_linux.cli.errors import (
     EXIT_INTERRUPTED,
     EXIT_NO_DOCUMENTS,
@@ -42,7 +42,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     add_log_options(parser, default=False)
     commands = parser.add_subparsers(dest="command", required=True, metavar="COMMAND")
-    for module in (cmd_devices, cmd_scan, cmd_process, cmd_doc, cmd_library):
+    for module in (cmd_devices, cmd_scan, cmd_process, cmd_doc, cmd_library, cmd_eval):
         module.add_parser(commands)
     return parser
 
@@ -51,9 +51,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Run ``ffscan`` and return its exit code.
 
     0 ok, 1 processing error, 2 usage, 3 scanner not found, USB shim missing, scanner not
-    answering or held by another program, 4 no documents in the feeder, 130 interrupted
-    (Ctrl-C, SIGTERM or SIGHUP). User-facing errors are one line on stderr; ``--debug`` adds
-    the traceback.
+    answering or held by another program, 4 no documents in the feeder, 5 an evaluation gate
+    failed, 130 interrupted (Ctrl-C, SIGTERM or SIGHUP). User-facing errors are one line on
+    stderr; ``--debug`` adds the traceback.
     """
     try:
         args = build_parser().parse_args(argv)

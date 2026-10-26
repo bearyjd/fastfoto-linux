@@ -8,6 +8,7 @@ synthetic eyes, these fixtures cannot say anything about real-world precision or
 import hashlib
 import io
 import json
+import zlib
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -78,6 +79,12 @@ def pixel_key(arr: np.ndarray) -> str:
     return hashlib.sha256(arr.tobytes()).hexdigest()
 
 
+def tag(arr: np.ndarray, item_id: str) -> np.ndarray:
+    """Make the pixels of otherwise identical images differ by id (one corner pixel)."""
+    arr[0, 1] = tuple(zlib.crc32(item_id.encode()).to_bytes(4, "big")[:3])
+    return arr
+
+
 def skin() -> np.ndarray:
     arr = np.empty((HEIGHT, WIDTH, 3), dtype=np.uint8)
     arr[:] = SKIN
@@ -95,7 +102,7 @@ def eye_points(centre: tuple[int, int] = CENTRE, iod: int = IOD) -> tuple[tuple[
 
 
 def detection(points: tuple[tuple[float, float], ...], score: float = SCORE) -> Face:
-    (x0, y0), (x1, y1) = points
+    (x0, y0), (x1, _) = points
     nose = ((x0 + x1) / 2, y0 + 30.0)
     mouth = ((nose[0] - 10, nose[1] + 20), (nose[0] + 10, nose[1] + 20))
     return Face(x0 - 20, y0 - 30, x1 - x0 + 40, 90.0, (*points, nose, *mouth), score)
@@ -108,7 +115,7 @@ def gt_face(face_id: str, points, red: tuple[bool, bool], r: float = 5.0) -> dic
     return {"id": face_id, "eyes": eyes}
 
 
-def positive(
+def positive(  # noqa: PLR0913
     item_id: str,
     *,
     red: tuple[bool, bool] = (True, True),
@@ -117,7 +124,7 @@ def positive(
     r: float = 5.0,
     score: float = SCORE,
 ) -> SynthItem:
-    arr = skin()
+    arr = tag(skin(), item_id)
     points = eye_points(centre, iod)
     for point, flag in zip(points, red, strict=True):
         disc(arr, point[0], point[1], r, RED if flag else DARK)
@@ -174,11 +181,11 @@ PAINTERS: dict[str, Callable[[np.ndarray, int, int], None]] = {
 
 def negative(item_id: str, category: str, *, score: float = SCORE) -> SynthItem:
     """A face-less or non-red image with the red-looking ``category`` thing on both landmarks."""
-    arr = skin()
+    arr = tag(skin(), item_id)
     points = eye_points()
     for x, y in points:
         PAINTERS[category](arr, int(x), int(y))
-    changed = np.any(arr != skin(), axis=2)
+    changed = np.any(arr != tag(skin(), item_id), axis=2)
     ys, xs = np.nonzero(changed)
     box = [int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1]
     faces = []

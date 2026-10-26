@@ -67,8 +67,16 @@ def test_a_declared_split_that_disagrees_is_refused() -> None:
         check_declared_splits(parse_manifest(json.dumps(data).encode(), tmp))
 
 
-def _fp(id_, sha="1" * 64, pixel="2" * 64, group=None) -> Fingerprint:
-    return Fingerprint(id_, sha, pixel, group)
+_UNSET = object()
+
+
+def _fp(id_, sha=_UNSET, pixel=_UNSET, group=None) -> Fingerprint:
+    return Fingerprint(
+        id_,
+        id_ * 64 if sha is _UNSET else sha,
+        id_.upper() * 64 if pixel is _UNSET else pixel,
+        group,
+    )
 
 
 def test_leaks_by_hash_pixels_group_and_id() -> None:
@@ -138,7 +146,7 @@ def test_a_heldout_item_in_a_tuning_manifest_is_refused(tmp_path) -> None:
         splits={"other": "tuning"},
     )
     main = write_corpus(tmp_path / "m", [held], splits={"held": "heldout"})
-    with pytest.raises(ManifestError, match="pixel|file"):
+    with pytest.raises(ManifestError, match=r"pixel|file"):
         run_eval(
             load_manifest(main),
             "heldout",

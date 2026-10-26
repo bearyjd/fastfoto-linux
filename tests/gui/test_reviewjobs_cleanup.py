@@ -161,7 +161,7 @@ def test_a_cancel_during_cleanup_publishes_nothing(out):
 
 def test_the_whitelist_has_the_legacy_names_and_all_new_ones():
     names = output_preview_names(7)
-    assert len(names) == len(set(names)) == 87
+    assert len(names) == len(set(names)) == 95
     assert "page-0007-output-grey-r2.jpg" in names
     assert "page-0007-output-bw-light-r3.jpg" in names
     assert "page-0007-output-colour-strong-r0-crop.png" in names

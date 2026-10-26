@@ -296,3 +296,16 @@ def test_a_refusal_does_not_keep_save_disabled_after_a_good_choice(make_bridge, 
     assert view.error == ""
     finish_preview(bridge, view, worker, out)
     assert view.canSave
+
+
+def test_a_canvas_click_without_movement_makes_no_box(make_bridge, open_window, out):
+    _bridge, _view, _window, page, warnings = editor_page(make_bridge, open_window, out)
+    enter_mode(page)
+    canvas = child(page, "photoEditCanvas")
+    canvas.setProperty("sourceWidth", 1000)
+    canvas.setProperty("sourceHeight", 600)
+    canvas.setProperty("cropRatio", [4, 3])
+    for fx, fy in ((0.37, 0.41), (0.5, 0.5), (0.25, 0.75)):
+        x, y = fx * canvas.width(), fy * canvas.height()
+        assert js(canvas, f"aspectCrop({x!r}, {y!r}, {x!r}, {y!r})") is None
+    assert warnings == []

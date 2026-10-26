@@ -164,7 +164,7 @@ Kirigami.ScrollablePage {
                 Layout.fillWidth: true
                 QQC2.CheckBox {
                     objectName: "reviewDespeckleBox"
-                    text: qsTr("Remove specks")
+                    text: qsTr("Remove specks for the document")
                     checked: bridge.review.documentDespeckle ?? false
                     Accessible.name: qsTr("Remove specks for the document")
                     onToggled: bridge.review.setDocumentDespeckle(checked)

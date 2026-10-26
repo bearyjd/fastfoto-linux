@@ -186,7 +186,7 @@ QQC2.ScrollView {
             text: qsTr("Remove specks (black and white pages)")
             checked: bridge.documents.form.despeckle ?? false
             enabled: panel.editable
-            Accessible.name: qsTr("Remove specks")
+            Accessible.name: qsTr("Remove specks (black and white pages)")
             onToggled: bridge.setDocumentField("despeckle", checked)
 
             contentItem: QQC2.Label {

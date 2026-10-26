@@ -26,6 +26,7 @@ make_doc_bridge = test_qml_documents.make_doc_bridge
 base_review_window = test_qml_review_window.review_window
 GREY = ColourDecision(ColourMode.COLOUR, ColourMode.GREY, ColourReason.FAINT_MARKS)
 BW = ColourDecision(ColourMode.COLOUR, ColourMode.BW, ColourReason.BILEVEL)
+FORM_LABEL = "Remove specks (black and white pages)"  # the name is the visible label
 
 
 @pytest.fixture
@@ -74,8 +75,8 @@ def test_the_form_has_the_box_under_the_cleanup_box_and_it_sets_the_field(
     bridge = make_doc_bridge()
     window, warnings = open_window(bridge)
     box = child(window, "docDespeckleBox")
-    assert box.property("text") == "Remove specks (black and white pages)"
-    assert accessible_name(box) == "Remove specks"
+    assert box.property("text") == FORM_LABEL
+    assert accessible_name(box) == FORM_LABEL
     assert box.property("enabled") and box.property("checked") is False
     click(box)
     settle()
@@ -113,7 +114,7 @@ def test_the_cleanup_hint_is_unchanged_and_one_sentence_explains_the_box(
 def test_the_review_page_box_is_a_document_switch(despeckle_window):
     window, bridge, _worker, _source, warnings = despeckle_window
     box = child(window, "reviewDespeckleBox")
-    assert accessible_name(box) == "Remove specks for the document"
+    assert box.property("text") == accessible_name(box) == "Remove specks for the document"
     assert box.property("checked") is False and bridge.review.documentDespeckle is False
     click(box)
     settle()

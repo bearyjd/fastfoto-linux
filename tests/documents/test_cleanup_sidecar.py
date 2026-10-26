@@ -10,7 +10,7 @@ import pytest
 from fastfoto_linux.documents.analyse import ANALYSIS_VERSION
 from fastfoto_linux.documents.draft import DocumentDraft, PageEdit
 from fastfoto_linux.documents.draft_json import (
-    FORMAT_VERSION,
+    CROP_VERSION,
     ReviewFormatError,
     decode_review,
     encode_review,
@@ -78,7 +78,7 @@ def test_a_draft_without_cleanup_is_written_as_main_wrote_it() -> None:
 
 def test_the_analysis_version_stays_3() -> None:
     assert ANALYSIS_VERSION == 3
-    assert FORMAT_VERSION == 4  # the crop made it 4; cleanup alone is still written as 3
+    assert CROP_VERSION == 4  # the crop made it 4; cleanup alone is still written as 3
 
 
 def test_the_document_level_alone_makes_version_3() -> None:

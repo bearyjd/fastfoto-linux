@@ -118,6 +118,7 @@ Kirigami.Page {
                 showEyes: !editor.geometryMode
                 cropMode: framing && (!angled || editor.previewCurrent)
                 crop: editor.geometry.crop
+                cropRatio: editor.aspect.ratio
                 minCropWidth: editor.minCropWidth
                 minCropHeight: editor.minCropHeight
                 sourceWidth: angled ? editor.shownFrameWidth : editor.sourceWidth
@@ -129,7 +130,9 @@ Kirigami.Page {
                 manualMode: manual.checked
                 onEllipseRequested: (cx, cy, rx, ry) => editor.addEllipse(cx, cy, rx, ry)
                 onEyeSelected: eyeId => editor.selectEye(eyeId)
-                onCropRequested: (left, top, right, bottom) => editor.setCrop(left, top, right, bottom)
+                onCropRequested: (left, top, right, bottom) => editor.aspect.ratio.length === 2
+                    ? editor.aspect.setAspectCrop(left, top, right, bottom)
+                    : editor.setCrop(left, top, right, bottom)
                 onCropRejected: geometryControls.cropRejected = true
             }
             QQC2.ScrollView {

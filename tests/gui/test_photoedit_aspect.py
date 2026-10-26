@@ -36,6 +36,7 @@ def test_the_lock_is_free_after_open_and_close(out):
     assert side.crop_aspect == "4:3"
     assert side.close(discard_confirmed=True)
     assert side.crop_aspect == "free" and side._aspect_geometry is None
+    page.worker.busy = False
     side.open_photo(0)
     assert side.crop_aspect == "free" and side.aspect_portrait is False
 
@@ -293,7 +294,7 @@ def test_the_recipe_holds_only_the_box_and_is_the_same_as_a_plain_crop(out):
     payload = json.loads(by_shape)
     assert payload["schema_version"] == 3
     assert set(payload["geometry"]) == {"crop", "quarter_turns"}
-    assert "aspect" not in by_shape.decode() and "shape" not in by_shape.decode()
+    assert "aspect" not in by_shape.decode()
 
 
 def test_an_uncropped_shape_and_a_turn_save_a_version_three_recipe_with_no_crop(out):

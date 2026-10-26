@@ -48,6 +48,7 @@ class PhotoGeometryActions:
     def rotate(self: "PhotoEditSide", clockwise: bool) -> None:
         recipe = self._require_geometry_edit()
         turns = (recipe.geometry.quarter_turns + (1 if clockwise else 3)) % 4
+        self._carry_aspect(recipe.geometry, turns)
         self._set_geometry(replace(recipe.geometry, quarter_turns=turns))
 
     def set_crop(self: "PhotoEditSide", left: int, top: int, right: int, bottom: int) -> None:

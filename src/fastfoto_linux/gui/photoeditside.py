@@ -144,6 +144,7 @@ class PhotoEditSide(PhotoGeometryActions, PhotoAspectActions):
         self._undo.clear()
         self._pending = None
         self.geometry_mode = False
+        self._reset_aspect()
         self.end_gesture()
         self.generation += 1
         self._submit(PhotoEditRequest(operation, self.generation, path=path))
@@ -348,6 +349,7 @@ class PhotoEditSide(PhotoGeometryActions, PhotoAspectActions):
         self._undo.clear()
         self.selected_id, self.error = "", ""
         self.geometry_mode = False
+        self._reset_aspect()
         self.end_gesture()
         self._forget_preview()
         self._changed()

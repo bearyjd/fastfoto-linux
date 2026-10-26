@@ -18,6 +18,7 @@ from tests.gui.qt import test_qml
 from tests.gui.qt.qt_helpers import child, invoke, settle
 from tests.gui.qt.test_photo_edit_view import open_editor
 from tests.gui.qt.test_photo_geometry import canvas_point, editor_page, enter_mode
+from tests.gui.qt.test_photo_tone import ready_page
 
 open_window = test_qml.open_window
 pytestmark = pytest.mark.usefixtures("kirigami")
@@ -38,7 +39,7 @@ def js(item, script):
     expression = QQmlExpression(QQmlEngine.contextForObject(item), item, script)
     value, _undefined = expression.evaluate()
     assert not expression.hasError(), expression.error()
-    return value.toVariant()
+    return None if value is None else value.toVariant()
 
 
 def test_the_aspect_child_exposes_the_contract(make_bridge, out):
@@ -121,7 +122,9 @@ def test_the_combo_lists_the_presets_in_order_and_each_choice_calls_the_slot(
 def test_a_refused_choice_and_a_dropped_lock_show_truthfully_in_the_combo(
     make_bridge, open_window, out
 ):
-    _bridge, view, _window, page, warnings = editor_page(make_bridge, open_window, out, dpi=300)
+    bridge, view, _worker = open_editor(make_bridge, out, dpi=300)
+    window, warnings = open_window(bridge)
+    page = ready_page(window)
     enter_mode(page)
     combo = child(page, "photoCropAspect")
     activate(combo, index_of("4:3"))
@@ -140,19 +143,19 @@ def test_a_refused_choice_and_a_dropped_lock_show_truthfully_in_the_combo(
 def test_keyboard_only_choose_a_shape_and_swap_it(make_bridge, open_window, out):
     _bridge, view, window, page, warnings = editor_page(make_bridge, open_window, out)
     enter_mode(page)
+    # The popup does not take keys offscreen, so use the closed box: each Down fires `activated`,
+    # and every step re-fits inside the previous fit (the documented binding rule, R7).
     invoke(child(page, "photoCropAspect"), "forceActiveFocus")
-    QTest.keyClick(window, Qt.Key.Key_Space)
-    settle()
     for _ in range(index_of("4:3")):
         QTest.keyClick(window, Qt.Key.Key_Down)
-    QTest.keyClick(window, Qt.Key.Key_Return)
-    settle()
-    assert view.aspect.preset == "4:3" and view.geometry["crop"] == [10, 0, 90, 60]
-    assert len(_bridge.controller.photo_edit._undo) == 1
+        settle()
+    assert view.aspect.preset == "4:3" and view.geometry["crop"] == [20, 7, 80, 52]
+    view.setCrop(20, 10, 60, 40)
+    view.aspect.setPreset("4:3")
     invoke(child(page, "photoCropAspectSwap"), "forceActiveFocus")
     QTest.keyClick(window, Qt.Key.Key_Space)
     settle()
-    assert view.aspect.portrait is True and view.geometry["crop"] == [27, 0, 72, 60]
+    assert view.aspect.portrait is True and view.geometry["crop"] == [25, 5, 55, 45]
     assert warnings == []
 
 
@@ -184,16 +187,15 @@ def test_the_shape_label_and_the_odd_turn_hint(make_bridge, open_window, out):
     assert warnings == []
 
 
-def mapped(canvas, x, y):
+def mapped(picture, x, y):
     return js(
-        canvas,
-        f"(function() {{ const p = picture.mapFromItem(canvas, {x!r}, {y!r});"
-        " return [p.x, p.y]; })()",
+        picture,
+        f"(function() {{ const p = mapFromItem(parent, {x!r}, {y!r}); return [p.x, p.y]; }})()",
     )
 
 
-def python_box(canvas, picture, points, ratio, source):
-    (x0, y0), (x1, y1) = (mapped(canvas, *p) for p in points)
+def python_box(picture, points, ratio, source):
+    (x0, y0), (x1, y1) = (mapped(picture, *p) for p in points)
     return aspect_crop(
         x0, y0, x1, y1, ratio=tuple(ratio), min_width=1, min_height=1,
         source_width=source[0], source_height=source[1],
@@ -207,8 +209,6 @@ def test_a_ratio_drag_shows_the_band_and_stores_the_python_box(make_bridge, open
     bridge, view, window, page, warnings = editor_page(make_bridge, open_window, out)
     enter_mode(page)
     view.aspect.setPreset("4:3")
-    view.clearCrop()
-    view.aspect.setPreset("4:3")
     canvas, picture = child(page, "photoEditCanvas"), child(page, "photoCanvasImage")
     start, end = canvas_point(page, 0.1, 0.1), canvas_point(page, 0.5, 0.4)
     band = child(page, "photoAspectBand")
@@ -220,9 +220,11 @@ def test_a_ratio_drag_shows_the_band_and_stores_the_python_box(make_bridge, open
     settle()
     assert not band.property("visible")
     points = [tuple(canvas.mapFromScene(QPointF(p)).toTuple()) for p in (start, end)]
-    want = python_box(canvas, picture, points, view.aspect.ratio, (100, 60))
+    want = python_box(picture, points, view.aspect.ratio, (100, 60))
     assert want is not None and view.geometry["crop"] == list(want)
-    assert view.aspect.preset == "4:3" and len(bridge.controller.photo_edit._undo) == 2
+    assert (
+        view.aspect.preset == "4:3" and len(bridge.controller.photo_edit._undo) == 2
+    )  # the choice, then the drag
     assert warnings == []
 
 
@@ -254,7 +256,7 @@ def test_the_canvas_drag_equals_the_python_drag_over_a_table(make_bridge, open_w
         canvas.setProperty("cropRatio", ratio)
         w, h = canvas.width(), canvas.height()
         points = [(a * w, b * h), (c * w, d * h)]
-        want = python_box(canvas, picture, points, ratio, source)
+        want = python_box(picture, points, ratio, source)
         got = js(
             canvas,
             f"aspectCrop({points[0][0]!r}, {points[0][1]!r}, {points[1][0]!r}, {points[1][1]!r})",

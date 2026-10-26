@@ -66,6 +66,13 @@ def add_document_options(parser: argparse.ArgumentParser) -> None:
         "folder's review.json holds)",
     )
     pdf.add_argument(
+        "--despeckle",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="remove small isolated specks from black and white pages (default: off, or what "
+        "a raw folder's review.json holds)",
+    )
+    pdf.add_argument(
         "--keep-blank", action="store_true", help="keep blank pages instead of dropping them"
     )
     pdf.add_argument(
@@ -129,6 +136,7 @@ def build_settings(args: argparse.Namespace) -> DocumentSettings:
         name=args.name,
         colour=ColourPolicy.AUTO if args.colour == ColourPolicy.AUTO else ColourMode(args.colour),
         cleanup=CleanupPolicy(args.cleanup) if args.cleanup is not None else CleanupPolicy.OFF,
+        despeckle=args.despeckle is True,
         keep_blank=args.keep_blank,
         ocr=OcrMode(args.ocr),
         langs=args.lang,

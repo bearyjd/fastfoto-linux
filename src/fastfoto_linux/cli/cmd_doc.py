@@ -55,6 +55,7 @@ from fastfoto_linux.documents.draft_edit import (
     PageEdits,
     parts,
     set_document_cleanup,
+    set_document_despeckle,
     with_edits,
 )
 from fastfoto_linux.documents.draft_store import open_draft
@@ -194,6 +195,17 @@ def _with_cleanup(draft: DocumentDraft, args: argparse.Namespace) -> DocumentDra
         raise CliError(str(error), EXIT_USAGE) from error
 
 
+def _with_despeckle(draft: DocumentDraft, args: argparse.Namespace) -> DocumentDraft:
+    """``draft`` with the despeckle switch ``--despeckle`` or ``--no-despeckle`` names (the draft
+    as it is when neither is given). Nothing is saved."""
+    if args.despeckle is None:
+        return draft
+    try:
+        return set_document_despeckle(draft, args.despeckle)
+    except DocumentEditError as error:
+        raise CliError(str(error), EXIT_USAGE) from error
+
+
 def _process_pages(args: argparse.Namespace) -> tuple[Path | None, list[Path]]:
     """The raw folder, if the input is one, and the pages to process."""
     folder = raw_folder(args.pages)
@@ -214,7 +226,8 @@ def run_process(args: argparse.Namespace) -> int:
         prepare_output_root(args)
     try:
         if folder is not None:
-            draft = _with_cleanup(open_draft(folder, pages, settings, fresh=args.fresh), args)
+            opened = open_draft(folder, pages, settings, fresh=args.fresh)
+            draft = _with_despeckle(_with_cleanup(opened, args), args)
             result: DocumentResult | None = _edited(draft, settings, edits, dry_run=args.dry_run)
         elif edits == PageEdits() and not args.dry_run:
             result = build_document(pages, settings)
@@ -290,6 +303,7 @@ def process_command(pages: Sequence[Path], request: DocumentScanRequest, root: P
     options = (
         (settings.colour != ColourMode.COLOUR, ["--colour", settings.colour.value]),
         (settings.cleanup is not CleanupPolicy.OFF, ["--cleanup", settings.cleanup.value]),
+        (settings.despeckle, ["--despeckle"]),
         (settings.name != DEFAULT_NAME, ["--name", settings.name]),
         (settings.ocr is not OcrMode.AUTO, ["--ocr", settings.ocr.value]),
         (settings.langs != DEFAULT_LANGS, ["--lang", settings.langs]),

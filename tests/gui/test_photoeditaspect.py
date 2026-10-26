@@ -460,3 +460,19 @@ def test_a_full_frame_drag_is_the_frame_whenever_fitting_accepts_it():
             for sh in range(2, 40):
                 if is_shaped(sw, sh, ratio):
                     assert frame_drag(sw, sh, ratio) == (0, 0, sw, sh), (ratio, sw, sh)
+
+
+def click_at(start, end=None):
+    end = start if end is None else end
+    return aspect_crop(
+        start, start, end, end, ratio=(1, 1), min_width=1, min_height=1,
+        source_width=5, source_height=5, painted_width=5, painted_height=5,
+        item_width=5, item_height=5,
+    )  # fmt: skip
+
+
+def test_a_fractional_click_without_movement_is_like_an_integer_one():
+    for at in (0.0, 2.0, 5.0, 0.5, 2.5, 4.999):
+        assert click_at(at) is None, at
+    assert click_at(0.5, 1.5) == (0, 0, 2, 2)
+    assert click_at(2.5, 1.5) == (1, 1, 3, 3)

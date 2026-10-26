@@ -130,7 +130,13 @@ def _analyse_sheet(  # noqa: PLR0913 - what a sheet needs, and the hooks, in one
         if not already_cancelled:
             stop_if_cancelled(cancel, f"page {number} of {len(pages)} was classified")
         encoded = (
-            encode_page(trimmed.page, resolve_colour(colour, settings.colour), settings.cleanup)
+            encode_page(
+                trimmed.page,
+                resolve_colour(colour, settings.colour),
+                settings.cleanup,
+                despeckle=settings.despeckle,
+                cancel=cancel if settings.despeckle and not already_cancelled else None,
+            )
             if encode and not blank
             else None
         )
@@ -203,4 +209,5 @@ def analyse_document(  # noqa: PLR0913 - the hooks are the interface
         duplex=settings.duplex,
         keep_blank=settings.keep_blank,
         cleanup=settings.cleanup,
+        despeckle=settings.despeckle,
     )

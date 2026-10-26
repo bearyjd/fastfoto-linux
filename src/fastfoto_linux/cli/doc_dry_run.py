@@ -4,7 +4,7 @@ from fastfoto_linux.documents.auto_colour import page_colour
 from fastfoto_linux.documents.cleanup import page_cleanup
 from fastfoto_linux.documents.draft import DocumentDraft, PageAnalysis, sorted_flags
 from fastfoto_linux.documents.draft_edit import parts
-from fastfoto_linux.documents.encode import effective_cleanup
+from fastfoto_linux.documents.encode import effective_cleanup, effective_despeckle
 from fastfoto_linux.documents.modes import CleanupPolicy, ColourMode, ColourPolicy
 
 _COLUMNS = ("page", "verdict", "flags", "part", "what happens")
@@ -63,6 +63,11 @@ def dry_run_lines(
             _cleanup_row(row, page, draft, policy)
             for row, page in zip(rows, draft.pages, strict=True)
         ]
+    if draft.despeckle:
+        rows = [
+            _despeckle_row(row, page, draft, policy)
+            for row, page in zip(rows, draft.pages, strict=True)
+        ]
     table = [_COLUMNS, *rows]
     widths = [max(len(row[column]) for row in table) for column in range(len(_COLUMNS) - 1)]
     lines = [
@@ -91,6 +96,20 @@ def _colour_row(
     override = draft.edits.get(page.number)
     chosen = " override" if override is not None and override.colour is not None else ""
     return (*row[:-1], f"{row[-1]}; colour={mode.value}{reason}{chosen}")
+
+
+def _despeckle_row(
+    row: tuple[str, ...],
+    page: PageAnalysis,
+    draft: DocumentDraft,
+    policy: ColourPolicy | ColourMode,
+) -> tuple[str, ...]:
+    """A kept black and white page's row with the word despeckle."""
+    if not draft.is_included(page) or not effective_despeckle(
+        draft.despeckle, page_colour(draft, page, policy)
+    ):
+        return row
+    return (*row[:-1], f"{row[-1]}; despeckle")
 
 
 def _cleanup_row(

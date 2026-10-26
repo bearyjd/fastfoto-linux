@@ -183,7 +183,8 @@ class DocumentDraft:
     back, turned), ``order`` (a permutation of the raw numbers; empty is raw order), ``splits``
     (pages that start a new PDF) and ``part_names`` (the name of PDF number k, counting from 1
     in output order). Use ``draft_edit`` to change them; the maps are read only. ``cleanup`` is
-    the document's paper cleanup level (a page's edit may override it).
+    the document's paper cleanup level (a page's edit may override it); ``despeckle`` removes
+    small isolated specks from its black and white pages (a document-wide switch).
     """
 
     pages: tuple[PageAnalysis, ...]
@@ -195,10 +196,13 @@ class DocumentDraft:
     splits: frozenset[int] = frozenset()
     part_names: Mapping[int, str] = _NO_NAMES
     cleanup: CleanupPolicy = CleanupPolicy.OFF
+    despeckle: bool = False
 
     def __post_init__(self) -> None:
         if not isinstance(self.cleanup, CleanupPolicy):
             raise ValueError("document cleanup must be a known cleanup level")
+        if type(self.despeckle) is not bool:
+            raise ValueError("document despeckle must be true or false")
 
     @property
     def has_edits(self) -> bool:

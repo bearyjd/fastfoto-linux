@@ -1,6 +1,7 @@
 """Scanned paper documents to one searchable PDF."""
 
 from fastfoto_linux.documents.build import build_document
+from fastfoto_linux.documents.despeckle import DespeckleStatus
 from fastfoto_linux.documents.errors import (
     AllPagesBlankError,
     DocumentCancelledError,
@@ -33,6 +34,7 @@ __all__ = [
     "CleanupPolicy",
     "ColourMode",
     "ColourPolicy",
+    "DespeckleStatus",
     "DocumentCancelledError",
     "DocumentError",
     "DocumentResult",

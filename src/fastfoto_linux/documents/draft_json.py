@@ -25,6 +25,7 @@ from fastfoto_linux.documents.crop_json import (
     parse_crop,
     uses_crop,
 )
+from fastfoto_linux.documents.despeckle_json import uses_despeckle
 from fastfoto_linux.documents.draft import (
     QUARTER_TURNS,
     BoxN,
@@ -40,13 +41,16 @@ from fastfoto_linux.documents.modes import CleanupPolicy, ColourMode, ColourPoli
 from fastfoto_linux.documents.ocr import OcrMode, validate_langs
 from fastfoto_linux.documents.page_crop import PageCrop
 from fastfoto_linux.documents.settings import DocumentSettings
+from fastfoto_linux.documents.sidecar_versions import (
+    CLEANUP_VERSION,
+    CROP_VERSION,
+    FORMAT_VERSION,
+    READ_VERSIONS,
+    version_for,
+)
 from fastfoto_linux.output.errors import InvalidPrefixError
 from fastfoto_linux.output.naming import sanitise_prefix
 
-FORMAT_VERSION = 4
-CLEANUP_VERSION = 3  # the first version that holds paper cleanup
-DEFAULT_VERSION = 2  # what a draft with no paper cleanup is written as, byte for byte as before
-READ_VERSIONS = (1, 2, 3, 4)
 MAX_PAGES = 2000  # a document of more pages than this is not reviewed from a file
 MAX_FILE_BYTES = 1 << 40  # the size of one page file
 MAX_MTIME_NS = 1 << 63
@@ -91,13 +95,14 @@ def encode_review(
     draft: DocumentDraft, settings: DocumentSettings | None, analysis_version: int
 ) -> bytes:
     """The JSON of ``draft`` (and the options of ``settings``, if given). The draft's read-only
-    maps are written out by hand. The lowest format version that fits is written: version 4 only
-    when a page is cropped, version 3 when the draft holds paper cleanup state, else version 2
-    exactly as it always was."""
-    cropped = uses_crop(draft)
+    maps are written out by hand. The lowest format version that fits is written (see
+    ``sidecar_versions``): 2 exactly as it always was, 3 for paper cleanup, 4 for a crop, 5 for
+    despeckle."""
+    despeckle = uses_despeckle(draft)
+    cropped = despeckle or uses_crop(draft)  # version 5 has the shape of version 4
     cleanup = cropped or uses_cleanup(draft)
     data: dict[str, Any] = {
-        "version": FORMAT_VERSION if cropped else CLEANUP_VERSION if cleanup else DEFAULT_VERSION,
+        "version": version_for(despeckle=despeckle, cropped=cropped, cleanup=cleanup),
         "analysis_version": analysis_version,
         "duplex": draft.duplex,
         "keep_blank": draft.keep_blank,
@@ -112,6 +117,8 @@ def encode_review(
     }
     if cleanup:
         data["cleanup"] = draft.cleanup.value
+    if despeckle:
+        data["despeckle"] = True
     if settings is not None:
         data["fallback_dpi"] = settings.fallback_dpi
     options = None if settings is None else options_json(settings)
@@ -245,9 +252,9 @@ def _cleanup(value: Any, what: str) -> CleanupPolicy:
 
 
 def _check_keys(entry: dict[str, Any], version: int) -> None:
-    if version < FORMAT_VERSION and "crop" in entry:
+    if version < CROP_VERSION and "crop" in entry:
         raise ReviewFormatError("crop needs format version 4")
-    if version == FORMAT_VERSION and set(entry) != CROP_EDIT_KEYS:
+    if version >= CROP_VERSION and set(entry) != CROP_EDIT_KEYS:
         raise ReviewFormatError("an edit must have exactly include, turns, colour, cleanup, crop")
     if version == CLEANUP_VERSION and set(entry) != EDIT_KEYS:
         raise ReviewFormatError("an edit must have exactly include, turns, colour, cleanup")
@@ -348,6 +355,9 @@ def _decode(data: bytes, names: Sequence[str]) -> StoredReview:
         raise ReviewFormatError("the format version is not one this program reads")
     if format_version < CLEANUP_VERSION and "cleanup" in top:
         raise ReviewFormatError("cleanup needs format version 3")
+    if format_version < FORMAT_VERSION and "despeckle" in top:
+        raise ReviewFormatError("despeckle needs format version 5")
+    despeckle = format_version == FORMAT_VERSION and _flag(top.get("despeckle"), "despeckle")
     entries = _list(top.get("pages"), "pages", count)
     if len(entries) != count:
         raise ReviewFormatError(f"the file has {len(entries)} pages, the folder {count}")
@@ -369,11 +379,16 @@ def _decode(data: bytes, names: Sequence[str]) -> StoredReview:
             if top["version"] >= CLEANUP_VERSION
             else CleanupPolicy.OFF
         ),
+        despeckle=despeckle,
     )
     version = _whole(top.get("analysis_version"), "analysis_version", 0, MAX_VERSION)
     dpi = top.get("fallback_dpi")
     if dpi is not None:
         dpi = _whole(dpi, "fallback_dpi", MIN_DPI, MAX_DPI)
     return StoredReview(
-        draft, version, _options(top.get("options"), top["version"]), dpi, "fallback_dpi" in top
+        draft,
+        version,
+        _options(top.get("options"), top["version"]),
+        dpi,
+        "fallback_dpi" in top,
     )

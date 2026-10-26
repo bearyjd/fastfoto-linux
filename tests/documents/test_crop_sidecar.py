@@ -11,7 +11,7 @@ from fastfoto_linux.documents.crop_json import CropFormatError, parse_crop
 from fastfoto_linux.documents.draft import DocumentDraft, PageEdit, TrimBox
 from fastfoto_linux.documents.draft_edit import set_crop, set_document_cleanup
 from fastfoto_linux.documents.draft_json import (
-    FORMAT_VERSION,
+    CROP_VERSION,
     READ_VERSIONS,
     ReviewFormatError,
     StoredReview,
@@ -40,8 +40,8 @@ def decode(data: dict[str, Any]) -> DocumentDraft:
 
 
 def test_the_versions_are_spelled_out() -> None:
-    assert FORMAT_VERSION == 4
-    assert READ_VERSIONS == (1, 2, 3, 4)
+    assert CROP_VERSION == 4
+    assert READ_VERSIONS == (1, 2, 3, 4, 5)
 
 
 def test_a_draft_without_a_crop_is_written_exactly_as_main_wrote_it() -> None:

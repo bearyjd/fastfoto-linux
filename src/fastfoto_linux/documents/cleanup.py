@@ -102,11 +102,22 @@ class _Grid(NamedTuple):
     cols: np.ndarray
 
 
+def _step(height: int, width: int, dpi: int) -> int:
+    return max(1, min(dpi // WORK_DPI, height, width))
+
+
 def _grid(height: int, width: int, dpi: int) -> _Grid:
-    f = max(1, min(dpi // WORK_DPI, height, width))
+    f = _step(height, width, dpi)
     rows = np.minimum(np.arange(height) // f, height // f - 1)
     cols = np.minimum(np.arange(width) // f, width // f - 1)
     return _Grid(f, rows, cols)
+
+
+def work_too_large(height: int, width: int, dpi: int) -> bool:
+    """Whether the work grid of a page of this size has more than ``MAX_WORK_PIXELS`` pixels (the
+    limit paper cleanup and despeckle share)."""
+    step = _step(height, width, dpi)
+    return (height // step) * (width // step) > MAX_WORK_PIXELS
 
 
 def _background(grey: np.ndarray, dpi: int, grid: _Grid) -> np.ndarray:
@@ -263,10 +274,10 @@ def clean_pixels(  # noqa: PLR0911 - one return for each status
         return CleanupResult(CleanupStatus.OFF, None)
     if output is ColourMode.BW:
         return CleanupResult(CleanupStatus.BW, None)
-    grid = _grid(*src.shape[:2], dpi)
-    if (src.shape[0] // grid.f) * (src.shape[1] // grid.f) > MAX_WORK_PIXELS:
+    if work_too_large(*src.shape[:2], dpi):
         return CleanupResult(CleanupStatus.TOO_LARGE, None)
     grey = cv2.cvtColor(src, cv2.COLOR_RGB2GRAY) if src.ndim == 3 else src  # noqa: PLR2004
+    grid = _grid(*src.shape[:2], dpi)
     smooth = _background(grey, dpi, grid)
     paper = _paper_level(smooth)
     if paper < PAPER_MIN_LEVEL:

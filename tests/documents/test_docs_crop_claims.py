@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from fastfoto_linux.documents.draft_json import FORMAT_VERSION
+from fastfoto_linux.documents.draft_json import CROP_VERSION
 
 ROOT = Path(__file__).resolve().parents[2]
 DOCUMENTS = {
@@ -28,7 +28,7 @@ def test_the_crop_is_named_with_its_minimum_and_that_nothing_is_analysed_again(n
 
 
 def test_the_design_note_names_the_sidecar_version() -> None:
-    assert FORMAT_VERSION == 4
+    assert CROP_VERSION == 4
     assert "format version 4" in text_of("design note")
 
 

@@ -213,6 +213,13 @@ def set_document_cleanup(draft: DocumentDraft, policy: CleanupPolicy) -> Documen
     return replace(draft, cleanup=policy)
 
 
+def set_document_despeckle(draft: DocumentDraft, flag: bool) -> DocumentDraft:
+    """Return a draft whose document despeckle switch is ``flag``."""
+    if type(flag) is not bool:
+        raise DocumentEditError("despeckle must be true or false")
+    return replace(draft, despeckle=flag)
+
+
 def _checked_cleanup(policy: CleanupPolicy | None, *, allow_none: bool) -> None:
     if not isinstance(policy, CleanupPolicy) and not (allow_none and policy is None):
         raise DocumentEditError("paper cleanup must be off, light or strong")

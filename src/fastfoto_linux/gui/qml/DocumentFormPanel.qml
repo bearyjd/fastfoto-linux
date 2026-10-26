@@ -172,7 +172,37 @@ QQC2.ScrollView {
         QQC2.Label {
             objectName: "docCleanupHint"
             Layout.fillWidth: true
-            text: qsTr("Off by default. Light and Strong lighten the paper tone of grey and colour pages; black-and-white pages are not changed. Check the result in the review preview.")
+            text: qsTr("Off by default. Light and Strong lighten paper tone of grey and colour pages; black-and-white pages are not changed by paper cleanup. Check it in the preview.")
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+            color: Kirigami.Theme.disabledTextColor
+        }
+
+        QQC2.CheckBox {
+            id: docDespeckleBoxControl
+            objectName: "docDespeckleBox"
+            Layout.fillWidth: true
+            Layout.minimumWidth: 0
+            text: qsTr("Remove specks (black and white pages)")
+            checked: bridge.documents.form.despeckle ?? false
+            enabled: panel.editable
+            Accessible.name: qsTr("Remove specks (black and white pages)")
+            onToggled: bridge.setDocumentField("despeckle", checked)
+
+            contentItem: QQC2.Label {
+                leftPadding: docDespeckleBoxControl.indicator.width + docDespeckleBoxControl.spacing
+                text: docDespeckleBoxControl.text
+                textFormat: Text.PlainText
+                wrapMode: Text.WordWrap
+                verticalAlignment: Text.AlignVCenter
+                opacity: docDespeckleBoxControl.enabled ? 1 : 0.5
+            }
+        }
+
+        QQC2.Label {
+            objectName: "docDespeckleHint"
+            Layout.fillWidth: true
+            text: qsTr("Remove specks deletes tiny isolated dots from black-and-white pages; dots near text are kept.")
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
             color: Kirigami.Theme.disabledTextColor

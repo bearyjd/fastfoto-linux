@@ -4,6 +4,10 @@ A cropped output preview is ``page-NNNN-output-{mode}-{cleanup}-r{turns}-c{hash}
 ``hash`` is 12 hex digits of a digest of the crop edges and turns. Nothing a user or a file
 supplies is in a name, so a name can neither climb out of the previews folder nor name another
 page. ``is_output_preview_name`` is the one test for accepting and for deleting such a file.
+
+A black and white preview with Remove specks applied has ``-s`` after the turns
+(``...-bw-off-r{turns}-s...``); black and white has no cleanup level, so its name says ``off``.
+Only black and white has the tag.
 """
 
 import hashlib
@@ -11,6 +15,7 @@ import os
 import re
 from pathlib import Path
 
+from fastfoto_linux.documents.encode import effective_cleanup
 from fastfoto_linux.documents.modes import CleanupPolicy, ColourMode
 from fastfoto_linux.documents.page_crop import PageCrop
 
@@ -20,7 +25,15 @@ MAX_CROP_PREVIEWS = 8  # cropped output previews kept per page; the oldest go fi
 _EXTENSIONS = (".jpg", "-crop.png")
 
 
-def output_suffix(mode: ColourMode, cleanup: CleanupPolicy, turns: int) -> str:
+SPECKS_TAG = "-s"  # Remove specks was applied: only on a black and white name
+
+
+def output_suffix(
+    mode: ColourMode, cleanup: CleanupPolicy, turns: int, *, despeckle: bool = False
+) -> str:
+    """The name part of an output preview; ``despeckle`` must be the effective switch."""
+    if despeckle:
+        return f"-output-{mode.value}-{effective_cleanup(cleanup, mode).value}-r{turns}{SPECKS_TAG}"
     return f"-output-{mode.value}-{cleanup.value}-r{turns}"
 
 
@@ -47,15 +60,24 @@ def output_preview_names(number: int) -> tuple[str, ...]:
         for turns in range(4)
         for extension in _EXTENSIONS
     )
-    return legacy + current
+    despeckled = tuple(
+        f"page-{number:04d}{output_suffix(ColourMode.BW, CleanupPolicy.OFF, turns, despeckle=True)}"
+        f"{extension}"
+        for turns in range(4)
+        for extension in _EXTENSIONS
+    )
+    return legacy + current + despeckled
 
 
 def _cropped_pattern(number: int) -> re.Pattern[str]:
     modes = "|".join(re.escape(mode.value) for mode in ColourMode)
     levels = "|".join(re.escape(level.value) for level in CleanupPolicy)
     extensions = "|".join(re.escape(extension) for extension in _EXTENSIONS)
+    tag = re.escape(SPECKS_TAG)
+    bw = re.escape(ColourMode.BW.value)
     return re.compile(
-        rf"page-{number:04d}-output-(?:{modes})-(?:{levels})-r[0-3]-c[0-9a-f]{{12}}(?:{extensions})"
+        rf"page-{number:04d}-output-(?:(?:{modes})-(?:{levels})-r[0-3]|{bw}-(?:{levels})-r[0-3]{tag})"
+        rf"-c[0-9a-f]{{12}}(?:{extensions})"
     )
 
 

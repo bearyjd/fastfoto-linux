@@ -15,9 +15,10 @@ from PIL import Image
 from fastfoto_linux.documents import DocumentCancelledError, DocumentError, DocumentSettings
 from fastfoto_linux.documents.auto_colour import page_colour
 from fastfoto_linux.documents.cleanup import CleanupStatus, page_cleanup
+from fastfoto_linux.documents.despeckle import DespeckleStatus
 from fastfoto_linux.documents.draft import DocumentDraft, PageEdit
 from fastfoto_linux.documents.draft_store import THUMBS_DIR, open_draft
-from fastfoto_linux.documents.encode import render_page
+from fastfoto_linux.documents.encode import effective_despeckle, render_page
 from fastfoto_linux.documents.loader import load_page
 from fastfoto_linux.documents.modes import CleanupPolicy, ColourMode, ColourPolicy
 from fastfoto_linux.documents.page_crop import edited_page
@@ -89,6 +90,7 @@ class PreviewCompletion:
     path: Path | None
     error: str = ""
     cleanup_status: CleanupStatus | None = None
+    despeckle_status: DespeckleStatus | None = None
     size: tuple[int, int] | None = None  # the trimmed page's width and height, source view
     dpi: int | None = None  # the page's resolution, source view
 
@@ -103,6 +105,7 @@ def _preview_image(
     cancel: threading.Event,
     on_cleanup: Callable[[CleanupStatus], None] | None = None,
     on_size: Callable[[int, int, int], None] | None = None,
+    on_despeckle: Callable[[DespeckleStatus], None] | None = None,
 ) -> tuple[np.ndarray, str]:
     """The pixels to show and the file-name suffix that tells which variant they are."""
     draft, number = request.draft, request.number
@@ -120,15 +123,27 @@ def _preview_image(
     edit = draft.edits.get(number, PageEdit())
     loaded = edited_page(loaded, edit)
     cleanup = page_cleanup(draft, page) if request.cleaned else CleanupPolicy.OFF
+    # The original side keeps the mode, turns and crop but not the specks removal.
+    despeckle = effective_despeckle(draft.despeckle and request.cleaned, mode)
     if on_cleanup is not None:
-        pixels = render_page(loaded, mode, cleanup, cancel=cancel, on_cleanup=on_cleanup)
+        pixels = render_page(
+            loaded,
+            mode,
+            cleanup,
+            despeckle=despeckle,
+            cancel=cancel,
+            on_cleanup=on_cleanup,
+            on_despeckle=on_despeckle,
+        )
+    elif despeckle:
+        pixels = render_page(loaded, mode, cleanup, despeckle=True, cancel=cancel)
     elif cleanup is CleanupPolicy.OFF:
         # Same pixels as render_page(loaded, mode, OFF, cancel=cancel); kept as the short call
         # because tests that monkeypatch render_page expect it without the cleanup arguments.
         pixels = render_page(loaded, mode)
     else:
         pixels = render_page(loaded, mode, cleanup, cancel=cancel)
-    suffix = output_suffix(mode, cleanup, edit.quarter_turns)
+    suffix = output_suffix(mode, cleanup, edit.quarter_turns, despeckle=despeckle)
     if edit.crop is not None:
         suffix += f"-c{crop_tag(edit.crop, edit.quarter_turns)}"
     return pixels, suffix
@@ -166,6 +181,7 @@ def make_preview(  # noqa: PLR0913 - the request's own fields, passed through
     crop: tuple[int, int] | None = None,
     on_cleanup: Callable[[CleanupStatus], None] | None = None,
     on_size: Callable[[int, int, int], None] | None = None,
+    on_despeckle: Callable[[DespeckleStatus], None] | None = None,
 ) -> Path:
     """Trim raw pixels, optionally render full output, then write a bounded private preview."""
     request = PreviewRequest(draft, number, policy, view, cleaned, crop)
@@ -173,7 +189,7 @@ def make_preview(  # noqa: PLR0913 - the request's own fields, passed through
         raise ValueError("the preview needs a page in its original folder")
     if cancel.is_set():
         raise DocumentCancelledError("preview cancelled")
-    pixels, suffix = _preview_image(request, cancel, on_cleanup, on_size)
+    pixels, suffix = _preview_image(request, cancel, on_cleanup, on_size, on_despeckle)
     if cancel.is_set():
         raise DocumentCancelledError("preview cancelled")
     data, extension = _encode_preview(pixels, crop if view == "output" else None)
@@ -284,10 +300,15 @@ class ReviewJobs:
         self, request: PreviewRequest, cancel: threading.Event
     ) -> Callable[[], None]:
         statuses: list[CleanupStatus] = []
+        despeckles: list[DespeckleStatus] = []
         sizes: list[tuple[int, int, int]] = []
         # Custom preview providers keep their Path-only contract; absent metadata stays unknown.
         metadata = (
-            {"on_cleanup": statuses.append, "on_size": lambda *size: sizes.append(size)}
+            {
+                "on_cleanup": statuses.append,
+                "on_size": lambda *size: sizes.append(size),
+                "on_despeckle": despeckles.append,
+            }
             if self._preview is make_preview
             else {}
         )
@@ -306,6 +327,7 @@ class ReviewJobs:
                 request,
                 path,
                 cleanup_status=statuses[-1] if statuses else None,
+                despeckle_status=despeckles[-1] if despeckles else None,
                 size=sizes[-1][:2] if sizes else None,
                 dpi=sizes[-1][2] if sizes else None,
             )

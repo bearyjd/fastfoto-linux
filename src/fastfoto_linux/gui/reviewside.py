@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 
 from fastfoto_linux.documents import DocumentSettings
 from fastfoto_linux.documents.cleanup import CleanupStatus
+from fastfoto_linux.documents.despeckle import DespeckleStatus
 from fastfoto_linux.documents.draft import DocumentDraft
 from fastfoto_linux.documents.draft_store import save_draft
 from fastfoto_linux.documents.modes import CleanupPolicy, ColourPolicy
@@ -36,7 +37,7 @@ logger = logging.getLogger(__name__)
 # Operations that can change a page's output pixels; each names its page number first.
 PAGE_AFFECTING = frozenset({"toggle", "rotate", "set_colour", "set_cleanup", "set_crop"})
 # Operations that can change every page's output pixels; they take no page number.
-DOCUMENT_AFFECTING = frozenset({"set_document_cleanup"})
+DOCUMENT_AFFECTING = frozenset({"set_document_cleanup", "set_document_despeckle"})
 _OPENABLE = frozenset(
     {State.READY, State.NO_SCANNER, State.DONE, State.FAILED, State.CANCELLED, State.REVIEWING}
 )
@@ -57,6 +58,7 @@ class ReviewSide:
         self._saving_originals: SavedOriginals | None = None
         self.preview_path: Path | None = None
         self.preview_cleanup_status: CleanupStatus | None = None
+        self.preview_despeckle_status: DespeckleStatus | None = None
         self.preview_number = 0
         self.preview_view = "source"
         self.preview_cleaned = True
@@ -152,9 +154,12 @@ class ReviewSide:
         if not self.leaving():
             return False
         c.set_mode(Mode.DOCUMENTS)
-        # A past scan starts with cleanup Off: the form's level only seeds new scans, and an old or
-        # missing sidecar would otherwise take it. Only a version 3 sidecar can say otherwise.
-        self._opening_settings = replace(self._current_settings(), cleanup=CleanupPolicy.OFF)
+        # A past scan starts with cleanup Off and Remove specks off: the form's choices only seed
+        # new scans, and an old or missing sidecar would otherwise take them. Only a sidecar that
+        # holds them (version 3 for cleanup, 5 for despeckle) can say otherwise.
+        self._opening_settings = replace(
+            self._current_settings(), cleanup=CleanupPolicy.OFF, despeckle=False
+        )
         c._worker.analyse_folder(folder, self._opening_settings)
         self._pending = "open"
         self._preview_requested = None
@@ -237,7 +242,7 @@ class ReviewSide:
         self.state = ReviewState(draft)
         self.dirty = True
         self.preview_path, self.preview_number = None, 0
-        self.preview_cleanup_status = None
+        self.preview_cleanup_status = self.preview_despeckle_status = None
         self.preview_view = "source"
         self._preview_requested = self._preview_running = self._preview_cached = None
         self._originals = None
@@ -300,7 +305,7 @@ class ReviewSide:
         self._preview_requested = request
         self.preview_view, self.preview_cleaned, self.preview_crop = view, cleaned, crop
         self.preview_path, self.preview_number = None, 0
-        self.preview_cleanup_status = None
+        self.preview_cleanup_status = self.preview_despeckle_status = None
         self.preview_size = self.preview_dpi = None
         self._preview_cached = None
         if not self._worker_busy:
@@ -365,6 +370,7 @@ class ReviewSide:
             else:
                 self.preview_path, self.preview_number = completion.path, request.number
                 self.preview_cleanup_status = completion.cleanup_status
+                self.preview_despeckle_status = completion.despeckle_status
                 self.preview_size, self.preview_dpi = completion.size, completion.dpi
                 self._preview_cached = request
             self._controller._changed()

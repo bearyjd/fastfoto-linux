@@ -6,6 +6,7 @@ from pathlib import Path
 from fastfoto_linux.documents import draft_edit
 from fastfoto_linux.documents.auto_colour import ColourReason, page_policy, resolve_colour
 from fastfoto_linux.documents.cleanup import CleanupStatus, page_cleanup
+from fastfoto_linux.documents.despeckle import DespeckleStatus
 from fastfoto_linux.documents.draft import (
     BoxN,
     DocumentDraft,
@@ -57,6 +58,9 @@ class ReviewState:
     def set_document_cleanup(self, policy: CleanupPolicy) -> "ReviewState":
         return replace(self, draft=draft_edit.set_document_cleanup(self.draft, policy))
 
+    def set_document_despeckle(self, flag: bool) -> "ReviewState":
+        return replace(self, draft=draft_edit.set_document_despeckle(self.draft, flag))
+
     def set_crop(self, number: int, crop: PageCrop | None) -> "ReviewState":
         return replace(self, draft=draft_edit.set_crop(self.draft, number, crop))
 
@@ -104,6 +108,7 @@ class ReviewItem:
     cleanup_text: str = ""
     cropped: bool = False
     crop_text: str = ""
+    despeckle_text: str = ""
 
 
 CROP_TEXT = "Cropped by hand"
@@ -137,6 +142,26 @@ def preview_cleanup_text(level: CleanupPolicy, status: CleanupStatus | None) -> 
     return f"paper cleanup {level.value.capitalize()} requested (result unavailable)"
 
 
+DESPECKLE_SKIP_LABELS = {
+    DespeckleStatus.OFF: "specks removal off",
+    DespeckleStatus.NOT_BW: "not black and white",
+    DespeckleStatus.LOW_DPI: "resolution too low",
+    DespeckleStatus.TOO_LARGE: "page too large",
+    DespeckleStatus.BUSY: "too many specks to be dust",
+    DespeckleStatus.UNSTABLE: "still changing after 4 passes",
+    DespeckleStatus.NONE: "nothing to remove",
+}
+
+
+def preview_despeckle_text(status: DespeckleStatus | None) -> str:
+    """What the render did; only APPLIED says specks were removed (None: not known)."""
+    if status is DespeckleStatus.APPLIED:
+        return "specks removed"
+    if status is None:
+        return "specks requested (result unavailable)"
+    return f"no specks removed: {DESPECKLE_SKIP_LABELS[status]}"
+
+
 def colour_values(
     draft: DocumentDraft, page: PageAnalysis, document_policy: ColourPolicy | ColourMode
 ) -> tuple[str, str, str, str, str]:
@@ -166,6 +191,13 @@ def cleanup_values(draft: DocumentDraft, page: PageAnalysis, resolved_mode: str)
         return override, "Paper cleanup: off"
     source = "this page" if edit.cleanup is not None else "document setting"
     return override, f"Paper cleanup: {level.value.capitalize()} requested ({source})"
+
+
+def despeckle_words(draft: DocumentDraft, resolved_mode: str) -> str:
+    """Said of a page only when the document switch will act on it (black and white output)."""
+    if draft.despeckle and resolved_mode == ColourMode.BW.value:
+        return "Remove specks: on (document setting)"
+    return ""
 
 
 def review_items(
@@ -205,6 +237,7 @@ def review_items(
                 *cleanup_values(draft, page, colour[1]),
                 cropped,
                 CROP_TEXT if cropped else "",
+                despeckle_words(draft, colour[1]),
             )
         )
     return tuple(rows)

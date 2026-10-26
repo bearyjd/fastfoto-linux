@@ -129,10 +129,10 @@ QQC2.Dialog {
             QQC2.Switch {
                 id: cleanupSwitch
                 objectName: "reviewPreviewCleanupSwitch"
-                text: qsTr("Paper cleanup")
+                text: (bridge.review.previewSwitchSpecks ?? false) ? qsTr("Remove specks") : qsTr("Paper cleanup")
                 checked: dialog.cleaned
                 enabled: bridge.review.previewCleanupAvailable ?? false
-                Accessible.name: qsTr("Paper cleanup")
+                Accessible.name: text
                 onToggled: {
                     dialog.pick(checked, dialog.actualView);
                     checked = Qt.binding(() => dialog.cleaned);

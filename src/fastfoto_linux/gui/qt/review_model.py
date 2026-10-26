@@ -35,6 +35,7 @@ _ROLES = (
     "cleanupText",
     "cropped",
     "cropText",
+    "despeckleText",
 )
 
 
@@ -60,6 +61,7 @@ def _values(item: ReviewItem) -> dict[str, object]:
         "cleanupText": item.cleanup_text,
         "cropped": item.cropped,
         "cropText": item.crop_text,
+        "despeckleText": item.despeckle_text,
     }
 
 

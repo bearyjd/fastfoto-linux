@@ -785,6 +785,8 @@ What the third review pull request settled where the plan left room.
   page count is enough, and `--drop` wins over `--keep-blank`. A raw folder as the input is part D.
   `--cleanup` is a document option of both commands, like `--colour`; a raw folder's stored crop
   is applied by `doc process`, and `--fresh` ignores it.
+  The `--dry-run` listing adds `cleanup=<level>` (with `override` for a page's own level) and
+  `cropped` to each kept page's row.
 - **Per-page colour.** `--page-colour 2:grey,5:colour,7:auto,8:default` is keyed by the
   original raw page number. It sets a manual or Auto override; `default` clears the override.
   Reordering, rotation, splitting and restoring a dropped page retain that page's choice.

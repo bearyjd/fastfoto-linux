@@ -86,7 +86,6 @@ class StoredReview:
     options: StoredOptions | None
     fallback_dpi: int | None = None
     fallback_dpi_known: bool = False
-    despeckle: bool = False  # the document switch, as the draft holds it
 
 
 # --- writing -------------------------------------------------------------------------------
@@ -392,5 +391,4 @@ def _decode(data: bytes, names: Sequence[str]) -> StoredReview:
         _options(top.get("options"), top["version"]),
         dpi,
         "fallback_dpi" in top,
-        despeckle,
     )

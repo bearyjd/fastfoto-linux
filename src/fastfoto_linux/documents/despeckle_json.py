@@ -1,4 +1,4 @@
-"""The despeckle field of the review sidecar, version 5 (the reading is in ``draft_json``)."""
+"""Whether a draft needs review sidecar format version 5 (``draft_json`` reads and writes it)."""
 
 from fastfoto_linux.documents.draft import DocumentDraft
 

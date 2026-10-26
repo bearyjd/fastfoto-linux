@@ -82,7 +82,6 @@ def test_version_5_round_trips(make, level: CleanupPolicy) -> None:
     draft = on(set_document_cleanup(make(), level))
     stored = decode_review(encode_review(draft, None, 3), NAMES)
     assert stored.draft.despeckle is True
-    assert stored.despeckle is True
     assert stored.draft.edits == draft.edits
     assert stored.draft.cleanup is level
 
@@ -116,7 +115,6 @@ def test_version_5_refuses(name: str) -> None:
 def test_version_5_accepts_false() -> None:
     stored = decode_review(json.dumps({**v5(), "despeckle": False}).encode(), NAMES)
     assert stored.draft.despeckle is False
-    assert stored.despeckle is False
 
 
 def _old(version: int) -> dict[str, Any]:
@@ -146,11 +144,10 @@ def test_older_versions_never_hold_despeckle(version: int, value: bool) -> None:
 def test_older_versions_read_as_off(version: int) -> None:
     stored = decode_review(json.dumps(_old(version)).encode(), NAMES)
     assert stored.draft.despeckle is False
-    assert stored.despeckle is False
 
 
 def test_restore_edits_copies_despeckle_from_a_version_5_sidecar() -> None:
-    stored = StoredReview(on(plain()), ANALYSIS_VERSION, None, despeckle=True)
+    stored = StoredReview(on(plain()), ANALYSIS_VERSION, None)
     assert restore_edits(replace(plain(), despeckle=False), stored).despeckle is True
     off = StoredReview(plain(), ANALYSIS_VERSION, None)
     assert restore_edits(replace(plain(), despeckle=True), off).despeckle is False

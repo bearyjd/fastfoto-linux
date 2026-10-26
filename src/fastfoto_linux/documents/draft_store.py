@@ -164,7 +164,7 @@ def restore_edits(draft: DocumentDraft, stored: StoredReview) -> DocumentDraft:
         splits=saved.splits,
         part_names=saved.part_names,
         cleanup=saved.cleanup,
-        despeckle=stored.despeckle,
+        despeckle=saved.despeckle,
     )
 
 

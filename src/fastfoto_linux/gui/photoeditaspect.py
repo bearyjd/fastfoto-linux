@@ -142,7 +142,7 @@ def _drag_axis(anchor: float, pointer: float, source: int) -> tuple[int, int, in
     """(sign, anchor pixel, pointer extent, room from the anchor) along one axis."""
     sign = 1 if pointer >= anchor else -1
     start = math.floor(anchor) if sign > 0 else math.ceil(anchor)
-    extent = math.ceil(round(abs(pointer - start), FRAME_MICRO))
+    extent = 0 if pointer == anchor else math.ceil(round(abs(pointer - start), FRAME_MICRO))
     return sign, start, extent, source - start if sign > 0 else start
 
 

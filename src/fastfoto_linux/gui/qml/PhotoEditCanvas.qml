@@ -84,7 +84,7 @@ Item {
             const sign = pointer >= anchor ? 1 : -1;
             const start = sign > 0 ? Math.floor(anchor) : Math.ceil(anchor);
             return { sign: sign, start: start,
-                     extent: Math.ceil(Math.round(Math.abs(pointer - start) * 1e6) / 1e6),
+                     extent: pointer === anchor ? 0 : Math.ceil(Math.round(Math.abs(pointer - start) * 1e6) / 1e6),
                      room: sign > 0 ? source - start : start };
         };
         const ax = axis(across(a.x, left, w, sourceWidth), across(b.x, left, w, sourceWidth), sourceWidth);

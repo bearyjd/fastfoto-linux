@@ -83,19 +83,34 @@ def _shape_in(width: int, height: int, ratio: Ratio) -> Size:
     return second if second[0] * second[1] > first[0] * first[1] else first
 
 
+def _grown(ratio: Ratio, minimum: Size, frame: Size) -> Size:
+    """The smallest shaped box reaching ``minimum`` inside ``frame``, or (0, 0).
+
+    Shaped means the height is the rounded width's share, or the width is the rounded height's.
+    The least width that rounds up to the minimum height is ``ceil((2*min_h - 1)*rw / (2*rh))``.
+    """
+    rw, rh = ratio
+    (min_w, min_h), (fw, fh) = minimum, frame
+    w = max(min_w, ceil_div((2 * min_h - 1) * rw, 2 * rh))
+    h = half_up(w * rh, rw)
+    if w <= fw and h <= fh:
+        return w, h
+    h = max(min_h, ceil_div((2 * min_w - 1) * rh, 2 * rw))
+    w = half_up(h * rw, rh)
+    return (w, h) if w <= fw and h <= fh else (0, 0)
+
+
 def fit_centred(box: Box, ratio: Ratio, *, frame: Size, minimum: Size) -> Box | None:
     """The largest box of ``ratio`` centred in ``box``, grown to the minimum; None if too small."""
     left, top, right, bottom = box
-    rw, rh = ratio
     w, h = _shape_in(right - left, bottom - top, ratio)
     min_w, min_h = max(1, minimum[0]), max(1, minimum[1])
     if w >= min_w and h >= min_h:
         x = left + (right - left - w) // 2
         y = top + (bottom - top - h) // 2
         return x, y, x + w, y + h
-    w = max(min_w, ceil_div(min_h * rw, rh))
-    h = half_up(w * rh, rw)
-    if w > frame[0] or h > frame[1]:
+    w, h = _grown(ratio, (min_w, min_h), frame)
+    if w == 0:
         return None
     x = min(max((left + right - w) // 2, 0), frame[0] - w)
     y = min(max((top + bottom - h) // 2, 0), frame[1] - h)

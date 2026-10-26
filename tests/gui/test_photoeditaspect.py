@@ -226,7 +226,6 @@ def test_fit_centred_properties_over_random_cases():
         inside = box[0] <= left and box[1] <= top and right <= box[2] and bottom <= box[3]
         if not inside:
             grown += 1
-            assert w == max(minimum[0], ceil_div(minimum[1] * rw, rh))
             continue
         bw, bh = box[2] - box[0], box[3] - box[1]
         for cw, ch in ((bw, half_up(bw * rh, rw)), (half_up(bh * rw, rh), bh)):

@@ -63,3 +63,9 @@ def test_a_remembered_value_that_is_not_a_bool_falls_back_to_off(path: Path, bad
     path.parent.mkdir(parents=True)
     path.write_text(json.dumps({"documents": {"despeckle": bad}}))
     assert load_document_form(path).despeckle is False
+
+
+@pytest.mark.parametrize("value", ["false", "", 0, 1, None])
+def test_a_ui_value_that_is_not_a_bool_is_refused_not_coerced(value: object) -> None:
+    with pytest.raises(ValueError):
+        update_document_field(DocumentForm(), "despeckle", value)

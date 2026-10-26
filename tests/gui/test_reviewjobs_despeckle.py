@@ -7,7 +7,13 @@ import numpy as np
 import pytest
 from PIL import Image
 
-from fastfoto_linux.documents import ColourMode, ColourPolicy, DocumentSettings, OcrMode
+from fastfoto_linux.documents import (
+    ColourMode,
+    ColourPolicy,
+    DespeckleStatus,
+    DocumentSettings,
+    OcrMode,
+)
 from fastfoto_linux.documents.draft_edit import (
     rotate,
     set_cleanup,
@@ -30,19 +36,19 @@ LIGHT, OFF = CleanupPolicy.LIGHT, CleanupPolicy.OFF
 BW, GREY = ColourPolicy.BW, ColourPolicy.GREY
 
 
-def dusty_page(folder):
+def dusty_page(folder, *, specks=True, dpi=300):
     """White paper, a few stems of ink and isolated 2 px specks far (over 2.5 mm) from any ink."""
     grey = np.full((HEIGHT, WIDTH), 255, np.uint8)
     for column in (100, 160, 220):
         grey[300:340, column : column + 4] = 0
-    for row, column in ((100, 400), (500, 450), (650, 120), (120, 120)):
+    for row, column in ((100, 400), (500, 450), (650, 120), (120, 120)) if specks else ():
         grey[row : row + 2, column : column + 2] = 0
-    Image.fromarray(np.dstack([grey] * 3)).save(folder / "page-0001.png", dpi=(300, 300))
+    Image.fromarray(np.dstack([grey] * 3)).save(folder / "page-0001.png", dpi=(dpi, dpi))
     return folder
 
 
-def analysed(folder, *, despeckle=True):
-    dusty_page(folder)
+def analysed(folder, *, despeckle=True, specks=True, dpi=300):
+    dusty_page(folder, specks=specks, dpi=dpi)
     settings = DocumentSettings(output_root=folder, ocr=OcrMode.OFF)
     draft = open_draft(folder, list_pages(folder), settings, fresh=True)
     return set_document_despeckle(draft, True) if despeckle else draft
@@ -179,3 +185,40 @@ def test_deleting_the_originals_removes_the_s_previews(out):
     saved = capture_originals(draft)
     delete_originals(saved)
     assert not plain.exists() and not actual.exists() and not cropped.exists()
+
+
+# -- what the render did is reported, the name is not ---------------------------------------------
+
+
+def worker_status(draft, out, **options):
+    worker, tasks, sink = jobs_for(out)
+    answers = []
+    sink.on_review_preview = answers.append
+    options.setdefault("crop", (500, 500))
+    worker.preview_page(PreviewRequest(draft, 1, BW, "output", **options))
+    tasks[0](threading.Event())()
+    return answers[0]
+
+
+def test_an_applied_page_reports_applied(out):
+    answer = worker_status(analysed(out), out)
+    assert answer.despeckle_status is DespeckleStatus.APPLIED
+
+
+def test_a_low_dpi_page_reports_why_nothing_changed_and_keeps_the_request_based_name(out):
+    draft = analysed(out, dpi=100)
+    answer = worker_status(draft, out)
+    assert answer.despeckle_status is DespeckleStatus.LOW_DPI
+    assert answer.path.name == "page-0001-output-bw-off-r0-s-crop.png"  # named by the request
+    assert np.array_equal(decoded(answer.path), expected(draft, despeckle=False))
+
+
+def test_a_page_with_nothing_to_remove_reports_none(out):
+    answer = worker_status(analysed(out, specks=False), out)
+    assert answer.despeckle_status is DespeckleStatus.NONE
+
+
+def test_the_original_side_and_a_switch_that_is_off_report_off(out):
+    assert worker_status(analysed(out), out, cleaned=False).despeckle_status is DespeckleStatus.OFF
+    off = analysed(out, despeckle=False)
+    assert worker_status(off, out).despeckle_status is DespeckleStatus.OFF

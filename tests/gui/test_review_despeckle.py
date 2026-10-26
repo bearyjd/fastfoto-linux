@@ -4,10 +4,10 @@ from dataclasses import replace
 
 import pytest
 
-from fastfoto_linux.documents import CleanupPolicy, ColourPolicy, OcrMode
+from fastfoto_linux.documents import CleanupPolicy, ColourPolicy, DespeckleStatus, OcrMode
 from fastfoto_linux.documents.draft_edit import DocumentEditError
 from fastfoto_linux.gui import reviewside
-from fastfoto_linux.gui.review import ReviewState, review_items
+from fastfoto_linux.gui.review import ReviewState, preview_despeckle_text, review_items
 from fastfoto_linux.gui.reviewjobs import PreviewCompletion
 from fastfoto_linux.gui.reviewside import ReviewSide
 from tests.gui.test_controller_documents import Page
@@ -136,3 +136,34 @@ def test_a_reopened_scan_really_comes_back_with_despeckle_off(out):
 
 def test_a_despeckle_edit_is_a_document_affecting_operation():
     assert "set_document_despeckle" in reviewside.DOCUMENT_AFFECTING
+
+
+# -- the words about what the render did ---------------------------------------------------------
+
+
+def test_only_the_applied_status_says_specks_were_removed():
+    assert preview_despeckle_text(DespeckleStatus.APPLIED) == "specks removed"
+    for status in set(DespeckleStatus) - {DespeckleStatus.APPLIED}:
+        text = preview_despeckle_text(status)
+        assert text.startswith("no specks removed"), status
+        assert "specks removed" not in text.replace("no specks removed", "")
+
+
+def test_the_abstain_reasons_are_named_and_an_unknown_result_is_not_claimed():
+    assert preview_despeckle_text(DespeckleStatus.LOW_DPI) == (
+        "no specks removed: resolution too low"
+    )
+    assert preview_despeckle_text(DespeckleStatus.NONE) == "no specks removed: nothing to remove"
+    unknown = preview_despeckle_text(None)
+    assert unknown == "specks requested (result unavailable)"
+
+
+def test_the_side_keeps_the_status_of_the_shown_preview_and_clears_it(out):
+    side, page = opened(out)
+    calls = preview_calls(side, page)
+    side.preview(1, "output")
+    path = out / "previews" / "page-0001-output-grey.jpg"
+    side.preview_ready(PreviewCompletion(calls[-1][0], path, despeckle_status=DespeckleStatus.NONE))
+    assert side.preview_despeckle_status is DespeckleStatus.NONE
+    side.preview(2, "output")
+    assert side.preview_despeckle_status is None

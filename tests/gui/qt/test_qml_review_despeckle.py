@@ -8,13 +8,15 @@ from tests.gui.qt import require_qt
 
 require_qt()
 
+from PIL import Image
 from PySide6.QtCore import Qt
 from PySide6.QtQml import QQmlProperty, qmlContext
 from PySide6.QtTest import QTest
 
-from fastfoto_linux.documents import CleanupPolicy, ColourMode, ColourPolicy
+from fastfoto_linux.documents import CleanupPolicy, ColourMode, ColourPolicy, DespeckleStatus
 from fastfoto_linux.documents.auto_colour import ColourDecision, ColourReason
 from fastfoto_linux.gui.review import ReviewState
+from fastfoto_linux.gui.reviewjobs import PreviewCompletion
 from tests.gui.qt import test_qml_documents, test_qml_review_window
 from tests.gui.qt.qt_helpers import child, click, invoke, settle
 from tests.gui.qt.test_qml_review_cleanup import choose, deliver
@@ -26,6 +28,10 @@ make_doc_bridge = test_qml_documents.make_doc_bridge
 base_review_window = test_qml_review_window.review_window
 GREY = ColourDecision(ColourMode.COLOUR, ColourMode.GREY, ColourReason.FAINT_MARKS)
 BW = ColourDecision(ColourMode.COLOUR, ColourMode.BW, ColourReason.BILEVEL)
+ORIGINAL_HINT = (
+    "Off by default. Light and Strong lighten the paper tone of grey and colour pages; "
+    "black-and-white pages are not changed. Check the result in the review preview."
+)
 FORM_LABEL = "Remove specks (black and white pages)"  # the name is the visible label
 
 
@@ -100,8 +106,9 @@ def test_the_cleanup_hint_is_unchanged_and_one_sentence_explains_the_box(
 ):
     window, _warnings = open_window(make_doc_bridge())
     hint = child(window, "docCleanupHint").property("text")
-    assert hint.startswith("Off by default.") and hint.endswith("in the review preview.")
-    assert "black-and-white pages are not changed" in hint
+    assert hint.startswith("Off by default.") and hint.endswith("review preview.")
+    assert "black-and-white pages are not changed by paper cleanup" in hint
+    assert len(hint) <= len(ORIGINAL_HINT)
     assert child(window, "docDespeckleHint").property("text") == (
         "Remove specks deletes tiny isolated dots from black-and-white pages; "
         "dots near text are kept."
@@ -179,20 +186,85 @@ def test_a_grey_page_does_not_gain_the_switch_from_despeckle(despeckle_window):
     assert bridge.review.previewCleanupAvailable is False
 
 
-def test_the_label_says_specks_removed_on_the_cleaned_side_only(despeckle_window):
-    window, bridge, worker, source, _warnings = despeckle_window
+def deliver_status(bridge, source, request, name, status):
+    path = source.raw_dir / "previews" / name
+    path.parent.mkdir(exist_ok=True)
+    Image.new("L", (40, 60), 128).save(path)
+    bridge.controller.review.preview_ready(
+        PreviewCompletion(request, path, despeckle_status=status)
+    )
+    settle()
+
+
+def bw_output(window, bridge, worker):
     bridge.review.setDocumentDespeckle(True)
-    first = open_output_preview(window, bridge, worker, 3)
-    deliver(bridge, source, first, "page-0003-output-bw-off-r0-s.jpg")
+    return open_output_preview(window, bridge, worker, 3)
+
+
+def test_the_label_says_specks_removed_only_when_the_render_removed_them(despeckle_window):
+    window, bridge, worker, source, _warnings = despeckle_window
+    first = bw_output(window, bridge, worker)
+    deliver_status(
+        bridge, source, first, "page-0003-output-bw-off-r0-s.jpg", DespeckleStatus.APPLIED
+    )
     assert bridge.review.previewLabel == "Output: Black and white — specks removed"
     label = child(window, "reviewPreviewKindLabel")
     assert label.property("text") == "Output: Black and white — specks removed"
-    click(child(window, "reviewPreviewCleanupSwitch"))
+
+
+@pytest.mark.parametrize(
+    "status,words",
+    [
+        (DespeckleStatus.LOW_DPI, "no specks removed: resolution too low"),
+        (DespeckleStatus.NONE, "no specks removed: nothing to remove"),
+        (DespeckleStatus.TOO_LARGE, "no specks removed: page too large"),
+        (None, "specks requested (result unavailable)"),
+    ],
+)
+def test_the_label_does_not_claim_removal_when_the_backend_did_nothing(
+    despeckle_window, status, words
+):
+    window, bridge, worker, source, _warnings = despeckle_window
+    first = bw_output(window, bridge, worker)
+    deliver_status(bridge, source, first, "page-0003-output-bw-off-r0-s.jpg", status)
+    assert bridge.review.previewLabel == f"Output: Black and white — {words}"
+    assert child(window, "reviewPreviewKindLabel").property("text").endswith(words)
+
+
+# -- the switch names the operation it compares ----------------------------------------------------
+
+
+def test_on_a_bw_page_the_switch_and_the_original_side_speak_of_specks(despeckle_window):
+    window, bridge, worker, source, _warnings = despeckle_window
+    first = bw_output(window, bridge, worker)
+    deliver_status(
+        bridge, source, first, "page-0003-output-bw-off-r0-s.jpg", DespeckleStatus.APPLIED
+    )
+    switch = child(window, "reviewPreviewCleanupSwitch")
+    assert switch.property("text") == accessible_name(switch) == "Remove specks"
+    click(switch)
     settle()
     second = worker.calls[-1][1][0]
     assert second.cleaned is False
-    deliver(bridge, source, second, "page-0003-output-bw-off-r0.jpg")
-    assert "specks removed" not in bridge.review.previewLabel
+    deliver_status(bridge, source, second, "page-0003-output-bw-off-r0.jpg", DespeckleStatus.OFF)
+    assert bridge.review.previewLabel == "Output: Black and white — without removing specks"
+    assert "paper cleanup" not in bridge.review.previewLabel
+
+
+def test_on_a_grey_page_the_switch_is_still_paper_cleanup(despeckle_window):
+    window, bridge, worker, source, _warnings = despeckle_window
+    bridge.review.setCleanup(1, "light")
+    first = open_output_preview(window, bridge, worker, 1)
+    deliver(bridge, source, first, "page-0001-output-grey-light-r0.jpg")
+    switch = child(window, "reviewPreviewCleanupSwitch")
+    assert switch.property("text") == accessible_name(switch) == "Paper cleanup"
+
+
+def test_the_slot_refuses_a_value_that_is_not_a_bool(despeckle_window):
+    _window, bridge, _worker, _source, _warnings = despeckle_window
+    bridge.review.setDocumentDespeckle("false")
+    assert draft_of(bridge).despeckle is False
+    assert "despeckle must be true or false" in bridge.controller.banner.text
 
 
 def test_the_label_is_unchanged_with_the_switch_off(despeckle_window):

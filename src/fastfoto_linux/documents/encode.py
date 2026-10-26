@@ -12,7 +12,7 @@ from PIL import Image
 
 from fastfoto_linux.documents.bilevel import binarise
 from fastfoto_linux.documents.cleanup import CleanupStatus, clean_pixels
-from fastfoto_linux.documents.despeckle import DespeckleStatus, despeckle_white
+from fastfoto_linux.documents.despeckle import DespeckleStatus, abstain_status, despeckle_white
 from fastfoto_linux.documents.loader import WHITE, LoadedPage
 from fastfoto_linux.documents.modes import CleanupPolicy, ColourMode, output_mode
 
@@ -135,6 +135,12 @@ def render_page(  # noqa: PLR0913 - the hooks are the interface
         if on_despeckle is not None:
             on_despeckle(DespeckleStatus.OFF)
         return plain
+    abstain = abstain_status(*plain.shape, page.dpi)  # before the page-sized mask is built
+    if abstain is not None:
+        logger.debug("despeckle %s", abstain)
+        if on_despeckle is not None:
+            on_despeckle(abstain)
+        return plain
     source = page.pixels if page.kind is ColourMode.COLOUR else None
     result = despeckle_white(plain == WHITE, page.dpi, source=source, cancel=cancel)
     logger.debug("despeckle %s removed %d", result.status, result.removed)
@@ -150,4 +156,4 @@ def _binarised(grey: np.ndarray, dpi: int) -> np.ndarray:
 
 
 def _white_to_pixels(white: np.ndarray) -> np.ndarray:
-    return np.where(white, WHITE, 0).astype(np.uint8)
+    return np.multiply(white, np.uint8(WHITE), dtype=np.uint8)  # no 64-bit temporary

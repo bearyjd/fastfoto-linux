@@ -36,6 +36,7 @@ from fastfoto_linux.documents.cleanup import work_too_large
 from fastfoto_linux.documents.despeckle_tables import (
     BAND_ROWS,
     CONNECTIVITY,
+    MAX_BAND_PIXELS,
     MAX_DESPECKLE_PIXELS,
     MAX_ROUNDS,
     MAX_SPECKS,
@@ -87,18 +88,35 @@ def _chroma_mask(source: np.ndarray | None) -> np.ndarray | None:
     return (source.max(axis=2) - source.min(axis=2)) >= SPECK_CHROMA
 
 
+class _Pin:
+    """How many labellings hold OpenCV's thread count at one, and the count to give back."""
+
+    lock = threading.Lock()
+    depth = 0
+    saved = 0
+
+
 @contextlib.contextmanager
 def _one_thread() -> Iterator[None]:
-    """OpenCV labels on one thread inside the block, and the count it had is restored. With many
-    threads its labelling of a dense pattern (every other pixel black) allocated about a gigabyte
-    for one band of an A4 page; on one thread the peak is the band's own arrays. The count is
-    process-wide, so a labelling that other threads run at the same moment is slower, not wrong."""
-    previous = cv2.getNumThreads()
-    cv2.setNumThreads(1)
+    """OpenCV labels on one thread inside the block. With many threads its labelling of a dense
+    pattern (every other pixel black) allocated about a gigabyte for one band of an A4 page; on
+    one thread the peak is the band's own arrays. The count is process-wide, so overlapping
+    blocks (several threads despeckling) share one pin: the first saves the count and sets one,
+    the last gives it back, and every labelling in between sees one thread. Other code that
+    labels at the same moment on other threads runs on one thread too (slower, not wrong), and
+    code that changes the count while a block is open has its change undone at the end."""
+    with _Pin.lock:
+        if _Pin.depth == 0:
+            _Pin.saved = cv2.getNumThreads()
+            cv2.setNumThreads(1)
+        _Pin.depth += 1
     try:
         yield
     finally:
-        cv2.setNumThreads(previous)
+        with _Pin.lock:
+            _Pin.depth -= 1
+            if _Pin.depth == 0:
+                cv2.setNumThreads(_Pin.saved)
 
 
 def _band(
@@ -117,12 +135,12 @@ def _band(
     none = np.empty(0, dtype=np.intp)
     if count < 2:  # noqa: PLR2004 - only the background
         return none, none, 0
-    left, up, wide, high, area = (stats[1:, column].astype(np.int64) for column in range(5))
+    left, up, wide, high, area = (stats[1:, column] for column in range(5))  # int32
     start = first + up
     ok = (wide <= s) & (high <= s) & (start >= top) & (start < bottom)
     if not ok.any():
         return none, none, 0
-    integral = cv2.integral(window, sdepth=cv2.CV_32S).astype(np.int64)
+    integral = cv2.integral(window, sdepth=cv2.CV_32S)  # sums stay under MAX_BAND_PIXELS
     r0, r1 = np.maximum(0, up - g), np.minimum(last - first, up + high + g)
     c0, c1 = np.maximum(0, left - g), np.minimum(width, left + wide + g)
     inside = integral[r1, c1] - integral[r0, c1] - integral[r1, c0] + integral[r0, c0]
@@ -137,6 +155,29 @@ def _band(
     return rows + first, cols, int(wanted.sum())
 
 
+def _band_rows(width: int, sizes: _Sizes) -> int:
+    """The rows a band owns: ``BAND_ROWS``, fewer when the page is wide enough that the window
+    (those rows and the guard rows around them) would pass ``MAX_BAND_PIXELS``."""
+    guard_rows = sizes.cap + 2 * sizes.guard
+    return max(1, min(BAND_ROWS, MAX_BAND_PIXELS // width - guard_rows))
+
+
+def abstain_status(height: int, width: int, dpi: int) -> DespeckleStatus | None:
+    """Why a page of this size and resolution is left alone before any pixel is looked at, or
+    None. Cheap and allocation free: ``render_page`` asks before it builds the page's mask."""
+    sizes = _Sizes(speck_px(dpi), guard_px(dpi))
+    if dpi < MIN_DPI or sizes.cap < 1:
+        return DespeckleStatus.LOW_DPI
+    narrowest = min(height, 1 + sizes.cap + 2 * sizes.guard) * width  # one owned row's window
+    if (
+        height * width > MAX_DESPECKLE_PIXELS
+        or work_too_large(height, width, dpi)
+        or narrowest > MAX_BAND_PIXELS
+    ):
+        return DespeckleStatus.TOO_LARGE
+    return None
+
+
 def _removable(
     ink: np.ndarray,
     chroma: np.ndarray | None,
@@ -149,10 +190,11 @@ def _removable(
     rows: list[np.ndarray] = []
     cols: list[np.ndarray] = []
     total = 0
-    for top in range(0, ink.shape[0], BAND_ROWS):
+    step = _band_rows(ink.shape[1], sizes)
+    for top in range(0, ink.shape[0], step):
         if cancel is not None and cancel.is_set():
             raise DocumentCancelledError("despeckle cancelled")
-        band_rows, band_cols, count = _band(ink, chroma, (top, top + BAND_ROWS), sizes)
+        band_rows, band_cols, count = _band(ink, chroma, (top, top + step), sizes)
         rows.append(band_rows)
         cols.append(band_cols)
         total += count
@@ -173,11 +215,10 @@ def despeckle_white(
     ``source`` is the RGB page it was made from, if any (a colourful component is kept). The
     input is not modified. Raises DocumentCancelledError when ``cancel`` is set before a band.
     """
+    abstain = abstain_status(white.shape[0], white.shape[1], dpi)
+    if abstain is not None:
+        return DespeckleResult(abstain, None, 0)
     sizes = _Sizes(speck_px(dpi), guard_px(dpi))
-    if dpi < MIN_DPI or sizes.cap < 1:
-        return DespeckleResult(DespeckleStatus.LOW_DPI, None, 0)
-    if white.size > MAX_DESPECKLE_PIXELS or work_too_large(white.shape[0], white.shape[1], dpi):
-        return DespeckleResult(DespeckleStatus.TOO_LARGE, None, 0)
     chroma = _chroma_mask(source)
     current, total = white, 0
     for round_number in range(MAX_ROUNDS + 1):

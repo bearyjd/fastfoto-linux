@@ -59,3 +59,10 @@ def find_leaks(heldout: Sequence[Fingerprint], tuning: Sequence[Fingerprint]) ->
                     f"held-out {held.id!r} shares {', '.join(shared)} with tuning {tune.id!r}"
                 )
     return leaks
+
+
+def count_leaks(
+    heldout: Sequence[Fingerprint], tuning: Sequence[Fingerprint]
+) -> tuple[int, list[str]]:
+    messages = find_leaks(heldout, tuning)
+    return len(messages), messages

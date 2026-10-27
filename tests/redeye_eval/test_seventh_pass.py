@@ -9,7 +9,7 @@ import sys
 
 import pytest
 
-from fastfoto_linux.evaluation import redeye_output
+from fastfoto_linux.evaluation import redeye_images, redeye_output
 from fastfoto_linux.evaluation.redeye_images import fdopen_owned
 from fastfoto_linux.evaluation.redeye_manifest import ManifestError
 from fastfoto_linux.evaluation.redeye_output import write_outputs
@@ -19,7 +19,7 @@ _DIR = os.O_RDONLY | os.O_DIRECTORY
 _KILLER = """
 import os, signal, sys
 from pathlib import Path
-from fastfoto_linux.evaluation import redeye_output
+from fastfoto_linux.evaluation import redeye_images, redeye_output
 
 redeye_output.PROJECT_NAME = "not-a-real-project"
 real = os.open
@@ -125,3 +125,59 @@ def test_a_report_json_that_cannot_be_looked_at_is_a_manifest_error(tmp_path, mo
     finally:
         os.close(fd)
     assert not (tmp_path / "report.json").exists()
+
+
+def _fail_fstat_on_call(monkeypatch, nth: int) -> list[int]:
+    real, calls = os.fstat, []
+
+    def failing(target, *args, **kwargs):
+        calls.append(target)
+        if len(calls) == nth:
+            raise MemoryError
+        return real(target, *args, **kwargs)
+
+    monkeypatch.setattr(redeye_images.os, "fstat", failing)
+    return calls
+
+
+def test_a_memory_error_on_the_first_identity_check_closes_the_descriptor(monkeypatch) -> None:
+    fd = os.open(os.devnull, os.O_RDONLY)
+    before = _open_fds()
+    _fail_fstat_on_call(monkeypatch, 1)
+    with pytest.raises(MemoryError):
+        fdopen_owned(fd, "rb")
+    monkeypatch.undo()
+    assert _open_fds() == before - 1
+
+
+def test_a_memory_error_on_the_second_identity_check_keeps_the_original_error(
+    monkeypatch,
+) -> None:
+    fd = os.open(os.devnull, os.O_RDONLY)
+    before = _open_fds()
+    calls = _fail_fstat_on_call(monkeypatch, 2)
+    with pytest.raises(LookupError):
+        fdopen_owned(fd, "r", encoding="no-such-encoding")
+    monkeypatch.undo()
+    assert len(calls) >= 2
+    assert _open_fds() == before - 1
+
+
+def test_a_memory_error_while_closing_the_previous_directory_leaks_nothing(
+    tmp_path, monkeypatch
+) -> None:
+    directory = tmp_path / "a" / "b"
+    directory.mkdir(parents=True)
+    fd = os.open(directory, _DIR)
+    try:
+        before = _open_fds()
+
+        def failing(*args, **kwargs):
+            raise MemoryError
+
+        monkeypatch.setattr(redeye_output.contextlib, "suppress", failing)
+        redeye_output._refuse_if_contained(fd, frozenset())
+        monkeypatch.undo()
+        assert _open_fds() == before
+    finally:
+        os.close(fd)

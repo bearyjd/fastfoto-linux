@@ -242,68 +242,93 @@ def test_reading_a_32_mib_file_costs_about_one_copy(tmp_path) -> None:
     assert result.stdout.strip() == str(32 * MIB)
 
 
-_RUN_DIR = r"/out/run-[^/]+$"
-_OUT_DIR = r"/out$"
+def _fail_close_of_directories(monkeypatch, *which: str) -> list[int]:
+    """Close write_outputs' own ``out`` and/or ``run`` directory descriptors for real, then raise
+    EIO. Matching by path would also hit the transient descriptors of the containment walk."""
+    mine: dict[str, int] = {}
+    real_open_out, real_new_run = redeye_output._open_out_dir, redeye_output._new_run_dir
+
+    def open_out(*args):
+        mine["out"] = real_open_out(*args)
+        return mine["out"]
+
+    def new_run(out_fd):
+        name, fd = real_new_run(out_fd)
+        mine["run"] = fd
+        return name, fd
+
+    real, closed = os.close, []
+
+    def close(fd):
+        real(fd)
+        if fd in [mine.get(name) for name in which]:
+            closed.append(fd)
+            raise OSError(errno.EIO, "injected")
+
+    monkeypatch.setattr(redeye_output, "_open_out_dir", open_out)
+    monkeypatch.setattr(redeye_output, "_new_run_dir", new_run)
+    monkeypatch.setattr(os, "close", close)
+    return closed
 
 
-@pytest.mark.parametrize("marker", [_RUN_DIR, _OUT_DIR, r"/out(/run-[^/]+)?$"])
+_CASES = [("run",), ("out",), ("run", "out")]
+
+
+@pytest.mark.parametrize("which", _CASES)
 def test_a_directory_close_that_fails_after_a_published_report_keeps_the_bundle(
-    tmp_path, monkeypatch, marker
+    tmp_path, monkeypatch, which
 ) -> None:
     out = tmp_path / "out"
     before = _open_fds()
-    closed = _fail_close_of(monkeypatch, marker)
+    closed = _fail_close_of_directories(monkeypatch, *which)
     with pytest.raises(ManifestError):
         write_outputs(out, BUNDLE)
     monkeypatch.undo()
-    assert len(closed) == len(set(closed)) == (2 if marker.endswith("?$") else 1)
+    assert len(closed) == len(which)  # each closed once, never twice
     (run,) = list(out.iterdir())  # a complete bundle is not deleted over a close error
     for file, text in BUNDLE.items():
         assert (run / file).read_bytes() == text.encode()
     assert _open_fds() == before
 
 
-@pytest.mark.parametrize("marker", [_RUN_DIR, _OUT_DIR])
-def test_a_directory_close_failure_after_a_failed_write_keeps_the_write_failure(
-    tmp_path, monkeypatch, marker
-) -> None:
+def _failing_run_file_write(monkeypatch, error: BaseException) -> None:
     real = os.write
 
-    def no_space(fd, data):
+    def write(fd, data):
         if re.search(_RUN_FILE, os.readlink(f"/proc/self/fd/{fd}")):
-            raise OSError(errno.ENOSPC, "injected")
+            raise error
         return real(fd, data)
 
+    monkeypatch.setattr(os, "write", write)
+
+
+@pytest.mark.parametrize("which", _CASES)
+def test_a_directory_close_failure_after_a_failed_write_keeps_the_write_failure(
+    tmp_path, monkeypatch, which
+) -> None:
     out = tmp_path / "out"
     before = _open_fds()
-    closed = _fail_close_of(monkeypatch, marker)
-    monkeypatch.setattr(os, "write", no_space)
+    closed = _fail_close_of_directories(monkeypatch, *which)
+    _failing_run_file_write(monkeypatch, OSError(errno.ENOSPC, "injected"))
     with pytest.raises(ManifestError) as caught:
         write_outputs(out, BUNDLE)
     monkeypatch.undo()
     assert caught.value.__cause__.errno == errno.ENOSPC
-    assert len(closed) == 1
+    assert len(closed) == len(which)
     assert list(out.iterdir()) == []
     assert _open_fds() == before
 
 
-@pytest.mark.parametrize("marker", [_RUN_DIR, _OUT_DIR])
+@pytest.mark.parametrize("which", _CASES)
 def test_a_directory_close_failure_after_an_interrupt_keeps_the_interrupt(
-    tmp_path, monkeypatch, marker
+    tmp_path, monkeypatch, which
 ) -> None:
-    real = os.write
-
-    def interrupt(fd, data):
-        if re.search(_RUN_FILE, os.readlink(f"/proc/self/fd/{fd}")):
-            raise KeyboardInterrupt
-        return real(fd, data)
-
     out = tmp_path / "out"
     before = _open_fds()
-    closed = _fail_close_of(monkeypatch, marker)
-    monkeypatch.setattr(os, "write", interrupt)
+    closed = _fail_close_of_directories(monkeypatch, *which)
+    _failing_run_file_write(monkeypatch, KeyboardInterrupt())
     with pytest.raises(KeyboardInterrupt):
         write_outputs(out, BUNDLE)
     monkeypatch.undo()
-    assert len(closed) == 1
+    assert len(closed) == len(which)
     assert _open_fds() == before

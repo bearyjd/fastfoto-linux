@@ -34,6 +34,7 @@ EVAL_VERSION = 1
 # One run decodes at most this many images and pixels, tuning images included.
 MAX_RUN_IMAGES = 20_000
 MAX_RUN_PIXELS = 2_000_000_000
+MAX_RUN_BYTES = 4 * 1024**3
 
 
 @dataclass(frozen=True)
@@ -212,10 +213,17 @@ def _geometry_ok(img: np.ndarray, item: ManifestImage) -> bool:
 
 
 class _Budget:
-    """The most decoded pixels one run may read, tuning images included."""
+    """The most decoded pixels and file bytes one run may read, tuning images included."""
 
     def __init__(self) -> None:
         self.pixels = 0
+        self.bytes = 0
+
+    def charge_bytes(self, size: int) -> None:
+        """Called with a file's size, before its bytes are read."""
+        self.bytes += size
+        if self.bytes > MAX_RUN_BYTES:
+            raise redeye_images.BudgetExceeded
 
     def charge(self, pixels: int) -> None:
         """Called with the header's pixel count, before the pixels are decoded."""
@@ -237,9 +245,11 @@ def _load(
     bytes decode to equal pixels, so a cached digest is the digest.
     """
     try:
-        img = redeye_images.load_image(root, item.path, item.sha256, budget.charge)
+        img = redeye_images.load_image(
+            root, item.path, item.sha256, budget.charge, budget.charge_bytes
+        )
     except redeye_images.BudgetExceeded as error:
-        raise ManifestError("the run exceeds its decoded-pixel budget") from error
+        raise ManifestError("the run exceeds its pixel or byte budget") from error
     digests[item.sha256] = pixel_digest(img)
     return img
 

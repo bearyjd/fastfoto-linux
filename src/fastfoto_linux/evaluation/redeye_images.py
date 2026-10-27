@@ -8,6 +8,7 @@ import struct
 import warnings
 from collections.abc import Callable
 from pathlib import Path
+from typing import IO, Any
 
 import numpy as np
 from PIL import Image, UnidentifiedImageError
@@ -50,19 +51,31 @@ _DIR_FLAGS = os.O_RDONLY | os.O_NOFOLLOW | os.O_DIRECTORY | getattr(os, "O_CLOEX
 _FILE_FLAGS = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | getattr(os, "O_CLOEXEC", 0)
 
 
-def read_regular_fd(fd: int, limit: int) -> bytes:
+def fdopen_owned(fd: int, mode: str, **kwargs: Any) -> IO[Any]:
+    """``os.fdopen`` that closes ``fd`` itself if the wrapper cannot be made (else it would leak)."""
+    try:
+        return os.fdopen(fd, mode, **kwargs)
+    except BaseException:
+        os.close(fd)
+        raise
+
+
+def read_regular_fd(fd: int, limit: int, charge: Callable[[int], None] | None = None) -> bytes:
     """Read the regular file open on ``fd`` (closed here), at most ``limit`` bytes of it.
 
-    ``ImageError("unsafe_path")`` for anything but a regular file, ``"too_large"`` over
-    ``limit``, ``"unreadable"`` when the device fails the read (EIO, ESTALE, ...).
+    ``charge`` is called with the file's size before any byte is read (it may raise
+    ``BudgetExceeded``). ``ImageError("unsafe_path")`` for anything but a regular file,
+    ``"too_large"`` over ``limit``, ``"unreadable"`` when the device fails the read (EIO, ESTALE).
     """
     try:
-        with os.fdopen(fd, "rb") as handle:
+        with fdopen_owned(fd, "rb") as handle:
             info = os.fstat(handle.fileno())
             if not stat.S_ISREG(info.st_mode):
                 raise ImageError("unsafe_path")
             if info.st_size > limit:
                 raise ImageError("too_large")
+            if charge is not None:
+                charge(info.st_size)
             data = handle.read(min(info.st_size, limit) + 1)  # sized: no 256 MB buffer
     except OSError as error:
         raise ImageError("unreadable") from error
@@ -120,7 +133,9 @@ class PinnedRoot:
         self.close()
 
 
-def read_contained(root: "Path | PinnedRoot", rel: str) -> bytes:
+def read_contained(
+    root: "Path | PinnedRoot", rel: str, charge_bytes: Callable[[int], None] | None = None
+) -> bytes:
     """The bytes of regular file ``rel`` under ``root``. No path component may be a symlink; a
     ``Path`` root is opened for this one read (use ``PinnedRoot`` to keep the same directory)."""
     try:
@@ -133,7 +148,7 @@ def read_contained(root: "Path | PinnedRoot", rel: str) -> bytes:
         raise ImageError("missing") from error
     except (OSError, ValueError) as error:  # ELOOP, ENOTDIR, a NUL byte, a lone surrogate ...
         raise ImageError("unsafe_path" if isinstance(error, OSError) else "unreadable") from error
-    return read_regular_fd(fd, MAX_SOURCE_BYTES)
+    return read_regular_fd(fd, MAX_SOURCE_BYTES, charge_bytes)
 
 
 def _png_pixels(data: bytes) -> int | None:
@@ -195,10 +210,17 @@ def decode_image(data: bytes, charge: Callable[[int], None] | None = None) -> np
 
 
 def load_image(
-    root: "Path | PinnedRoot", rel: str, sha256: str, charge: Callable[[int], None] | None = None
+    root: "Path | PinnedRoot",
+    rel: str,
+    sha256: str,
+    charge: Callable[[int], None] | None = None,
+    charge_bytes: Callable[[int], None] | None = None,
 ) -> np.ndarray:
-    """The verified RGB array of ``rel`` under ``root``; ``ImageError`` says why not."""
-    data = read_contained(root, rel)
+    """The verified RGB array of ``rel`` under ``root``; ``ImageError`` says why not.
+
+    ``charge_bytes`` sees the file size before it is read, ``charge`` the pixel count before
+    the pixels are decoded."""
+    data = read_contained(root, rel, charge_bytes)
     if hashlib.sha256(data).hexdigest() != sha256:
         raise ImageError("hash_mismatch")
     return decode_image(data, charge)

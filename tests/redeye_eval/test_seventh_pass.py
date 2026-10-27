@@ -193,3 +193,72 @@ def test_a_memory_error_on_the_second_check_still_closes_a_descriptor_left_open(
         fdopen_owned(fd, "zz")
     monkeypatch.undo()
     assert _open_fds() == before - 1
+
+
+def _assert_alive_and_unrelated(replacement: int) -> None:
+    assert os.fstat(replacement)  # still open
+    assert os.read(replacement, 4) == b"\0\0\0\0"  # still the /dev/zero we opened
+
+
+def test_a_reused_descriptor_is_not_closed_when_the_second_identity_check_runs_out_of_memory(
+    monkeypatch,
+) -> None:
+    fd = os.open(os.devnull, os.O_RDONLY)
+    real, calls, replacement = os.fstat, [], []
+
+    def failing(target, *args, **kwargs):
+        calls.append(target)
+        if len(calls) == 2:  # fdopen already released the number: someone else gets it
+            replacement.append(os.open("/dev/zero", os.O_RDONLY))
+            raise MemoryError
+        return real(target, *args, **kwargs)
+
+    monkeypatch.setattr(redeye_images.os, "fstat", failing)
+    try:
+        with pytest.raises(LookupError):  # the original error, not MemoryError
+            fdopen_owned(fd, "r", encoding="no-such-encoding")
+        monkeypatch.undo()
+        assert replacement == [fd]
+        _assert_alive_and_unrelated(replacement[0])
+    finally:
+        monkeypatch.undo()
+        for number in replacement:
+            try:
+                os.close(number)
+            except OSError:  # already destroyed: the assertions above report it
+                pass
+
+
+def test_a_replacement_descriptor_survives_a_close_that_runs_out_of_memory(monkeypatch) -> None:
+    fd = os.open(os.devnull, os.O_RDONLY)
+    real, closed, replacement = os.close, [], []
+
+    def failing(target):
+        closed.append(target)
+        real(target)  # the number is released ...
+        replacement.append(os.open("/dev/zero", os.O_RDONLY))  # ... and taken by someone else
+        raise MemoryError
+
+    monkeypatch.setattr(redeye_images.os, "close", failing)
+    try:
+        with pytest.raises(ValueError):  # a bad mode fails before open() owns the descriptor
+            fdopen_owned(fd, "zz")
+        monkeypatch.undo()
+        assert closed == [fd]  # never closed a second time
+        assert replacement == [fd]
+        _assert_alive_and_unrelated(replacement[0])
+    finally:
+        monkeypatch.undo()
+        for number in replacement:
+            try:
+                os.close(number)
+            except OSError:  # already destroyed: the assertions above report it
+                pass
+
+
+def test_an_early_fdopen_failure_without_a_second_fault_does_not_leak() -> None:
+    fd = os.open(os.devnull, os.O_RDONLY)
+    before = _open_fds()
+    with pytest.raises(ValueError):
+        fdopen_owned(fd, "zz")
+    assert _open_fds() == before - 1

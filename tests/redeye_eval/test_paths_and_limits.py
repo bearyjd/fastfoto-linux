@@ -190,4 +190,4 @@ def test_outputs_are_private_and_replaced_atomically(tmp_path) -> None:
     assert (out / "report.json").read_text() == "two\n"
     assert (out.stat().st_mode & 0o777) == 0o700
     assert ((out / "report.json").stat().st_mode & 0o777) == 0o600
-    assert sorted(p.name for p in out.iterdir()) == ["report.json"]
+    assert sorted(p.name for p in out.iterdir()) == [".write.lock", "report.json"]

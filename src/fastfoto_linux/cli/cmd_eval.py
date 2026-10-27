@@ -94,7 +94,14 @@ def run(args: argparse.Namespace) -> int:
     if not args.no_perf:
         files["perf.json"] = perf_json(result)
     try:
-        write_outputs(out_dir, files)
+        write_outputs(
+            out_dir,
+            files,
+            forbidden=[manifest.root, *(m.root for m in tuning)],
+            stale=("perf.json",) if args.no_perf else (),
+        )
+    except ManifestError as error:
+        raise CliError(str(error), EXIT_USAGE) from error
     except OSError as error:
         raise CliError("cannot write the results directory") from error
     totals = report["totals"]

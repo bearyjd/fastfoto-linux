@@ -137,16 +137,36 @@ def _dict(value: object, keys: set[str], what: str, required: set[str] | None = 
     return value
 
 
-def _text(value: object, what: str, pattern: re.Pattern[str] | None = None) -> str:
-    if type(value) is not str or not value or (pattern and not pattern.fullmatch(value)):
-        raise _fail(f"{what} is not valid")
+def _encodable(value: str, what: str) -> str:
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError as error:  # a lone surrogate from a \\ud800 escape
+        raise _fail(f"{what} is not valid text") from error
     return value
 
 
+def _text(value: object, what: str, pattern: re.Pattern[str] | None = None) -> str:
+    if type(value) is not str or not value or (pattern and not pattern.fullmatch(value)):
+        raise _fail(f"{what} is not valid")
+    return _encodable(value, what)
+
+
+MAX_INT_MAGNITUDE = 10**15  # checked before float(): a huge int must not raise OverflowError
+
+
 def _number(value: object, what: str) -> float:
-    if type(value) not in (int, float) or not math.isfinite(value):  # type: ignore[arg-type]
+    if type(value) not in (int, float):
         raise _fail(f"{what} must be a finite number")
-    return float(value)  # type: ignore[arg-type]
+    try:
+        if abs(value) > MAX_INT_MAGNITUDE and type(value) is int:  # type: ignore[arg-type]
+            raise _fail(f"{what} is out of range")
+        number = float(value)  # type: ignore[arg-type]
+        finite = math.isfinite(number)
+    except OverflowError as error:
+        raise _fail(f"{what} is out of range") from error
+    if not finite:
+        raise _fail(f"{what} must be a finite number")
+    return number
 
 
 def _int(value: object, what: str, low: int, high: int) -> int:
@@ -172,9 +192,12 @@ def _rights(value: object) -> Rights:
     consent = raw["consent_scope"]
     if consent is not None and type(consent) is not str:
         raise _fail("consent_scope must be text or null")
+    if consent is not None:
+        _encodable(consent, "consent_scope")
     source = raw["source"]
     if type(source) is not str:
         raise _fail("rights source must be text")
+    _encodable(source, "rights source")
     return Rights(
         _text(raw["licence"], "licence"),
         source,

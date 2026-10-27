@@ -16,6 +16,20 @@ MAX_SOURCE_BYTES = 256 * 1024 * 1024
 MAX_SOURCE_PIXELS = 89_000_000
 _MODES = ("RGB", "L", "P")
 _FORMATS = ("PNG", "JPEG", "TIFF")  # no EPS (Ghostscript), no animated formats
+# Whatever a hostile file can make a decoder raise, except resource exhaustion (MemoryError,
+# OverflowError) and BudgetExceeded, which callers handle.
+_DECODER_ERRORS = (
+    OSError,
+    SyntaxError,
+    ValueError,
+    EOFError,
+    TypeError,
+    RuntimeError,
+    struct.error,
+    KeyError,
+    IndexError,
+    Image.DecompressionBombError,
+)
 _PNG_HEADER_BYTES = 24
 _PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
@@ -32,30 +46,52 @@ class ImageError(Exception):
         self.code = code
 
 
-def read_contained(root: Path, rel: str) -> bytes:
-    """The bytes of regular file ``rel`` under ``root``; symlinks are followed, then contained."""
-    try:
-        base = root.resolve(strict=True)
-        target = (base / rel).resolve(strict=True)
-    except OSError as error:
-        raise ImageError("missing") from error
-    if base not in target.parents:
-        raise ImageError("unsafe_path")
-    flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | getattr(os, "O_CLOEXEC", 0)
-    try:
-        fd = os.open(target, flags)
-    except OSError as error:
-        raise ImageError("unsafe_path") from error
+_DIR_FLAGS = os.O_RDONLY | os.O_NOFOLLOW | os.O_DIRECTORY | getattr(os, "O_CLOEXEC", 0)
+_FILE_FLAGS = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | getattr(os, "O_CLOEXEC", 0)
+
+
+def read_regular_fd(fd: int, limit: int) -> bytes:
+    """Read the regular file open on ``fd`` (closed here), at most ``limit`` bytes of it.
+
+    ``ImageError("unsafe_path")`` for anything but a regular file, ``"too_large"`` over ``limit``.
+    """
     with os.fdopen(fd, "rb") as handle:
         info = os.fstat(handle.fileno())
         if not stat.S_ISREG(info.st_mode):
             raise ImageError("unsafe_path")
-        if info.st_size > MAX_SOURCE_BYTES:
+        if info.st_size > limit:
             raise ImageError("too_large")
-        data = handle.read(min(info.st_size, MAX_SOURCE_BYTES) + 1)  # sized: no 256 MB buffer
-    if len(data) > MAX_SOURCE_BYTES:
+        data = handle.read(min(info.st_size, limit) + 1)  # sized: no 256 MB buffer
+    if len(data) > limit:
         raise ImageError("too_large")
     return data
+
+
+def _open_beneath(root: Path, rel: str) -> int:
+    """An fd on ``rel`` under ``root``, opened component by component without following symlinks,
+    so renaming a directory for a symlink between steps cannot redirect the read."""
+    parts = rel.split("/")
+    if any(part in ("", ".", "..") for part in parts):
+        raise ImageError("unsafe_path")
+    fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_CLOEXEC", 0))
+    try:
+        for part in parts[:-1]:
+            fd, previous = os.open(part, _DIR_FLAGS, dir_fd=fd), fd
+            os.close(previous)
+        return os.open(parts[-1], _FILE_FLAGS, dir_fd=fd)
+    finally:
+        os.close(fd)
+
+
+def read_contained(root: Path, rel: str) -> bytes:
+    """The bytes of regular file ``rel`` under ``root``. No path component may be a symlink."""
+    try:
+        fd = _open_beneath(root, rel)
+    except FileNotFoundError as error:
+        raise ImageError("missing") from error
+    except (OSError, ValueError) as error:  # ELOOP, ENOTDIR, a NUL byte, a lone surrogate ...
+        raise ImageError("unsafe_path" if isinstance(error, OSError) else "unreadable") from error
+    return read_regular_fd(fd, MAX_SOURCE_BYTES)
 
 
 def _png_pixels(data: bytes) -> int | None:
@@ -98,7 +134,7 @@ def decode_image(data: bytes, charge: Callable[[int], None] | None = None) -> np
             raise ImageError("too_large") from error
         except UnidentifiedImageError as error:
             raise ImageError("bad_format") from error
-        except (OSError, SyntaxError, ValueError, EOFError) as error:
+        except _DECODER_ERRORS as error:
             raise ImageError("corrupt") from error
     if rgb.shape != (height, width, 3):
         raise ImageError("corrupt")

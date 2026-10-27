@@ -8,8 +8,9 @@ right, not that red-eye works.
 ## Privacy
 
 The manifest is a required argument. Nothing is read except the manifest and the images it
-names, under the manifest's own directory (symlinks are followed, then contained; FIFOs and
-other non-regular files are refused). There are no default corpus paths and no automatic
+names, under the manifest's own directory. Each path is opened component by component
+without following symlinks, so a symlinked directory or file is refused and a late swap cannot
+redirect the read; FIFOs and other non-regular files are refused too. There are no default corpus paths and no automatic
 ingestion of anyone's photos. Results go to `--out DIR` (default
 `$XDG_CACHE_HOME/fastfoto-linux/redeye-eval/<manifest sha256[:12]>/`), which is refused inside
 the manifest directory or inside a fastfoto-linux checkout. Reports hold opaque ids, sha256
@@ -72,7 +73,11 @@ Only PNG, JPEG and single-frame TIFF are decoded. Eye radius is at most 10000 an
 within 1e7; eyes and boxes must lie inside the decoded image. One run has an image budget
 (20,000 images) and a pixel budget (2 billion decoded pixels, tuning images included, charged
 from each header before its pixels are decoded; undecodable headers are limited by the image
-budget only); going over is a usage error. A memory failure on a held-out item is the per-item
+budget only); going over is a usage error. The pixel budget is charged conservatively: images that later
+error still consume it, so a few hostile headers can exhaust it and abort the run with exit 2.
+The output directory is re-checked when it is opened for writing (not a symlink, not the
+manifest or a tuning directory or inside one, not a checkout), files are written relative to
+that descriptor, and a `--no-perf` run removes a `perf.json` left by an earlier run. A memory failure on a held-out item is the per-item
 error `resource`; on a tuning item it refuses the run. A failing profiling pass leaves the
 scores alone and is recorded in `perf.json` only.
 

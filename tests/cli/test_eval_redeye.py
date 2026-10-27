@@ -40,7 +40,12 @@ def test_a_tuning_run_writes_the_three_files_outside_the_corpus(corpus, tmp_path
     path, _, _ = corpus
     out = tmp_path / "results"
     assert main(["eval", "redeye", str(path), "--out", str(out)]) == 0
-    assert sorted(p.name for p in out.iterdir()) == ["perf.json", "report.json", "summary.md"]
+    assert sorted(p.name for p in out.iterdir()) == [
+        ".write.lock",
+        "perf.json",
+        "report.json",
+        "summary.md",
+    ]
     assert json.loads((out / "report.json").read_text())["split"] == "tuning"
     assert (out.stat().st_mode & 0o777) == 0o700
 

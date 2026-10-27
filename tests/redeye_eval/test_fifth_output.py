@@ -186,12 +186,16 @@ def test_a_run_directory_name_that_exists_is_never_reused(tmp_path, monkeypatch)
     monkeypatch.setattr(redeye_output, "datetime", _Clock)
     first = write_outputs(out, BUNDLE)
     assert first == "run-20260102T030405Z-deadbeef"
+    assert (out / first / "summary.md").read_text() == "S"
     with pytest.raises(ManifestError):
         write_outputs(out, {n: "NEW" for n in BUNDLE})
     assert (out / first / "report.json").read_text() == "R"
 
 
-def test_a_file_planted_in_the_run_directory_is_not_written_through(tmp_path, monkeypatch) -> None:
+@pytest.mark.parametrize("kind", ["symlink", "file"])
+def test_a_file_planted_in_the_run_directory_is_not_written_through(
+    tmp_path, monkeypatch, kind
+) -> None:
     out = tmp_path / "out"
     victim = tmp_path / "victim"
     victim.write_text("KEEP")
@@ -199,7 +203,10 @@ def test_a_file_planted_in_the_run_directory_is_not_written_through(tmp_path, mo
 
     def planting(out_fd):
         name, run_fd = real(out_fd)
-        os.symlink(victim, "summary.md", dir_fd=run_fd)
+        if kind == "symlink":
+            os.symlink(victim, "summary.md", dir_fd=run_fd)
+        else:
+            os.close(os.open("summary.md", os.O_WRONLY | os.O_CREAT, 0o600, dir_fd=run_fd))
         return name, run_fd
 
     monkeypatch.setattr(redeye_output, "_new_run_dir", planting)
@@ -208,6 +215,7 @@ def test_a_file_planted_in_the_run_directory_is_not_written_through(tmp_path, mo
     assert victim.read_text() == "KEEP"
     (run,) = _runs(out)  # not ours to remove: only what this call created is
     assert [p.name for p in run.iterdir()] == ["summary.md"]
+    assert (run / "summary.md").stat().st_size == 0 or kind == "symlink"
 
 
 def test_an_out_dir_already_inside_a_forbidden_tree_gets_no_file_at_all(

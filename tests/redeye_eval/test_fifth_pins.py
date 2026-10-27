@@ -134,3 +134,12 @@ def test_a_tuning_item_that_cannot_be_read_refuses_the_run(tmp_path, monkeypatch
     _failing_reads(monkeypatch)
     with pytest.raises(ManifestError, match="cannot be read"):
         run_eval(manifest, "heldout", detector=KeyedDetector(items), perf=False)
+
+
+def test_a_refused_manifest_leaves_no_descriptor_open(tmp_path) -> None:
+    bad = tmp_path / "bad.json"
+    bad.write_text("{}")
+    before = len(os.listdir("/proc/self/fd"))
+    with pytest.raises(ManifestError):
+        load_manifest(bad)
+    assert len(os.listdir("/proc/self/fd")) == before

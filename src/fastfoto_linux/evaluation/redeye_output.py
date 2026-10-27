@@ -203,16 +203,13 @@ def write_outputs(
     roots = _identities(forbidden)
     out_fd = _open_out_dir(out_dir, roots)
     try:
-        _refuse_if_contained(out_fd, roots)
         try:
             name, run_fd = _new_run_dir(out_fd)
         except OSError as error:
             raise ManifestError("cannot write the results directory") from error
         created: list[str] = []
         try:
-            for file in [n for n in files if n != "report.json"] + [
-                n for n in files if n == "report.json"
-            ]:
+            for file in sorted(files, key=lambda name: name == "report.json"):  # report last
                 _write_file(run_fd, file, files[file], created)
             _refuse_if_contained(run_fd, roots)
         except BaseException as error:

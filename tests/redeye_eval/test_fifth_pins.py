@@ -96,9 +96,7 @@ class _Failing:
 
 def _failing_reads(monkeypatch) -> None:
     real = os.fdopen
-    monkeypatch.setattr(
-        redeye_images.os, "fdopen", lambda fd, *a, **k: _Failing(real(fd, *a, **k))
-    )
+    monkeypatch.setattr(redeye_images.os, "fdopen", lambda fd, *a, **k: _Failing(real(fd, *a, **k)))
 
 
 def test_a_heldout_item_that_cannot_be_read_is_a_counted_error(tmp_path, monkeypatch) -> None:

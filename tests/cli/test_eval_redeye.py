@@ -22,6 +22,12 @@ pytestmark = pytest.mark.usefixtures("outside_checkout")
 UNIQUE = "uniq-corpus-77c1"
 
 
+def run_dir(out: Path) -> Path:
+    """The one run directory under ``out``."""
+    (only,) = [p for p in out.iterdir() if p.name.startswith("run-")]
+    return only
+
+
 @pytest.fixture
 def corpus(tmp_path, monkeypatch):
     items = clean_heldout_set()
@@ -36,31 +42,30 @@ def test_help_lists_the_eval_command(capsys) -> None:
     assert "--gate" in out and "--expect-manifest-sha256" in out and "--no-perf" in out
 
 
-def test_a_tuning_run_writes_the_three_files_outside_the_corpus(corpus, tmp_path) -> None:
+def test_a_tuning_run_writes_the_three_files_outside_the_corpus(corpus, tmp_path, capsys) -> None:
     path, _, _ = corpus
     out = tmp_path / "results"
     assert main(["eval", "redeye", str(path), "--out", str(out)]) == 0
-    assert sorted(p.name for p in out.iterdir()) == [
-        ".write.lock",
-        "perf.json",
-        "report.json",
-        "summary.md",
-    ]
-    assert json.loads((out / "report.json").read_text())["split"] == "tuning"
-    assert (out.stat().st_mode & 0o777) == 0o700
+    run = run_dir(out)  # the only entry: no lock, no temporary file
+    assert [p.name for p in out.iterdir()] == [run.name]
+    assert sorted(p.name for p in run.iterdir()) == ["perf.json", "report.json", "summary.md"]
+    assert json.loads((run / "report.json").read_text())["split"] == "tuning"
+    assert (out.stat().st_mode & 0o777) == 0o700 and (run.stat().st_mode & 0o777) == 0o700
+    assert run.name in capsys.readouterr().out
 
 
 def test_no_perf_skips_perf_json(corpus, tmp_path) -> None:
     out = tmp_path / "results"
     assert main(["eval", "redeye", str(corpus[0]), "--out", str(out), "--no-perf"]) == 0
-    assert not (out / "perf.json").exists()
+    assert not (run_dir(out) / "perf.json").exists()
 
 
 def test_the_default_out_dir_is_the_cache(corpus, tmp_path, monkeypatch) -> None:
     cache = tmp_path / "cache"
     monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
     assert main(["eval", "redeye", str(corpus[0]), "--no-perf"]) == 0
-    assert (cache / "fastfoto-linux" / "redeye-eval" / corpus[2][:12] / "report.json").is_file()
+    out = cache / "fastfoto-linux" / "redeye-eval" / corpus[2][:12]
+    assert (run_dir(out) / "report.json").is_file()
 
 
 def test_gate_needs_heldout_and_a_frozen_manifest_hash(corpus, tmp_path, capsys) -> None:
@@ -137,7 +142,7 @@ def test_a_failing_gate_exits_five_and_still_writes_the_report(
     ]
     assert main(args) == 5
     assert "G1" in capsys.readouterr().out
-    assert (out / "report.json").is_file()
+    assert (run_dir(out) / "report.json").is_file()
 
 
 def test_a_wrong_expected_hash_exits_five(corpus, tmp_path) -> None:

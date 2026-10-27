@@ -129,15 +129,18 @@ def test_a_fifo_named_pyproject_toml_does_not_hang_the_checkout_check(tmp_path) 
     assert not thread.is_alive(), "the checkout check blocked on a FIFO"
 
 
-def test_a_no_perf_rerun_removes_the_stale_perf_json(tmp_path, monkeypatch) -> None:
+def test_a_no_perf_rerun_is_a_new_run_and_leaves_the_earlier_one_alone(
+    tmp_path, monkeypatch
+) -> None:
     items = clean_heldout_set()
     path = write_corpus(tmp_path / "c", items)
     monkeypatch.setattr(cmd_eval, "make_detector", lambda: KeyedDetector(items))
     out = tmp_path / "r"
     assert main(["eval", "redeye", str(path), "--out", str(out)]) == 0
-    assert (out / "perf.json").exists()
     assert main(["eval", "redeye", str(path), "--out", str(out), "--no-perf"]) == 0
-    assert not (out / "perf.json").exists()
+    runs = list(out.iterdir())
+    assert len(runs) == 2  # nothing from the earlier run was removed
+    assert sorted((run / "perf.json").exists() for run in runs) == [False, True]
 
 
 @pytest.mark.parametrize("field", ["x", "y", "r"])

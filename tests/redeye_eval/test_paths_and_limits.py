@@ -183,11 +183,13 @@ def test_default_out_dir_is_in_the_cache_and_keyed_by_the_manifest_hash(
 
 
 @pytest.mark.usefixtures("outside_checkout")
-def test_outputs_are_private_and_replaced_atomically(tmp_path) -> None:
+def test_outputs_are_private_and_every_run_is_a_new_directory(tmp_path) -> None:
     out = tmp_path / "out"
-    write_outputs(out, {"report.json": "one\n"})
-    write_outputs(out, {"report.json": "two\n"})
-    assert (out / "report.json").read_text() == "two\n"
+    first = write_outputs(out, {"report.json": "one\n"})
+    second = write_outputs(out, {"report.json": "two\n"})
+    assert (out / first / "report.json").read_text() == "one\n"
+    assert (out / second / "report.json").read_text() == "two\n"
     assert (out.stat().st_mode & 0o777) == 0o700
-    assert ((out / "report.json").stat().st_mode & 0o777) == 0o600
-    assert sorted(p.name for p in out.iterdir()) == [".write.lock", "report.json"]
+    assert ((out / first).stat().st_mode & 0o777) == 0o700
+    assert ((out / first / "report.json").stat().st_mode & 0o777) == 0o600
+    assert sorted(p.name for p in out.iterdir()) == sorted([first, second])

@@ -1,12 +1,12 @@
-"""Where results go: outside the repo, atomically, with private permissions."""
+"""Where results go: outside the repo, in a new directory per run, with private permissions."""
 
 import contextlib
 import errno
-import fcntl
 import os
-import time
+import secrets
 import tomllib
 from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastfoto_linux.evaluation.redeye_images import ImageError, read_regular_fd
@@ -16,21 +16,35 @@ PROJECT_NAME = "fastfoto-linux"
 MAX_PYPROJECT_BYTES = 1_000_000
 DIR_MODE = 0o700
 FILE_MODE = 0o600
-LOCK_NAME = ".write.lock"
-LOCK_WAIT_SECONDS = 5.0
-LOCK_POLL_SECONDS = 0.05
-_DIR_FLAGS = os.O_RDONLY | os.O_NOFOLLOW | os.O_DIRECTORY | getattr(os, "O_CLOEXEC", 0)
+_CLOEXEC = getattr(os, "O_CLOEXEC", 0)
+_DIR_FLAGS = os.O_RDONLY | os.O_NOFOLLOW | os.O_DIRECTORY | _CLOEXEC
+_CREATE_FLAGS = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | _CLOEXEC
+_OUTSIDE_MANIFEST = "the output directory must be outside the manifest directory"
+_OUTSIDE_CHECKOUT = "the output directory must be outside the fastfoto-linux checkout"
+
+Identity = tuple[int, int]  # (st_dev, st_ino): what a directory is, whatever it is called now
 
 
-def _is_project_checkout(directory: Path) -> bool:
-    if not (directory / ".git").exists():
-        return False
+def _fd_is_checkout(fd: int) -> bool:
+    """The directory open on ``fd`` is a fastfoto-linux checkout (a ``.git`` and our pyproject)."""
     try:
-        fd = os.open(directory / "pyproject.toml", os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
-        data = read_regular_fd(fd, MAX_PYPROJECT_BYTES)  # a FIFO here must not block
+        os.stat(".git", dir_fd=fd)
+        file = os.open("pyproject.toml", os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=fd)
+        data = read_regular_fd(file, MAX_PYPROJECT_BYTES)  # a FIFO here must not block
         return tomllib.loads(data.decode()).get("project", {}).get("name") == PROJECT_NAME
     except (OSError, ValueError, ImageError):
         return False
+
+
+def _is_project_checkout(directory: Path) -> bool:
+    try:
+        fd = os.open(directory, _DIR_FLAGS)
+    except OSError:
+        return False
+    try:
+        return _fd_is_checkout(fd)
+    finally:
+        os.close(fd)
 
 
 def _default_out(manifest: Manifest, env: Mapping[str, str]) -> Path:
@@ -42,12 +56,13 @@ def _default_out(manifest: Manifest, env: Mapping[str, str]) -> Path:
 
 
 def check_out_allowed(path: Path, forbidden: Sequence[Path]) -> None:
-    """Refuse ``path`` inside (or equal to) a forbidden root or a fastfoto-linux checkout."""
+    """Refuse ``path`` inside (or equal to) a forbidden root or a fastfoto-linux checkout (an early,
+    friendly check by name; ``write_outputs`` repeats it by identity)."""
     for root in forbidden:
         if root == path or root in path.parents:
-            raise ManifestError("the output directory must be outside the manifest directory")
+            raise ManifestError(_OUTSIDE_MANIFEST)
     if any(_is_project_checkout(d) for d in (path, *path.parents)):
-        raise ManifestError("the output directory must be outside the fastfoto-linux checkout")
+        raise ManifestError(_OUTSIDE_CHECKOUT)
 
 
 def resolve_out_dir(manifest: Manifest, out: Path | None, env: Mapping[str, str]) -> Path:
@@ -57,35 +72,50 @@ def resolve_out_dir(manifest: Manifest, out: Path | None, env: Mapping[str, str]
     return resolved
 
 
-def _temporary(name: str) -> str:
-    return f".{name}.{os.getpid()}.tmp"
-
-
-def _write_temporary(dir_fd: int, name: str, text: str) -> None:
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
-    fd = os.open(_temporary(name), flags, FILE_MODE, dir_fd=dir_fd)
-    with os.fdopen(fd, "w", encoding="utf-8") as handle:
-        handle.write(text)
-
-
-def _verify_dir(fd: int, forbidden: Sequence[Path]) -> None:
-    """``fd`` is still a linked directory that is neither a forbidden root, inside one, nor inside
-    a checkout, whatever happened to its path since. One syscall can still pass between this
-    check and the use of ``fd``."""
-    identity = os.fstat(fd)
-    if identity.st_nlink == 0:
-        raise ManifestError("the output directory was removed while writing")
+def _identities(forbidden: Sequence[Path | Identity]) -> frozenset[Identity]:
+    """Identities of the forbidden roots; a ``Path`` is looked at now (a missing one cannot be
+    a corpus), an ``Identity`` was taken from a descriptor held since the run began."""
+    found: set[Identity] = set()
     for root in forbidden:
+        if isinstance(root, tuple):
+            found.add(root)
+            continue
         try:
             info = os.stat(root)
-        except OSError:  # not created (yet): the path check below covers it
+        except OSError:
             continue
-        if (info.st_dev, info.st_ino) == (identity.st_dev, identity.st_ino):
-            raise ManifestError("the output directory must be outside the manifest directory")
-    check_out_allowed(Path(os.readlink(f"/proc/self/fd/{fd}")), [r.resolve() for r in forbidden])
+        found.add((info.st_dev, info.st_ino))
+    return frozenset(found)
 
 
-def _step(parent: int, part: str, forbidden: Sequence[Path], created: list) -> int:
+def _refuse_if_contained(fd: int, forbidden: frozenset[Identity]) -> None:
+    """Ascend from the directory open on ``fd`` with ``openat("..")`` to ``/`` and refuse if it
+    or any ancestor is a forbidden root (by identity, not name) or a checkout. A rename racing
+    the instant after the last such check cannot be seen by user-space code."""
+    current = os.dup(fd)
+    try:
+        info = os.fstat(current)
+        if info.st_nlink == 0:
+            raise ManifestError("the output directory was removed while writing")
+        while True:
+            here = (info.st_dev, info.st_ino)
+            if here in forbidden:
+                raise ManifestError(_OUTSIDE_MANIFEST)
+            if _fd_is_checkout(current):
+                raise ManifestError(_OUTSIDE_CHECKOUT)
+            parent = os.open("..", _DIR_FLAGS, dir_fd=current)
+            info, previous = os.fstat(parent), current
+            current = parent
+            os.close(previous)
+            if (info.st_dev, info.st_ino) == here:  # ".." of "/" is "/"
+                return
+    except OSError as error:
+        raise ManifestError("cannot verify the output directory") from error
+    finally:
+        os.close(current)
+
+
+def _step(parent: int, part: str, forbidden: frozenset[Identity], created: list) -> int:
     """An fd on ``part`` under ``parent`` (no symlink followed); a missing one is created,
     recorded in ``created`` and checked at once."""
     try:
@@ -100,14 +130,14 @@ def _step(parent: int, part: str, forbidden: Sequence[Path], created: list) -> i
     created.append((parent, part))
     child = os.open(part, _DIR_FLAGS, dir_fd=parent)
     try:
-        _verify_dir(child, forbidden)
+        _refuse_if_contained(child, forbidden)
     except BaseException:
         os.close(child)
         raise
     return child
 
 
-def _open_out_dir(out_dir: Path, forbidden: Sequence[Path]) -> int:
+def _open_out_dir(out_dir: Path, forbidden: frozenset[Identity]) -> int:
     """An fd on the output directory, walked from ``/`` without following a symlink and checked
     now. Directories created on the way are checked as they appear; if anything is refused,
     exactly the ones this call created are removed again."""
@@ -117,7 +147,7 @@ def _open_out_dir(out_dir: Path, forbidden: Sequence[Path]) -> int:
         held.append(os.open("/", _DIR_FLAGS))
         for part in Path(os.path.abspath(out_dir)).parts[1:]:
             held.append(_step(held[-1], part, forbidden, created))
-        _verify_dir(held[-1], forbidden)
+        _refuse_if_contained(held[-1], forbidden)
     except BaseException:
         for parent, name in reversed(created):
             with contextlib.suppress(OSError):
@@ -130,70 +160,68 @@ def _open_out_dir(out_dir: Path, forbidden: Sequence[Path]) -> int:
     return held[-1]
 
 
-def _acquire_lock(dir_fd: int) -> int:
-    """An exclusive advisory flock on ``.write.lock`` in the directory, waiting at most
-    ``LOCK_WAIT_SECONDS``; close the returned fd to release it."""
-    flags = os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
-    lock = os.open(LOCK_NAME, flags, FILE_MODE, dir_fd=dir_fd)
-    deadline = time.monotonic() + LOCK_WAIT_SECONDS
+def _new_run_dir(out_fd: int) -> tuple[str, int]:
+    """Make ``run-<UTC time>-<8 hex>`` under the output directory (``mkdir`` fails if it exists)
+    and open it."""
+    name = f"run-{datetime.now(UTC):%Y%m%dT%H%M%SZ}-{secrets.token_hex(4)}"
+    os.mkdir(name, DIR_MODE, dir_fd=out_fd)
     try:
-        while True:
-            try:
-                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                return lock
-            except BlockingIOError:
-                if time.monotonic() >= deadline:
-                    raise ManifestError("another run is writing to this output directory") from None
-                time.sleep(LOCK_POLL_SECONDS)
+        return name, os.open(name, _DIR_FLAGS, dir_fd=out_fd)
     except BaseException:
-        os.close(lock)
+        os.rmdir(name, dir_fd=out_fd)
         raise
 
 
-def _write_bundle(
-    fd: int, files: Mapping[str, str], forbidden: Sequence[Path], stale: Sequence[str]
-) -> None:
-    """Temporary files first, then the replaces in a fixed order with ``report.json`` last (so a
-    new report implies the rest is new too); containment is re-verified before every step."""
-    order = [n for n in files if n != "report.json"] + [n for n in files if n == "report.json"]
-    pending: list[str] = []
-    try:
-        for name in order:
-            _verify_dir(fd, forbidden)
-            pending.append(name)
-            _write_temporary(fd, name, files[name])
-        while pending:
-            _verify_dir(fd, forbidden)
-            name = pending[0]
-            os.replace(_temporary(name), name, src_dir_fd=fd, dst_dir_fd=fd)
-            pending.pop(0)
-        for name in stale:
-            _verify_dir(fd, forbidden)
-            with contextlib.suppress(FileNotFoundError):
-                os.unlink(name, dir_fd=fd)
-    except BaseException:
-        for name in pending:
-            with contextlib.suppress(FileNotFoundError):
-                os.unlink(_temporary(name), dir_fd=fd)
-        raise
+def _write_file(run_fd: int, name: str, text: str, created: list[str]) -> None:
+    """Create ``name`` in the run directory (exclusively, no symlink, mode 0o600) and fill it."""
+    fd = os.open(name, _CREATE_FLAGS, FILE_MODE, dir_fd=run_fd)
+    created.append(name)
+    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+        handle.write(text)
+
+
+def _discard(out_fd: int, run_name: str, run_fd: int, created: Sequence[str]) -> None:
+    """Remove exactly what this call made: its files and then its run directory."""
+    for name in created:
+        with contextlib.suppress(OSError):
+            os.unlink(name, dir_fd=run_fd)
+    with contextlib.suppress(OSError):
+        os.rmdir(run_name, dir_fd=out_fd)
 
 
 def write_outputs(
-    out_dir: Path,
-    files: Mapping[str, str],
-    forbidden: Sequence[Path] = (),
-    stale: Sequence[str] = (),
-) -> None:
-    """Write the bundle atomically per file (tmp + replace, relative to an fd on the directory)
-    with mode 0o600 into a 0o700 directory, serialized by a per-directory advisory lock; remove
-    the ``stale`` names (outputs of an earlier run that this run does not produce)."""
-    fd = _open_out_dir(out_dir, forbidden)
+    out_dir: Path, files: Mapping[str, str], forbidden: Sequence[Path | Identity] = ()
+) -> str:
+    """Write the bundle into a new ``run-...`` directory under ``out_dir`` and return its name.
+
+    Nothing existing is touched. ``report.json`` is created last, so a run directory without
+    it is incomplete. Containment (not a forbidden root, not inside one, not in a checkout) is
+    checked by identity before the run directory is made and again after the last file; if the
+    check or any write fails, the files and the directory this call made are removed and the
+    error is a ``ManifestError``.
+    """
+    roots = _identities(forbidden)
+    out_fd = _open_out_dir(out_dir, roots)
     try:
-        _verify_dir(fd, forbidden)  # again, before the lock file is created
-        lock = _acquire_lock(fd)
+        _refuse_if_contained(out_fd, roots)
         try:
-            _write_bundle(fd, files, forbidden, stale)
+            name, run_fd = _new_run_dir(out_fd)
+        except OSError as error:
+            raise ManifestError("cannot write the results directory") from error
+        created: list[str] = []
+        try:
+            for file in [n for n in files if n != "report.json"] + [
+                n for n in files if n == "report.json"
+            ]:
+                _write_file(run_fd, file, files[file], created)
+            _refuse_if_contained(run_fd, roots)
+        except BaseException as error:
+            _discard(out_fd, name, run_fd, created)
+            if isinstance(error, OSError):
+                raise ManifestError("cannot write the results directory") from error
+            raise
         finally:
-            os.close(lock)
+            os.close(run_fd)
+        return name
     finally:
-        os.close(fd)
+        os.close(out_fd)

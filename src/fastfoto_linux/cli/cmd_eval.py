@@ -7,7 +7,7 @@ from pathlib import Path
 from fastfoto_linux.cli.errors import EXIT_GATE_FAILED, EXIT_OK, EXIT_USAGE, CliError
 from fastfoto_linux.cli.options import common_parent
 from fastfoto_linux.enhance.faces import FaceDetector
-from fastfoto_linux.evaluation.redeye_manifest import SPLITS, ManifestError, load_manifest
+from fastfoto_linux.evaluation.redeye_manifest import SPLITS, Manifest, ManifestError, load_manifest
 from fastfoto_linux.evaluation.redeye_output import resolve_out_dir, write_outputs
 from fastfoto_linux.evaluation.redeye_report import (
     GateOptions,
@@ -73,12 +73,36 @@ def _check_usage(args: argparse.Namespace) -> None:
             raise CliError("--min-precision and --min-recall are fractions from 0 to 1", EXIT_USAGE)
 
 
+def _load_all(args: argparse.Namespace) -> tuple[Manifest, list[Manifest]]:
+    """The manifest and the tuning manifests; each keeps its directory open (pinned) until
+    the caller closes it."""
+    loaded: list[Manifest] = []
+    try:
+        for path in (args.manifest, *args.tuning_manifest):
+            loaded.append(load_manifest(path))
+        return loaded[0], loaded[1:]
+    except BaseException:
+        for manifest in loaded:
+            manifest.close()
+        raise
+
+
 def run(args: argparse.Namespace) -> int:
     _check_usage(args)
     try:
-        manifest = load_manifest(args.manifest)
+        manifest, tuning = _load_all(args)
+    except ManifestError as error:
+        raise CliError(str(error), EXIT_USAGE) from error
+    try:
+        return _run_loaded(args, manifest, tuning)
+    finally:
+        for loaded in (manifest, *tuning):
+            loaded.close()
+
+
+def _run_loaded(args: argparse.Namespace, manifest: Manifest, tuning: list[Manifest]) -> int:
+    try:
         check_declared_splits(manifest)
-        tuning = [load_manifest(path) for path in args.tuning_manifest]
         out_dir = resolve_out_dir(manifest, args.out, os.environ)
         result = run_eval(
             manifest,
@@ -94,16 +118,14 @@ def run(args: argparse.Namespace) -> int:
     if not args.no_perf:
         files["perf.json"] = perf_json(result)
     try:
-        write_outputs(
-            out_dir,
-            files,
-            forbidden=[manifest.root, *(m.root for m in tuning)],
-            stale=("perf.json",) if args.no_perf else (),
+        run_name = write_outputs(
+            out_dir, files, forbidden=[m.identity for m in (manifest, *tuning)]
         )
     except ManifestError as error:
         raise CliError(str(error), EXIT_USAGE) from error
     except OSError as error:
         raise CliError("cannot write the results directory") from error
+    print(f"results: {out_dir / run_name}")
     totals = report["totals"]
     print(f"evaluated {totals['images']} image(s), {totals['errored']} errored")  # type: ignore[index]
     if not args.gate:

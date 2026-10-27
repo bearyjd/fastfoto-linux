@@ -271,7 +271,8 @@ def write_outputs(
     not inside one, not in a checkout) is checked by identity before the run directory is made
     and again after the last file, before the report is published; if the check or any write
     fails, the files and the directory this call made are removed. Every failure is a
-    ``ManifestError``.
+    ``ManifestError``; if only closing a directory descriptor fails after the bundle was written
+    and synced, the complete bundle is kept (not deleted) and the ``ManifestError`` says so.
     """
     roots = _identities(forbidden)
     try:
@@ -298,11 +299,25 @@ def write_outputs(
                 _publish_report(run_fd, created)
         except BaseException as error:
             _discard(out_fd, name, run_fd, created)
+            with contextlib.suppress(OSError):  # the original failure wins over the close's
+                os.close(run_fd)
             if isinstance(error, (OSError, ValueError)) and not isinstance(error, ManifestError):
                 raise ManifestError("cannot write the results directory") from error
             raise
-        finally:
+        close_error: OSError | None = None
+        try:
             os.close(run_fd)
-        return name
-    finally:
+        except OSError as error:
+            close_error = error
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.close(out_fd)
+        raise
+    try:
         os.close(out_fd)
+    except OSError as error:
+        close_error = close_error or error
+    if close_error is not None:
+        # Everything is written and synced: the bundle is kept, but the caller is told.
+        raise ManifestError("cannot write the results directory") from close_error
+    return name

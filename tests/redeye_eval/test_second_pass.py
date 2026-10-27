@@ -86,10 +86,10 @@ def test_errored_negatives_are_counted_beside_the_damage_figure(tmp_path) -> Non
 def _flaky_loader(monkeypatch, bad: str, failure):
     real = redeye_images.load_image
 
-    def load(root, rel, sha, charge=None):
+    def load(root, rel, sha, charge=None, charge_bytes=None):
         if rel == f"{bad}.png":
             raise failure
-        return real(root, rel, sha, charge)
+        return real(root, rel, sha, charge, charge_bytes)
 
     monkeypatch.setattr(redeye_images, "load_image", load)
 

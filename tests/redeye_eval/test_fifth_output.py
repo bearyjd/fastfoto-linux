@@ -60,17 +60,27 @@ def test_the_name_returned_is_the_run_directory(tmp_path) -> None:
     assert [p.name for p in _runs(out)] == [name]
 
 
-def test_report_json_is_created_last(tmp_path, monkeypatch) -> None:
-    names, real = [], os.open
+def test_report_json_is_published_last_from_a_synced_temp_file(tmp_path, monkeypatch) -> None:
+    events, real_open, real_link = [], os.open, os.link
 
-    def recording(path, *args, **kwargs):
-        names.append(str(path))
-        return real(path, *args, **kwargs)
+    def recording_open(path, *args, **kwargs):
+        events.append(("open", str(path)))
+        return real_open(path, *args, **kwargs)
 
-    monkeypatch.setattr(redeye_output.os, "open", recording)
+    def recording_link(src, dst, **kwargs):
+        events.append(("link", f"{src}>{dst}"))
+        return real_link(src, dst, **kwargs)
+
+    monkeypatch.setattr(redeye_output.os, "open", recording_open)
+    monkeypatch.setattr(redeye_output.os, "link", recording_link)
     write_outputs(tmp_path / "out", BUNDLE)
-    written = [n for n in names if n in BUNDLE]
-    assert written[-1] == "report.json" and sorted(written) == sorted(BUNDLE)
+    ours = [e for e in events if e[1] in (*BUNDLE, ".report.tmp", ".report.tmp>report.json")]
+    assert ("open", "report.json") not in ours  # never opened for writing in place
+    assert ours[-1] == ("link", ".report.tmp>report.json")
+    assert sorted(n for k, n in ours if k == "open") == sorted(
+        [".report.tmp", "summary.md", "perf.json"]
+    )
+    assert ours.index(("open", ".report.tmp")) > ours.index(("open", "perf.json"))
 
 
 def test_two_writers_never_share_a_directory_even_if_one_pauses(tmp_path, monkeypatch) -> None:
@@ -101,7 +111,7 @@ def test_two_writers_never_share_a_directory_even_if_one_pauses(tmp_path, monkey
         assert len({(run / n).read_text() for n in BUNDLE}) == 1, run
 
 
-@pytest.mark.parametrize("failing", ["summary.md", "perf.json", "report.json"])
+@pytest.mark.parametrize("failing", ["summary.md", "perf.json", ".report.tmp"])
 def test_a_failed_write_removes_what_this_call_created_and_touches_nothing_else(
     tmp_path, monkeypatch, failing
 ) -> None:
@@ -140,7 +150,7 @@ def test_an_out_dir_renamed_into_the_corpus_after_the_last_write_leaves_nothing(
     corpus.mkdir()
     out = tmp_path / "out"
     out.mkdir()
-    _hook_open(monkeypatch, "report.json", lambda: out.rename(corpus / "moved"))
+    _hook_open(monkeypatch, ".report.tmp", lambda: out.rename(corpus / "moved"))
     with pytest.raises(ManifestError):
         write_outputs(out, BUNDLE, forbidden=[_identity(corpus)])
     assert [p for p in corpus.rglob("*") if p.is_file()] == []
@@ -214,8 +224,11 @@ def test_a_file_planted_in_the_run_directory_is_not_written_through(
         write_outputs(out, BUNDLE)
     assert victim.read_text() == "KEEP"
     (run,) = _runs(out)  # not ours to remove: only what this call created is
+    planted = run / "summary.md"
     assert [p.name for p in run.iterdir()] == ["summary.md"]
-    assert (run / "summary.md").stat().st_size == 0 or kind == "symlink"
+    assert planted.is_symlink() == (kind == "symlink")
+    if kind == "file":
+        assert planted.read_bytes() == b""  # still the empty file that was planted
 
 
 def test_an_out_dir_already_inside_a_forbidden_tree_gets_no_file_at_all(

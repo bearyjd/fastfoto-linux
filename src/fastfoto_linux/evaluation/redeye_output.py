@@ -9,7 +9,7 @@ from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
-from fastfoto_linux.evaluation.redeye_images import ImageError, read_regular_fd
+from fastfoto_linux.evaluation.redeye_images import ImageError, fdopen_owned, read_regular_fd
 from fastfoto_linux.evaluation.redeye_manifest import Manifest, ManifestError
 
 PROJECT_NAME = "fastfoto-linux"
@@ -21,19 +21,43 @@ _DIR_FLAGS = os.O_RDONLY | os.O_NOFOLLOW | os.O_DIRECTORY | _CLOEXEC
 _CREATE_FLAGS = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | _CLOEXEC
 _OUTSIDE_MANIFEST = "the output directory must be outside the manifest directory"
 _OUTSIDE_CHECKOUT = "the output directory must be outside the fastfoto-linux checkout"
+_UNVERIFIED = "cannot verify the output location"
+_ABSENT = (errno.ENOENT, errno.ENOTDIR, errno.ELOOP)  # no such entry, or a symlink in its place
+REPORT = "report.json"
+REPORT_TEMP = ".report.tmp"  # the report is built here and published whole
+RUN_NAME_TRIES = 3
 
 Identity = tuple[int, int]  # (st_dev, st_ino): what a directory is, whatever it is called now
 
 
+def _is_our_pyproject(data: bytes) -> bool:
+    """``data`` is a pyproject.toml of this project; one that cannot be parsed is someone else's."""
+    try:
+        project = tomllib.loads(data.decode()).get("project")
+    except (ValueError, RecursionError):  # TOMLDecodeError and UnicodeDecodeError are ValueErrors
+        return False
+    return isinstance(project, dict) and project.get("name") == PROJECT_NAME
+
+
 def _fd_is_checkout(fd: int) -> bool:
-    """The directory open on ``fd`` is a fastfoto-linux checkout (a ``.git`` and our pyproject)."""
+    """The directory open on ``fd`` is a fastfoto-linux checkout (a ``.git`` and our pyproject).
+
+    A missing or symlinked entry means no. A failure to look (EIO, EACCES, ...) is a
+    ``ManifestError``: what cannot be seen cannot be called safe.
+    """
     try:
         os.stat(".git", dir_fd=fd)
         file = os.open("pyproject.toml", os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=fd)
         data = read_regular_fd(file, MAX_PYPROJECT_BYTES)  # a FIFO here must not block
-        return tomllib.loads(data.decode()).get("project", {}).get("name") == PROJECT_NAME
-    except (OSError, ValueError, ImageError):
-        return False
+    except OSError as error:
+        if error.errno in _ABSENT:
+            return False
+        raise ManifestError(_UNVERIFIED) from error
+    except ImageError as error:
+        if error.code == "unreadable":
+            raise ManifestError(_UNVERIFIED) from error
+        return False  # not a regular file, or too large to be ours
+    return _is_our_pyproject(data)
 
 
 def _is_project_checkout(directory: Path) -> bool:
@@ -104,9 +128,9 @@ def _refuse_if_contained(fd: int, forbidden: frozenset[Identity]) -> None:
             if _fd_is_checkout(current):
                 raise ManifestError(_OUTSIDE_CHECKOUT)
             parent = os.open("..", _DIR_FLAGS, dir_fd=current)
-            info, previous = os.fstat(parent), current
-            current = parent
-            os.close(previous)
+            os.close(current)
+            current = parent  # owned from here on: the finally closes it, whatever raises
+            info = os.fstat(current)
             if (info.st_dev, info.st_ino) == here:  # ".." of "/" is "/"
                 return
     except OSError as error:
@@ -161,23 +185,40 @@ def _open_out_dir(out_dir: Path, forbidden: frozenset[Identity]) -> int:
 
 
 def _new_run_dir(out_fd: int) -> tuple[str, int]:
-    """Make ``run-<UTC time>-<8 hex>`` under the output directory (``mkdir`` fails if it exists)
-    and open it."""
-    name = f"run-{datetime.now(UTC):%Y%m%dT%H%M%SZ}-{secrets.token_hex(4)}"
-    os.mkdir(name, DIR_MODE, dir_fd=out_fd)
-    try:
-        return name, os.open(name, _DIR_FLAGS, dir_fd=out_fd)
-    except BaseException:
-        os.rmdir(name, dir_fd=out_fd)
-        raise
+    """Make ``run-<UTC time>-<8 hex>`` under the output directory (``mkdir`` fails if it exists,
+    and a taken name is retried with a new token) and open it."""
+    for _ in range(RUN_NAME_TRIES):
+        name = f"run-{datetime.now(UTC):%Y%m%dT%H%M%SZ}-{secrets.token_hex(4)}"
+        try:
+            os.mkdir(name, DIR_MODE, dir_fd=out_fd)
+        except FileExistsError:
+            continue
+        try:
+            return name, os.open(name, _DIR_FLAGS, dir_fd=out_fd)
+        except BaseException:
+            os.rmdir(name, dir_fd=out_fd)
+            raise
+    raise ManifestError("cannot choose a new run directory name")
 
 
 def _write_file(run_fd: int, name: str, text: str, created: list[str]) -> None:
-    """Create ``name`` in the run directory (exclusively, no symlink, mode 0o600) and fill it."""
+    """Create ``name`` in the run directory (exclusively, no symlink, mode 0o600), fill it and
+    flush it to storage."""
     fd = os.open(name, _CREATE_FLAGS, FILE_MODE, dir_fd=run_fd)
     created.append(name)
-    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+    with fdopen_owned(fd, "w", encoding="utf-8") as handle:
         handle.write(text)
+        handle.flush()
+        os.fsync(handle.fileno())
+
+
+def _publish_report(run_fd: int, created: list[str]) -> None:
+    """Give the finished temp file its name. ``link`` never replaces, so a present
+    ``report.json`` is always a complete one."""
+    os.link(REPORT_TEMP, REPORT, src_dir_fd=run_fd, dst_dir_fd=run_fd)
+    created.append(REPORT)
+    os.unlink(REPORT_TEMP, dir_fd=run_fd)
+    os.fsync(run_fd)
 
 
 def _discard(out_fd: int, run_name: str, run_fd: int, created: Sequence[str]) -> None:
@@ -194,14 +235,19 @@ def write_outputs(
 ) -> str:
     """Write the bundle into a new ``run-...`` directory under ``out_dir`` and return its name.
 
-    Nothing existing is touched. ``report.json`` is created last, so a run directory without
-    it is incomplete. Containment (not a forbidden root, not inside one, not in a checkout) is
-    checked by identity before the run directory is made and again after the last file; if the
-    check or any write fails, the files and the directory this call made are removed and the
-    error is a ``ManifestError``.
+    Nothing existing is touched. ``report.json`` is written whole to ``.report.tmp``, synced and
+    only then linked into place, so a ``report.json`` that exists is complete (barring storage
+    that lies) and a run directory without it is incomplete. Containment (not a forbidden root,
+    not inside one, not in a checkout) is checked by identity before the run directory is made
+    and again after the last file, before the report is published; if the check or any write
+    fails, the files and the directory this call made are removed. Every failure is a
+    ``ManifestError``.
     """
     roots = _identities(forbidden)
-    out_fd = _open_out_dir(out_dir, roots)
+    try:
+        out_fd = _open_out_dir(out_dir, roots)
+    except OSError as error:
+        raise ManifestError("cannot write the results directory") from error
     try:
         try:
             name, run_fd = _new_run_dir(out_fd)
@@ -209,12 +255,14 @@ def write_outputs(
             raise ManifestError("cannot write the results directory") from error
         created: list[str] = []
         try:
-            for file in sorted(files, key=lambda name: name == "report.json"):  # report last
-                _write_file(run_fd, file, files[file], created)
+            for file in sorted(files, key=lambda name: name == REPORT):  # the report last
+                _write_file(run_fd, REPORT_TEMP if file == REPORT else file, files[file], created)
             _refuse_if_contained(run_fd, roots)
+            if REPORT in files:
+                _publish_report(run_fd, created)
         except BaseException as error:
             _discard(out_fd, name, run_fd, created)
-            if isinstance(error, OSError):
+            if isinstance(error, (OSError, ValueError)) and not isinstance(error, ManifestError):
                 raise ManifestError("cannot write the results directory") from error
             raise
         finally:

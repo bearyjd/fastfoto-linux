@@ -129,8 +129,6 @@ def _run_loaded(args: argparse.Namespace, manifest: Manifest, tuning: list[Manif
         )
     except ManifestError as error:
         raise CliError(str(error), EXIT_USAGE) from error
-    except OSError as error:
-        raise CliError("cannot write the results directory") from error
     print(f"results: {out_dir / run_name}")
     totals = report["totals"]
     print(f"evaluated {totals['images']} image(s), {totals['errored']} errored")  # type: ignore[index]

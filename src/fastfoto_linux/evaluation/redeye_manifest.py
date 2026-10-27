@@ -1,5 +1,6 @@
 """The red-eye evaluation manifest: a versioned JSON file, validated strictly."""
 
+import contextlib
 import hashlib
 import json
 import math
@@ -314,9 +315,13 @@ def _read_manifest_file(dir_fd: int, name: str) -> bytes:
     try:
         if not stat.S_ISREG(os.fstat(fd).st_mode):
             raise _fail("the manifest must be a regular file")
-        return read_up_to(fd, MAX_MANIFEST_BYTES + 1)
-    finally:
-        os.close(fd)
+        data = read_up_to(fd, MAX_MANIFEST_BYTES + 1)
+    except BaseException:
+        with contextlib.suppress(OSError):  # the read's failure wins over the close's
+            os.close(fd)
+        raise
+    os.close(fd)  # an OSError is a ManifestError in load_manifest
+    return data
 
 
 def load_manifest(path: Path) -> Manifest:

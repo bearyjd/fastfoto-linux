@@ -50,8 +50,11 @@ def _fd_is_checkout(fd: int) -> bool:
         file = os.open("pyproject.toml", os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=fd)
         try:
             data = read_regular_fd(file, MAX_PYPROJECT_BYTES)  # a FIFO here must not block
-        finally:
-            os.close(file)
+        except BaseException:
+            with contextlib.suppress(OSError):  # the read's failure wins over the close's
+                os.close(file)
+            raise
+        os.close(file)
     except OSError as error:
         if error.errno in _ABSENT:
             return False
@@ -225,8 +228,11 @@ def _write_file(run_fd: int, name: str, data: bytes, created: list[str]) -> None
     try:
         _write_all(fd, data)
         os.fsync(fd)
-    finally:
-        os.close(fd)
+    except BaseException:
+        with contextlib.suppress(OSError):  # the write's failure wins over the close's
+            os.close(fd)
+        raise
+    os.close(fd)  # an OSError is a ManifestError in write_outputs, after cleanup
 
 
 def _publish_report(run_fd: int, created: list[str]) -> None:

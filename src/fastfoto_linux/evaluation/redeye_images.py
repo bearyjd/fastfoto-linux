@@ -1,5 +1,6 @@
 """A safe image loader: contained paths, byte and pixel caps, no surprises."""
 
+import contextlib
 import hashlib
 import io
 import os
@@ -54,15 +55,20 @@ _FILE_FLAGS = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | getattr(os, "O_CLOEX
 def read_up_to(fd: int, count: int) -> bytes:
     """At most ``count`` bytes from ``fd``, from its current position (less only at end of file).
     ``fd`` stays open: whoever opened it closes it."""
-    chunks: list[bytes] = []
-    remaining = count
-    while remaining > 0:
+    if count <= 0:
+        return b""
+    first = os.read(fd, count)  # one allocation, sized by the caller from fstat
+    if not first or len(first) == count:
+        return first
+    chunks = [first]
+    remaining = count - len(first)
+    while remaining > 0:  # a short read: files that grow, or a device that returns less
         chunk = os.read(fd, min(remaining, _READ_CHUNK))
         if not chunk:
             break
         chunks.append(chunk)
         remaining -= len(chunk)
-    return b"".join(chunks)
+    return first if len(chunks) == 1 else b"".join(chunks)
 
 
 def read_regular_fd(fd: int, limit: int, charge: Callable[[int], None] | None = None) -> bytes:
@@ -154,9 +160,16 @@ def read_contained(
     except (OSError, ValueError) as error:  # ELOOP, ENOTDIR, a NUL byte, a lone surrogate ...
         raise ImageError("unsafe_path" if isinstance(error, OSError) else "unreadable") from error
     try:
-        return read_regular_fd(fd, MAX_SOURCE_BYTES, charge_bytes)
-    finally:
+        data = read_regular_fd(fd, MAX_SOURCE_BYTES, charge_bytes)
+    except BaseException:
+        with contextlib.suppress(OSError):  # the read's failure wins over the close's
+            os.close(fd)
+        raise
+    try:
         os.close(fd)
+    except OSError as error:
+        raise ImageError("unreadable") from error
+    return data
 
 
 def _png_pixels(data: bytes) -> int | None:

@@ -211,6 +211,7 @@ def test_reading_a_32_mib_file_costs_about_one_copy(tmp_path) -> None:
     try:
         result = subprocess.run(
             [sys.executable, "-c", _READ_SCRIPT, str(path)],
+            check=False,
             capture_output=True,
             text=True,
             timeout=120,

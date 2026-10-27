@@ -108,3 +108,20 @@ def test_an_interrupted_close_during_the_ascent_leaks_nothing_and_does_not_fail_
         assert _open_fds() == before
     finally:
         os.close(fd)
+
+
+def test_a_report_json_that_cannot_be_looked_at_is_a_manifest_error(tmp_path, monkeypatch) -> None:
+    (tmp_path / ".report.tmp").write_text("new")
+
+    def failing(*args, **kwargs):
+        raise OSError(errno.EIO, "injected")
+
+    fd = os.open(tmp_path, _DIR)
+    try:
+        monkeypatch.setattr(redeye_output.os, "stat", failing)
+        with pytest.raises(ManifestError):
+            redeye_output._publish_report(fd, [])
+        monkeypatch.undo()
+    finally:
+        os.close(fd)
+    assert not (tmp_path / "report.json").exists()

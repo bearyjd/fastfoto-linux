@@ -52,7 +52,7 @@ _FILE_FLAGS = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | getattr(os, "O_CLOEX
 
 
 def fdopen_owned(fd: int, mode: str, **kwargs: Any) -> IO[Any]:
-    """``os.fdopen`` that closes ``fd`` itself if the wrapper cannot be made (else it would leak)."""
+    """``os.fdopen`` that closes ``fd`` itself if the wrapper cannot be made (else it leaks)."""
     try:
         return os.fdopen(fd, mode, **kwargs)
     except BaseException:

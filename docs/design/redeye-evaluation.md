@@ -1,10 +1,10 @@
 # Red-eye evaluation harness
 
 `ffscan eval redeye MANIFEST.json` measures the automatic red-eye path against a labelled
-manifest. It is a measuring instrument: **the harness ships with no data; no accuracy has been
-measured.** Red-eye stays experimental and no default changes. Its self-tests use
-synthetic images painted in code with a stub face detector, so they check that the counting is
-right, not that red-eye works.
+manifest. It is a measuring instrument: **the harness ships with no data;
+no accuracy has been measured.** Red-eye stays experimental and no default changes. Its
+self-tests use synthetic images painted in code with a stub face detector, so they check that
+the counting is right, not that red-eye works.
 
 ## Privacy
 

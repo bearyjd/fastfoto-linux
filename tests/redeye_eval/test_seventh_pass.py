@@ -181,3 +181,15 @@ def test_a_memory_error_while_closing_the_previous_directory_leaks_nothing(
         assert _open_fds() == before
     finally:
         os.close(fd)
+
+
+def test_a_memory_error_on_the_second_check_still_closes_a_descriptor_left_open(
+    monkeypatch,
+) -> None:
+    fd = os.open(os.devnull, os.O_RDONLY)
+    before = _open_fds()
+    _fail_fstat_on_call(monkeypatch, 2)
+    with pytest.raises(ValueError):  # a bad mode fails before open() owns the descriptor
+        fdopen_owned(fd, "zz")
+    monkeypatch.undo()
+    assert _open_fds() == before - 1

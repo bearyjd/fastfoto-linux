@@ -61,22 +61,22 @@ def test_the_name_returned_is_the_run_directory(tmp_path) -> None:
 
 
 def test_report_json_is_published_last_from_a_synced_temp_file(tmp_path, monkeypatch) -> None:
-    events, real_open, real_link = [], os.open, os.link
+    events, real_open, real_rename = [], os.open, os.rename
 
     def recording_open(path, *args, **kwargs):
         events.append(("open", str(path)))
         return real_open(path, *args, **kwargs)
 
-    def recording_link(src, dst, **kwargs):
-        events.append(("link", f"{src}>{dst}"))
-        return real_link(src, dst, **kwargs)
+    def recording_rename(src, dst, **kwargs):
+        events.append(("rename", f"{src}>{dst}"))
+        return real_rename(src, dst, **kwargs)
 
     monkeypatch.setattr(redeye_output.os, "open", recording_open)
-    monkeypatch.setattr(redeye_output.os, "link", recording_link)
+    monkeypatch.setattr(redeye_output.os, "rename", recording_rename)
     write_outputs(tmp_path / "out", BUNDLE)
     ours = [e for e in events if e[1] in (*BUNDLE, ".report.tmp", ".report.tmp>report.json")]
     assert ("open", "report.json") not in ours  # never opened for writing in place
-    assert ours[-1] == ("link", ".report.tmp>report.json")
+    assert ours[-1] == ("rename", ".report.tmp>report.json")
     assert sorted(n for k, n in ours if k == "open") == sorted(
         [".report.tmp", "summary.md", "perf.json"]
     )

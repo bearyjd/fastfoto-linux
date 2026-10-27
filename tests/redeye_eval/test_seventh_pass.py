@@ -85,7 +85,7 @@ def test_a_writer_sigkilled_in_a_fresh_interpreter_leaves_no_report_json(tmp_pat
     assert not (run / "report.json").exists()
 
 
-def test_an_interrupted_close_during_the_ascent_leaks_nothing_and_is_a_manifest_error(
+def test_an_interrupted_close_during_the_ascent_leaks_nothing_and_does_not_fail_the_check(
     tmp_path, monkeypatch
 ) -> None:
     directory = tmp_path / "a" / "b"
@@ -102,9 +102,9 @@ def test_an_interrupted_close_during_the_ascent_leaks_nothing_and_is_a_manifest_
                 raise InterruptedError(errno.EINTR, "injected")
 
         monkeypatch.setattr(redeye_output.os, "close", interrupted)
-        with pytest.raises(ManifestError):
-            redeye_output._refuse_if_contained(fd, frozenset())
+        redeye_output._refuse_if_contained(fd, frozenset())  # the close did release the fd
         monkeypatch.undo()
+        assert len(calls) > 1
         assert _open_fds() == before
     finally:
         os.close(fd)

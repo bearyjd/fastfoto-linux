@@ -128,8 +128,9 @@ def _refuse_if_contained(fd: int, forbidden: frozenset[Identity]) -> None:
             if _fd_is_checkout(current):
                 raise ManifestError(_OUTSIDE_CHECKOUT)
             parent = os.open("..", _DIR_FLAGS, dir_fd=current)
-            os.close(current)
-            current = parent  # owned from here on: the finally closes it, whatever raises
+            previous, current = current, parent  # one fd owned at a time: the finally closes it
+            with contextlib.suppress(OSError):  # EINTR may follow a close that did release it
+                os.close(previous)
             info = os.fstat(current)
             if (info.st_dev, info.st_ino) == here:  # ".." of "/" is "/"
                 return
@@ -213,11 +214,18 @@ def _write_file(run_fd: int, name: str, text: str, created: list[str]) -> None:
 
 
 def _publish_report(run_fd: int, created: list[str]) -> None:
-    """Give the finished temp file its name. ``link`` never replaces, so a present
-    ``report.json`` is always a complete one."""
-    os.link(REPORT_TEMP, REPORT, src_dir_fd=run_fd, dst_dir_fd=run_fd)
+    """Give the finished temp file its name by atomic rename. Rename replaces, so a present
+    ``report.json`` is refused first (the run directory is ours alone, made for this run)."""
+    try:
+        os.stat(REPORT, dir_fd=run_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        pass
+    except OSError as error:
+        raise ManifestError("cannot write the results directory") from error
+    else:
+        raise ManifestError("report.json already exists in the run directory")
+    os.rename(REPORT_TEMP, REPORT, src_dir_fd=run_fd, dst_dir_fd=run_fd)
     created.append(REPORT)
-    os.unlink(REPORT_TEMP, dir_fd=run_fd)
     os.fsync(run_fd)
 
 
@@ -236,7 +244,7 @@ def write_outputs(
     """Write the bundle into a new ``run-...`` directory under ``out_dir`` and return its name.
 
     Nothing existing is touched. ``report.json`` is written whole to ``.report.tmp``, synced and
-    only then linked into place, so a ``report.json`` that exists is complete (barring storage
+    only then renamed into place, so a ``report.json`` that exists is complete (barring storage
     that lies) and a run directory without it is incomplete. Containment (not a forbidden root,
     not inside one, not in a checkout) is checked by identity before the run directory is made
     and again after the last file, before the report is published; if the check or any write

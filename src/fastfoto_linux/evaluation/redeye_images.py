@@ -51,12 +51,26 @@ _DIR_FLAGS = os.O_RDONLY | os.O_NOFOLLOW | os.O_DIRECTORY | getattr(os, "O_CLOEX
 _FILE_FLAGS = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | getattr(os, "O_CLOEXEC", 0)
 
 
+def _file_id(fd: int) -> tuple[int, int] | None:
+    try:
+        info = os.fstat(fd)
+    except OSError:
+        return None
+    return info.st_dev, info.st_ino
+
+
 def fdopen_owned(fd: int, mode: str, **kwargs: Any) -> IO[Any]:
-    """``os.fdopen`` that closes ``fd`` itself if the wrapper cannot be made (else it leaks)."""
+    """``os.fdopen`` that closes ``fd`` itself if the wrapper cannot be made (else it leaks).
+
+    ``open`` closes the descriptor on a late failure (a bad encoding); it is closed here only if
+    it is still the same open file, so it is never closed twice or a reused number closed.
+    """
+    before = _file_id(fd)
     try:
         return os.fdopen(fd, mode, **kwargs)
     except BaseException:
-        os.close(fd)
+        if before is not None and _file_id(fd) == before:
+            os.close(fd)
         raise
 
 

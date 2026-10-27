@@ -17,9 +17,7 @@ def test_the_design_note_states_the_limits_and_the_method() -> None:
     text = DESIGN.read_text()
     for phrase in ("no accuracy has been measured", "inter-ocular", "Wilson", "95% upper bound"):
         assert phrase in text
-    assert (
-        len(text.splitlines()) <= 150
-    )  # was 120: the note grew (byte budget, report.json, checkout notes)
+    assert len(text.splitlines()) <= 138
 
 
 def test_the_roadmap_rows_still_say_there_is_no_held_out_data() -> None:

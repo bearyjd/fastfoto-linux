@@ -32,32 +32,6 @@ def _open_fds() -> int:
 
 
 @pytest.mark.usefixtures("outside_checkout")
-def test_a_writer_killed_while_filling_the_report_leaves_no_report_json(tmp_path) -> None:
-    out = tmp_path / "out"
-    pid = os.fork()
-    if pid == 0:  # the child dies (as if SIGKILLed) right after the report file exists
-        code = 3
-        try:
-            real = os.open
-
-            def killing(path, *args, **kwargs):
-                fd = real(path, *args, **kwargs)
-                if str(path) in ("report.json", ".report.tmp"):
-                    os.write(fd, b"{")
-                    os._exit(0)
-                return fd
-
-            redeye_output.os.open = killing
-            write_outputs(out, BUNDLE)
-        finally:
-            os._exit(code)
-    _, status = os.waitpid(pid, 0)
-    assert os.waitstatus_to_exitcode(status) == 0
-    (run,) = _runs(out)
-    assert not (run / "report.json").exists()
-
-
-@pytest.mark.usefixtures("outside_checkout")
 def test_a_finished_run_directory_holds_exactly_the_bundle(tmp_path) -> None:
     out = tmp_path / "out"
     name = write_outputs(out, BUNDLE)
@@ -71,10 +45,10 @@ def test_a_failed_publish_removes_the_temp_file_and_the_run_directory(
 ) -> None:
     out = tmp_path / "out"
 
-    def failing_link(*args, **kwargs):
+    def failing_rename(*args, **kwargs):
         raise OSError(errno.EIO, "injected")
 
-    monkeypatch.setattr(redeye_output.os, "link", failing_link)
+    monkeypatch.setattr(redeye_output.os, "rename", failing_rename)
     with pytest.raises(ManifestError):
         write_outputs(out, BUNDLE)
     assert list(out.iterdir()) == []
@@ -201,21 +175,21 @@ def test_a_name_collision_retries_with_a_new_token(tmp_path, monkeypatch) -> Non
 
 
 @pytest.mark.usefixtures("outside_checkout")
-def test_the_report_is_synced_before_it_is_linked_and_the_directory_after(
+def test_the_report_is_synced_before_it_is_renamed_and_the_directory_after(
     tmp_path, monkeypatch
 ) -> None:
-    events, real_fsync, real_link = [], os.fsync, os.link
+    events, real_fsync, real_rename = [], os.fsync, os.rename
 
     def fsync(fd):
         events.append("fsync")
         real_fsync(fd)
 
-    def link(*args, **kwargs):
-        events.append("link")
-        real_link(*args, **kwargs)
+    def rename(*args, **kwargs):
+        events.append("rename")
+        real_rename(*args, **kwargs)
 
     monkeypatch.setattr(redeye_output.os, "fsync", fsync)
-    monkeypatch.setattr(redeye_output.os, "link", link)
+    monkeypatch.setattr(redeye_output.os, "rename", rename)
     write_outputs(tmp_path / "out", BUNDLE)
-    assert events.index("link") >= len(BUNDLE)  # each file was synced first
-    assert events[events.index("link") + 1 :] == ["fsync"]  # then the directory entry
+    assert events.index("rename") >= len(BUNDLE)  # each file was synced first
+    assert events[events.index("rename") + 1 :] == ["fsync"]  # then the directory entry

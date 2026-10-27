@@ -91,9 +91,12 @@ refuses the run. A failing profiling pass leaves the scores alone and is recorde
 only. Every run writes a new directory `run-<UTC time>-<8 hex>` under the results directory
 (`mkdirat`, so it is never an existing one; a taken name is retried up to three times with a new
 token) and creates `summary.md` and `perf.json` in it exclusively, mode 0600. The report is
-written whole to `.report.tmp`, synced, and published with a hard link that never replaces, so a
+written whole to `.report.tmp`, synced, and published by an atomic rename (no hard-link support
+is needed; the run directory is ours alone and `report.json` is checked to be absent first), so a
 `report.json` that exists is complete (barring storage that lies) and a run directory without
-it is incomplete (a crash; a refused run removes what it made). Nothing existing is replaced,
+it is incomplete (a crash; a refused run removes what it made). A SIGKILL can leave a harmless
+partial `.report.tmp`, with no `report.json`, so that run reads as incomplete. Disk-full or EIO
+on a write exits 2 (usage), like other output-location failures. Nothing existing is replaced,
 removed or locked. Run directories accumulate: nothing prunes them, the user deletes old ones.
 
 ## Threat model
@@ -108,7 +111,8 @@ refuses if it or any ancestor has the (device, inode) of a corpus root (taken fr
 held since the manifests were read) or is a checkout; a refusal after the last file removes what
 this call made. A checkout is recognised by name: a `.git` entry and a `pyproject.toml` whose
 `project.name` is `fastfoto-linux`, so a renamed fork is not recognised. An unparseable
-`pyproject.toml` is someone else's; one that cannot be read (EIO, EACCES) refuses the location.
+`pyproject.toml` is someone else's; one that cannot be read (EIO, EACCES), in the location or
+an ancestor, makes the check refuse (fail closed) with "cannot verify the output location".
 Residual windows: a rename that lands after that last check cannot be closed by user-space code,
 and a file written into a forbidden tree before the check is removed afterwards, not prevented.
 

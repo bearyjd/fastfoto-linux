@@ -41,11 +41,12 @@ def test_the_pixel_budget_is_charged_from_the_header_before_decoding(tmp_path, m
     manifest = load_manifest(write_corpus(tmp_path / "c", items, default="tuning"))
     one = items[0].arr.shape[0] * items[0].arr.shape[1]
     monkeypatch.setattr(redeye_run, "MAX_RUN_PIXELS", one + one // 2)
-    opened, loaded = set(), set()
+    opened, loaded, keep = set(), set(), []  # keep: ids must not be reused
     real_open, real_load = Image.open, Image.Image.load
 
     def spy_open(*args, **kwargs):
         image = real_open(*args, **kwargs)
+        keep.append(image)
         opened.add(id(image))
         return image
 

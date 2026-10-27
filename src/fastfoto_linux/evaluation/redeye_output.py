@@ -2,7 +2,7 @@
 
 import os
 import tomllib
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from fastfoto_linux.evaluation.redeye_manifest import Manifest, ManifestError
@@ -54,7 +54,12 @@ def _write_atomic(path: Path, text: str) -> None:
         raise
 
 
-def write_outputs(out_dir: Path, files: Mapping[str, str]) -> None:
+def write_outputs(
+    out_dir: Path,
+    files: Mapping[str, str],
+    forbidden: Sequence[Path] = (),
+    stale: Sequence[str] = (),
+) -> None:
     """Write each file atomically (tmp + replace) with mode 0o600 into a 0o700 directory."""
     missing = [d for d in (out_dir, *out_dir.parents) if not d.exists()]
     for directory in reversed(missing):  # parents we create are private too

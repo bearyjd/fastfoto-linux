@@ -64,10 +64,12 @@ def test_a_symlinked_directory_leaving_the_root_is_refused(tmp_path) -> None:
     assert info.value.code == "unsafe_path"
 
 
-def test_a_symlink_inside_the_root_is_followed_and_contained(tmp_path) -> None:
+def test_a_symlink_inside_the_root_is_refused(tmp_path) -> None:
     (tmp_path / "real.png").write_bytes(b"data")
     (tmp_path / "alias.png").symlink_to(tmp_path / "real.png")
-    assert read_contained(tmp_path, "alias.png") == b"data"
+    with pytest.raises(ImageError) as info:
+        read_contained(tmp_path, "alias.png")  # symlinked components are never followed
+    assert info.value.code == "unsafe_path"
 
 
 def test_a_fifo_is_refused_without_blocking(tmp_path) -> None:

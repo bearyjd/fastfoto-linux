@@ -246,13 +246,14 @@ def _publish_report(run_fd: int, created: list[str]) -> None:
         raise ManifestError("cannot write the results directory") from error
     else:
         raise ManifestError("report.json already exists in the run directory")
+    created.append(REPORT)  # before the rename: cleanup must find it on either side of it
     os.rename(REPORT_TEMP, REPORT, src_dir_fd=run_fd, dst_dir_fd=run_fd)
-    created.append(REPORT)
     os.fsync(run_fd)
 
 
 def _discard(out_fd: int, run_name: str, run_fd: int, created: Sequence[str]) -> None:
-    """Remove exactly what this call made: its files and then its run directory."""
+    """Remove exactly what this call made: its files and then its run directory. A name that
+    does not exist (``report.json`` before its rename, ``.report.tmp`` after it) is skipped."""
     for name in created:
         with contextlib.suppress(OSError):
             os.unlink(name, dir_fd=run_fd)
@@ -261,12 +262,16 @@ def _discard(out_fd: int, run_name: str, run_fd: int, created: Sequence[str]) ->
 
 
 def _close_quietly(fd: int, keep_error: bool) -> OSError | None:
-    """Close ``fd`` once. A failing close is returned when ``keep_error`` (nothing else is in
-    flight), and dropped otherwise: the failure being raised wins over the close's."""
+    """Close ``fd`` once. When ``keep_error`` (nothing else is in flight) a failing close is
+    returned if it is an ``OSError`` and raised otherwise; when a failure is already
+    propagating, a close failure of any kind is dropped: the failure being raised wins."""
     try:
         os.close(fd)
     except OSError as error:
         return error if keep_error else None
+    except BaseException:
+        if keep_error:
+            raise
     return None
 
 

@@ -1,6 +1,7 @@
 """Seventh review pass: late fdopen failures, publishing by rename, a killed writer in a fresh
 interpreter, and an ascent whose close is interrupted."""
 
+import contextlib
 import errno
 import os
 import signal
@@ -183,18 +184,6 @@ def test_a_memory_error_while_closing_the_previous_directory_leaks_nothing(
         os.close(fd)
 
 
-def test_a_memory_error_on_the_second_check_still_closes_a_descriptor_left_open(
-    monkeypatch,
-) -> None:
-    fd = os.open(os.devnull, os.O_RDONLY)
-    before = _open_fds()
-    _fail_fstat_on_call(monkeypatch, 2)
-    with pytest.raises(ValueError):  # a bad mode fails before open() owns the descriptor
-        fdopen_owned(fd, "zz")
-    monkeypatch.undo()
-    assert _open_fds() == before - 1
-
-
 def _assert_alive_and_unrelated(replacement: int) -> None:
     assert os.fstat(replacement)  # still open
     assert os.read(replacement, 4) == b"\0\0\0\0"  # still the /dev/zero we opened
@@ -223,10 +212,8 @@ def test_a_reused_descriptor_is_not_closed_when_the_second_identity_check_runs_o
     finally:
         monkeypatch.undo()
         for number in replacement:
-            try:
+            with contextlib.suppress(OSError):  # destroyed: the assertions above report it
                 os.close(number)
-            except OSError:  # already destroyed: the assertions above report it
-                pass
 
 
 def test_a_replacement_descriptor_survives_a_close_that_runs_out_of_memory(monkeypatch) -> None:
@@ -250,10 +237,8 @@ def test_a_replacement_descriptor_survives_a_close_that_runs_out_of_memory(monke
     finally:
         monkeypatch.undo()
         for number in replacement:
-            try:
+            with contextlib.suppress(OSError):  # destroyed: the assertions above report it
                 os.close(number)
-            except OSError:  # already destroyed: the assertions above report it
-                pass
 
 
 def test_an_early_fdopen_failure_without_a_second_fault_does_not_leak() -> None:

@@ -62,8 +62,12 @@ def _file_id(fd: int) -> tuple[int, int] | None:
 def fdopen_owned(fd: int, mode: str, **kwargs: Any) -> IO[Any]:
     """``os.fdopen`` that closes ``fd`` itself if the wrapper cannot be made (else it leaks).
 
-    ``open`` closes the descriptor on a late failure (a bad encoding); it is closed here only if
-    it is still the same open file, so it is never closed twice or a reused number closed.
+    ``open`` closes the descriptor on a late failure (a bad encoding), so after a failure ``fd`` is
+    closed here only when ownership is proven: the fd was never handed to ``fdopen`` (the first
+    identity check itself failed), or a fresh identity check shows it is still the same open file.
+    If that check cannot be made (``MemoryError`` while already handling an error), or the close
+    itself fails, nothing is closed again: at most one descriptor leaks in that double fault, but a
+    descriptor that may now belong to someone else is never closed. The original error propagates.
     """
     before: tuple[int, int] | None = None
     attempted = False
@@ -75,13 +79,8 @@ def fdopen_owned(fd: int, mode: str, **kwargs: Any) -> IO[Any]:
         try:
             if not attempted or (before is not None and _file_id(fd) == before):
                 os.close(fd)
-        except MemoryError:  # cannot tell whether it is still open: close it, tolerate EBADF
-            try:  # noqa: SIM105  (suppress() allocates; this path runs out of memory)
-                os.close(fd)
-            except OSError:
-                pass
-        except OSError:
-            pass
+        except (MemoryError, OSError):  # unproven or failed: leak at most this one, never retry
+            pass  # no suppress(): it allocates, and this path may be out of memory
         raise
 
 

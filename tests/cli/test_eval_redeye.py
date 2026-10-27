@@ -1,6 +1,7 @@
 """``ffscan eval redeye``: arguments, exit codes and what lands on disk."""
 
 import json
+import os
 import re
 from pathlib import Path
 
@@ -187,3 +188,22 @@ def test_stdout_never_prints_a_path(corpus, tmp_path, capsys) -> None:
     main(["eval", "redeye", str(corpus[0]), "--out", str(tmp_path / "r"), "--no-perf"])
     out = capsys.readouterr().out
     assert UNIQUE not in out and not re.search(r"\.png", out)
+
+
+def test_the_output_is_refused_by_identity_even_if_the_early_name_check_is_fooled(
+    corpus, tmp_path, monkeypatch
+) -> None:
+    path = corpus[0]
+    monkeypatch.setattr(cmd_eval, "resolve_out_dir", lambda *args: path.parent / "results")
+    assert main(["eval", "redeye", str(path), "--out", str(tmp_path / "r")]) == 2
+    assert sorted(p.name for p in path.parent.iterdir() if p.name != "results") != []
+    assert not any(p.is_file() for p in (path.parent / "results").rglob("*"))
+
+
+def test_a_run_leaves_no_descriptor_open(corpus, tmp_path) -> None:
+    def open_fds() -> int:
+        return len(os.listdir("/proc/self/fd"))
+
+    before = open_fds()
+    assert main(["eval", "redeye", str(corpus[0]), "--out", str(tmp_path / "r")]) == 0
+    assert open_fds() == before

@@ -4,6 +4,7 @@ checked again after the last file; nothing a failed run created stays behind."""
 import errno
 import os
 import threading
+from datetime import UTC, datetime
 
 import pytest
 
@@ -43,15 +44,14 @@ def _hook_open(monkeypatch, name, action):
 
 def test_each_call_writes_a_new_private_run_directory_and_keeps_the_old_ones(tmp_path) -> None:
     out = tmp_path / "out"
-    write_outputs(out, BUNDLE)
-    write_outputs(out, {name: text.lower() for name, text in BUNDLE.items()})
-    first, second = _runs(out)
-    assert first.name != second.name
-    assert (first / "report.json").read_text() == "R"
-    assert (second / "report.json").read_text() == "r"
-    assert sorted(p.name for p in out.iterdir()) == [first.name, second.name]  # no lock, no temp
-    assert (first.stat().st_mode & 0o777) == 0o700
-    assert ((first / "report.json").stat().st_mode & 0o777) == 0o600
+    first = write_outputs(out, BUNDLE)
+    second = write_outputs(out, {name: text.lower() for name, text in BUNDLE.items()})
+    assert first != second
+    assert (out / first / "report.json").read_text() == "R"
+    assert (out / second / "report.json").read_text() == "r"
+    assert sorted(p.name for p in out.iterdir()) == sorted([first, second])  # no lock, no temp
+    assert ((out / first).stat().st_mode & 0o777) == 0o700
+    assert ((out / first / "report.json").stat().st_mode & 0o777) == 0o600
 
 
 def test_the_name_returned_is_the_run_directory(tmp_path) -> None:
@@ -172,3 +172,57 @@ def test_a_directory_removed_before_the_run_is_refused(tmp_path, monkeypatch) ->
     monkeypatch.setattr(redeye_output, "_open_out_dir", removing)
     with pytest.raises(ManifestError):
         write_outputs(out, BUNDLE)
+
+
+def test_a_run_directory_name_that_exists_is_never_reused(tmp_path, monkeypatch) -> None:
+    out = tmp_path / "out"
+    monkeypatch.setattr(redeye_output.secrets, "token_hex", lambda _: "deadbeef")
+
+    class _Clock:
+        @staticmethod
+        def now(_tz):
+            return datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC)
+
+    monkeypatch.setattr(redeye_output, "datetime", _Clock)
+    first = write_outputs(out, BUNDLE)
+    assert first == "run-20260102T030405Z-deadbeef"
+    with pytest.raises(ManifestError):
+        write_outputs(out, {n: "NEW" for n in BUNDLE})
+    assert (out / first / "report.json").read_text() == "R"
+
+
+def test_a_file_planted_in_the_run_directory_is_not_written_through(tmp_path, monkeypatch) -> None:
+    out = tmp_path / "out"
+    victim = tmp_path / "victim"
+    victim.write_text("KEEP")
+    real = redeye_output._new_run_dir
+
+    def planting(out_fd):
+        name, run_fd = real(out_fd)
+        os.symlink(victim, "summary.md", dir_fd=run_fd)
+        return name, run_fd
+
+    monkeypatch.setattr(redeye_output, "_new_run_dir", planting)
+    with pytest.raises(ManifestError):
+        write_outputs(out, BUNDLE)
+    assert victim.read_text() == "KEEP"
+    (run,) = _runs(out)  # not ours to remove: only what this call created is
+    assert [p.name for p in run.iterdir()] == ["summary.md"]
+
+
+def test_an_out_dir_already_inside_a_forbidden_tree_gets_no_file_at_all(
+    tmp_path, monkeypatch
+) -> None:
+    corpus = tmp_path / "corpus"
+    (corpus / "results").mkdir(parents=True)
+    names, real = [], os.open
+
+    def recording(path, *args, **kwargs):
+        names.append(str(path))
+        return real(path, *args, **kwargs)
+
+    monkeypatch.setattr(redeye_output.os, "open", recording)
+    with pytest.raises(ManifestError):
+        write_outputs(corpus / "results", BUNDLE, forbidden=[_identity(corpus)])
+    assert not [n for n in names if n in BUNDLE]  # refused before the run directory was made
+    assert list((corpus / "results").iterdir()) == []

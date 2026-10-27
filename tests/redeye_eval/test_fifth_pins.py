@@ -48,6 +48,26 @@ def test_an_ancestor_swapped_for_a_symlink_between_resolve_and_walk_is_refused(
         load_manifest(manifest_path)
 
 
+def test_a_manifest_file_swapped_for_a_symlink_before_it_is_opened_is_refused(
+    tmp_path, monkeypatch
+) -> None:
+    _, manifest_path = _two_corpora(tmp_path)
+    elsewhere = tmp_path / "elsewhere.json"
+    elsewhere.write_bytes(manifest_path.read_bytes())
+    real = Path.resolve
+
+    def swapping(self, *args, **kwargs):
+        resolved = real(self, *args, **kwargs)
+        if self.name == "manifest.json" and not manifest_path.is_symlink():
+            manifest_path.unlink()
+            manifest_path.symlink_to(elsewhere)
+        return resolved
+
+    monkeypatch.setattr(Path, "resolve", swapping)
+    with pytest.raises(ManifestError):
+        load_manifest(manifest_path)
+
+
 def test_a_run_reads_the_directory_the_manifest_came_from_after_an_ancestor_swap(
     tmp_path,
 ) -> None:

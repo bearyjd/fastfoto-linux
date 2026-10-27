@@ -182,6 +182,7 @@ def test_default_out_dir_is_in_the_cache_and_keyed_by_the_manifest_hash(
     assert fallback == home / ".cache" / "fastfoto-linux" / "redeye-eval" / manifest.sha256[:12]
 
 
+@pytest.mark.usefixtures("outside_checkout")
 def test_outputs_are_private_and_replaced_atomically(tmp_path) -> None:
     out = tmp_path / "out"
     write_outputs(out, {"report.json": "one\n"})

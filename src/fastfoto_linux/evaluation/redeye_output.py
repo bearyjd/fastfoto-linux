@@ -26,6 +26,8 @@ def _is_project_checkout(directory: Path) -> bool:
 
 def _default_out(manifest: Manifest, env: Mapping[str, str]) -> Path:
     cache = env.get("XDG_CACHE_HOME")
+    if cache and not Path(cache).is_absolute():
+        raise ManifestError("XDG_CACHE_HOME must be an absolute path")
     base = Path(cache) if cache else Path(env.get("HOME") or Path.home()) / ".cache"
     return base / "fastfoto-linux" / "redeye-eval" / manifest.sha256[:12]
 
@@ -54,6 +56,8 @@ def _write_atomic(path: Path, text: str) -> None:
 
 def write_outputs(out_dir: Path, files: Mapping[str, str]) -> None:
     """Write each file atomically (tmp + replace) with mode 0o600 into a 0o700 directory."""
-    out_dir.mkdir(mode=DIR_MODE, parents=True, exist_ok=True)
+    missing = [d for d in (out_dir, *out_dir.parents) if not d.exists()]
+    for directory in reversed(missing):  # parents we create are private too
+        directory.mkdir(mode=DIR_MODE, exist_ok=True)
     for name, text in files.items():
         _write_atomic(out_dir / name, text)

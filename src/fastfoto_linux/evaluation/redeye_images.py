@@ -14,6 +14,7 @@ from PIL import Image, UnidentifiedImageError
 MAX_SOURCE_BYTES = 256 * 1024 * 1024
 MAX_SOURCE_PIXELS = 89_000_000
 _MODES = ("RGB", "L", "P")
+_FORMATS = ("PNG", "JPEG", "TIFF")  # no EPS (Ghostscript), no animated formats
 _PNG_HEADER_BYTES = 24
 _PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
@@ -72,17 +73,21 @@ def decode_image(data: bytes) -> np.ndarray:
     with warnings.catch_warnings():
         warnings.simplefilter("error", Image.DecompressionBombWarning)
         try:
-            with Image.open(io.BytesIO(data)) as image:
+            with Image.open(io.BytesIO(data), formats=_FORMATS) as image:
                 width, height = image.size
                 if width * height > MAX_SOURCE_PIXELS:
                     raise ImageError("too_large")
+                if getattr(image, "n_frames", 1) > 1:
+                    raise ImageError("multi_frame")
                 if image.mode not in _MODES or (image.mode == "P" and "transparency" in image.info):
                     raise ImageError("bad_mode")
                 image.load()
                 rgb = np.asarray(image.convert("RGB"), dtype=np.uint8)
         except (Image.DecompressionBombError, Image.DecompressionBombWarning) as error:
             raise ImageError("too_large") from error
-        except (UnidentifiedImageError, OSError, SyntaxError, ValueError, EOFError) as error:
+        except UnidentifiedImageError as error:
+            raise ImageError("bad_format") from error
+        except (OSError, SyntaxError, ValueError, EOFError) as error:
             raise ImageError("corrupt") from error
     if rgb.shape != (height, width, 3):
         raise ImageError("corrupt")

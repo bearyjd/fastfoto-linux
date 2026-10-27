@@ -30,3 +30,9 @@ def test_the_roadmap_rows_still_say_there_is_no_held_out_data() -> None:
 def test_no_doc_claims_accuracy() -> None:
     for path in (DESIGN, README):
         assert not CLAIMS.search(path.read_text()), path.name
+
+
+def test_the_design_note_states_its_statistical_and_security_limits() -> None:
+    text = DESIGN.read_text()
+    for phrase in ("independent", "ungated", "not an adversary", "image budget", "pixel budget"):
+        assert phrase in text

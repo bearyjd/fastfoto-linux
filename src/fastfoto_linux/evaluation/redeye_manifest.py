@@ -3,7 +3,9 @@
 import hashlib
 import json
 import math
+import os
 import re
+import stat
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -43,6 +45,8 @@ _IMAGE_REQUIRED = {
     "negatives",
 }
 _RIGHTS_KEYS = {"licence", "source", "consent_scope", "redistributable"}
+MAX_COORD = 1e7
+MAX_RADIUS = 10_000.0
 EYES_PER_FACE = 2
 BOX_VALUES = 4
 _EYE_KEYS = {"x", "y", "r", "red"}
@@ -182,11 +186,12 @@ def _rights(value: object) -> Rights:
 def _eye(value: object) -> GtEye:
     raw = _dict(value, _EYE_KEYS, "eye")
     radius = _number(raw["r"], "eye radius")
-    if radius <= 0:
-        raise _fail("eye radius must be positive")
-    return GtEye(
-        _number(raw["x"], "eye x"), _number(raw["y"], "eye y"), radius, _bool(raw["red"], "red")
-    )
+    if not 0 < radius <= MAX_RADIUS:
+        raise _fail(f"eye radius must be above 0 and at most {MAX_RADIUS:g}")
+    x, y = _number(raw["x"], "eye x"), _number(raw["y"], "eye y")
+    if abs(x) > MAX_COORD or abs(y) > MAX_COORD:
+        raise _fail(f"eye coordinates must be within +-{MAX_COORD:g}")
+    return GtEye(x, y, radius, _bool(raw["red"], "red"))
 
 
 def _face(value: object) -> GtFace:
@@ -263,7 +268,10 @@ def parse_manifest(data: bytes, root: Path) -> Manifest:
 def load_manifest(path: Path) -> Manifest:
     """Read (at most ``MAX_MANIFEST_BYTES``) and validate the manifest at ``path``."""
     try:
-        with path.open("rb") as handle:
+        # O_NONBLOCK: opening a FIFO must not wait for a writer.
+        with os.fdopen(os.open(path, os.O_RDONLY | os.O_NONBLOCK), "rb") as handle:
+            if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
+                raise _fail("the manifest must be a regular file")
             data = handle.read(MAX_MANIFEST_BYTES + 1)
         root = path.resolve(strict=True).parent
     except OSError as error:

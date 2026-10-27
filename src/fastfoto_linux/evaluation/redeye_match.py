@@ -98,13 +98,20 @@ def _disc(shape: tuple[int, int], origin: tuple[int, int], eye: GtEye) -> np.nda
     )
 
 
-def mask_iou(fix: EyeFix, eye: GtEye) -> float:
-    """Intersection over union of the fix mask and the ground-truth disc, in image coordinates."""
+def mask_iou(fix: EyeFix, eye: GtEye, shape: tuple[int, ...] | None = None) -> float:
+    """Intersection over union of the fix mask and the ground-truth disc, in image coordinates.
+
+    With ``shape`` (the image's) the working canvas never exceeds the image, however large the
+    annotated disc is.
+    """
     x0, y0, x1, y1 = fix.roi
     left = min(x0, math.floor(eye.x - eye.r))
     top = min(y0, math.floor(eye.y - eye.r))
     right = max(x1, math.ceil(eye.x + eye.r) + 1)
     bottom = max(y1, math.ceil(eye.y + eye.r) + 1)
+    if shape is not None:
+        left, top = max(0, left), max(0, top)
+        right, bottom = min(shape[1], right), min(shape[0], bottom)
     canvas = np.zeros((bottom - top, right - left), dtype=bool)
     canvas[y0 - top : y1 - top, x0 - left : x1 - left] = fix.mask
     disc = _disc(canvas.shape, (left, top), eye)
@@ -113,11 +120,17 @@ def mask_iou(fix: EyeFix, eye: GtEye) -> float:
 
 
 def _near(face: Face, gt: GtFace) -> bool:
+    """True if the face's two eye landmarks sit on the annotated eyes, in either order."""
     tolerance = MATCH_IOD_FRACTION * _interocular(gt)
-    return all(
-        math.hypot(point[0] - eye.x, point[1] - eye.y) <= tolerance
-        for point, eye in zip(face.landmarks[:LANDMARKS_PER_FACE], gt.eyes, strict=True)
-    )
+    points = face.landmarks[:LANDMARKS_PER_FACE]
+
+    def on(eyes: Sequence[GtEye]) -> bool:
+        return all(
+            math.hypot(p[0] - eye.x, p[1] - eye.y) <= tolerance
+            for p, eye in zip(points, eyes, strict=True)
+        )
+
+    return on(gt.eyes) or on(gt.eyes[::-1])
 
 
 def count_faces(

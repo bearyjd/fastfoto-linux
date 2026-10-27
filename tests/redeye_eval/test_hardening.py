@@ -1,5 +1,6 @@
 """Review fixes: fail-closed leakage, bounded geometry, honest denominators, safer decoding."""
 
+import hashlib
 import io
 import json
 import os
@@ -11,7 +12,7 @@ from PIL import Image
 
 from fastfoto_linux.enhance.faces import Face
 from fastfoto_linux.enhance.redeye import EyeFix
-from fastfoto_linux.evaluation import redeye_images, redeye_run
+from fastfoto_linux.evaluation import redeye_run
 from fastfoto_linux.evaluation.redeye_images import ImageError, load_image
 from fastfoto_linux.evaluation.redeye_manifest import (
     GtEye,
@@ -138,7 +139,6 @@ def test_a_tuning_manifest_image_that_cannot_be_read_also_fails_closed(tmp_path)
 
 
 def _save(tmp_path, name, image, **kwargs) -> tuple[str, str]:
-    import hashlib
 
     buffer = io.BytesIO()
     image.save(buffer, **kwargs)

@@ -84,10 +84,14 @@ def build_report(manifest: Manifest, run: RunResult) -> dict[str, object]:
     ok = [r for r in run.results if r.error is None]
 
     def total(field: str) -> int:
-        return sum(getattr(r, field) for r in ok)
+        # Errored items count their labelled eyes and faces: they never shrink a denominator.
+        return sum(getattr(r, field) for r in run.results)
 
     negatives = [r for r in ok if r.negative_image]
-    faces = total("found") + total("skipped_score") + total("skipped_small") + total("missed")
+    faces = sum(
+        total(k) for k in ("found", "skipped_score", "skipped_small", "missed", "unevaluated_faces")
+    )
+    with_red = [r for r in run.results if r.red_eyes]
     ious = [v for r in ok for v in r.ious]
     totals = {
         "images": len(ok),
@@ -100,12 +104,14 @@ def build_report(manifest: Manifest, run: RunResult) -> dict[str, object]:
         "fn": total("fn"),
         "precision": proportion(total("tp"), total("predictions")),
         "recall": proportion(total("tp"), total("red_eyes")),
+        "image_recall_any": proportion(sum(1 for r in with_red if r.tp), len(with_red)),
         "faces": {
             "total": faces,
             **{
                 k: proportion(total(k), faces)
                 for k in ("found", "skipped_score", "skipped_small", "missed")
             },
+            "unevaluated": proportion(total("unevaluated_faces"), faces),
         },
         "abstained_eyes": total("abstained"),
         "negative_images": len(negatives),
@@ -203,12 +209,17 @@ def render_summary(report: dict[str, object]) -> str:
         f"unmatched predictions: {totals['fp_unmatched']}",
         _describe(totals["precision"], "Per-eye precision"),
         _describe(totals["recall"], "Per-eye recall"),
+        _describe(totals["image_recall_any"], "Images with at least one red eye corrected"),
         f"Faces in the ground truth: {faces['total']}",
         *(
             _describe(faces[k], f"- {k.replace('_', ' ')}")
-            for k in ("found", "skipped_score", "skipped_small", "missed")
+            for k in ("found", "skipped_score", "skipped_small", "missed", "unevaluated")
         ),
         f"Red eyes abstained in found faces (reported, not errors): {totals['abstained_eyes']}",
+        "Intervals treat eyes, faces and photos as independent, so they are optimistic for "
+        "correlated data such as rescans of one print.",
+        "Gate G1 covers labelled negative regions and negative images only; non-red-eye matches "
+        "are reported but ungated.",
         "",
         _damage_line(totals, str(report["split"])),
         f"Changed pixels outside the correction support (must be 0): {totals['locality_pixels']}",

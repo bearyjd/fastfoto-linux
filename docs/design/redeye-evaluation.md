@@ -35,7 +35,10 @@ An image is held out when `int(sha256(salt:group-or-sha256)[:8], 16) % 100 < 20`
 split that disagrees is refused, so it cannot be picked after seeing results. A held-out report
 is refused when a held-out item shares a file hash, a decoded-pixel hash, a group or an id with
 a tuning item, in the manifest or in any `--tuning-manifest`. Rescans or crops with different
-pixels are caught only if a human gave them the same `group`.
+pixels are caught only if a human gave them the same `group`. The guard protects against
+accidents, not an adversary: the salt is controlled by the manifest author, and a re-encoded or
+cropped copy filed under another group is not detected. A tuning image that cannot be read
+refuses the held-out run (exit 2), because its leakage evidence would otherwise vanish.
 
 ## Matching and metrics
 
@@ -46,12 +49,25 @@ positive; to a `red: false` eye, a false positive of its own kind; an unmatched 
 false positive; an unmatched red eye is a miss. Reported per eye: precision, recall, mask IoU
 (median, p10, p90), faces found, skipped for score or size, missed, and eyes abstained in found
 faces (not errors). Proportions carry 95% Wilson intervals. A count of 0 of n also prints the
-exact one-sided 95% upper bound, `1 - 0.05^(1/n)`; n = 0 is "no samples", never 0 or 1.
+exact one-sided 95% upper bound, `1 - 0.05^(1/n)`; n = 0 is "no samples", never 0 or 1. The
+intervals treat eyes, faces and photos as independent, so they are optimistic for correlated
+data (rescans, one family, one scanner); image-level recall (at least one red eye corrected) is
+reported beside the per-eye figure.
 
 Changed pixels are counted outside the fix regions (must be 0), inside negative regions or
 anywhere in a negative image (damage), and outside the dilated ground-truth discs
-(collateral, informational). Errored items (missing, hash mismatch, corrupt, too large, bad
-mode, unsafe path) are listed and never shrink n.
+(collateral, informational). Gate G1 covers damage in labelled negative regions and negative
+images only; non-red-eye matches (`fp_non_red`) are reported but ungated. Errored items
+(unreadable, corrupt, too large, bad mode or format, multi-frame, bad geometry, resource) are
+listed, keep their labelled red eyes (as misses) and faces in the denominators, and fail G4.
+Missing files, path escapes and hash mismatches share the one reason `unreadable`.
+
+## Limits
+
+Only PNG, JPEG and single-frame TIFF are decoded. Eye radius is at most 10000 and coordinates
+within 1e7; eyes and boxes must lie inside the decoded image. One run has an image budget
+(20,000 images) and a pixel budget (2 billion decoded pixels, tuning images included); going
+over is a usage error.
 
 ## Gate
 

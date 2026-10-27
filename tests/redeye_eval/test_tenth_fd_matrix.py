@@ -44,14 +44,14 @@ _CLOSES = [(), ("run",), ("out",), ("run", "out")]
 def _cells():
     for close in _CLOSES:
         yield pytest.param(
-            None, "none", "none", close, id=f"success-close-{'+'.join(close) or 'ok'}"
+            (None, "none", "none", close), id=f"success-close-{'+'.join(close) or 'ok'}"
         )
     for point in _POINTS[1:]:
         for original in _ORIGINALS:
             for cleanup in _CLEANUPS:
                 for close in _CLOSES:
                     cell = f"{point}-{original}-{cleanup}-close-{'+'.join(close) or 'ok'}"
-                    yield pytest.param(point, original, cleanup, close, id=cell)
+                    yield pytest.param((point, original, cleanup, close), id=cell)
 
 
 class _Harness:
@@ -135,18 +135,47 @@ class _Harness:
         monkeypatch.setattr(os, "close", close)
 
 
-@pytest.mark.parametrize(("point", "original", "cleanup", "close"), list(_cells()))
+def _check_kept(out, outcome, name, close) -> None:
+    """A close error comes after the complete bundle was kept."""
+    (run,) = list(out.iterdir())
+    for file, text in BUNDLE.items():
+        assert (run / file).read_bytes() == text.encode()
+    if close:
+        assert isinstance(outcome, ManifestError)
+    else:
+        assert outcome is None and name == run.name
+
+
+def _check_failed(out, outcome, expected, cleanup) -> None:
+    if isinstance(expected, OSError):
+        assert isinstance(outcome, ManifestError)
+        assert outcome.__cause__ is expected
+    else:
+        assert outcome is expected  # the original, never a cleanup or close error
+    leftovers = list(out.iterdir())
+    if cleanup == "none":
+        assert leftovers == []  # everything this call created is gone
+        return
+    # Cleanup itself was interrupted or refused: whatever it did not get to stays, but only the
+    # one run directory this call made (with the files created so far), nothing else.
+    assert len(leftovers) <= 1
+    if cleanup.startswith("rmdir"):
+        assert not list(leftovers[0].iterdir())  # the files went; only the directory is left
+
+
+@pytest.mark.parametrize("cell", list(_cells()))
 def test_every_descriptor_is_closed_once_and_the_original_failure_wins(
-    tmp_path, monkeypatch, point, original, cleanup, close
+    tmp_path, monkeypatch, cell
 ) -> None:
+    point, original, cleanup, close = cell
     out = tmp_path / "out"
     before = _open_fds()
     harness = _Harness(monkeypatch, point, original, cleanup, close)
-    expected = harness.original
     outcome: BaseException | None = None
+    name = ""
     try:
         name = write_outputs(out, BUNDLE)
-    except BaseException as error:  # noqa: BLE001 - KeyboardInterrupt/SystemExit are under test
+    except BaseException as error:  # KeyboardInterrupt and SystemExit are under test
         outcome = error
     monkeypatch.undo()
     try:
@@ -156,31 +185,10 @@ def test_every_descriptor_is_closed_once_and_the_original_failure_wins(
         if harness.zero is not None:
             os.close(harness.zero)
     assert _open_fds() == before  # no descriptor leaked, none closed twice
+    assert set(harness.mine) == {"out", "run"}
     for fd in harness.mine.values():
         assert harness.closed.count(fd) == 1  # each of our two directories closed exactly once
-    assert set(harness.mine) == {"out", "run"}
-
-    if point is None:  # a close error comes after the complete bundle was kept
-        (run,) = list(out.iterdir())
-        for file, text in BUNDLE.items():
-            assert (run / file).read_bytes() == text.encode()
-        if close:
-            assert isinstance(outcome, ManifestError)
-        else:
-            assert outcome is None and name == run.name
-        return
-
-    if isinstance(expected, OSError):
-        assert isinstance(outcome, ManifestError)
-        assert outcome.__cause__ is expected
+    if point is None:
+        _check_kept(out, outcome, name, close)
     else:
-        assert outcome is expected  # the original, never a cleanup or close error
-    leftovers = list(out.iterdir())
-    if cleanup == "none":
-        assert leftovers == []  # everything this call created is gone
-    else:
-        # Cleanup itself was interrupted or refused: whatever it did not get to stays, but only
-        # the one run directory this call made (with the files created so far), nothing else.
-        assert len(leftovers) <= 1
-        if cleanup.startswith("rmdir"):
-            assert not list(leftovers[0].iterdir())  # the files went; only the directory is left
+        _check_failed(out, outcome, harness.original, cleanup)

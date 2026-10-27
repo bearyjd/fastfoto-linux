@@ -260,6 +260,49 @@ def _discard(out_fd: int, run_name: str, run_fd: int, created: Sequence[str]) ->
         os.rmdir(run_name, dir_fd=out_fd)
 
 
+def _close_quietly(fd: int, keep_error: bool) -> OSError | None:
+    """Close ``fd`` once. A failing close is returned when ``keep_error`` (nothing else is in
+    flight), and dropped otherwise: the failure being raised wins over the close's."""
+    try:
+        os.close(fd)
+    except OSError as error:
+        return error if keep_error else None
+    return None
+
+
+def _write_in_new_run(
+    out_fd: int, files: Mapping[str, str], payloads: Mapping[str, bytes], roots: frozenset[Identity]
+) -> tuple[str, OSError | None]:
+    """Make the run directory, fill it and close its descriptor (once, whatever happens).
+    Returns the run name and the close error, if any; on any failure the files and the
+    directory this call made are removed, and the original failure is what is raised."""
+    try:
+        name, run_fd = _new_run_dir(out_fd)
+    except OSError as error:
+        raise ManifestError("cannot write the results directory") from error
+    created: list[str] = []
+    done = False
+    try:
+        try:
+            for file in sorted(files, key=lambda name: name == REPORT):  # the report last
+                _write_file(
+                    run_fd, REPORT_TEMP if file == REPORT else file, payloads[file], created
+                )
+            _refuse_if_contained(run_fd, roots)
+            if REPORT in files:
+                _publish_report(run_fd, created)
+        except BaseException as error:
+            with contextlib.suppress(BaseException):  # a failing cleanup never hides the original
+                _discard(out_fd, name, run_fd, created)
+            if isinstance(error, (OSError, ValueError)) and not isinstance(error, ManifestError):
+                raise ManifestError("cannot write the results directory") from error
+            raise
+        done = True
+    finally:
+        close_error = _close_quietly(run_fd, keep_error=done)
+    return name, close_error
+
+
 def write_outputs(
     out_dir: Path, files: Mapping[str, str], forbidden: Sequence[Path | Identity] = ()
 ) -> str:
@@ -283,40 +326,13 @@ def write_outputs(
         out_fd = _open_out_dir(out_dir, roots)
     except OSError as error:
         raise ManifestError("cannot write the results directory") from error
+    done = False
     try:
-        try:
-            name, run_fd = _new_run_dir(out_fd)
-        except OSError as error:
-            raise ManifestError("cannot write the results directory") from error
-        created: list[str] = []
-        try:
-            for file in sorted(files, key=lambda name: name == REPORT):  # the report last
-                _write_file(
-                    run_fd, REPORT_TEMP if file == REPORT else file, payloads[file], created
-                )
-            _refuse_if_contained(run_fd, roots)
-            if REPORT in files:
-                _publish_report(run_fd, created)
-        except BaseException as error:
-            _discard(out_fd, name, run_fd, created)
-            with contextlib.suppress(OSError):  # the original failure wins over the close's
-                os.close(run_fd)
-            if isinstance(error, (OSError, ValueError)) and not isinstance(error, ManifestError):
-                raise ManifestError("cannot write the results directory") from error
-            raise
-        close_error: OSError | None = None
-        try:
-            os.close(run_fd)
-        except OSError as error:
-            close_error = error
-    except BaseException:
-        with contextlib.suppress(OSError):
-            os.close(out_fd)
-        raise
-    try:
-        os.close(out_fd)
-    except OSError as error:
-        close_error = close_error or error
+        name, close_error = _write_in_new_run(out_fd, files, payloads, roots)
+        done = True
+    finally:
+        out_close_error = _close_quietly(out_fd, keep_error=done)
+    close_error = close_error or out_close_error
     if close_error is not None:
         # Everything is written and synced: the bundle is kept, but the caller is told.
         raise ManifestError("cannot write the results directory") from close_error

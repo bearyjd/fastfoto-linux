@@ -1,7 +1,6 @@
 """Sixth review pass: checkout detection fails closed, Manifest.close is idempotent, the reader
 closes its descriptor, and a run has a byte budget."""
 
-import contextlib
 import errno
 import os
 import stat
@@ -10,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from fastfoto_linux.evaluation import redeye_images, redeye_manifest, redeye_run
-from fastfoto_linux.evaluation.redeye_images import BudgetExceeded, ImageError, read_regular_fd
+from fastfoto_linux.evaluation.redeye_images import BudgetExceeded, read_regular_fd
 from fastfoto_linux.evaluation.redeye_manifest import ManifestError, load_manifest
 from fastfoto_linux.evaluation.redeye_output import _refuse_if_contained
 from fastfoto_linux.evaluation.redeye_run import run_eval
@@ -134,28 +133,12 @@ def test_a_manifest_is_a_context_manager(tmp_path) -> None:
         os.fstat(fd)
 
 
-# --- the reader's descriptor ----------------------------------------------------------------
-
-
-def test_read_regular_fd_closes_the_descriptor_when_fdopen_fails(tmp_path, monkeypatch) -> None:
-    path = tmp_path / "f"
-    path.write_bytes(b"x")
+def _read(path, charge):
     fd = os.open(path, os.O_RDONLY)
-
-    def failing(*args, **kwargs):
-        raise OSError(errno.EMFILE, "injected")
-
     try:
-        monkeypatch.setattr(redeye_images.os, "fdopen", failing)
-        with pytest.raises(ImageError):
-            read_regular_fd(fd, 10)
-        monkeypatch.undo()
-        with pytest.raises(OSError, match="Bad file descriptor"):
-            os.fstat(fd)
+        return read_regular_fd(fd, 100, charge=charge)
     finally:
-        monkeypatch.undo()
-        with contextlib.suppress(OSError):
-            os.close(fd)
+        os.close(fd)
 
 
 # --- the byte budget ------------------------------------------------------------------------
@@ -165,7 +148,7 @@ def test_the_size_is_charged_before_a_byte_is_read(tmp_path) -> None:
     path = tmp_path / "f"
     path.write_bytes(b"x" * 7)
     seen: list[int] = []
-    read_regular_fd(os.open(path, os.O_RDONLY), 100, charge=seen.append)
+    _read(path, charge=seen.append)
     assert seen == [7]
     positions: list[int] = []
     fd = os.open(path, os.O_RDONLY)
@@ -174,14 +157,17 @@ def test_the_size_is_charged_before_a_byte_is_read(tmp_path) -> None:
         text = Path(f"/proc/self/fdinfo/{fd}").read_text()
         positions.append(int(text.split("pos:")[1].split()[0]))
 
-    read_regular_fd(fd, 100, charge=reading_position)
+    try:
+        read_regular_fd(fd, 100, charge=reading_position)
+    finally:
+        os.close(fd)
     assert positions == [0]
 
     def refusing(size: int) -> None:
         raise BudgetExceeded
 
     with pytest.raises(BudgetExceeded):
-        read_regular_fd(os.open(path, os.O_RDONLY), 100, charge=refusing)
+        _read(path, charge=refusing)
 
 
 def test_a_run_over_its_byte_budget_counts_tuning_images_too(tmp_path, monkeypatch) -> None:

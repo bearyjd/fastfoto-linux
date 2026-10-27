@@ -1,7 +1,6 @@
-"""Seventh review pass: late fdopen failures, publishing by rename, a killed writer in a fresh
+"""Seventh review pass: publishing by rename, a killed writer in a fresh
 interpreter, and an ascent whose close is interrupted."""
 
-import contextlib
 import errno
 import os
 import signal
@@ -10,8 +9,7 @@ import sys
 
 import pytest
 
-from fastfoto_linux.evaluation import redeye_images, redeye_output
-from fastfoto_linux.evaluation.redeye_images import fdopen_owned
+from fastfoto_linux.evaluation import redeye_output
 from fastfoto_linux.evaluation.redeye_manifest import ManifestError
 from fastfoto_linux.evaluation.redeye_output import write_outputs
 
@@ -39,16 +37,6 @@ redeye_output.write_outputs(Path(sys.argv[1]), {"report.json": "R", "summary.md"
 
 def _open_fds() -> int:
     return len(os.listdir("/proc/self/fd"))
-
-
-def test_a_late_fdopen_failure_closes_the_descriptor_once_and_raises_the_real_error(
-    tmp_path,
-) -> None:
-    fd = os.open(tmp_path / "f", os.O_WRONLY | os.O_CREAT)
-    before = _open_fds()
-    with pytest.raises(LookupError):  # not EBADF from a second close
-        fdopen_owned(fd, "w", encoding="no-such-encoding")
-    assert _open_fds() == before - 1  # the wrapper closed it, exactly once
 
 
 @pytest.mark.usefixtures("outside_checkout")
@@ -128,42 +116,6 @@ def test_a_report_json_that_cannot_be_looked_at_is_a_manifest_error(tmp_path, mo
     assert not (tmp_path / "report.json").exists()
 
 
-def _fail_fstat_on_call(monkeypatch, nth: int) -> list[int]:
-    real, calls = os.fstat, []
-
-    def failing(target, *args, **kwargs):
-        calls.append(target)
-        if len(calls) == nth:
-            raise MemoryError
-        return real(target, *args, **kwargs)
-
-    monkeypatch.setattr(redeye_images.os, "fstat", failing)
-    return calls
-
-
-def test_a_memory_error_on_the_first_identity_check_closes_the_descriptor(monkeypatch) -> None:
-    fd = os.open(os.devnull, os.O_RDONLY)
-    before = _open_fds()
-    _fail_fstat_on_call(monkeypatch, 1)
-    with pytest.raises(MemoryError):
-        fdopen_owned(fd, "rb")
-    monkeypatch.undo()
-    assert _open_fds() == before - 1
-
-
-def test_a_memory_error_on_the_second_identity_check_keeps_the_original_error(
-    monkeypatch,
-) -> None:
-    fd = os.open(os.devnull, os.O_RDONLY)
-    before = _open_fds()
-    calls = _fail_fstat_on_call(monkeypatch, 2)
-    with pytest.raises(LookupError):
-        fdopen_owned(fd, "r", encoding="no-such-encoding")
-    monkeypatch.undo()
-    assert len(calls) >= 2
-    assert _open_fds() == before - 1
-
-
 def test_a_memory_error_while_closing_the_previous_directory_leaks_nothing(
     tmp_path, monkeypatch
 ) -> None:
@@ -182,68 +134,3 @@ def test_a_memory_error_while_closing_the_previous_directory_leaks_nothing(
         assert _open_fds() == before
     finally:
         os.close(fd)
-
-
-def _assert_alive_and_unrelated(replacement: int) -> None:
-    assert os.fstat(replacement)  # still open
-    assert os.read(replacement, 4) == b"\0\0\0\0"  # still the /dev/zero we opened
-
-
-def test_a_reused_descriptor_is_not_closed_when_the_second_identity_check_runs_out_of_memory(
-    monkeypatch,
-) -> None:
-    fd = os.open(os.devnull, os.O_RDONLY)
-    real, calls, replacement = os.fstat, [], []
-
-    def failing(target, *args, **kwargs):
-        calls.append(target)
-        if len(calls) == 2:  # fdopen already released the number: someone else gets it
-            replacement.append(os.open("/dev/zero", os.O_RDONLY))
-            raise MemoryError
-        return real(target, *args, **kwargs)
-
-    monkeypatch.setattr(redeye_images.os, "fstat", failing)
-    try:
-        with pytest.raises(LookupError):  # the original error, not MemoryError
-            fdopen_owned(fd, "r", encoding="no-such-encoding")
-        monkeypatch.undo()
-        assert replacement == [fd]
-        _assert_alive_and_unrelated(replacement[0])
-    finally:
-        monkeypatch.undo()
-        for number in replacement:
-            with contextlib.suppress(OSError):  # destroyed: the assertions above report it
-                os.close(number)
-
-
-def test_a_replacement_descriptor_survives_a_close_that_runs_out_of_memory(monkeypatch) -> None:
-    fd = os.open(os.devnull, os.O_RDONLY)
-    real, closed, replacement = os.close, [], []
-
-    def failing(target):
-        closed.append(target)
-        real(target)  # the number is released ...
-        replacement.append(os.open("/dev/zero", os.O_RDONLY))  # ... and taken by someone else
-        raise MemoryError
-
-    monkeypatch.setattr(redeye_images.os, "close", failing)
-    try:
-        with pytest.raises(ValueError):  # a bad mode fails before open() owns the descriptor
-            fdopen_owned(fd, "zz")
-        monkeypatch.undo()
-        assert closed == [fd]  # never closed a second time
-        assert replacement == [fd]
-        _assert_alive_and_unrelated(replacement[0])
-    finally:
-        monkeypatch.undo()
-        for number in replacement:
-            with contextlib.suppress(OSError):  # destroyed: the assertions above report it
-                os.close(number)
-
-
-def test_an_early_fdopen_failure_without_a_second_fault_does_not_leak() -> None:
-    fd = os.open(os.devnull, os.O_RDONLY)
-    before = _open_fds()
-    with pytest.raises(ValueError):
-        fdopen_owned(fd, "zz")
-    assert _open_fds() == before - 1

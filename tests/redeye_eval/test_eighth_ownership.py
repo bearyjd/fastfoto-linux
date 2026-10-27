@@ -100,7 +100,7 @@ def test_text_that_cannot_be_encoded_fails_before_any_file_is_created(
         write_outputs(out, {**BUNDLE, "summary.md": "lone \ud800 surrogate"})
     monkeypatch.undo()
     assert created == []
-    assert list(out.iterdir()) == []
+    assert not out.exists()  # refused before the output directory was even made
     assert _open_fds() == before
 
 

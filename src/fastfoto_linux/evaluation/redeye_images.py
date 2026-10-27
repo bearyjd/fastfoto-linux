@@ -8,7 +8,6 @@ import struct
 import warnings
 from collections.abc import Callable
 from pathlib import Path
-from typing import IO, Any
 
 import numpy as np
 from PIL import Image, UnidentifiedImageError
@@ -31,6 +30,7 @@ _DECODER_ERRORS = (
     IndexError,
     Image.DecompressionBombError,
 )
+_READ_CHUNK = 1 << 20
 _PNG_HEADER_BYTES = 24
 _PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 
@@ -51,56 +51,37 @@ _DIR_FLAGS = os.O_RDONLY | os.O_NOFOLLOW | os.O_DIRECTORY | getattr(os, "O_CLOEX
 _FILE_FLAGS = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | getattr(os, "O_CLOEXEC", 0)
 
 
-def _file_id(fd: int) -> tuple[int, int] | None:
-    try:
-        info = os.fstat(fd)
-    except OSError:
-        return None
-    return info.st_dev, info.st_ino
-
-
-def fdopen_owned(fd: int, mode: str, **kwargs: Any) -> IO[Any]:
-    """``os.fdopen`` that closes ``fd`` itself if the wrapper cannot be made (else it leaks).
-
-    ``open`` closes the descriptor on a late failure (a bad encoding), so after a failure ``fd`` is
-    closed here only when ownership is proven: the fd was never handed to ``fdopen`` (the first
-    identity check itself failed), or a fresh identity check shows it is still the same open file.
-    If that check cannot be made (``MemoryError`` while already handling an error), or the close
-    itself fails, nothing is closed again: at most one descriptor leaks in that double fault, but a
-    descriptor that may now belong to someone else is never closed. The original error propagates.
-    """
-    before: tuple[int, int] | None = None
-    attempted = False
-    try:
-        before = _file_id(fd)
-        attempted = True
-        return os.fdopen(fd, mode, **kwargs)
-    except BaseException:
-        try:
-            if not attempted or (before is not None and _file_id(fd) == before):
-                os.close(fd)
-        except (MemoryError, OSError):  # unproven or failed: leak at most this one, never retry
-            pass  # no suppress(): it allocates, and this path may be out of memory
-        raise
+def read_up_to(fd: int, count: int) -> bytes:
+    """At most ``count`` bytes from ``fd``, from its current position (less only at end of file).
+    ``fd`` stays open: whoever opened it closes it."""
+    chunks: list[bytes] = []
+    remaining = count
+    while remaining > 0:
+        chunk = os.read(fd, min(remaining, _READ_CHUNK))
+        if not chunk:
+            break
+        chunks.append(chunk)
+        remaining -= len(chunk)
+    return b"".join(chunks)
 
 
 def read_regular_fd(fd: int, limit: int, charge: Callable[[int], None] | None = None) -> bytes:
-    """Read the regular file open on ``fd`` (closed here), at most ``limit`` bytes of it.
+    """Read the regular file open on ``fd`` (not closed here: the opener closes it), at most
+    ``limit`` bytes of it.
 
     ``charge`` is called with the file's size before any byte is read (it may raise
     ``BudgetExceeded``). ``ImageError("unsafe_path")`` for anything but a regular file,
     ``"too_large"`` over ``limit``, ``"unreadable"`` when the device fails the read (EIO, ESTALE).
     """
     try:
-        with fdopen_owned(fd, "rb") as handle:
-            info = os.fstat(handle.fileno())
-            if not stat.S_ISREG(info.st_mode):
-                raise ImageError("unsafe_path")
-            if info.st_size > limit:
-                raise ImageError("too_large")
-            if charge is not None:
-                charge(info.st_size)
-            data = handle.read(min(info.st_size, limit) + 1)  # sized: no 256 MB buffer
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode):
+            raise ImageError("unsafe_path")
+        if info.st_size > limit:
+            raise ImageError("too_large")
+        if charge is not None:
+            charge(info.st_size)
+        data = read_up_to(fd, min(info.st_size, limit) + 1)  # sized: no 256 MB buffer
     except OSError as error:
         raise ImageError("unreadable") from error
     if len(data) > limit:
@@ -172,7 +153,10 @@ def read_contained(
         raise ImageError("missing") from error
     except (OSError, ValueError) as error:  # ELOOP, ENOTDIR, a NUL byte, a lone surrogate ...
         raise ImageError("unsafe_path" if isinstance(error, OSError) else "unreadable") from error
-    return read_regular_fd(fd, MAX_SOURCE_BYTES, charge_bytes)
+    try:
+        return read_regular_fd(fd, MAX_SOURCE_BYTES, charge_bytes)
+    finally:
+        os.close(fd)
 
 
 def _png_pixels(data: bytes) -> int | None:

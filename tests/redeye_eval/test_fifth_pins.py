@@ -95,34 +95,21 @@ def test_a_regular_file_whose_read_fails_with_eio_is_unreadable() -> None:
     assert info.value.code == "unreadable"
 
 
-class _Failing:
-    """A file object whose reads fail the way a dying disk's do."""
+def _failing_reads(monkeypatch, corpus) -> None:
+    real = os.read
 
-    def __init__(self, handle) -> None:
-        self._handle = handle
+    def failing(fd, count):
+        if os.readlink(f"/proc/self/fd/{fd}").startswith(str(corpus)):
+            raise OSError(errno.EIO, "injected")
+        return real(fd, count)
 
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc) -> None:
-        self._handle.close()
-
-    def fileno(self) -> int:
-        return self._handle.fileno()
-
-    def read(self, *args):
-        raise OSError(errno.EIO, "injected")
-
-
-def _failing_reads(monkeypatch) -> None:
-    real = os.fdopen
-    monkeypatch.setattr(redeye_images.os, "fdopen", lambda fd, *a, **k: _Failing(real(fd, *a, **k)))
+    monkeypatch.setattr(redeye_images.os, "read", failing)
 
 
 def test_a_heldout_item_that_cannot_be_read_is_a_counted_error(tmp_path, monkeypatch) -> None:
     items = clean_heldout_set()
     manifest = load_manifest(write_corpus(tmp_path / "c", items))
-    _failing_reads(monkeypatch)
+    _failing_reads(monkeypatch, tmp_path / "c")
     run = run_eval(manifest, "heldout", detector=KeyedDetector(items), perf=False)
     assert {r.error for r in run.results} == {"unreadable"}
 
@@ -131,7 +118,7 @@ def test_a_tuning_item_that_cannot_be_read_refuses_the_run(tmp_path, monkeypatch
     items = clean_heldout_set()
     path = write_corpus(tmp_path / "c", items, splits={i.id: "tuning" for i in items[:1]})
     manifest = load_manifest(path)
-    _failing_reads(monkeypatch)
+    _failing_reads(monkeypatch, tmp_path / "c")
     with pytest.raises(ManifestError, match="cannot be read"):
         run_eval(manifest, "heldout", detector=KeyedDetector(items), perf=False)
 

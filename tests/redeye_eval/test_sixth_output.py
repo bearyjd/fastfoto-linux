@@ -75,7 +75,7 @@ def test_text_that_cannot_be_encoded_is_a_manifest_error_and_leaves_nothing(tmp_
     out = tmp_path / "out"
     with pytest.raises(ManifestError):
         write_outputs(out, {**BUNDLE, "summary.md": "lone surrogate \ud800"})
-    assert _runs(out) == []
+    assert not out.exists()  # refused before anything was made
 
 
 # --- containment: the corpus appears between two files --------------------------------------
@@ -134,21 +134,6 @@ def test_a_failing_fstat_during_the_ascent_closes_every_descriptor(tmp_path, mon
 
 
 @pytest.mark.usefixtures("outside_checkout")
-def test_a_failing_fdopen_leaks_no_descriptor(tmp_path, monkeypatch) -> None:
-    out = tmp_path / "out"
-    write_outputs(out, BUNDLE)  # the output directories exist already
-    before = _open_fds()
-
-    def failing(*args, **kwargs):
-        raise OSError(errno.EMFILE, "injected")
-
-    monkeypatch.setattr(redeye_output.os, "fdopen", failing)
-    with pytest.raises(ManifestError):
-        write_outputs(out, BUNDLE)
-    monkeypatch.undo()
-    assert _open_fds() == before
-    assert len(_runs(out)) == 1
-
 
 # --- run names ------------------------------------------------------------------------------
 

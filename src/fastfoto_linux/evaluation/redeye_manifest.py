@@ -9,7 +9,7 @@ import stat
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from fastfoto_linux.evaluation.redeye_images import open_resolved_dir
+from fastfoto_linux.evaluation.redeye_images import open_resolved_dir, read_up_to
 
 FORMAT = "fastfoto-redeye-eval"
 VERSION = 1
@@ -310,10 +310,13 @@ def parse_manifest(data: bytes, root: Path, root_fd: int | None = None) -> Manif
 def _read_manifest_file(dir_fd: int, name: str) -> bytes:
     # O_NONBLOCK: opening a FIFO must not wait for a writer.
     flags = os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
-    with os.fdopen(os.open(name, flags, dir_fd=dir_fd), "rb") as handle:
-        if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
+    fd = os.open(name, flags, dir_fd=dir_fd)
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
             raise _fail("the manifest must be a regular file")
-        return handle.read(MAX_MANIFEST_BYTES + 1)
+        return read_up_to(fd, MAX_MANIFEST_BYTES + 1)
+    finally:
+        os.close(fd)
 
 
 def load_manifest(path: Path) -> Manifest:

@@ -9,7 +9,7 @@ from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
-from fastfoto_linux.evaluation.redeye_images import ImageError, fdopen_owned, read_regular_fd
+from fastfoto_linux.evaluation.redeye_images import ImageError, read_regular_fd
 from fastfoto_linux.evaluation.redeye_manifest import Manifest, ManifestError
 
 PROJECT_NAME = "fastfoto-linux"
@@ -48,7 +48,10 @@ def _fd_is_checkout(fd: int) -> bool:
     try:
         os.stat(".git", dir_fd=fd)
         file = os.open("pyproject.toml", os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=fd)
-        data = read_regular_fd(file, MAX_PYPROJECT_BYTES)  # a FIFO here must not block
+        try:
+            data = read_regular_fd(file, MAX_PYPROJECT_BYTES)  # a FIFO here must not block
+        finally:
+            os.close(file)
     except OSError as error:
         if error.errno in _ABSENT:
             return False
@@ -204,15 +207,26 @@ def _new_run_dir(out_fd: int) -> tuple[str, int]:
     raise ManifestError("cannot choose a new run directory name")
 
 
-def _write_file(run_fd: int, name: str, text: str, created: list[str]) -> None:
+def _write_all(fd: int, data: bytes) -> None:
+    """Write every byte of ``data`` to ``fd`` (a write may take fewer than asked)."""
+    view = memoryview(data)
+    while view:
+        written = os.write(fd, view)
+        if written <= 0:
+            raise OSError(errno.EIO, "write made no progress")
+        view = view[written:]
+
+
+def _write_file(run_fd: int, name: str, data: bytes, created: list[str]) -> None:
     """Create ``name`` in the run directory (exclusively, no symlink, mode 0o600), fill it and
-    flush it to storage."""
+    flush it to storage. This function opened the descriptor, so it closes it, and only it."""
     fd = os.open(name, _CREATE_FLAGS, FILE_MODE, dir_fd=run_fd)
     created.append(name)
-    with fdopen_owned(fd, "w", encoding="utf-8") as handle:
-        handle.write(text)
-        handle.flush()
-        os.fsync(handle.fileno())
+    try:
+        _write_all(fd, data)
+        os.fsync(fd)
+    finally:
+        os.close(fd)
 
 
 def _publish_report(run_fd: int, created: list[str]) -> None:
@@ -255,6 +269,10 @@ def write_outputs(
     """
     roots = _identities(forbidden)
     try:
+        payloads = {file: text.encode("utf-8") for file, text in files.items()}  # before any file
+    except ValueError as error:  # a lone surrogate: nothing has been created yet
+        raise ManifestError("cannot write the results directory") from error
+    try:
         out_fd = _open_out_dir(out_dir, roots)
     except OSError as error:
         raise ManifestError("cannot write the results directory") from error
@@ -266,7 +284,9 @@ def write_outputs(
         created: list[str] = []
         try:
             for file in sorted(files, key=lambda name: name == REPORT):  # the report last
-                _write_file(run_fd, REPORT_TEMP if file == REPORT else file, files[file], created)
+                _write_file(
+                    run_fd, REPORT_TEMP if file == REPORT else file, payloads[file], created
+                )
             _refuse_if_contained(run_fd, roots)
             if REPORT in files:
                 _publish_report(run_fd, created)

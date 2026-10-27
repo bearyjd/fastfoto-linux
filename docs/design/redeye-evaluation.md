@@ -1,7 +1,8 @@
 # Red-eye evaluation harness
 
 `ffscan eval redeye MANIFEST.json` measures the automatic red-eye path against a labelled
-manifest. It is a measuring instrument: **the harness ships with no data; no accuracy has been measured.** Red-eye stays experimental and no default changes. Its self-tests use
+manifest. It is a measuring instrument: **the harness ships with no data; no accuracy has been
+measured.** Red-eye stays experimental and no default changes. Its self-tests use
 synthetic images painted in code with a stub face detector, so they check that the counting is
 right, not that red-eye works.
 
@@ -10,8 +11,8 @@ right, not that red-eye works.
 The manifest is a required argument. Nothing is read except the manifest and the images it
 names, under the manifest's own directory. Each path is opened component by component
 without following symlinks, so a symlinked directory or file is refused and a late swap cannot
-redirect the read; FIFOs and other non-regular files are refused too. There are no default corpus paths and no automatic
-ingestion of anyone's photos. Results go to `--out DIR` (default
+redirect the read; FIFOs and other non-regular files are refused too. There are no default
+corpus paths and no automatic ingestion of anyone's photos. Results go to `--out DIR` (default
 `$XDG_CACHE_HOME/fastfoto-linux/redeye-eval/<manifest sha256[:12]>/`), which is refused inside
 the manifest directory or inside a fastfoto-linux checkout. Reports hold opaque ids, sha256
 prefixes, numbers and categories: never paths, pixels or the rights `source` text. Use opaque
@@ -71,24 +72,29 @@ changed pixel; a change outside every box is attributed to all of the image's ca
 
 Only PNG, JPEG and single-frame TIFF are decoded. Eye radius is at most 10000 and coordinates
 within 1e7; eyes and boxes must lie inside the decoded image. One run has an image budget
-(20,000 images) and a pixel budget (2 billion decoded pixels, tuning images included, charged
+(20,000 images), a pixel budget (2 billion decoded pixels, tuning images included, charged
 from each header before its pixels are decoded; undecodable headers are limited by the image
-budget only); going over is a usage error. The pixel budget is charged conservatively: images that later
-error still consume it, so a few hostile headers can exhaust it and abort the run with exit 2.
+budget only) and a byte budget (4 GiB of file bytes, tuning images included, charged from each
+file's size before it is read); going over any is a usage error. The budgets are charged
+conservatively: images that later error still consume them, so a few hostile files can exhaust
+one and abort the run with exit 2.
 The manifest's own directory is opened while the manifest is read (its resolved path is walked
 from `/` without following a symlink) and that descriptor is the corpus root for the whole run,
 so no path is resolved again and replacing a path mid-run cannot redirect a read. A read that
 fails at the device (EIO, ESTALE) is the per-item error `unreadable` for a held-out item and a
-usage error for a tuning item. A multi-frame TIFF is detected by looking at the second IFD only, never by walking the
-chain; there is no per-image wall-clock limit, so a hostile file can still cost decode time within
-the byte and pixel caps.
+usage error for a tuning item. A multi-frame TIFF is detected by looking at the second IFD only,
+never by walking the chain; there is no per-image wall-clock limit, so a hostile file can still
+cost decode time within the byte and pixel caps.
 
 A memory failure on a held-out item is the per-item error `resource`; on a tuning item it
 refuses the run. A failing profiling pass leaves the scores alone and is recorded in `perf.json`
 only. Every run writes a new directory `run-<UTC time>-<8 hex>` under the results directory
-(`mkdirat`, so it is never an existing one) and creates `summary.md`, `perf.json` and finally
-`report.json` in it exclusively, mode 0600. Nothing existing is replaced, removed or locked, and
-a run directory without `report.json` is incomplete (a crash; a refused run removes what it made).
+(`mkdirat`, so it is never an existing one; a taken name is retried up to three times with a new
+token) and creates `summary.md` and `perf.json` in it exclusively, mode 0600. The report is
+written whole to `.report.tmp`, synced, and published with a hard link that never replaces, so a
+`report.json` that exists is complete (barring storage that lies) and a run directory without
+it is incomplete (a crash; a refused run removes what it made). Nothing existing is replaced,
+removed or locked. Run directories accumulate: nothing prunes them, the user deletes old ones.
 
 ## Threat model
 
@@ -96,12 +102,15 @@ Untrusted: manifest content, image bytes and file names inside the corpus. Trust
 the directories they pass (corpus roots, results directory). Out of scope: a concurrent local
 attacker with write access to those directories who races renames and unlinks. What remains is
 defence in depth, not immunity. The results directory is walked from `/` without following
-symlinks (directories made on the way are removed again if refused). Before the run directory is made and again after the last file, the walk goes up from its descriptor with
-`openat("..")` and refuses if it or any ancestor has the (device, inode) of a corpus root (taken
-from descriptors held since the manifests were read) or is a checkout; a refusal after the last
-file removes what this call made. Residual windows: a rename that lands after that last check
-cannot be closed by user-space code, and a file written into a forbidden tree before the check
-is removed afterwards, not prevented.
+symlinks (directories made on the way are removed again if refused). Before the run directory is
+made and again after the last file, the walk goes up from its descriptor with `openat("..")` and
+refuses if it or any ancestor has the (device, inode) of a corpus root (taken from descriptors
+held since the manifests were read) or is a checkout; a refusal after the last file removes what
+this call made. A checkout is recognised by name: a `.git` entry and a `pyproject.toml` whose
+`project.name` is `fastfoto-linux`, so a renamed fork is not recognised. An unparseable
+`pyproject.toml` is someone else's; one that cannot be read (EIO, EACCES) refuses the location.
+Residual windows: a rename that lands after that last check cannot be closed by user-space code,
+and a file written into a forbidden tree before the check is removed afterwards, not prevented.
 
 ## Gate
 

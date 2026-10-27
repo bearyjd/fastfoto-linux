@@ -198,3 +198,24 @@ def test_a_name_collision_retries_with_a_new_token(tmp_path, monkeypatch) -> Non
     with pytest.raises(ManifestError):  # three tries, all taken: a clean error
         write_outputs(out, BUNDLE)
     assert len(_runs(out)) == 2
+
+
+@pytest.mark.usefixtures("outside_checkout")
+def test_the_report_is_synced_before_it_is_linked_and_the_directory_after(
+    tmp_path, monkeypatch
+) -> None:
+    events, real_fsync, real_link = [], os.fsync, os.link
+
+    def fsync(fd):
+        events.append("fsync")
+        real_fsync(fd)
+
+    def link(*args, **kwargs):
+        events.append("link")
+        real_link(*args, **kwargs)
+
+    monkeypatch.setattr(redeye_output.os, "fsync", fsync)
+    monkeypatch.setattr(redeye_output.os, "link", link)
+    write_outputs(tmp_path / "out", BUNDLE)
+    assert events.index("link") >= len(BUNDLE)  # each file was synced first
+    assert events[events.index("link") + 1 :] == ["fsync"]  # then the directory entry

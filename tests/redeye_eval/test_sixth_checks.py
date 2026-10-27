@@ -5,6 +5,7 @@ import contextlib
 import errno
 import os
 import stat
+from pathlib import Path
 
 import pytest
 
@@ -166,6 +167,15 @@ def test_the_size_is_charged_before_a_byte_is_read(tmp_path) -> None:
     seen: list[int] = []
     read_regular_fd(os.open(path, os.O_RDONLY), 100, charge=seen.append)
     assert seen == [7]
+    positions: list[int] = []
+    fd = os.open(path, os.O_RDONLY)
+
+    def reading_position(size: int) -> None:  # nothing may have been read when this is called
+        text = Path(f"/proc/self/fdinfo/{fd}").read_text()
+        positions.append(int(text.split("pos:")[1].split()[0]))
+
+    read_regular_fd(fd, 100, charge=reading_position)
+    assert positions == [0]
 
     def refusing(size: int) -> None:
         raise BudgetExceeded

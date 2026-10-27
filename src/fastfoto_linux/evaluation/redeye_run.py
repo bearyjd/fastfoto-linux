@@ -24,7 +24,7 @@ from fastfoto_linux.evaluation.redeye_match import (
 )
 from fastfoto_linux.evaluation.redeye_split import (
     Fingerprint,
-    find_leaks,
+    count_leaks,
     pixel_digest,
 )
 
@@ -69,6 +69,7 @@ class PerfRow:
     dpi: int
     wall_s: float
     peak_bytes: int | None
+    error: str | None = None
 
 
 @dataclass(frozen=True)
@@ -165,13 +166,16 @@ def _timed(
     wall = time.perf_counter() - start
     if not perf:
         return result, None
+    pixels = int(img.shape[0] * img.shape[1])
     tracemalloc.start()
     try:
         evaluate_image(img, item, detector)  # a second pass: tracing slows the first
-        peak = tracemalloc.get_traced_memory()[1]
+        peak, error = tracemalloc.get_traced_memory()[1], None
+    except (MemoryError, OverflowError):  # profiling only: the scores above stand
+        peak, error = None, "resource"
     finally:
         tracemalloc.stop()
-    return result, PerfRow(item.id, int(img.shape[0] * img.shape[1]), item.dpi, wall, peak)
+    return result, PerfRow(item.id, pixels, item.dpi, wall, peak, error)
 
 
 REPORTED_PATH_PROBLEM = "unreadable"
@@ -181,6 +185,10 @@ _PATH_PROBLEMS = ("missing", "unsafe_path", "hash_mismatch")
 def _error_result(item: ManifestImage, code: str) -> ImageResult:
     """An errored item keeps its labelled red eyes (as misses) and faces in the denominators."""
     red_eyes = sum(eye.red for face in item.faces for eye in face.eyes)
+    negative_image = red_eyes == 0
+    categories = tuple(sorted({r.category for r in item.negatives})) or (
+        ("other",) if negative_image else ()
+    )
     return ImageResult(
         item.id,
         item.sha256[:12],
@@ -188,6 +196,8 @@ def _error_result(item: ManifestImage, code: str) -> ImageResult:
         red_eyes=red_eyes,
         fn=red_eyes,
         unevaluated_faces=len(item.faces),
+        negative_image=negative_image,
+        categories=categories,
     )
 
 
@@ -206,10 +216,31 @@ class _Budget:
     def __init__(self) -> None:
         self.pixels = 0
 
-    def charge(self, img: np.ndarray) -> None:
-        self.pixels += int(img.shape[0] * img.shape[1])
+    def charge(self, pixels: int) -> None:
+        """Called with the header's pixel count, before the pixels are decoded."""
+        self.pixels += pixels
         if self.pixels > MAX_RUN_PIXELS:
-            raise ManifestError("the run exceeds its decoded-pixel budget")
+            raise redeye_images.BudgetExceeded
+
+
+def _reported(code: str) -> str:
+    return REPORTED_PATH_PROBLEM if code in _PATH_PROBLEMS else code
+
+
+def _load(
+    manifest: Manifest, item: ManifestImage, digests: dict[str, str], budget: _Budget
+) -> np.ndarray:
+    """Load ``item`` (charging the budget from its header first) and remember its pixel digest.
+
+    The digest cache is keyed by file sha256: the loader verified the bytes against it, and equal
+    bytes decode to equal pixels, so a cached digest is the digest.
+    """
+    try:
+        img = redeye_images.load_image(manifest.root, item.path, item.sha256, budget.charge)
+    except redeye_images.BudgetExceeded as error:
+        raise ManifestError("the run exceeds its decoded-pixel budget") from error
+    digests[item.sha256] = pixel_digest(img)
+    return img
 
 
 def _tuning_fingerprints(
@@ -224,14 +255,13 @@ def _tuning_fingerprints(
     for item in items:
         if item.sha256 not in digests:
             try:
-                img = redeye_images.load_image(manifest.root, item.path, item.sha256)
-            except redeye_images.ImageError as error:
+                _load(manifest, item, digests, budget)
+            except (redeye_images.ImageError, MemoryError, OverflowError) as error:
+                code = error.code if isinstance(error, redeye_images.ImageError) else "resource"
                 raise ManifestError(
-                    f"tuning image {item.id!r} cannot be read ({error.code}), "
+                    f"tuning image {item.id!r} cannot be read ({_reported(code)}), "
                     "so leakage cannot be ruled out"
                 ) from error
-            budget.charge(img)
-            digests[item.sha256] = pixel_digest(img)
         prints.append(Fingerprint(item.id, item.sha256, digests[item.sha256], item.group))
     return prints
 
@@ -270,15 +300,13 @@ def run_eval(
     heldout_prints: list[Fingerprint] = []
     for item in selected:
         try:
-            img = redeye_images.load_image(manifest.root, item.path, item.sha256)
-        except redeye_images.ImageError as error:
-            logger.debug("image %s: %s", item.id, error.code)
-            reported = REPORTED_PATH_PROBLEM if error.code in _PATH_PROBLEMS else error.code
-            results.append(_error_result(item, reported))
+            img = _load(manifest, item, digests, budget)
+        except (redeye_images.ImageError, MemoryError, OverflowError) as error:
+            code = error.code if isinstance(error, redeye_images.ImageError) else "resource"
+            logger.debug("image %s: %s", item.id, code)
+            results.append(_error_result(item, _reported(code)))
             heldout_prints.append(Fingerprint(item.id, item.sha256, None, item.group))
             continue
-        budget.charge(img)
-        digests[item.sha256] = pixel_digest(img)
         heldout_prints.append(Fingerprint(item.id, item.sha256, digests[item.sha256], item.group))
         result, row = _evaluate_loaded(img, item, detector, perf)
         results.append(result)
@@ -288,9 +316,11 @@ def run_eval(
         tuning = _tuning_fingerprints(manifest, tuning_items, digests, budget)
         for other in tuning_manifests:
             tuning += _tuning_fingerprints(other, other.images, digests, budget)
-        leaks = find_leaks(heldout_prints, tuning)
-        if leaks:
-            raise ManifestError("held-out split leaks from tuning: " + "; ".join(leaks[:5]))
+        count, examples = count_leaks(heldout_prints, tuning)
+        if count:
+            raise ManifestError(
+                f"held-out split leaks from tuning ({count} item(s)): " + "; ".join(examples)
+            )
     return RunResult(
         split, tuple(results), tuple(rows), resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     )

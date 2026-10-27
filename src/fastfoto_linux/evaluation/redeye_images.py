@@ -6,6 +6,7 @@ import os
 import stat
 import struct
 import warnings
+from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
@@ -17,6 +18,10 @@ _MODES = ("RGB", "L", "P")
 _FORMATS = ("PNG", "JPEG", "TIFF")  # no EPS (Ghostscript), no animated formats
 _PNG_HEADER_BYTES = 24
 _PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+
+
+class BudgetExceeded(Exception):  # not a ValueError: decoding must not turn it into "corrupt"
+    """The caller's decoded-pixel budget would be exceeded by this image."""
 
 
 class ImageError(Exception):
@@ -65,8 +70,12 @@ def _png_pixels(data: bytes) -> int | None:
     return None
 
 
-def decode_image(data: bytes) -> np.ndarray:
-    """Decode to RGB uint8, checking the header size before the pixels are loaded."""
+def decode_image(data: bytes, charge: Callable[[int], None] | None = None) -> np.ndarray:
+    """Decode to RGB uint8, checking the header size before the pixels are loaded.
+
+    ``charge`` is called with the header's pixel count before any pixel is decoded (it may
+    raise ``BudgetExceeded``). Images whose header cannot be read are not charged.
+    """
     declared = _png_pixels(data)
     if declared is not None and declared > MAX_SOURCE_PIXELS:
         raise ImageError("too_large")
@@ -77,6 +86,8 @@ def decode_image(data: bytes) -> np.ndarray:
                 width, height = image.size
                 if width * height > MAX_SOURCE_PIXELS:
                     raise ImageError("too_large")
+                if charge is not None:
+                    charge(width * height)
                 if getattr(image, "n_frames", 1) > 1:
                     raise ImageError("multi_frame")
                 if image.mode not in _MODES or (image.mode == "P" and "transparency" in image.info):
@@ -94,9 +105,11 @@ def decode_image(data: bytes) -> np.ndarray:
     return rgb
 
 
-def load_image(root: Path, rel: str, sha256: str) -> np.ndarray:
+def load_image(
+    root: Path, rel: str, sha256: str, charge: Callable[[int], None] | None = None
+) -> np.ndarray:
     """The verified RGB array of ``rel`` under ``root``; ``ImageError`` says why not."""
     data = read_contained(root, rel)
     if hashlib.sha256(data).hexdigest() != sha256:
         raise ImageError("hash_mismatch")
-    return decode_image(data)
+    return decode_image(data, charge)

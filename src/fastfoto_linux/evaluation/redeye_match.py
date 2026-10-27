@@ -190,6 +190,23 @@ def _dilated_discs(shape: tuple[int, ...], faces: Sequence[GtFace]) -> np.ndarra
     return covered
 
 
+def _attributed(
+    changed: np.ndarray, shape: tuple[int, ...], negatives: Sequence[Region]
+) -> list[str]:
+    """Categories whose box holds a changed pixel; a change outside every box (it cannot be
+    localised) is attributed to all of the image's categories, and to "other" if it has none."""
+    categories = sorted({r.category for r in negatives})
+    if not categories:
+        return ["other"]
+    if (changed & ~_union_of_regions(shape, negatives)).any():
+        return categories
+    return [
+        c
+        for c in categories
+        if (changed & _union_of_regions(shape, [r for r in negatives if r.category == c])).any()
+    ]
+
+
 def count_changes(  # noqa: PLR0913
     img: np.ndarray,
     out: np.ndarray,
@@ -206,7 +223,7 @@ def count_changes(  # noqa: PLR0913
     if negative_image:
         damage = int(changed.sum())
         if damage:
-            damaged = sorted({r.category for r in negatives} or {"other"})
+            damaged = _attributed(changed, img.shape, negatives)
     else:
         for category in sorted({r.category for r in negatives}):
             hit = changed & _union_of_regions(

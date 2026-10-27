@@ -67,7 +67,7 @@ def _row(result: ImageResult) -> dict[str, object]:
     }
 
 
-def _categories(ok: list[ImageResult]) -> dict[str, object]:
+def _categories(ok: list[ImageResult], errored: list[ImageResult]) -> dict[str, object]:
     table = {}
     for category in CATEGORIES:
         in_category = [r for r in ok if category in r.categories]
@@ -75,6 +75,7 @@ def _categories(ok: list[ImageResult]) -> dict[str, object]:
         table[category] = {
             "images": len(in_category),
             "damaged": proportion(damaged, len(in_category)),
+            "unevaluated": sum(1 for r in errored if category in r.categories and r.negative_image),
         }
     return table
 
@@ -115,6 +116,7 @@ def build_report(manifest: Manifest, run: RunResult) -> dict[str, object]:
         },
         "abstained_eyes": total("abstained"),
         "negative_images": len(negatives),
+        "unevaluated_negative_images": sum(1 for r in run.results if r.error and r.negative_image),
         "damaged_negative_images": proportion(
             sum(1 for r in negatives if r.damage), len(negatives)
         ),
@@ -133,7 +135,7 @@ def build_report(manifest: Manifest, run: RunResult) -> dict[str, object]:
         "match": {"iod_fraction": MATCH_IOD_FRACTION, "collateral_margin": COLLATERAL_MARGIN},
         "constants": _constants(),
         "totals": totals,
-        "categories": _categories(ok),
+        "categories": _categories(ok, [r for r in run.results if r.error]),
         "images": [_row(r) for r in run.results],
     }
 
@@ -175,14 +177,16 @@ def _describe(row: dict[str, object], what: str) -> str:
 def _damage_line(totals: dict, split: str) -> str:
     row = totals["damaged_negative_images"]
     kind = "frozen negatives" if split == "heldout" else "negatives"
+    missing = totals["unevaluated_negative_images"]
+    note = f"; {missing} negative image(s) unevaluated (errored, not in this n)" if missing else ""
     if not row["n"]:
-        return "Negative images: no samples"
+        return "Negative images: no samples" + note
     if row["k"] == 0:
         return (
             f"No damaging change observed in {row['n']} {kind} "
-            f"(95% upper bound {_pct(row['zero_upper_bound'])})"
+            f"(95% upper bound {_pct(row['zero_upper_bound'])})" + note
         )
-    return _describe(row, "Negative images damaged")
+    return _describe(row, "Negative images damaged") + note
 
 
 def render_summary(report: dict[str, object]) -> str:
@@ -264,6 +268,7 @@ def perf_json(run: RunResult) -> str:
                     "dpi": r.dpi,
                     "wall_s": r.wall_s,
                     "peak_bytes": r.peak_bytes,
+                    "error": r.error,
                 }
                 for r in run.perf
             ],

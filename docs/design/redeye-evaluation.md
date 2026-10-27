@@ -60,14 +60,21 @@ anywhere in a negative image (damage), and outside the dilated ground-truth disc
 images only; non-red-eye matches (`fp_non_red`) are reported but ungated. Errored items
 (unreadable, corrupt, too large, bad mode or format, multi-frame, bad geometry, resource) are
 listed, keep their labelled red eyes (as misses) and faces in the denominators, and fail G4.
-Missing files, path escapes and hash mismatches share the one reason `unreadable`.
+Missing files, path escapes and hash mismatches share the one reason `unreadable`. Errored
+negative images are shown as "unevaluated" beside the damage figure and per category; the exact
+upper bound uses evaluated images only. G5 counts the labelled red eyes of errored items (G4
+fails anyway). A damaged negative image attributes damage to the categories whose box holds a
+changed pixel; a change outside every box is attributed to all of the image's categories.
 
 ## Limits
 
 Only PNG, JPEG and single-frame TIFF are decoded. Eye radius is at most 10000 and coordinates
 within 1e7; eyes and boxes must lie inside the decoded image. One run has an image budget
-(20,000 images) and a pixel budget (2 billion decoded pixels, tuning images included); going
-over is a usage error.
+(20,000 images) and a pixel budget (2 billion decoded pixels, tuning images included, charged
+from each header before its pixels are decoded; undecodable headers are limited by the image
+budget only); going over is a usage error. A memory failure on a held-out item is the per-item
+error `resource`; on a tuning item it refuses the run. A failing profiling pass leaves the
+scores alone and is recorded in `perf.json` only.
 
 ## Gate
 

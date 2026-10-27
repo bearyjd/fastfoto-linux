@@ -9,6 +9,8 @@ import numpy as np
 from fastfoto_linux.evaluation.redeye_manifest import Manifest, ManifestError
 
 HELDOUT_PERCENT = 20
+MAX_LEAK_EXAMPLES = 5
+_KINDS = ("id", "file hash", "pixel hash", "group")
 
 
 @dataclass(frozen=True)
@@ -17,6 +19,11 @@ class Fingerprint:
     file_sha256: str
     pixel_sha256: str | None
     group: str | None
+
+
+def _keys(print_: Fingerprint) -> list[tuple[str, str]]:
+    values = (print_.id, print_.file_sha256, print_.pixel_sha256, print_.group)
+    return [(kind, v) for kind, v in zip(_KINDS, values, strict=True) if v is not None]
 
 
 def derived_split(salt: str, group: str | None, sha256: str) -> str:
@@ -39,30 +46,30 @@ def pixel_digest(img: np.ndarray) -> str:
     return digest.hexdigest()
 
 
-def find_leaks(heldout: Sequence[Fingerprint], tuning: Sequence[Fingerprint]) -> list[str]:
-    """Messages (ids and kinds only) for every held-out item that overlaps a tuning item."""
-    leaks: list[str] = []
-    for held in heldout:
-        for tune in tuning:
-            shared = [
-                kind
-                for kind, a, b in (
-                    ("id", held.id, tune.id),
-                    ("file hash", held.file_sha256, tune.file_sha256),
-                    ("pixel hash", held.pixel_sha256, tune.pixel_sha256),
-                    ("group", held.group, tune.group),
-                )
-                if a is not None and a == b
-            ]
-            if shared:
-                leaks.append(
-                    f"held-out {held.id!r} shares {', '.join(shared)} with tuning {tune.id!r}"
-                )
-    return leaks
-
-
 def count_leaks(
     heldout: Sequence[Fingerprint], tuning: Sequence[Fingerprint]
 ) -> tuple[int, list[str]]:
-    messages = find_leaks(heldout, tuning)
-    return len(messages), messages
+    """How many held-out items overlap a tuning item, and a few example messages.
+
+    Indexed by key, so time and memory are linear however many items share a key.
+    """
+    index: dict[str, dict[str, str]] = {kind: {} for kind in _KINDS}
+    for tune in tuning:
+        for kind, value in _keys(tune):
+            index[kind].setdefault(value, tune.id)
+    total = 0
+    examples: list[str] = []
+    for held in heldout:
+        shared = [(kind, index[kind][v]) for kind, v in _keys(held) if v in index[kind]]
+        if not shared:
+            continue
+        total += 1
+        if len(examples) < MAX_LEAK_EXAMPLES:
+            kinds = ", ".join(kind for kind, _ in shared)
+            examples.append(f"held-out {held.id!r} shares {kinds} with tuning {shared[0][1]!r}")
+    return total, examples
+
+
+def find_leaks(heldout: Sequence[Fingerprint], tuning: Sequence[Fingerprint]) -> list[str]:
+    """Example messages (ids and kinds only) for held-out items that overlap a tuning item."""
+    return count_leaks(heldout, tuning)[1]

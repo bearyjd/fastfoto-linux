@@ -41,12 +41,26 @@ def test_the_pixel_budget_is_charged_from_the_header_before_decoding(tmp_path, m
     manifest = load_manifest(write_corpus(tmp_path / "c", items, default="tuning"))
     one = items[0].arr.shape[0] * items[0].arr.shape[1]
     monkeypatch.setattr(redeye_run, "MAX_RUN_PIXELS", one + one // 2)
-    loads = []
-    real = Image.Image.load
-    monkeypatch.setattr(Image.Image, "load", lambda self: (loads.append(1), real(self))[1])
+    opened, loaded = set(), set()
+    real_open, real_load = Image.open, Image.Image.load
+
+    def spy_open(*args, **kwargs):
+        image = real_open(*args, **kwargs)
+        opened.add(id(image))
+        return image
+
+    def spy_load(self):
+        if id(self) in opened:
+            loaded.add(id(self))
+        return real_load(self)
+
+    monkeypatch.setattr(Image, "open", spy_open)
+    monkeypatch.setattr(Image.Image, "load", spy_load)
     with pytest.raises(ManifestError, match="budget"):
         run_eval(manifest, "tuning", detector=KeyedDetector(items), perf=False)
-    assert len(loads) == 1
+    assert (
+        len(opened) == 2 and len(loaded) == 1
+    )  # the second image was refused before its pixels were decoded
 
 
 def _lost_negative(tmp_path):
@@ -71,10 +85,10 @@ def test_errored_negatives_are_counted_beside_the_damage_figure(tmp_path) -> Non
 def _flaky_loader(monkeypatch, bad: str, failure):
     real = redeye_images.load_image
 
-    def load(root, rel, sha):
+    def load(root, rel, sha, charge=None):
         if rel == f"{bad}.png":
             raise failure
-        return real(root, rel, sha)
+        return real(root, rel, sha, charge)
 
     monkeypatch.setattr(redeye_images, "load_image", load)
 

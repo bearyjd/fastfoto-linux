@@ -151,16 +151,11 @@ def _text(value: object, what: str, pattern: re.Pattern[str] | None = None) -> s
     return _encodable(value, what)
 
 
-MAX_INT_MAGNITUDE = 10**15  # checked before float(): a huge int must not raise OverflowError
-
-
 def _number(value: object, what: str) -> float:
     if type(value) not in (int, float):
         raise _fail(f"{what} must be a finite number")
     try:
-        if abs(value) > MAX_INT_MAGNITUDE and type(value) is int:  # type: ignore[arg-type]
-            raise _fail(f"{what} is out of range")
-        number = float(value)  # type: ignore[arg-type]
+        number = float(value)  # type: ignore[arg-type]  # a huge int raises OverflowError
         finite = math.isfinite(number)
     except OverflowError as error:
         raise _fail(f"{what} is out of range") from error

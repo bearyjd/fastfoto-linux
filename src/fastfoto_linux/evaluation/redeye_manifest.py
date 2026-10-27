@@ -107,6 +107,7 @@ class Manifest:
     root: Path
     # The manifest's own directory, opened once while it was read (see ``load_manifest``).
     root_fd: int | None = field(default=None, compare=False, repr=False)
+    closed: bool = field(default=False, init=False, compare=False, repr=False)
 
     @property
     def identity(self) -> tuple[int, int]:
@@ -115,8 +116,17 @@ class Manifest:
         return (info.st_dev, info.st_ino)
 
     def close(self) -> None:
-        if self.root_fd is not None:
+        """Close the pinned directory once; closing again does nothing (a closed fd number may
+        already belong to something else)."""
+        if self.root_fd is not None and not self.closed:
+            object.__setattr__(self, "closed", True)  # frozen: root_fd itself stays as it was
             os.close(self.root_fd)
+
+    def __enter__(self) -> "Manifest":
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
 
 
 def _fail(message: str) -> ManifestError:

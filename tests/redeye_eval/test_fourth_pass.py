@@ -216,3 +216,34 @@ def test_directories_created_before_a_rejection_are_removed_again(tmp_path) -> N
     with pytest.raises(ManifestError):
         write_outputs(base / "new" / "results", {"report.json": "X"}, forbidden=[base / "new"])
     assert list(base.iterdir()) == []
+
+
+def test_report_json_is_replaced_last_and_a_removed_directory_is_refused(
+    tmp_path, monkeypatch
+) -> None:
+    out = tmp_path / "out"
+    names, real = [], os.replace
+
+    def recording(src, dst, **kwargs):
+        names.append(dst)
+        real(src, dst, **kwargs)
+
+    monkeypatch.setattr(redeye_output.os, "replace", recording)
+    write_outputs(out, {"report.json": "R", "summary.md": "S", "perf.json": "P"})
+    assert names[-1] == "report.json"
+    assert sorted(names) == ["perf.json", "report.json", "summary.md"]
+
+
+def test_a_directory_removed_while_writing_is_refused(tmp_path, monkeypatch) -> None:
+    out = tmp_path / "out"
+    real = redeye_output._acquire_lock
+
+    def removing(fd):
+        lock = real(fd)
+        (out / redeye_output.LOCK_NAME).unlink()
+        out.rmdir()
+        return lock
+
+    monkeypatch.setattr(redeye_output, "_acquire_lock", removing)
+    with pytest.raises(ManifestError):
+        write_outputs(out, {"report.json": "R"})

@@ -67,26 +67,49 @@ def read_regular_fd(fd: int, limit: int) -> bytes:
     return data
 
 
-def _open_beneath(root: Path, rel: str) -> int:
-    """An fd on ``rel`` under ``root``, opened component by component without following symlinks,
-    so renaming a directory for a symlink between steps cannot redirect the read."""
-    parts = rel.split("/")
-    if any(part in ("", ".", "..") for part in parts):
-        raise ImageError("unsafe_path")
-    fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_CLOEXEC", 0))
-    try:
-        for part in parts[:-1]:
-            fd, previous = os.open(part, _DIR_FLAGS, dir_fd=fd), fd
-            os.close(previous)
-        return os.open(parts[-1], _FILE_FLAGS, dir_fd=fd)
-    finally:
-        os.close(fd)
+class PinnedRoot:
+    """A corpus root opened once (no symlink followed); every read walks down from that descriptor,
+    so renaming or replacing the root path afterwards cannot redirect a read."""
+
+    def __init__(self, root: Path) -> None:
+        try:
+            self._fd = os.open(root, _DIR_FLAGS)
+        except OSError as error:
+            raise ImageError("unsafe_path") from error
+
+    def open_beneath(self, rel: str) -> int:
+        """An fd on ``rel``, opened component by component without following symlinks."""
+        parts = rel.split("/")
+        if any(part in ("", ".", "..") for part in parts):
+            raise ImageError("unsafe_path")
+        fd = os.dup(self._fd)
+        try:
+            for part in parts[:-1]:
+                fd, previous = os.open(part, _DIR_FLAGS, dir_fd=fd), fd
+                os.close(previous)
+            return os.open(parts[-1], _FILE_FLAGS, dir_fd=fd)
+        finally:
+            os.close(fd)
+
+    def close(self) -> None:
+        os.close(self._fd)
+
+    def __enter__(self) -> "PinnedRoot":
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
 
 
-def read_contained(root: Path, rel: str) -> bytes:
-    """The bytes of regular file ``rel`` under ``root``. No path component may be a symlink."""
+def read_contained(root: "Path | PinnedRoot", rel: str) -> bytes:
+    """The bytes of regular file ``rel`` under ``root``. No path component may be a symlink; a
+    ``Path`` root is opened for this one read (use ``PinnedRoot`` to keep the same directory)."""
     try:
-        fd = _open_beneath(root, rel)
+        if isinstance(root, PinnedRoot):
+            fd = root.open_beneath(rel)
+        else:
+            with PinnedRoot(root) as pinned:
+                fd = pinned.open_beneath(rel)
     except FileNotFoundError as error:
         raise ImageError("missing") from error
     except (OSError, ValueError) as error:  # ELOOP, ENOTDIR, a NUL byte, a lone surrogate ...
@@ -104,6 +127,17 @@ def _png_pixels(data: bytes) -> int | None:
         width, height = struct.unpack(">II", data[16:_PNG_HEADER_BYTES])
         return width * height
     return None
+
+
+def _multi_frame(image: Image.Image) -> bool:
+    """More than one frame, without ``n_frames`` (which walks a TIFF's whole IFD chain)."""
+    if image.format == "TIFF":
+        try:
+            image.seek(1)  # reads only the next IFD
+        except EOFError:
+            return False
+        return True
+    return bool(getattr(image, "is_animated", False))  # PNG: set from the header, no walk
 
 
 def decode_image(data: bytes, charge: Callable[[int], None] | None = None) -> np.ndarray:
@@ -124,7 +158,7 @@ def decode_image(data: bytes, charge: Callable[[int], None] | None = None) -> np
                     raise ImageError("too_large")
                 if charge is not None:
                     charge(width * height)
-                if getattr(image, "n_frames", 1) > 1:
+                if _multi_frame(image):
                     raise ImageError("multi_frame")
                 if image.mode not in _MODES or (image.mode == "P" and "transparency" in image.info):
                     raise ImageError("bad_mode")
@@ -142,7 +176,7 @@ def decode_image(data: bytes, charge: Callable[[int], None] | None = None) -> np
 
 
 def load_image(
-    root: Path, rel: str, sha256: str, charge: Callable[[int], None] | None = None
+    root: "Path | PinnedRoot", rel: str, sha256: str, charge: Callable[[int], None] | None = None
 ) -> np.ndarray:
     """The verified RGB array of ``rel`` under ``root``; ``ImageError`` says why not."""
     data = read_contained(root, rel)

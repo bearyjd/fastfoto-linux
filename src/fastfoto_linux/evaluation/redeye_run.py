@@ -1,5 +1,6 @@
 """Run the auto red-eye path over a manifest and collect per-image results."""
 
+import contextlib
 import hashlib
 import logging
 import resource
@@ -7,6 +8,7 @@ import time
 import tracemalloc
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 
@@ -228,7 +230,7 @@ def _reported(code: str) -> str:
 
 
 def _load(
-    manifest: Manifest, item: ManifestImage, digests: dict[str, str], budget: _Budget
+    root: redeye_images.PinnedRoot, item: ManifestImage, digests: dict[str, str], budget: _Budget
 ) -> np.ndarray:
     """Load ``item`` (charging the budget from its header first) and remember its pixel digest.
 
@@ -236,7 +238,7 @@ def _load(
     bytes decode to equal pixels, so a cached digest is the digest.
     """
     try:
-        img = redeye_images.load_image(manifest.root, item.path, item.sha256, budget.charge)
+        img = redeye_images.load_image(root, item.path, item.sha256, budget.charge)
     except redeye_images.BudgetExceeded as error:
         raise ManifestError("the run exceeds its decoded-pixel budget") from error
     digests[item.sha256] = pixel_digest(img)
@@ -244,7 +246,7 @@ def _load(
 
 
 def _tuning_fingerprints(
-    manifest: Manifest,
+    root: redeye_images.PinnedRoot,
     items: Sequence[ManifestImage],
     digests: dict[str, str],
     budget: _Budget,
@@ -255,7 +257,7 @@ def _tuning_fingerprints(
     for item in items:
         if item.sha256 not in digests:
             try:
-                _load(manifest, item, digests, budget)
+                _load(root, item, digests, budget)
             except (redeye_images.ImageError, MemoryError, OverflowError) as error:
                 code = error.code if isinstance(error, redeye_images.ImageError) else "resource"
                 raise ManifestError(
@@ -293,6 +295,28 @@ def run_eval(
     planned += sum(len(m.images) for m in tuning_manifests) if split == "heldout" else 0
     if planned > MAX_RUN_IMAGES:
         raise ManifestError("the run exceeds its image budget")
+    with contextlib.ExitStack() as stack:  # roots are pinned once; reads never reopen the path
+        root = stack.enter_context(_pin(manifest.root))
+        others = [(stack.enter_context(_pin(m.root)), m) for m in tuning_manifests]
+        return _run_pinned(split, (selected, tuning_items), (root, others), (detector, perf))
+
+
+def _pin(path: Path) -> redeye_images.PinnedRoot:
+    try:
+        return redeye_images.PinnedRoot(path)
+    except redeye_images.ImageError as error:
+        raise ManifestError("cannot open a corpus directory") from error
+
+
+def _run_pinned(
+    split: str,
+    plan: tuple[list[ManifestImage], list[ManifestImage]],
+    roots: tuple[redeye_images.PinnedRoot, Sequence[tuple[redeye_images.PinnedRoot, Manifest]]],
+    options: tuple[FaceDetector | None, bool],
+) -> RunResult:
+    selected, tuning_items = plan
+    root, others = roots
+    detector, perf = options
     budget = _Budget()
     digests: dict[str, str] = {}
     results: list[ImageResult] = []
@@ -300,7 +324,7 @@ def run_eval(
     heldout_prints: list[Fingerprint] = []
     for item in selected:
         try:
-            img = _load(manifest, item, digests, budget)
+            img = _load(root, item, digests, budget)
         except (redeye_images.ImageError, MemoryError, OverflowError) as error:
             code = error.code if isinstance(error, redeye_images.ImageError) else "resource"
             logger.debug("image %s: %s", item.id, code)
@@ -313,9 +337,9 @@ def run_eval(
         if row is not None:
             rows.append(row)
     if split == "heldout":
-        tuning = _tuning_fingerprints(manifest, tuning_items, digests, budget)
-        for other in tuning_manifests:
-            tuning += _tuning_fingerprints(other, other.images, digests, budget)
+        tuning = _tuning_fingerprints(root, tuning_items, digests, budget)
+        for pinned, other in others:
+            tuning += _tuning_fingerprints(pinned, other.images, digests, budget)
         count, examples = count_leaks(heldout_prints, tuning)
         if count:
             raise ManifestError(

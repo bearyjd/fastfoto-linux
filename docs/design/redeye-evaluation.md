@@ -75,25 +75,33 @@ within 1e7; eyes and boxes must lie inside the decoded image. One run has an ima
 from each header before its pixels are decoded; undecodable headers are limited by the image
 budget only); going over is a usage error. The pixel budget is charged conservatively: images that later
 error still consume it, so a few hostile headers can exhaust it and abort the run with exit 2.
-Each corpus root (manifest and tuning) is opened once per run and every image is read relative
-to that descriptor, without following symlinks, so replacing the root path mid-run cannot redirect
-a read. A multi-frame TIFF is detected by looking at the second IFD only, never by walking the
+The manifest's own directory is opened while the manifest is read (its resolved path is walked
+from `/` without following a symlink) and that descriptor is the corpus root for the whole run,
+so no path is resolved again and replacing a path mid-run cannot redirect a read. A read that
+fails at the device (EIO, ESTALE) is the per-item error `unreadable` for a held-out item and a
+usage error for a tuning item. A multi-frame TIFF is detected by looking at the second IFD only, never by walking the
 chain; there is no per-image wall-clock limit, so a hostile file can still cost decode time within
 the byte and pixel caps.
 
-The output directory is walked from `/` without following symlinks (missing directories are made
-with `mkdirat`, checked as they appear, and exactly those are removed again if the path is
-refused). Before the lock file, every temporary file, every replace and every stale removal the
-directory descriptor is re-checked: still linked, not the manifest or a tuning directory or inside
-one, not a checkout. The bundle is written under an advisory `flock` on `.write.lock` in that
-directory (waits up to 5 s, then exits 2): temporary files first, then the replaces with
-`report.json` last, so concurrent runs never leave a mixed bundle. The lock is per directory and
-advisory; a process that ignores it is not stopped. A rename of the directory that lands
-between a check and the next syscall (one syscall wide) can still put that one file inside a
-forbidden tree; the check cannot be closed further without kernel support. A `--no-perf` run
-removes a `perf.json` left by an earlier run. A memory failure on a held-out item is the per-item
-error `resource`; on a tuning item it refuses the run. A failing profiling pass leaves the
-scores alone and is recorded in `perf.json` only.
+A memory failure on a held-out item is the per-item error `resource`; on a tuning item it
+refuses the run. A failing profiling pass leaves the scores alone and is recorded in `perf.json`
+only. Every run writes a new directory `run-<UTC time>-<8 hex>` under the results directory
+(`mkdirat`, so it is never an existing one) and creates `summary.md`, `perf.json` and finally
+`report.json` in it exclusively, mode 0600. Nothing existing is replaced, removed or locked, and
+a run directory without `report.json` is incomplete (a crash; a refused run removes what it made).
+
+## Threat model
+
+Untrusted: manifest content, image bytes and file names inside the corpus. Trusted: the user and
+the directories they pass (corpus roots, results directory). Out of scope: a concurrent local
+attacker with write access to those directories who races renames and unlinks. What remains is
+defence in depth, not immunity. The results directory is walked from `/` without following
+symlinks (directories made on the way are removed again if refused). Before the run directory is made and again after the last file, the walk goes up from its descriptor with
+`openat("..")` and refuses if it or any ancestor has the (device, inode) of a corpus root (taken
+from descriptors held since the manifests were read) or is a checkout; a refusal after the last
+file removes what this call made. Residual windows: a rename that lands after that last check
+cannot be closed by user-space code, and a file written into a forbidden tree before the check
+is removed afterwards, not prevented.
 
 ## Gate
 

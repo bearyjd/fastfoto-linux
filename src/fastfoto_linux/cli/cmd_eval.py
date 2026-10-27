@@ -34,10 +34,16 @@ def add_parser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]"
         help="measure the auto red-eye path against a labelled manifest",
         description="Evaluate red-eye detection and correction against a manifest of labelled "
         "images. Reads only the manifest and the images it names, and writes report.json, "
-        "summary.md and perf.json outside the manifest directory.",
+        "summary.md and perf.json into a new run-... directory under DIR (outside the "
+        "manifest directory); a run directory without report.json is incomplete.",
     )
     redeye.add_argument("manifest", type=Path, metavar="MANIFEST.json")
-    redeye.add_argument("--out", type=Path, metavar="DIR", help="results directory")
+    redeye.add_argument(
+        "--out",
+        type=Path,
+        metavar="DIR",
+        help="results directory (each run adds a run-... directory)",
+    )
     redeye.add_argument("--split", choices=SPLITS, default="tuning", help="split to report")
     redeye.add_argument(
         "--tuning-manifest",

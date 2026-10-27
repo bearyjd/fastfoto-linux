@@ -53,27 +53,46 @@ _FILE_FLAGS = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | getattr(os, "O_CLOEX
 def read_regular_fd(fd: int, limit: int) -> bytes:
     """Read the regular file open on ``fd`` (closed here), at most ``limit`` bytes of it.
 
-    ``ImageError("unsafe_path")`` for anything but a regular file, ``"too_large"`` over ``limit``.
+    ``ImageError("unsafe_path")`` for anything but a regular file, ``"too_large"`` over
+    ``limit``, ``"unreadable"`` when the device fails the read (EIO, ESTALE, ...).
     """
-    with os.fdopen(fd, "rb") as handle:
-        info = os.fstat(handle.fileno())
-        if not stat.S_ISREG(info.st_mode):
-            raise ImageError("unsafe_path")
-        if info.st_size > limit:
-            raise ImageError("too_large")
-        data = handle.read(min(info.st_size, limit) + 1)  # sized: no 256 MB buffer
+    try:
+        with os.fdopen(fd, "rb") as handle:
+            info = os.fstat(handle.fileno())
+            if not stat.S_ISREG(info.st_mode):
+                raise ImageError("unsafe_path")
+            if info.st_size > limit:
+                raise ImageError("too_large")
+            data = handle.read(min(info.st_size, limit) + 1)  # sized: no 256 MB buffer
+    except OSError as error:
+        raise ImageError("unreadable") from error
     if len(data) > limit:
         raise ImageError("too_large")
     return data
+
+
+def open_resolved_dir(path: Path) -> int:
+    """An fd on the absolute, already resolved ``path``, walked from ``/`` one component at a
+    time without following a symlink (a swapped ancestor is ELOOP or ENOTDIR, never a redirect)."""
+    fd = os.open("/", _DIR_FLAGS)
+    try:
+        for part in path.parts[1:]:
+            fd, previous = os.open(part, _DIR_FLAGS, dir_fd=fd), fd
+            os.close(previous)
+    except BaseException:
+        os.close(fd)
+        raise
+    return fd
 
 
 class PinnedRoot:
     """A corpus root opened once (no symlink followed); every read walks down from that descriptor,
     so renaming or replacing the root path afterwards cannot redirect a read."""
 
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: "Path | int") -> None:
+        """Open ``root`` (no symlink followed), or keep a duplicate of the directory fd given."""
         try:
-            self._fd = os.open(root, _DIR_FLAGS)
+            self._fd = os.dup(root) if isinstance(root, int) else os.open(root, _DIR_FLAGS)
         except OSError as error:
             raise ImageError("unsafe_path") from error
 

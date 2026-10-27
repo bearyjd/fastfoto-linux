@@ -8,7 +8,6 @@ import time
 import tracemalloc
 from collections.abc import Sequence
 from dataclasses import dataclass
-from pathlib import Path
 
 import numpy as np
 
@@ -296,14 +295,17 @@ def run_eval(
     if planned > MAX_RUN_IMAGES:
         raise ManifestError("the run exceeds its image budget")
     with contextlib.ExitStack() as stack:  # roots are pinned once; reads never reopen the path
-        root = stack.enter_context(_pin(manifest.root))
-        others = [(stack.enter_context(_pin(m.root)), m) for m in tuning_manifests]
+        root = stack.enter_context(_pin(manifest))
+        others = [(stack.enter_context(_pin(m)), m) for m in tuning_manifests]
         return _run_pinned(split, (selected, tuning_items), (root, others), (detector, perf))
 
 
-def _pin(path: Path) -> redeye_images.PinnedRoot:
+def _pin(manifest: Manifest) -> redeye_images.PinnedRoot:
+    """The manifest's own directory descriptor when it has one, else its path, opened now."""
     try:
-        return redeye_images.PinnedRoot(path)
+        return redeye_images.PinnedRoot(
+            manifest.root if manifest.root_fd is None else manifest.root_fd
+        )
     except redeye_images.ImageError as error:
         raise ManifestError("cannot open a corpus directory") from error
 

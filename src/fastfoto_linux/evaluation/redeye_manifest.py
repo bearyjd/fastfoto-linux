@@ -6,8 +6,10 @@ import math
 import os
 import re
 import stat
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+
+from fastfoto_linux.evaluation.redeye_images import open_resolved_dir
 
 FORMAT = "fastfoto-redeye-eval"
 VERSION = 1
@@ -103,6 +105,18 @@ class Manifest:
     images: tuple[ManifestImage, ...]
     sha256: str
     root: Path
+    # The manifest's own directory, opened once while it was read (see ``load_manifest``).
+    root_fd: int | None = field(default=None, compare=False, repr=False)
+
+    @property
+    def identity(self) -> tuple[int, int]:
+        """(device, inode) of the corpus directory: the pinned one when there is one."""
+        info = os.fstat(self.root_fd) if self.root_fd is not None else os.stat(self.root)
+        return (info.st_dev, info.st_ino)
+
+    def close(self) -> None:
+        if self.root_fd is not None:
+            os.close(self.root_fd)
 
 
 def _fail(message: str) -> ManifestError:
@@ -265,7 +279,7 @@ def _image(value: object) -> ManifestImage:
     )
 
 
-def parse_manifest(data: bytes, root: Path) -> Manifest:
+def parse_manifest(data: bytes, root: Path, root_fd: int | None = None) -> Manifest:
     """Validate manifest bytes; every problem is a ``ManifestError``."""
     try:
         raw = json.loads(data, object_pairs_hook=_unique_object, parse_constant=_invalid_constant)
@@ -280,20 +294,39 @@ def parse_manifest(data: bytes, root: Path) -> Manifest:
     images = tuple(_image(i) for i in _list(top["images"], "images", MAX_IMAGES))
     _unique([i.id for i in images], "image id")
     _unique([i.sha256 for i in images], "image sha256")
-    return Manifest(salt, images, hashlib.sha256(data).hexdigest(), root)
+    return Manifest(salt, images, hashlib.sha256(data).hexdigest(), root, root_fd)
+
+
+def _read_manifest_file(dir_fd: int, name: str) -> bytes:
+    # O_NONBLOCK: opening a FIFO must not wait for a writer.
+    flags = os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
+    with os.fdopen(os.open(name, flags, dir_fd=dir_fd), "rb") as handle:
+        if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
+            raise _fail("the manifest must be a regular file")
+        return handle.read(MAX_MANIFEST_BYTES + 1)
 
 
 def load_manifest(path: Path) -> Manifest:
-    """Read (at most ``MAX_MANIFEST_BYTES``) and validate the manifest at ``path``."""
+    """Read (at most ``MAX_MANIFEST_BYTES``) and validate the manifest at ``path``.
+
+    The path is resolved once and walked from ``/`` without following a symlink; the file is
+    opened relative to the final directory, and that same directory descriptor becomes the
+    corpus root pin (``Manifest.root_fd``), so no path is resolved again between reading the
+    manifest and reading the images. The caller closes the manifest (``Manifest.close``).
+    """
     try:
-        # O_NONBLOCK: opening a FIFO must not wait for a writer.
-        with os.fdopen(os.open(path, os.O_RDONLY | os.O_NONBLOCK), "rb") as handle:
-            if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
-                raise _fail("the manifest must be a regular file")
-            data = handle.read(MAX_MANIFEST_BYTES + 1)
-        root = path.resolve(strict=True).parent
+        resolved = path.resolve(strict=True)
+        dir_fd = open_resolved_dir(resolved.parent)
     except OSError as error:
         raise _fail("cannot read the manifest file") from error
-    if len(data) > MAX_MANIFEST_BYTES:
-        raise _fail("manifest is too large")
-    return parse_manifest(data, root)
+    try:
+        data = _read_manifest_file(dir_fd, resolved.name)
+        if len(data) > MAX_MANIFEST_BYTES:
+            raise _fail("manifest is too large")
+        return parse_manifest(data, resolved.parent, dir_fd)
+    except OSError as error:
+        os.close(dir_fd)
+        raise _fail("cannot read the manifest file") from error
+    except BaseException:
+        os.close(dir_fd)
+        raise

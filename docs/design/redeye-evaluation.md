@@ -75,9 +75,23 @@ within 1e7; eyes and boxes must lie inside the decoded image. One run has an ima
 from each header before its pixels are decoded; undecodable headers are limited by the image
 budget only); going over is a usage error. The pixel budget is charged conservatively: images that later
 error still consume it, so a few hostile headers can exhaust it and abort the run with exit 2.
-The output directory is re-checked when it is opened for writing (not a symlink, not the
-manifest or a tuning directory or inside one, not a checkout), files are written relative to
-that descriptor, and a `--no-perf` run removes a `perf.json` left by an earlier run. A memory failure on a held-out item is the per-item
+Each corpus root (manifest and tuning) is opened once per run and every image is read relative
+to that descriptor, without following symlinks, so replacing the root path mid-run cannot redirect
+a read. A multi-frame TIFF is detected by looking at the second IFD only, never by walking the
+chain; there is no per-image wall-clock limit, so a hostile file can still cost decode time within
+the byte and pixel caps.
+
+The output directory is walked from `/` without following symlinks (missing directories are made
+with `mkdirat`, checked as they appear, and exactly those are removed again if the path is
+refused). Before the lock file, every temporary file, every replace and every stale removal the
+directory descriptor is re-checked: still linked, not the manifest or a tuning directory or inside
+one, not a checkout. The bundle is written under an advisory `flock` on `.write.lock` in that
+directory (waits up to 5 s, then exits 2): temporary files first, then the replaces with
+`report.json` last, so concurrent runs never leave a mixed bundle. The lock is per directory and
+advisory; a process that ignores it is not stopped. A rename of the directory that lands
+between a check and the next syscall (one syscall wide) can still put that one file inside a
+forbidden tree; the check cannot be closed further without kernel support. A `--no-perf` run
+removes a `perf.json` left by an earlier run. A memory failure on a held-out item is the per-item
 error `resource`; on a tuning item it refuses the run. A failing profiling pass leaves the
 scores alone and is recorded in `perf.json` only.
 

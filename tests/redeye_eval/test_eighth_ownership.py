@@ -180,3 +180,15 @@ def test_a_manifest_that_fails_midway_is_a_manifest_error_and_leaks_nothing(
     monkeypatch.undo()
     assert failed  # the read went through os.read and failed there
     assert _open_fds() == before
+
+
+def test_looking_for_a_checkout_leaks_no_descriptor(tmp_path) -> None:
+    (tmp_path / ".git").mkdir()
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "x"\n')
+    fd = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        before = _open_fds()
+        redeye_output._fd_is_checkout(fd)
+        assert _open_fds() == before
+    finally:
+        os.close(fd)

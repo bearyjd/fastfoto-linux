@@ -76,7 +76,7 @@ def fdopen_owned(fd: int, mode: str, **kwargs: Any) -> IO[Any]:
             if not attempted or (before is not None and _file_id(fd) == before):
                 os.close(fd)
         except MemoryError:  # cannot tell whether it is still open: close it, tolerate EBADF
-            try:
+            try:  # noqa: SIM105  (suppress() allocates; this path runs out of memory)
                 os.close(fd)
             except OSError:
                 pass

@@ -17,6 +17,7 @@ from fastfoto_linux.evaluation import redeye_output
 from fastfoto_linux.evaluation.redeye_images import BudgetExceeded, ImageError, read_contained
 from fastfoto_linux.evaluation.redeye_manifest import ManifestError, load_manifest
 from fastfoto_linux.evaluation.redeye_output import write_outputs
+from tests.redeye_eval.synth import positive, write_corpus
 
 BUNDLE = {"report.json": "R" * 50, "summary.md": "S" * 50, "perf.json": "P" * 50}
 MIB = 1024 * 1024
@@ -104,10 +105,9 @@ def test_a_close_that_fails_after_an_interrupt_keeps_the_interrupt(tmp_path, mon
 
 
 def test_a_manifest_whose_close_fails_is_a_manifest_error(tmp_path, monkeypatch) -> None:
-    path = tmp_path / "manifest.json"
-    path.write_text("{}")
+    path = write_corpus(tmp_path / "corpus", [positive("a")])  # valid: only the close can fail
     before = _open_fds()
-    closed = _fail_close_of(monkeypatch, r"manifest\.json$")
+    closed = _fail_close_of(monkeypatch, re.escape(path.name) + "$")
     with pytest.raises(ManifestError):
         load_manifest(path)
     monkeypatch.undo()
@@ -138,6 +138,25 @@ def test_a_checkout_check_whose_close_fails_is_a_manifest_error(tmp_path, monkey
         before = _open_fds()
         closed = _fail_close_of(monkeypatch, r"pyproject\.toml$")
         with pytest.raises(ManifestError):
+            redeye_output._fd_is_checkout(fd)
+        monkeypatch.undo()
+        assert len(closed) == 1
+        assert _open_fds() == before
+    finally:
+        os.close(fd)
+
+
+def test_a_checkout_check_close_failure_after_an_interrupt_keeps_the_interrupt(
+    tmp_path, monkeypatch
+) -> None:
+    (tmp_path / ".git").mkdir()
+    (tmp_path / "pyproject.toml").write_text('[project]\nname = "x"\n')
+    fd = os.open(tmp_path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        before = _open_fds()
+        closed = _fail_close_of(monkeypatch, r"pyproject\.toml$")
+        _raise_from_read(monkeypatch, KeyboardInterrupt(), r"pyproject\.toml$")
+        with pytest.raises(KeyboardInterrupt):
             redeye_output._fd_is_checkout(fd)
         monkeypatch.undo()
         assert len(closed) == 1

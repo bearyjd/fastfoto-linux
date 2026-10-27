@@ -207,3 +207,27 @@ def test_a_run_leaves_no_descriptor_open(corpus, tmp_path) -> None:
     before = open_fds()
     assert main(["eval", "redeye", str(corpus[0]), "--out", str(tmp_path / "r")]) == 0
     assert open_fds() == before
+
+
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores directory permissions")
+def test_an_unreadable_results_ancestor_exits_two_like_any_other_refusal(
+    corpus, tmp_path, capsys
+) -> None:
+    locked = tmp_path / "locked"
+    (locked / "inner").mkdir(parents=True)
+    locked.chmod(0)
+    try:
+        assert main(["eval", "redeye", str(corpus[0]), "--out", str(locked / "inner" / "r")]) == 2
+    finally:
+        locked.chmod(0o700)
+    assert "Traceback" not in capsys.readouterr().err
+
+
+def test_report_and_summary_bytes_do_not_depend_on_the_run(corpus, tmp_path) -> None:
+    first, second = tmp_path / "one", tmp_path / "two"
+    assert main(["eval", "redeye", str(corpus[0]), "--out", str(first), "--no-perf"]) == 0
+    assert main(["eval", "redeye", str(corpus[0]), "--out", str(second), "--no-perf"]) == 0
+    one, two = run_dir(first), run_dir(second)
+    assert one.name != two.name
+    for name in ("report.json", "summary.md"):
+        assert (one / name).read_bytes() == (two / name).read_bytes()

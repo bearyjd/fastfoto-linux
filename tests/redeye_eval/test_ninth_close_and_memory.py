@@ -260,9 +260,11 @@ def _fail_close_of_directories(monkeypatch, *which: str) -> list[int]:
     real, closed = os.close, []
 
     def close(fd):
+        tracked = fd in [mine.get(name) for name in which]
+        if tracked:
+            closed.append(fd)  # every attempt, so a second close of one number shows up
         real(fd)
-        if fd in [mine.get(name) for name in which]:
-            closed.append(fd)
+        if tracked and closed.count(fd) == 1:
             raise OSError(errno.EIO, "injected")
 
     monkeypatch.setattr(redeye_output, "_open_out_dir", open_out)

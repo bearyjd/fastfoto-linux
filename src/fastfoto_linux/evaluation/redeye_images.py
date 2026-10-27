@@ -65,12 +65,23 @@ def fdopen_owned(fd: int, mode: str, **kwargs: Any) -> IO[Any]:
     ``open`` closes the descriptor on a late failure (a bad encoding); it is closed here only if
     it is still the same open file, so it is never closed twice or a reused number closed.
     """
-    before = _file_id(fd)
+    before: tuple[int, int] | None = None
+    attempted = False
     try:
+        before = _file_id(fd)
+        attempted = True
         return os.fdopen(fd, mode, **kwargs)
     except BaseException:
-        if before is not None and _file_id(fd) == before:
-            os.close(fd)
+        try:
+            if not attempted or (before is not None and _file_id(fd) == before):
+                os.close(fd)
+        except MemoryError:  # cannot tell whether it is still open: close it, tolerate EBADF
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+        except OSError:
+            pass
         raise
 
 

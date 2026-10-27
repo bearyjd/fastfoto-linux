@@ -129,8 +129,10 @@ def _refuse_if_contained(fd: int, forbidden: frozenset[Identity]) -> None:
                 raise ManifestError(_OUTSIDE_CHECKOUT)
             parent = os.open("..", _DIR_FLAGS, dir_fd=current)
             previous, current = current, parent  # one fd owned at a time: the finally closes it
-            with contextlib.suppress(OSError):  # EINTR may follow a close that did release it
+            try:  # no allocation here; EINTR may follow a close that did release it
                 os.close(previous)
+            except OSError:
+                pass
             info = os.fstat(current)
             if (info.st_dev, info.st_ino) == here:  # ".." of "/" is "/"
                 return

@@ -240,3 +240,70 @@ def test_reading_a_32_mib_file_costs_about_one_copy(tmp_path) -> None:
         path.unlink()
     assert result.returncode == 0, result.stderr[-400:]
     assert result.stdout.strip() == str(32 * MIB)
+
+
+_RUN_DIR = r"/out/run-[^/]+$"
+_OUT_DIR = r"/out$"
+
+
+@pytest.mark.parametrize("marker", [_RUN_DIR, _OUT_DIR, r"/out(/run-[^/]+)?$"])
+def test_a_directory_close_that_fails_after_a_published_report_keeps_the_bundle(
+    tmp_path, monkeypatch, marker
+) -> None:
+    out = tmp_path / "out"
+    before = _open_fds()
+    closed = _fail_close_of(monkeypatch, marker)
+    with pytest.raises(ManifestError):
+        write_outputs(out, BUNDLE)
+    monkeypatch.undo()
+    assert len(closed) == len(set(closed)) == (2 if marker.endswith("?$") else 1)
+    (run,) = list(out.iterdir())  # a complete bundle is not deleted over a close error
+    for file, text in BUNDLE.items():
+        assert (run / file).read_bytes() == text.encode()
+    assert _open_fds() == before
+
+
+@pytest.mark.parametrize("marker", [_RUN_DIR, _OUT_DIR])
+def test_a_directory_close_failure_after_a_failed_write_keeps_the_write_failure(
+    tmp_path, monkeypatch, marker
+) -> None:
+    real = os.write
+
+    def no_space(fd, data):
+        if re.search(_RUN_FILE, os.readlink(f"/proc/self/fd/{fd}")):
+            raise OSError(errno.ENOSPC, "injected")
+        return real(fd, data)
+
+    out = tmp_path / "out"
+    before = _open_fds()
+    closed = _fail_close_of(monkeypatch, marker)
+    monkeypatch.setattr(os, "write", no_space)
+    with pytest.raises(ManifestError) as caught:
+        write_outputs(out, BUNDLE)
+    monkeypatch.undo()
+    assert caught.value.__cause__.errno == errno.ENOSPC
+    assert len(closed) == 1
+    assert list(out.iterdir()) == []
+    assert _open_fds() == before
+
+
+@pytest.mark.parametrize("marker", [_RUN_DIR, _OUT_DIR])
+def test_a_directory_close_failure_after_an_interrupt_keeps_the_interrupt(
+    tmp_path, monkeypatch, marker
+) -> None:
+    real = os.write
+
+    def interrupt(fd, data):
+        if re.search(_RUN_FILE, os.readlink(f"/proc/self/fd/{fd}")):
+            raise KeyboardInterrupt
+        return real(fd, data)
+
+    out = tmp_path / "out"
+    before = _open_fds()
+    closed = _fail_close_of(monkeypatch, marker)
+    monkeypatch.setattr(os, "write", interrupt)
+    with pytest.raises(KeyboardInterrupt):
+        write_outputs(out, BUNDLE)
+    monkeypatch.undo()
+    assert len(closed) == 1
+    assert _open_fds() == before

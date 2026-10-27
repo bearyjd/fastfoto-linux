@@ -27,6 +27,9 @@ from fastfoto_linux.evaluation.redeye_split import (
 )
 
 EVAL_VERSION = 1
+# One run decodes at most this many images and pixels, tuning images included.
+MAX_RUN_IMAGES = 20_000
+MAX_RUN_PIXELS = 2_000_000_000
 
 
 @dataclass(frozen=True)

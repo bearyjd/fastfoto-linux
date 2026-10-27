@@ -150,7 +150,7 @@ def test_an_errored_item_fails_g4_and_is_listed(tmp_path) -> None:
     report = build_report(manifest, run)
     verdict = _gate(manifest, report)
     assert not verdict.passed and any("G4" in f for f in verdict.failures)
-    assert "missing" in render_summary(report) and items[0].id in render_summary(report)
+    assert "unreadable" in render_summary(report) and items[0].id in render_summary(report)
     assert report["totals"]["errored"] == 1  # type: ignore[index]
 
 

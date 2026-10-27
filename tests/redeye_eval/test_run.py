@@ -133,7 +133,7 @@ def test_run_eval_reports_only_the_requested_split_and_counts_errors(tmp_path) -
     result = run_eval(load_manifest(path), "heldout", detector=KeyedDetector(items), perf=False)
     assert len(result.results) == len(items)
     errors = [r for r in result.results if r.error]
-    assert [(r.id, r.error) for r in errors] == [(items[0].id, "missing")]
+    assert [(r.id, r.error) for r in errors] == [(items[0].id, "unreadable")]
     assert result.perf == ()
 
 

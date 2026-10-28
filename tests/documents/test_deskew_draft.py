@@ -14,8 +14,9 @@ from fastfoto_linux.documents.build import build_document
 from fastfoto_linux.documents.deskew import SkewStatus
 from fastfoto_linux.documents.draft import DocumentDraft
 from fastfoto_linux.documents.draft_edit import set_crop, set_deskew, set_included
-from fastfoto_linux.documents.errors import DocumentCancelledError
+from fastfoto_linux.documents.errors import DocumentCancelledError, DocumentSettingsError
 from fastfoto_linux.documents.page_crop import PageCrop
+from fastfoto_linux.documents.settings import check_settings
 from tests.doc_synth import write_png
 from tests.documents.deskew_fixtures import scatter, skewed, text_page
 from tests.documents.store_helpers import store_settings
@@ -122,3 +123,9 @@ def test_build_document_writes_the_seeded_angles(raw, out, monkeypatch) -> None:
     )
     build_document(raw[1], store_settings(out, keep_blank=True, duplex=False, deskew=True))
     assert abs(seen[0].edits[1].deskew_tenths - -41) <= 1
+
+
+@pytest.mark.parametrize("bad", ["yes", 1, None])
+def test_the_deskew_setting_must_be_a_bool(out, bad) -> None:
+    with pytest.raises(DocumentSettingsError, match="deskew"):
+        check_settings(store_settings(out, deskew=bad))

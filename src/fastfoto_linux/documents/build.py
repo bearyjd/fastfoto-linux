@@ -22,6 +22,7 @@ from datetime import datetime
 from pathlib import Path
 
 from fastfoto_linux.documents.analyse import analyse_document
+from fastfoto_linux.documents.deskew_draft import estimate_deskew
 from fastfoto_linux.documents.settings import DocumentSettings
 from fastfoto_linux.documents.write import DocumentResult, write_document
 
@@ -41,7 +42,8 @@ def build_document(  # noqa: PLR0913 - the hooks are the interface
     are processed a sheet at a time so only encoded bytes are kept. With ``settings.duplex`` the
     pages are the two sides of sheets in order, (1, 2), (3, 4) ..., and a mark on a page that is
     a hole through the paper, also on its sheet's other side, is not a mark (see ``holes``).
-    Input files are never touched.
+    With ``settings.deskew`` each page whose tilt can be measured is straightened
+    (``deskew_draft``). Input files are never touched.
     A failed or timed-out OCR still publishes the plain PDF (``result.ok`` is then False).
     When ``cancel`` is set DocumentCancelledError (OcrCancelledError during OCR) is raised and
     nothing is published. Settings that cannot make a PDF are refused first (``check_settings``).
@@ -51,4 +53,6 @@ def build_document(  # noqa: PLR0913 - the hooks are the interface
     end can say where the work is. Both run on the calling thread.
     """
     draft = analyse_document(pages, settings, cancel=cancel, on_page=on_page)
+    if settings.deskew:
+        draft, _ = estimate_deskew(draft, cancel=cancel)
     return write_document(draft, settings, cancel=cancel, clock=clock, on_ocr=on_ocr)

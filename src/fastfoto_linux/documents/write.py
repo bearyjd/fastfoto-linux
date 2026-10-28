@@ -176,14 +176,15 @@ class _Run:
 
 
 def _encoded(run: "_Run", page: PageAnalysis, edit: PageEdit) -> EncodedPage:
-    """The page as it goes into the PDF: the bytes it carries (when it is neither turned nor
-    cropped), or the raw page read again, cut, cropped, turned and encoded (one decoded page at a
-    time; a cancel is honoured before each such page)."""
+    """The page as it goes into the PDF: the bytes it carries (when it is not turned, cropped or
+    straightened), or the raw page read again, cut, straightened, cropped, turned and encoded (one
+    decoded page at a time; a cancel is honoured before each such page)."""
     stop_if_cancelled(run.cancel, f"page {page.number} of {len(run.draft.pages)} was written")
     policy = page_policy(run.draft, page, run.settings.colour)
     cleanup = page_cleanup(run.draft, page)  # the draft's level: settings.cleanup is never read
     despeckle = run.draft.despeckle  # the draft's switch: settings.despeckle is never read
-    kept = page.encoded if edit.quarter_turns == 0 and edit.crop is None else None
+    untouched = edit.quarter_turns == 0 and edit.crop is None and edit.deskew_tenths is None
+    kept = page.encoded if untouched else None
     mode: ColourMode | None = None
     if page.colour is not None or policy is not ColourPolicy.AUTO:
         mode = page_colour(run.draft, page, run.settings.colour)
@@ -253,7 +254,7 @@ def write_document(  # noqa: PLR0913 - the hooks are the interface
     (OcrCancelledError during OCR) is raised, or anything else fails, nothing is published.
 
     ``on_page(number, total)`` is called before each page that is read again from the raw pages
-    (a page that carries its bytes and is neither turned nor cropped needs no work) and
+    (a page that carries its bytes and is not turned, cropped or straightened needs no work) and
     ``on_ocr()`` before the searchable text of each part is made. Both run on the calling thread.
     """
     checked = check_settings(settings)

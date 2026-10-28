@@ -12,7 +12,6 @@ from fastfoto_linux.documents.draft import DocumentDraft
 from fastfoto_linux.documents.draft_edit import set_crop, set_document_cleanup
 from fastfoto_linux.documents.draft_json import (
     CROP_VERSION,
-    FORMAT_VERSION,
     READ_VERSIONS,
     ReviewFormatError,
     StoredReview,
@@ -21,6 +20,7 @@ from fastfoto_linux.documents.draft_json import (
 )
 from fastfoto_linux.documents.draft_store import open_draft, read_review, restore_edits, save_draft
 from fastfoto_linux.documents.modes import CleanupPolicy
+from fastfoto_linux.documents.sidecar_versions import DESPECKLE_VERSION
 from tests.documents.store_helpers import (
     analysed,
     put_sidecar,
@@ -47,7 +47,7 @@ def decode(data: Any) -> DocumentDraft:
 
 
 def test_the_versions_are_spelled_out() -> None:
-    assert FORMAT_VERSION == 5
+    assert DESPECKLE_VERSION == 5
     assert CROP_VERSION == 4
     assert READ_VERSIONS == (1, 2, 3, 4, 5)
 

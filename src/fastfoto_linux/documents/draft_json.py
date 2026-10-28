@@ -44,7 +44,7 @@ from fastfoto_linux.documents.settings import DocumentSettings
 from fastfoto_linux.documents.sidecar_versions import (
     CLEANUP_VERSION,
     CROP_VERSION,
-    FORMAT_VERSION,
+    DESPECKLE_VERSION,
     READ_VERSIONS,
     version_for,
 )
@@ -355,9 +355,9 @@ def _decode(data: bytes, names: Sequence[str]) -> StoredReview:
         raise ReviewFormatError("the format version is not one this program reads")
     if format_version < CLEANUP_VERSION and "cleanup" in top:
         raise ReviewFormatError("cleanup needs format version 3")
-    if format_version < FORMAT_VERSION and "despeckle" in top:
+    if format_version < DESPECKLE_VERSION and "despeckle" in top:
         raise ReviewFormatError("despeckle needs format version 5")
-    despeckle = format_version == FORMAT_VERSION and _flag(top.get("despeckle"), "despeckle")
+    despeckle = format_version >= DESPECKLE_VERSION and _flag(top.get("despeckle"), "despeckle")
     entries = _list(top.get("pages"), "pages", count)
     if len(entries) != count:
         raise ReviewFormatError(f"the file has {len(entries)} pages, the folder {count}")

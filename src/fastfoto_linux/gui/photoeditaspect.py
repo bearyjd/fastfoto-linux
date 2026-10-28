@@ -8,11 +8,11 @@ integers only, so Python and the QML canvas agree exactly.
 import math
 from dataclasses import dataclass
 
+from fastfoto_linux.gui.photoeditcoords import micro
+
 Box = tuple[int, int, int, int]
 Ratio = tuple[int, int]
 Size = tuple[int, int]
-
-FRAME_MICRO = 6  # decimals kept when mapping the pointer, as in photoeditcoords.source_crop
 
 
 @dataclass(frozen=True)
@@ -90,20 +90,21 @@ def _shape_in(width: int, height: int, ratio: Ratio) -> Size:
 
 
 def _grown(ratio: Ratio, minimum: Size, frame: Size) -> Size:
-    """The smallest shaped box reaching ``minimum`` inside ``frame``, or (0, 0).
+    """The smallest-area shaped box reaching ``minimum`` inside ``frame``, or (0, 0).
 
     Shaped means the height is the rounded width's share, or the width is the rounded height's.
-    The least width that rounds up to the minimum height is ``ceil((2*min_h - 1)*rw / (2*rh))``.
+    The least width that rounds up to the minimum height is ``ceil((2*min_h - 1)*rw / (2*rh))``,
+    and the same holds with the sides swapped. Both candidates are tried; the smaller area wins,
+    and the width-first one wins a tie.
     """
     rw, rh = ratio
     (min_w, min_h), (fw, fh) = minimum, frame
     w = max(min_w, ceil_div((2 * min_h - 1) * rw, 2 * rh))
-    h = half_up(w * rh, rw)
-    if w <= fw and h <= fh:
-        return w, h
+    by_width = (w, half_up(w * rh, rw))
     h = max(min_h, ceil_div((2 * min_w - 1) * rh, 2 * rw))
-    w = half_up(h * rw, rh)
-    return (w, h) if w <= fw and h <= fh else (0, 0)
+    by_height = (half_up(h * rw, rh), h)
+    fitting = [c for c in (by_width, by_height) if c[0] <= fw and c[1] <= fh]
+    return min(fitting, key=lambda c: c[0] * c[1], default=(0, 0))
 
 
 def fit_centred(box: Box, ratio: Ratio, *, frame: Size, minimum: Size) -> Box | None:
@@ -135,14 +136,14 @@ def swap_box(box: Box, ratio_swapped: Ratio, *, frame: Size, minimum: Size) -> B
 
 def _across(v: float, origin: float, painted: float, source: int) -> float:
     clamped = min(max(v, origin), origin + painted)
-    return round((clamped - origin) * source / painted, FRAME_MICRO)
+    return micro((clamped - origin) * source / painted)
 
 
 def _drag_axis(anchor: float, pointer: float, source: int) -> tuple[int, int, int, int]:
     """(sign, anchor pixel, pointer extent, room from the anchor) along one axis."""
     sign = 1 if pointer >= anchor else -1
     start = math.floor(anchor) if sign > 0 else math.ceil(anchor)
-    extent = 0 if pointer == anchor else math.ceil(round(abs(pointer - start), FRAME_MICRO))
+    extent = 0 if pointer == anchor else math.ceil(micro(abs(pointer - start)))
     return sign, start, extent, source - start if sign > 0 else start
 
 
@@ -174,7 +175,8 @@ def aspect_crop(  # noqa: PLR0913 - dimensions describe one explicit transform
     ay, py = (_across(v, top, painted_height, source_height) for v in (y0, y1))
     sx, start_x, dx, max_w = _drag_axis(ax, px, source_width)
     sy, start_y, dy, max_h = _drag_axis(ay, py, source_height)
-    want = max(dx, ceil_div(dy * rw, rh))
+    # The least width whose rounded height reaches dy (none needed when the drag has no height).
+    want = max(dx, ceil_div((2 * dy - 1) * rw, 2 * rh) if dy else 0)
     if want <= min(max_w, _reach(max_h, rw, rh)):
         w, h = want, half_up(want * rh, rw)
     else:  # the smallest covering box does not fit: cut back to the largest shaped box in the room

@@ -82,12 +82,29 @@ class PhotoAspectActions:
         return box, frame, min_crop_size(recipe.source, geometry)
 
     def _renotify(self: "PhotoEditSide") -> None:
-        """Tell the page; a refusal or failure shown is stale now, so drop it and preview again."""
+        """Tell the page; a refusal or failure shown is stale now, so drop it and preview again.
+
+        A preview of this very recipe that is still waiting or rendering stays valid, as the
+        refusal did not bump the generation; asking again would discard it.
+        """
         if self.error:
             self.error = ""
-            self.request_preview()
+            if self._preview_is_coming():
+                self._changed()
+            else:
+                self.request_preview()
         else:
             self._changed()
+
+    def _preview_is_coming(self: "PhotoEditSide") -> bool:
+        """Whether the latest request is a preview of the current recipe, not yet shown."""
+        latest = self._pending or self._inflight
+        return (
+            latest is not None
+            and latest.operation == "preview"
+            and latest.recipe is self.recipe
+            and latest.generation == self.generation
+        )
 
     def _apply_aspect(
         self: "PhotoEditSide",

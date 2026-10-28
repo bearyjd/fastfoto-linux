@@ -3,6 +3,11 @@
 import math
 
 
+def micro(v: float) -> float:
+    """``v`` to six decimals, half up: what the canvas's ``Math.round(v * 1e6) / 1e6`` does."""
+    return math.floor(v * 1e6 + 0.5) / 1e6
+
+
 def source_point(  # noqa: PLR0913 - dimensions describe one explicit transform
     x: float,
     y: float,
@@ -80,7 +85,7 @@ def source_crop(  # noqa: PLR0913 - dimensions describe one explicit transform
 
     def across(v: float, origin: float, painted: float, source: int) -> float:
         # Rounding first keeps an exact pixel edge from ceiling up a whole pixel.
-        return round((min(max(v, origin), origin + painted) - origin) * source / painted, 6)
+        return micro((min(max(v, origin), origin + painted) - origin) * source / painted)
 
     xs = sorted(across(v, left, painted_width, source_width) for v in (x0, x1))
     ys = sorted(across(v, top, painted_height, source_height) for v in (y0, y1))

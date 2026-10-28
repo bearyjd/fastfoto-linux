@@ -72,13 +72,19 @@ def test_a_tie_value_is_read_as_javascript_reads_it_by_the_drag_and_the_source_c
 
 
 def min_area_grown(ratio, minimum, frame):
-    shaped = {
+    """Brute-force oracle over every shaped box in the frame, generated per width and per height.
+
+    A box is shaped when its height is the width's rounded share or its width is the height's,
+    so the shaped boxes are exactly one per width plus one per height (not every w x h pair).
+    """
+    rw, rh = ratio
+    shaped = {(w, half_up(w * rh, rw)) for w in range(1, frame[0] + 1)}
+    shaped |= {(half_up(h * rw, rh), h) for h in range(1, frame[1] + 1)}
+    found = [
         (w, h)
-        for w in range(1, frame[0] + 1)
-        for h in range(1, frame[1] + 1)
-        if is_shaped(w, h, ratio)
-    }
-    found = [(w, h) for w, h in shaped if w >= minimum[0] and h >= minimum[1]]
+        for w, h in shaped
+        if w <= frame[0] and h <= frame[1] and w >= minimum[0] and h >= minimum[1]
+    ]
     return min((w * h for w, h in found), default=None)
 
 

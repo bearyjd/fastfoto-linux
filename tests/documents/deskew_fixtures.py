@@ -112,9 +112,7 @@ def skewed(pixels: np.ndarray, tenths: int) -> np.ndarray:
     height, width = pixels.shape[:2]
     matrix = cv2.getRotationMatrix2D(((width - 1) / 2, (height - 1) / 2), -tenths / 10, 1.0)
     fill = (PAPER,) * 3
-    return cv2.warpAffine(
-        pixels, matrix, (width, height), flags=cv2.INTER_LINEAR, borderValue=fill
-    )
+    return cv2.warpAffine(pixels, matrix, (width, height), flags=cv2.INTER_LINEAR, borderValue=fill)
 
 
 def two_skews(seed: int = 0, tenths: int = 40) -> np.ndarray:

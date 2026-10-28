@@ -53,7 +53,9 @@ def test_a_positive_angle_turns_clockwise_like_the_reference() -> None:
         # the white fill differs from paper only in the wedges; compare the page's middle
         mid = (slice(30, -30), slice(30, -30))
         assert np.abs(ours[mid] - reference[mid]).mean() < 8
-        assert np.abs(ours[mid] - opposite[mid]).mean() > 3 * np.abs(ours[mid] - reference[mid]).mean()
+        assert (
+            np.abs(ours[mid] - opposite[mid]).mean() > 3 * np.abs(ours[mid] - reference[mid]).mean()
+        )
 
 
 @pytest.mark.parametrize("bad", [101, -101, True, 1.5, "3"])

@@ -16,7 +16,7 @@ from fastfoto_linux.documents.analyse import analyse_document
 from fastfoto_linux.documents.deskew import SkewEstimate, SkewStatus, estimate_skew
 from fastfoto_linux.documents.draft import DocumentDraft, PageEdit
 from fastfoto_linux.documents.draft_edit import set_deskew
-from fastfoto_linux.documents.errors import stop_if_cancelled
+from fastfoto_linux.documents.errors import DocumentEditError, stop_if_cancelled
 from fastfoto_linux.documents.loader import load_page
 from fastfoto_linux.documents.settings import DocumentSettings
 
@@ -28,6 +28,8 @@ def estimate_page(
 ) -> SkewEstimate:
     """The tilt of one raw page (counted from 1) whatever its edits are, measured on its trimmed
     pixels; ``NO_SOURCE`` when the draft has no folder to read the page from."""
+    if not 1 <= number <= len(draft.pages):
+        raise DocumentEditError(f"page {number} is not in the document")
     page = draft.pages[number - 1]
     if draft.raw_dir is None:
         return SkewEstimate(SkewStatus.NO_SOURCE)

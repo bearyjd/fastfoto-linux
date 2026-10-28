@@ -1,5 +1,7 @@
 """``ffscan doc process --dry-run``: what each page would become, and nothing written."""
 
+from collections.abc import Mapping
+
 from fastfoto_linux.documents.auto_colour import page_colour
 from fastfoto_linux.documents.cleanup import page_cleanup
 from fastfoto_linux.documents.draft import DocumentDraft, PageAnalysis, sorted_flags
@@ -21,6 +23,8 @@ def _what_happens(draft: DocumentDraft, page: PageAnalysis, turns: int, starts_p
         words.append(f"turned {turns * 90}")
     if edit is not None and edit.crop is not None:
         words.append("cropped")
+    if edit is not None and edit.deskew_tenths is not None:
+        words.append(f"deskew {edit.deskew_tenths / 10:.1f}°")
     if starts_part:
         words.append("starts a new PDF")
     return ", ".join(words)
@@ -47,10 +51,18 @@ def _rows(draft: DocumentDraft) -> list[tuple[str, ...]]:
 
 
 def dry_run_lines(
-    draft: DocumentDraft, policy: ColourPolicy | ColourMode = ColourMode.COLOUR
+    draft: DocumentDraft,
+    policy: ColourPolicy | ColourMode = ColourMode.COLOUR,
+    notes: Mapping[int, str] | None = None,
 ) -> list[str]:
-    """The table (a header and a row for each page, in raw order), then a line for each PDF."""
+    """The table (a header and a row for each page, in raw order), then a line for each PDF.
+    ``notes`` are words to add to the row of a page, by raw number (why it was not straightened)."""
     rows = _rows(draft)
+    if notes:
+        rows = [
+            (*row[:-1], f"{row[-1]}; {notes[page.number]}") if page.number in notes else row
+            for row, page in zip(rows, draft.pages, strict=True)
+        ]
     if policy == ColourPolicy.AUTO or any(edit.colour is not None for edit in draft.edits.values()):
         rows = [
             _colour_row(row, page, draft, policy)

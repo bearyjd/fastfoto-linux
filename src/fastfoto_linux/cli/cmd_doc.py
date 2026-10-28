@@ -4,7 +4,7 @@ import argparse
 import contextlib
 import shlex
 import sys
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import NoReturn
 
@@ -50,10 +50,13 @@ from fastfoto_linux.documents import (
 )
 from fastfoto_linux.documents.analyse import analyse_document
 from fastfoto_linux.documents.auto_colour import page_colour
+from fastfoto_linux.documents.deskew import SkewStatus
+from fastfoto_linux.documents.deskew_draft import analyse_and_seed, estimate_deskew
 from fastfoto_linux.documents.draft import DocumentDraft
 from fastfoto_linux.documents.draft_edit import (
     PageEdits,
     parts,
+    set_deskew,
     set_document_cleanup,
     set_document_despeckle,
     with_edits,
@@ -151,7 +154,12 @@ def _raise_failure(error: Exception) -> NoReturn:
 
 
 def _edited(
-    draft: DocumentDraft, settings: DocumentSettings, edits: PageEdits, *, dry_run: bool
+    draft: DocumentDraft,
+    settings: DocumentSettings,
+    edits: PageEdits,
+    *,
+    dry_run: bool,
+    notes: Mapping[int, str] | None = None,
 ) -> DocumentResult | None:
     """Make the edits to the analysed draft and write the PDFs (None for a dry run, which
     prints what would happen instead). An edit that cannot be made is a usage error."""
@@ -160,7 +168,7 @@ def _edited(
     except DocumentEditError as error:
         raise CliError(str(error), EXIT_USAGE) from error
     if dry_run:
-        print("\n".join(dry_run_lines(draft, settings.colour)))
+        print("\n".join(dry_run_lines(draft, settings.colour, notes)))
         return None
     if draft.raw_dir is None and any(
         page.encoded is None or turns for part in parts(draft) for page, turns in part.pages
@@ -206,6 +214,35 @@ def _with_despeckle(draft: DocumentDraft, args: argparse.Namespace) -> DocumentD
         raise CliError(str(error), EXIT_USAGE) from error
 
 
+def _with_deskew(
+    draft: DocumentDraft, args: argparse.Namespace
+) -> tuple[DocumentDraft, Mapping[int, str]]:
+    """``draft`` with the angles ``--deskew`` or ``--no-deskew`` names (the draft as it is when
+    neither is given), and a dry-run note for each page that was looked at and not turned, or
+    that lost its crop. ``--deskew`` measures the pages with no angle and no crop; ``--no-deskew``
+    clears every angle, and with it the crop of a page that had both. Nothing is saved."""
+    if args.deskew is None:
+        return draft, {}
+    notes: dict[int, str] = {}
+    try:
+        if args.deskew:
+            measured, statuses = estimate_deskew(draft)
+            notes = {
+                number: f"deskew skipped ({status.value})"
+                for number, status in statuses.items()
+                if status is not SkewStatus.ESTIMATED
+            }
+            return measured, notes
+        for number, edit in draft.edits.items():
+            if edit.deskew_tenths is not None:
+                if edit.crop is not None:
+                    notes[number] = "crop removed"
+                draft = set_deskew(draft, number, None)
+    except DocumentEditError as error:
+        raise CliError(str(error), EXIT_USAGE) from error
+    return draft, notes
+
+
 def _process_pages(args: argparse.Namespace) -> tuple[Path | None, list[Path]]:
     """The raw folder, if the input is one, and the pages to process."""
     folder = raw_folder(args.pages)
@@ -227,14 +264,15 @@ def run_process(args: argparse.Namespace) -> int:
     try:
         if folder is not None:
             opened = open_draft(folder, pages, settings, fresh=args.fresh)
-            draft = _with_despeckle(_with_cleanup(opened, args), args)
-            result: DocumentResult | None = _edited(draft, settings, edits, dry_run=args.dry_run)
+            draft, notes = _with_deskew(_with_despeckle(_with_cleanup(opened, args), args), args)
+            result: DocumentResult | None = _edited(
+                draft, settings, edits, dry_run=args.dry_run, notes=notes
+            )
         elif edits == PageEdits() and not args.dry_run:
             result = build_document(pages, settings)
         else:
-            result = _edited(
-                analyse_document(pages, settings), settings, edits, dry_run=args.dry_run
-            )
+            draft, notes = _with_deskew(analyse_document(pages, settings), args)
+            result = _edited(draft, settings, edits, dry_run=args.dry_run, notes=notes)
     except (AllPagesBlankError, NothingSelectedError, OcrMissingError) as error:
         _raise_failure(error)
     if result is None:
@@ -273,6 +311,7 @@ def _scan_into(request: DocumentScanRequest, root: Path) -> int:
             on_stage=announce_stage,
             scan=run_scan,
             build=build_document,
+            analyse=analyse_and_seed,
         )
     except (DocumentSettingsError, OcrMissingError) as error:  # refused before any scan
         _raise_failure(error)
@@ -304,6 +343,7 @@ def process_command(pages: Sequence[Path], request: DocumentScanRequest, root: P
         (settings.colour != ColourMode.COLOUR, ["--colour", settings.colour.value]),
         (settings.cleanup is not CleanupPolicy.OFF, ["--cleanup", settings.cleanup.value]),
         (settings.despeckle, ["--despeckle"]),
+        (settings.deskew, ["--deskew"]),
         (settings.name != DEFAULT_NAME, ["--name", settings.name]),
         (settings.ocr is not OcrMode.AUTO, ["--ocr", settings.ocr.value]),
         (settings.langs != DEFAULT_LANGS, ["--lang", settings.langs]),

@@ -204,8 +204,7 @@ def test_the_scan_session_gets_the_setting_and_the_seeding_hook(
         raise KeyboardInterrupt
 
     monkeypatch.setattr(cmd_doc, "run_document_session", session)
-    with pytest.raises(KeyboardInterrupt):
-        doc_scan(tmp_path, "--deskew")
+    assert doc_scan(tmp_path, "--deskew") == 130  # the stand-in ends as an interrupt
     assert seen == {"deskew": True, "analyse": analyse_and_seed}
 
 

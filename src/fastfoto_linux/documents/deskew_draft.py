@@ -12,6 +12,8 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+import cv2
+
 from fastfoto_linux.documents.analyse import analyse_document
 from fastfoto_linux.documents.deskew import SkewEstimate, SkewStatus, estimate_skew
 from fastfoto_linux.documents.draft import DocumentDraft, PageEdit
@@ -35,7 +37,11 @@ def estimate_page(
         return SkewEstimate(SkewStatus.NO_SOURCE)
     stop_if_cancelled(cancel, f"page {number} of {len(draft.pages)} was measured")
     loaded = load_page(draft.raw_dir / page.name, fallback_dpi=page.dpi)
-    return estimate_skew(page.trim.apply(loaded), cancel=cancel)
+    try:
+        return estimate_skew(page.trim.apply(loaded), cancel=cancel)
+    except (ValueError, cv2.error):  # a trim box that leaves nothing, or a page OpenCV refuses
+        logger.info("page %d deskew could not be measured", number)
+        return SkewEstimate(SkewStatus.UNSURE)
 
 
 def estimate_deskew(

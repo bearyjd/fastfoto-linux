@@ -62,7 +62,7 @@ from fastfoto_linux.documents.draft_edit import (
     with_edits,
 )
 from fastfoto_linux.documents.draft_store import open_draft
-from fastfoto_linux.documents.errors import DocumentEditError
+from fastfoto_linux.documents.errors import DocumentEditError, UnsupportedPageError
 from fastfoto_linux.documents.ocr_tools import ocr_fix_hint
 from fastfoto_linux.documents.write import DocumentResult, write_document
 from fastfoto_linux.scanner import ScannerError, resolve_target, run_scan
@@ -153,20 +153,23 @@ def _raise_failure(error: Exception) -> NoReturn:
     raise failure from error
 
 
+def _apply_edits(draft: DocumentDraft, edits: PageEdits) -> DocumentDraft:
+    """``draft`` with the edits made. An edit that cannot be made is a usage error."""
+    try:
+        return with_edits(draft, edits)
+    except DocumentEditError as error:
+        raise CliError(str(error), EXIT_USAGE) from error
+
+
 def _edited(
     draft: DocumentDraft,
     settings: DocumentSettings,
-    edits: PageEdits,
     *,
     dry_run: bool,
     notes: Mapping[int, str] | None = None,
 ) -> DocumentResult | None:
-    """Make the edits to the analysed draft and write the PDFs (None for a dry run, which
-    prints what would happen instead). An edit that cannot be made is a usage error."""
-    try:
-        draft = with_edits(draft, edits)
-    except DocumentEditError as error:
-        raise CliError(str(error), EXIT_USAGE) from error
+    """Write the PDFs of the edited draft (None for a dry run, which prints what would happen
+    instead). The pages that stay are settled first, so ``--deskew`` measures the right ones."""
     if dry_run:
         print("\n".join(dry_run_lines(draft, settings.colour, notes)))
         return None
@@ -238,7 +241,7 @@ def _with_deskew(
                 if edit.crop is not None:
                     notes[number] = "crop removed"
                 draft = set_deskew(draft, number, None)
-    except DocumentEditError as error:
+    except (DocumentEditError, UnsupportedPageError, ValueError) as error:
         raise CliError(str(error), EXIT_USAGE) from error
     return draft, notes
 
@@ -264,15 +267,18 @@ def run_process(args: argparse.Namespace) -> int:
     try:
         if folder is not None:
             opened = open_draft(folder, pages, settings, fresh=args.fresh)
-            draft, notes = _with_deskew(_with_despeckle(_with_cleanup(opened, args), args), args)
+            draft = _apply_edits(_with_despeckle(_with_cleanup(opened, args), args), edits)
+            draft, notes = _with_deskew(draft, args)
             result: DocumentResult | None = _edited(
-                draft, settings, edits, dry_run=args.dry_run, notes=notes
+                draft, settings, dry_run=args.dry_run, notes=notes
             )
         elif edits == PageEdits() and not args.dry_run:
             result = build_document(pages, settings)
         else:
-            draft, notes = _with_deskew(analyse_document(pages, settings), args)
-            result = _edited(draft, settings, edits, dry_run=args.dry_run, notes=notes)
+            draft, notes = _with_deskew(
+                _apply_edits(analyse_document(pages, settings), edits), args
+            )
+            result = _edited(draft, settings, dry_run=args.dry_run, notes=notes)
     except (AllPagesBlankError, NothingSelectedError, OcrMissingError) as error:
         _raise_failure(error)
     if result is None:

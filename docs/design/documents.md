@@ -983,11 +983,17 @@ document level for this run only, a page's own level still wins, and `--fresh` d
   still holds only 0 and 255. The photo editor's inscribed straighten frame is not used: it would
   cut document margins. Seeding skips a page that has a crop, and setting an angle clears the crop.
 - **Estimate.** A projection profile in integers only, on a work grid of 100 dpi (the page
-  divided by `dpi // 100`, area-averaged grey). Ink is darker than the smaller of Otsu's level and
-  200. The ink pixels (at most 1,000,000, thinned by an even stride) are turned by each candidate
-  angle and the angle with the largest sum of squared row counts wins: 41 angles from -10 to 10
-  degrees in steps of 0.5, then every tenth within 0.5 of the best. Ties go to the smaller angle,
-  then the negative one. It takes 20 to 70 ms on a generated A4 page at 300 dpi.
+  divided by `dpi // 100`, area-averaged grey; that step was calibrated at 300 dpi, and is kept
+  within the page's size). Ink is at or darker than the smaller of Otsu's level and 200 (so a
+  0/255 page works). The ink pixels (at most 250,000, thinned by an even stride) are turned by
+  each candidate angle and the angle with the largest sum of squared row counts wins: every tenth
+  from -10 to 10 degrees, and every half degree out to 45 degrees, which is scored only to find a
+  second tilt (a tilt beyond 10 degrees is never applied). Ties go to the smaller angle, then the
+  negative one. It takes under half a second on a generated A4 page at 300 dpi. The clip check
+  uses the first and last content pixel of every row (content is anything 40 levels darker than
+  the paper's median), not the thinned ink, so a grey mark or a corner pixel is never lost to the
+  turn. A very narrow second peak can still fall between two samples half a degree apart; the
+  limit is accepted.
 - **When it abstains.** The first reason that applies is the status, and the page is left as
   scanned:
 
@@ -997,8 +1003,8 @@ document level for this run only, a page's own level still wins, and `--fresh` d
   | `too_large` | the work grid has more than 12 million pixels (as paper cleanup) |
   | `little_ink` | fewer than 1500 ink pixels on the work grid |
   | `not_text` | ink is more than 35% of the work grid (a photo or a dark page) |
-  | `edge` | the best coarse angle is -10 or 10 degrees: the tilt may be larger |
-  | `unsure` | the best score at least 2.0 degrees from the peak is 92% or more of the peak |
+  | `edge` | the best angle is -10 or 10 degrees: the tilt may be larger |
+  | `unsure` | the best score at least 2.0 degrees from the peak (out to 45 degrees) is 92% or more of the peak |
   | `would_clip` | turning the ink by the angle puts a point more than 1 work pixel outside the frame |
   | `level` | the angle is under 0.3 degrees (0.3 itself applies) |
   | `estimated` | otherwise |
@@ -1007,9 +1013,9 @@ document level for this run only, a page's own level still wins, and `--fresh` d
   the page from) are reported by the seeding step. In a dry run a page shows `deskew 1.4°` or
   `deskew skipped (unsure)`.
 - **Confidence.** The separation is the best score at least 2.0 degrees from the peak divided by
-  the peak. Measured on the generated fixtures of the tests: clean text 0.47 to 0.53, pages with
-  jittered baselines, mixed heights, a noise block and a table 0.67 to 0.71, two blocks tilted
-  in opposite directions 0.99, random scatter 0.99; a smooth photo is `not_text`. The 92% limit
+  the peak. Measured on the generated fixtures of the tests: clean text 0.51 to 0.53, pages with
+  jittered baselines, mixed heights, a noise block and a table 0.76 to 0.83, two blocks tilted
+  in opposite directions 0.99, random scatter 1.18 to 1.19; a smooth photo is `not_text`. The 92% limit
   sits between them. A window of 1.0 degree was rejected because the harder pages came too close
   to the two-tilt page.
 - **The sidecar.** The review file is format version 6 only when a page has an angle: the shape

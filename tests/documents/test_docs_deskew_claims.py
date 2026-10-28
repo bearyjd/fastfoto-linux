@@ -57,20 +57,23 @@ def test_the_constants_quoted_are_the_code_s() -> None:
         t.SEPARATION_TENTHS: "2.0",
         t.SEPARATION_PCT: "92%",
         t.CLIP_SLACK_PX: "1 work pixel",
-        t.MAX_POINTS: "1,000,000",
+        t.MAX_POINTS: "250,000",
         t.MAX_TENTHS: "10",
+        t.OUTER_MAX_TENTHS: "45 degrees",
+        t.CONTENT_DELTA: "40 levels",
         t.MIN_TENTHS: "0.3",
     }
     for value, words in quoted.items():
         assert words in SECTION, (value, words)
     assert (t.WORK_DPI, t.MIN_DPI, t.MIN_INK_POINTS, t.MAX_INK_PCT) == (100, 100, 1500, 35)
-    assert (t.SEPARATION_TENTHS, t.SEPARATION_PCT, t.MAX_POINTS) == (20, 92, 1_000_000)
-    assert (t.MAX_TENTHS, t.MIN_TENTHS, t.COARSE_STEP, t.CLIP_SLACK_PX) == (100, 3, 5, 1)
+    assert (t.SEPARATION_TENTHS, t.SEPARATION_PCT, t.MAX_POINTS) == (20, 92, 250_000)
+    assert (t.MAX_TENTHS, t.MIN_TENTHS, t.OUTER_STEP, t.OUTER_MAX_TENTHS) == (100, 3, 5, 450)
+    assert (t.CLIP_SLACK_PX, t.CONTENT_DELTA) == (1, 40)
     assert DESKEW_VERSION == 6
 
 
 def test_the_measured_separations_are_recorded() -> None:
-    for phrase in ("0.47 to 0.53", "0.67 to 0.71", "0.99"):
+    for phrase in ("0.51 to 0.53", "0.76 to 0.83", "0.99", "1.18 to 1.19"):
         assert phrase in SECTION
 
 

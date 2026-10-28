@@ -2,9 +2,10 @@
 
 A projection profile on a work grid of about 100 dpi, in integers only: the ink pixels of the
 grid are turned clockwise by each candidate angle and the angle whose rows hold the ink most
-unevenly (the largest sum of squared row counts) wins. A coarse pass over -10 to 10 degrees
-in half degrees is followed by a pass in tenths around the best. The answer is the angle, in
-tenths of a degree, that straightens the page when applied clockwise (``deskew_warp``).
+unevenly (the largest sum of squared row counts) wins. Every tenth within -10 to 10 degrees
+is scored, and every degree out to 45 (a second tilt there counts against the confidence). The
+answer is the best angle within 10 degrees, in tenths of a degree, that straightens the page when
+applied clockwise (``deskew_warp``).
 
 The estimate abstains (``SkewStatus``) rather than guess: too little ink, a photo, a best angle
 at the edge of the range, a peak that is not clearly higher than the best peak far from it, text
@@ -52,20 +53,33 @@ class SkewEstimate:
     separation_pct: int = 0
 
 
-def _work_ink(page: LoadedPage) -> tuple[np.ndarray, np.ndarray, tuple[int, int]]:
-    """The ink pixel coordinates (ys, xs, int64) of the work grid and the grid shape."""
+def _work_grid(page: LoadedPage) -> np.ndarray:
+    """The grey page on a work grid of about ``WORK_DPI`` (the step ``dpi // 100`` was chosen at
+    300 dpi; it is kept within the page like ``cleanup``'s)."""
     height, width = page.pixels.shape[:2]
     grey = (
         cv2.cvtColor(page.pixels, cv2.COLOR_RGB2GRAY)
         if page.kind is ColourMode.COLOUR
         else page.pixels
     )
-    step = max(1, page.dpi // tables.WORK_DPI)
-    small = cv2.resize(grey, (width // step, height // step), interpolation=cv2.INTER_AREA)
-    otsu, _ = cv2.threshold(small, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    ink = small < min(int(otsu), tables.INK_MAX_LEVEL)
-    ys, xs = np.nonzero(ink)
-    return ys.astype(np.int64), xs.astype(np.int64), ink.shape
+    step = max(1, min(page.dpi // tables.WORK_DPI, height, width))
+    return cv2.resize(grey, (width // step, height // step), interpolation=cv2.INTER_AREA)
+
+
+def _centred(mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    ys, xs = np.nonzero(mask)
+    return ys.astype(np.int64) - mask.shape[0] // 2, xs.astype(np.int64) - mask.shape[1] // 2
+
+
+def _extremes(mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """The first and last marked pixel of every row, centred: the corners of the convex hull of
+    the marks are among them, so they bound every turn of the marks."""
+    rows = np.flatnonzero(mask.any(axis=1))
+    first = mask[rows].argmax(axis=1)
+    last = mask.shape[1] - 1 - mask[rows, ::-1].argmax(axis=1)
+    ys = np.concatenate([rows, rows]).astype(np.int64) - mask.shape[0] // 2
+    xs = np.concatenate([first, last]).astype(np.int64) - mask.shape[1] // 2
+    return ys, xs
 
 
 def _score(ys: np.ndarray, xs: np.ndarray, tenths: int) -> int:
@@ -100,6 +114,18 @@ def _clips(ys: np.ndarray, xs: np.ndarray, tenths: int, shape: tuple[int, int]) 
     )
 
 
+def _scores(ys: np.ndarray, xs: np.ndarray, cancel: threading.Event | None) -> dict[int, int]:
+    """The score of every tenth within the applied range, then of every ``OUTER_STEP`` tenths out
+    to ``OUTER_MAX_TENTHS`` (a second tilt there counts against the confidence)."""
+    limit = tables.MAX_TENTHS
+    scores = {a: _score(ys, xs, a) for a in range(-limit, limit + 1)}
+    stop_if_cancelled(cancel, "measuring the tilt of a page")
+    for a in range(-tables.OUTER_MAX_TENTHS, tables.OUTER_MAX_TENTHS + 1, tables.OUTER_STEP):
+        if abs(a) > limit:
+            scores[a] = _score(ys, xs, a)
+    return scores
+
+
 def estimate_skew(page: LoadedPage, *, cancel: threading.Event | None = None) -> SkewEstimate:
     """The tilt of ``page`` (already trimmed), or the reason it is not measured. Raises
     DocumentCancelledError when ``cancel`` is set (checked before each pass)."""
@@ -109,44 +135,40 @@ def estimate_skew(page: LoadedPage, *, cancel: threading.Event | None = None) ->
     if work_too_large(height, width, page.dpi):
         return SkewEstimate(SkewStatus.TOO_LARGE)
     stop_if_cancelled(cancel, "measuring the tilt of a page")
-    ys, xs, shape = _work_ink(page)
-    if ys.size < tables.MIN_INK_POINTS:
+    small = _work_grid(page)
+    otsu, _ = cv2.threshold(small, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    ink = small <= min(int(otsu), tables.INK_MAX_LEVEL)  # <=: a 0/255 page has Otsu level 0
+    if int(ink.sum()) < tables.MIN_INK_POINTS:
         return SkewEstimate(SkewStatus.LITTLE_INK)
-    if ys.size * 100 > tables.MAX_INK_PCT * shape[0] * shape[1]:
+    if int(ink.sum()) * 100 > tables.MAX_INK_PCT * ink.size:
         return SkewEstimate(SkewStatus.NOT_TEXT)
-    ys, xs = ys - shape[0] // 2, xs - shape[1] // 2
+    ys, xs = _centred(ink)
     if ys.size > tables.MAX_POINTS:
         stride = -(-ys.size // tables.MAX_POINTS)
         ys, xs = ys[::stride], xs[::stride]
-    limit, step = tables.MAX_TENTHS, tables.COARSE_STEP
-    coarse = {a: _score(ys, xs, a) for a in range(-limit, limit + 1, step)}
-    best = _best(coarse)
-    if abs(best) == limit:
+    scores = _scores(ys, xs, cancel)
+    estimate = _best({a: s for a, s in scores.items() if abs(a) <= tables.MAX_TENTHS})
+    if abs(estimate) >= tables.MAX_TENTHS:
         return SkewEstimate(SkewStatus.EDGE)
-    stop_if_cancelled(cancel, "measuring the tilt of a page")
-    fine = dict(coarse)
-    for angle in range(best - step, best + step + 1):
-        if -limit <= angle <= limit and angle not in fine:
-            fine[angle] = _score(ys, xs, angle)
-    estimate = _best(fine)
-    peak = fine[estimate]
-    far = max(
-        score
-        for angle, score in coarse.items()
-        if abs(angle - estimate) >= tables.SEPARATION_TENTHS
-    )
-    return _verdict(ys, xs, shape, estimate, (far, peak))
+    peak = scores[estimate]
+    far = max(s for a, s in scores.items() if abs(a - estimate) >= tables.SEPARATION_TENTHS)
+    content = ink | (small < int(np.median(small)) - tables.CONTENT_DELTA)
+    return _verdict(_extremes(content), ink.shape, estimate, (far, peak))
 
 
 def _verdict(
-    ys: np.ndarray, xs: np.ndarray, shape: tuple[int, int], estimate: int, scores: tuple[int, int]
+    corners: tuple[np.ndarray, np.ndarray],
+    shape: tuple[int, int],
+    estimate: int,
+    scores: tuple[int, int],
 ) -> SkewEstimate:
-    """The last three abstains and the answer, for the best angle and (far, peak) scores."""
+    """The last three abstains and the answer, for the best angle and (far, peak) scores. The
+    clip check uses the extremes of all the content, not the thinned ink that was scored."""
     far, peak = scores
     separation = far * 100 // peak
     if far * 100 >= tables.SEPARATION_PCT * peak:
         return SkewEstimate(SkewStatus.UNSURE, 0, separation)
-    if _clips(ys, xs, estimate, shape):
+    if _clips(*corners, estimate, shape):
         return SkewEstimate(SkewStatus.WOULD_CLIP, 0, separation)
     if abs(estimate) < tables.MIN_TENTHS:
         return SkewEstimate(SkewStatus.LEVEL, 0, separation)

@@ -3,14 +3,32 @@
 from collections.abc import Mapping
 
 from fastfoto_linux.documents.auto_colour import page_colour
-from fastfoto_linux.documents.cleanup import page_cleanup
+from fastfoto_linux.documents.cleanup import page_cleanup, work_too_large
 from fastfoto_linux.documents.draft import DocumentDraft, PageAnalysis, sorted_flags
 from fastfoto_linux.documents.draft_edit import parts
 from fastfoto_linux.documents.encode import effective_cleanup, effective_despeckle
+from fastfoto_linux.documents.errors import UnsupportedPageError
+from fastfoto_linux.documents.loader import inspect_page
 from fastfoto_linux.documents.modes import CleanupPolicy, ColourMode, ColourPolicy
 
 _COLUMNS = ("page", "verdict", "flags", "part", "what happens")
 NO_PDF_LINE = "no PDF would be written: no page is left"
+
+
+def _deskew_word(draft: DocumentDraft, page: PageAnalysis, tenths: int) -> str:
+    """The angle, or that the page is too large to be straightened (the writer skips it)."""
+    if draft.raw_dir is not None:
+        try:
+            info = inspect_page(draft.raw_dir / page.name, fallback_dpi=page.dpi)
+        except (OSError, UnsupportedPageError):
+            info = None
+        if info is not None and work_too_large(
+            info.height - page.trim.top - page.trim.bottom,
+            info.width - page.trim.left - page.trim.right,
+            info.dpi,
+        ):
+            return "deskew skipped (too_large)"
+    return f"deskew {tenths / 10:.1f}°"
 
 
 def _what_happens(draft: DocumentDraft, page: PageAnalysis, turns: int, starts_part: bool) -> str:
@@ -24,7 +42,7 @@ def _what_happens(draft: DocumentDraft, page: PageAnalysis, turns: int, starts_p
     if edit is not None and edit.crop is not None:
         words.append("cropped")
     if edit is not None and edit.deskew_tenths is not None:
-        words.append(f"deskew {edit.deskew_tenths / 10:.1f}°")
+        words.append(_deskew_word(draft, page, edit.deskew_tenths))
     if starts_part:
         words.append("starts a new PDF")
     return ", ".join(words)

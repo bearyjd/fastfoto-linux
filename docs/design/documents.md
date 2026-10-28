@@ -989,11 +989,14 @@ document level for this run only, a page's own level still wins, and `--fresh` d
   each candidate angle and the angle with the largest sum of squared row counts wins: every tenth
   from -10 to 10 degrees, and every half degree out to 45 degrees, which is scored only to find a
   second tilt (a tilt beyond 10 degrees is never applied). Ties go to the smaller angle, then the
-  negative one. It takes under half a second on a generated A4 page at 300 dpi. The clip check
-  uses the first and last content pixel of every row (content is anything 40 levels darker than
-  the paper's median), not the thinned ink, so a grey mark or a corner pixel is never lost to the
-  turn. A very narrow second peak can still fall between two samples half a degree apart; the
-  limit is accepted.
+  negative one. The three highest samples beyond 10 degrees are searched again in tenths, to
+  either side, so a narrow second peak (dashed lines) is not lost between samples. It takes about
+  0.1 s on a generated A4 page at 300 dpi on a busy machine. The clip check uses the first and
+  last content pixel of every row, not the thinned ink. Content is anything 40 levels darker than
+  the paper's median in the darkest full-resolution pixel of each work cell, so a one pixel stroke
+  or hairline counts, and a single dark speck near an edge can make a page `would_clip`
+  (safe). A second peak narrower than that, and not among the three highest, can still be missed;
+  the limit is accepted.
 - **When it abstains.** The first reason that applies is the status, and the page is left as
   scanned:
 

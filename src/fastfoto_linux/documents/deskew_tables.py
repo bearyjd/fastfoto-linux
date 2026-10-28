@@ -4,6 +4,7 @@ MAX_TENTHS = 100  # the applied angle is within +-10 degrees, in tenths of a deg
 MIN_TENTHS = 3  # a smaller estimate is level (0.3 degrees itself applies)
 OUTER_MAX_TENTHS = 450  # angles out to this are scored too, to find a second tilt
 OUTER_STEP = 5  # tenths between the angles scored beyond the applied range
+REFINED_PEAKS = 3  # the highest outer samples searched again in tenths, to either side
 CONTENT_DELTA = 40  # the clip check sees everything this much darker than the paper
 WORK_DPI = 100  # the estimate is made on a grid of about this resolution
 MIN_DPI = 100  # below this resolution the page is not measured

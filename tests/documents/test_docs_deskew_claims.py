@@ -68,7 +68,7 @@ def test_the_constants_quoted_are_the_code_s() -> None:
     assert (t.WORK_DPI, t.MIN_DPI, t.MIN_INK_POINTS, t.MAX_INK_PCT) == (100, 100, 1500, 35)
     assert (t.SEPARATION_TENTHS, t.SEPARATION_PCT, t.MAX_POINTS) == (20, 92, 250_000)
     assert (t.MAX_TENTHS, t.MIN_TENTHS, t.OUTER_STEP, t.OUTER_MAX_TENTHS) == (100, 3, 5, 450)
-    assert (t.CLIP_SLACK_PX, t.CONTENT_DELTA) == (1, 40)
+    assert (t.CLIP_SLACK_PX, t.CONTENT_DELTA, t.REFINED_PEAKS) == (1, 40, 3)
     assert DESKEW_VERSION == 6
 
 

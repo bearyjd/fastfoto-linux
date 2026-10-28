@@ -81,7 +81,7 @@ def test_a_one_pixel_hairline_on_the_bottom_edge_stops_the_turn() -> None:
     assert estimate_skew(loaded(pixels, dpi=600)).status is SkewStatus.WOULD_CLIP
 
 
-@pytest.mark.parametrize("rival", [252, -252, 247])
+@pytest.mark.parametrize("rival", [-252, 247, 237])
 def test_a_second_tilt_between_the_half_degree_samples_makes_it_unsure(rival: int) -> None:
     assert estimate_skew(loaded(dashed_blocks((40, rival)))).status in {
         SkewStatus.UNSURE,

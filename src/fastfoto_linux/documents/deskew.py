@@ -53,9 +53,11 @@ class SkewEstimate:
     separation_pct: int = 0
 
 
-def _work_grid(page: LoadedPage) -> np.ndarray:
+def _work_grid(page: LoadedPage) -> tuple[np.ndarray, np.ndarray]:
     """The grey page on a work grid of about ``WORK_DPI`` (the step ``dpi // 100`` was chosen at
-    300 dpi; it is kept within the page like ``cleanup``'s)."""
+    300 dpi; it is kept within the page like ``cleanup``'s), and the darkest full-resolution pixel
+    of each grid cell (the cells take the rows and columns left over), so that a one pixel stroke
+    is not averaged away."""
     height, width = page.pixels.shape[:2]
     grey = (
         cv2.cvtColor(page.pixels, cv2.COLOR_RGB2GRAY)
@@ -63,7 +65,10 @@ def _work_grid(page: LoadedPage) -> np.ndarray:
         else page.pixels
     )
     step = max(1, min(page.dpi // tables.WORK_DPI, height, width))
-    return cv2.resize(grey, (width // step, height // step), interpolation=cv2.INTER_AREA)
+    rows, cols = height // step, width // step
+    small = cv2.resize(grey, (cols, rows), interpolation=cv2.INTER_AREA)
+    by_row = np.minimum.reduceat(grey, np.arange(rows) * step, axis=0)
+    return small, np.minimum.reduceat(by_row, np.arange(cols) * step, axis=1)
 
 
 def _centred(mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -123,6 +128,12 @@ def _scores(ys: np.ndarray, xs: np.ndarray, cancel: threading.Event | None) -> d
     for a in range(-tables.OUTER_MAX_TENTHS, tables.OUTER_MAX_TENTHS + 1, tables.OUTER_STEP):
         if abs(a) > limit:
             scores[a] = _score(ys, xs, a)
+    stop_if_cancelled(cancel, "measuring the tilt of a page")
+    outer = sorted((a for a in scores if abs(a) > limit), key=lambda a: -scores[a])
+    for a in outer[: tables.REFINED_PEAKS]:  # a narrow peak can fall between two samples
+        for near in range(a - tables.OUTER_STEP + 1, a + tables.OUTER_STEP):
+            if near not in scores:
+                scores[near] = _score(ys, xs, near)
     return scores
 
 
@@ -135,7 +146,7 @@ def estimate_skew(page: LoadedPage, *, cancel: threading.Event | None = None) ->
     if work_too_large(height, width, page.dpi):
         return SkewEstimate(SkewStatus.TOO_LARGE)
     stop_if_cancelled(cancel, "measuring the tilt of a page")
-    small = _work_grid(page)
+    small, darkest = _work_grid(page)
     otsu, _ = cv2.threshold(small, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
     ink = small <= min(int(otsu), tables.INK_MAX_LEVEL)  # <=: a 0/255 page has Otsu level 0
     if int(ink.sum()) < tables.MIN_INK_POINTS:
@@ -152,7 +163,7 @@ def estimate_skew(page: LoadedPage, *, cancel: threading.Event | None = None) ->
         return SkewEstimate(SkewStatus.EDGE)
     peak = scores[estimate]
     far = max(s for a, s in scores.items() if abs(a - estimate) >= tables.SEPARATION_TENTHS)
-    content = ink | (small < int(np.median(small)) - tables.CONTENT_DELTA)
+    content = ink | (darkest < int(np.median(small)) - tables.CONTENT_DELTA)
     return _verdict(_extremes(content), ink.shape, estimate, (far, peak))
 
 

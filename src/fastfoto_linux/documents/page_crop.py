@@ -4,12 +4,15 @@ A crop is kept as whole units of a page's width and height (``CROP_UNITS`` of ea
 pixels, so it stays inside the page when the page is analysed again with another trim box or
 resolution. ``crop_box`` turns it back into pixels, rounding inward, and ``to_units`` rounds
 outward, so a box drawn in pixels comes back as the same pixels. The preview and the PDF both
-call ``edited_page``: crop first, then the quarter turns.
+call ``edited_page``: the tilt first, then the crop, then the quarter turns.
 """
 
+import logging
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING
 
+from fastfoto_linux.documents.cleanup import work_too_large
+from fastfoto_linux.documents.deskew_warp import deskewed
 from fastfoto_linux.documents.loader import LoadedPage
 from fastfoto_linux.documents.units import mm_to_px
 from fastfoto_linux.photo_edits.geometry import apply_geometry
@@ -17,6 +20,8 @@ from fastfoto_linux.photo_edits.model import MIN_CROP_MM, PhotoGeometry
 
 if TYPE_CHECKING:  # draft imports PageCrop from here
     from fastfoto_linux.documents.draft import PageEdit
+
+logger = logging.getLogger(__name__)
 
 CROP_UNITS = 10_000  # a page's width (or height) in crop units
 
@@ -74,11 +79,19 @@ def to_units(box: tuple[int, int, int, int], width: int, height: int) -> PageCro
 
 
 def edited_page(trimmed: LoadedPage, edit: "PageEdit") -> LoadedPage:
-    """The trimmed page cut to the edit's crop, then turned clockwise by its quarter turns.
-    With neither, ``trimmed`` itself; else new pixels (the input is not modified)."""
-    if edit.crop is None and edit.quarter_turns == 0:
+    """The trimmed page straightened by the edit's tilt (in the same frame), cut to its crop, then
+    turned clockwise by its quarter turns. With none of these, ``trimmed`` itself; else new pixels
+    (the input is not modified). A page too large for the work grid is not straightened."""
+    pixels = trimmed.pixels
+    if edit.deskew_tenths is not None:
+        height, width = pixels.shape[:2]
+        if work_too_large(height, width, trimmed.dpi):
+            logger.info("deskew skipped: the page is too large")
+        else:
+            pixels = deskewed(pixels, edit.deskew_tenths, trimmed.kind)
+    if edit.crop is None and edit.quarter_turns == 0 and pixels is trimmed.pixels:
         return trimmed
-    height, width = trimmed.pixels.shape[:2]
+    height, width = pixels.shape[:2]
     box = None if edit.crop is None else crop_box(width, height, trimmed.dpi, edit.crop)
     geometry = PhotoGeometry(quarter_turns=edit.quarter_turns, crop=box)
-    return replace(trimmed, pixels=apply_geometry(trimmed.pixels, geometry))
+    return replace(trimmed, pixels=apply_geometry(pixels, geometry))

@@ -9,19 +9,10 @@ neighbour so it still holds only 0 and 255.
 import cv2
 import numpy as np
 
-from fastfoto_linux.documents.deskew_tables import MAX_TENTHS
+from fastfoto_linux.documents.deskew_tables import check_tenths
 from fastfoto_linux.documents.loader import WHITE
 from fastfoto_linux.documents.modes import ColourMode
 from fastfoto_linux.photo_edits.straighten import TRIG_BITS, trig
-
-
-def check_tenths(tenths: object) -> int:
-    """``tenths`` if it is a whole number (not a bool) within +-``MAX_TENTHS``, else ValueError."""
-    if type(tenths) is not int or not -MAX_TENTHS <= tenths <= MAX_TENTHS:
-        raise ValueError(
-            f"deskew must be a whole number of tenths from -{MAX_TENTHS} to {MAX_TENTHS}"
-        )
-    return tenths
 
 
 def deskewed(pixels: np.ndarray, tenths: int, kind: ColourMode) -> np.ndarray:

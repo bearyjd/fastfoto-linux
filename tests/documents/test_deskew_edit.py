@@ -68,7 +68,7 @@ def test_a_changed_angle_clears_the_crop_and_the_same_angle_keeps_it() -> None:
     cropped = set_crop(draft, 1, CROP)
     assert set_deskew(cropped, 1, 10).edits[1].crop == CROP
     assert set_deskew(cropped, 1, 11).edits[1].crop is None
-    assert set_deskew(cropped, 1, None).edits[1].crop is None
+    assert 1 not in set_deskew(cropped, 1, None).edits
     assert set_deskew(set_crop(draft_of(2), 1, CROP), 1, 10).edits[1].crop is None
 
 

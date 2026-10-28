@@ -10,6 +10,7 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from types import MappingProxyType
 
+from fastfoto_linux.documents.deskew_tables import check_tenths
 from fastfoto_linux.documents.draft import (
     QUARTER_TURNS,
     DocumentDraft,
@@ -235,3 +236,19 @@ def set_crop(draft: DocumentDraft, number: int, crop: PageCrop | None) -> Docume
         crop = None
     edit = draft.edits.get(number, PageEdit())
     return _with_page_edit(draft, number, replace(edit, crop=crop))
+
+
+def set_deskew(draft: DocumentDraft, number: int, tenths: int | None) -> DocumentDraft:
+    """Return a draft with this raw page's tilt correction (clockwise tenths of a degree, -100 to
+    100), or cleared with None or 0. A changed angle clears the page's crop: the crop was drawn
+    on the page as it was."""
+    _page(draft, number)
+    angle: int | None = None
+    if tenths is not None and not (type(tenths) is int and tenths == 0):
+        try:
+            angle = check_tenths(tenths)
+        except ValueError as error:
+            raise DocumentEditError(str(error)) from error
+    edit = draft.edits.get(number, PageEdit())
+    crop = edit.crop if angle == edit.deskew_tenths else None
+    return _with_page_edit(draft, number, replace(edit, deskew_tenths=angle, crop=crop))

@@ -12,3 +12,12 @@ MAX_POINTS = 1_000_000  # ink points scored; more are taken by an even stride
 SEPARATION_TENTHS = 20  # the confidence looks at angles at least this far from the best
 SEPARATION_PCT = 92  # abstain when the best far score is at least this share of the best
 CLIP_SLACK_PX = 1  # ink may land this many work pixels outside the frame
+
+
+def check_tenths(tenths: object) -> int:
+    """``tenths`` if it is a whole number (not a bool) within +-``MAX_TENTHS``, else ValueError."""
+    if type(tenths) is not int or not -MAX_TENTHS <= tenths <= MAX_TENTHS:
+        raise ValueError(
+            f"deskew must be a whole number of tenths from -{MAX_TENTHS} to {MAX_TENTHS}"
+        )
+    return tenths

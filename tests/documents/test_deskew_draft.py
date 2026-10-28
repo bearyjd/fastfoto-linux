@@ -6,12 +6,12 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from fastfoto_linux.documents.deskew_draft import analyse_and_seed, estimate_deskew, estimate_page
 
 from fastfoto_linux.documents import build as build_module
 from fastfoto_linux.documents.analyse import analyse_document
 from fastfoto_linux.documents.build import build_document
 from fastfoto_linux.documents.deskew import SkewStatus
+from fastfoto_linux.documents.deskew_draft import analyse_and_seed, estimate_deskew, estimate_page
 from fastfoto_linux.documents.draft import DocumentDraft
 from fastfoto_linux.documents.draft_edit import set_crop, set_deskew, set_included
 from fastfoto_linux.documents.errors import DocumentCancelledError, DocumentSettingsError

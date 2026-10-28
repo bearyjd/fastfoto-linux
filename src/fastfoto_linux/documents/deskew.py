@@ -71,6 +71,19 @@ def _work_grid(page: LoadedPage) -> tuple[np.ndarray, np.ndarray]:
     return small, np.minimum.reduceat(by_row, np.arange(cols) * step, axis=1)
 
 
+def _paper_floor(darkest: np.ndarray) -> int:
+    """The level at or below which a work cell holds content. The darkest pixel of a cell of
+    clean paper is the paper's level; with noise it is lower, by a spread that grows with the
+    cell. The typical cell is paper, so the median is the paper's darkest level, and the spread
+    of the cells above the median (ink only makes cells darker) measures the noise. Content is
+    ``CONTENT_NOISE_K`` of those spreads, and at least ``CONTENT_MIN_DELTA`` levels, below the
+    median."""
+    median = int(np.median(darkest))
+    above = darkest[darkest >= median].astype(np.int64) - median
+    spread = int(np.median(above)) if above.size else 0
+    return median - max(tables.CONTENT_MIN_DELTA, tables.CONTENT_NOISE_K * spread)
+
+
 def _centred(mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     ys, xs = np.nonzero(mask)
     return ys.astype(np.int64) - mask.shape[0] // 2, xs.astype(np.int64) - mask.shape[1] // 2
@@ -178,7 +191,7 @@ def estimate_skew(page: LoadedPage, *, cancel: threading.Event | None = None) ->
         return SkewEstimate(SkewStatus.EDGE)
     peak = scores[estimate]
     far = max(s for a, s in scores.items() if abs(a - estimate) >= tables.SEPARATION_TENTHS)
-    content = ink | (darkest < int(np.median(small)) - tables.CONTENT_DELTA)
+    content = ink | (darkest <= _paper_floor(darkest))
     step = max(1, min(page.dpi // tables.WORK_DPI, height, width))
     corners = _extremes(content, step, (height, width))
     return _verdict(corners, (height, width), estimate, (far, peak))

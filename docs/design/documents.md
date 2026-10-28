@@ -993,11 +993,19 @@ document level for this run only, a page's own level still wins, and `--fresh` d
   either side, so a narrow second peak (dashed lines) is not lost between samples. It takes about
   0.1 s on a generated A4 page at 300 dpi on a busy machine. The clip check turns the four corners of the first and last content cell of every row,
   in exact integer arithmetic (no flooring, no allowance: the content lies inside its cells, so it
-  cannot leave the frame unless a corner does). Content is anything 40 levels darker than the
-  paper's median in the darkest full-resolution pixel of each work cell, so a one pixel stroke,
-  a hairline or a small footer digit counts. The cost is that a cell is taken whole, so a mark
+  cannot leave the frame unless a corner does). Content is the darkest full-resolution pixel of a work cell at or below a floor: the median of those
+  darkest pixels (the paper's level) minus the larger of 12 levels and 8 noise spreads, where the
+  spread is the median distance of the cells above that median from it (ink only darkens cells,
+  so the paper side measures the noise: on clean paper it is 0, on a noisy scan a cell's
+  darkest pixel sits about two sigma below the paper and the spread grows with sigma). So a grey
+  mark 12 levels darker than clean paper, a one pixel stroke, a hairline or a small footer digit counts. Measured on the generated text pages (15 mm margins, tilts of 0.3 to 9.6 degrees, 24 pages for
+  each noise level, with paper texture and a mild vignette): noise sigma 0, 2, 4 and 6 gave 24 of
+  24 `estimated` each, against 24 of 24 for the earlier fixed margin of 40 levels; a spread
+  factor of 6 gave 15 of 24 false `would_clip` at sigma 6, and 4 gave 24 of 24 at sigma 4. The
+  cost is that a cell is taken whole, so a mark
   within one work cell (about 1 mm) of the frame edge may make a page `would_clip` (safe), as
-  can a single dark speck there. A second peak narrower than that, and not among the three highest, can still be missed;
+  can a single dark speck there. The residual limit: a mark closer to the paper than the margin
+  (under 12 levels, or under 8 noise spreads on a noisy scan) is not content and can still be cut by the turn. A narrow second peak that is not among the three highest outer samples can still be missed;
   the limit is accepted.
 - **When it abstains.** The first reason that applies is the status, and the page is left as
   scanned:

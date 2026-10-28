@@ -1,5 +1,6 @@
 """The estimate fails closed on odd pages, and its clipping and confidence checks see everything."""
 
+import cv2
 import numpy as np
 import pytest
 
@@ -111,3 +112,37 @@ def test_a_small_mark_the_turn_would_cut_part_of_stops_it(where: str) -> None:
 def test_text_with_ordinary_margins_is_still_measured(tilt: int) -> None:
     page = text_page(np.random.default_rng(4), margin_mm=15)
     assert estimate_skew(loaded(skewed(page, tilt))).status is SkewStatus.ESTIMATED
+
+
+@pytest.mark.parametrize("grey", [200, 216, 228])
+def test_a_faint_mark_is_content_down_to_twelve_levels_below_the_paper(grey: int) -> None:
+    pixels = skewed(text_page(np.random.default_rng(3), dpi=600), 80)
+    pixels[4676:4700, 1394:1412] = grey  # paper is 240: 40, 24 and 12 levels darker
+    assert estimate_skew(loaded(pixels, dpi=600)).status is SkewStatus.WOULD_CLIP
+
+
+def test_a_mark_only_eleven_levels_below_the_paper_is_the_documented_limit() -> None:
+    pixels = skewed(text_page(np.random.default_rng(3), dpi=600), 80)
+    pixels[4676:4700, 1394:1412] = 229
+    assert estimate_skew(loaded(pixels, dpi=600)).status is SkewStatus.ESTIMATED
+
+
+def _scanned(pixels: np.ndarray, sigma: float, seed: int) -> np.ndarray:
+    """Scanner-like noise, a smooth paper texture and a mild vignette."""
+    rng = np.random.default_rng(seed)
+    height, width = pixels.shape
+    y, x = np.mgrid[0:height, 0:width]
+    radius = np.hypot((y - height / 2) / (height / 2), (x - width / 2) / (width / 2)) / 1.414
+    texture = cv2.GaussianBlur(rng.normal(0, 1, (height, width)).astype(np.float32), (0, 0), 1.5)
+    noisy = (
+        pixels * (1 - 0.08 * radius**2) + rng.normal(0, sigma, pixels.shape) + sigma * 0.6 * texture
+    )
+    return np.clip(noisy, 0, 255).astype(np.uint8)
+
+
+@pytest.mark.parametrize("sigma", [2, 4, 6])
+@pytest.mark.parametrize("tilt", [3, -3, 27, 96, -96])
+def test_noisy_paper_with_ordinary_margins_is_not_taken_for_content(sigma, tilt) -> None:
+    page = skewed(text_page(np.random.default_rng(tilt + 200), margin_mm=15), tilt)
+    found = estimate_skew(loaded(_scanned(page, sigma, tilt + 300)))
+    assert found.status is SkewStatus.ESTIMATED

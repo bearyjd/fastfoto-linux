@@ -338,3 +338,22 @@ def test_a_successful_choice_after_a_refusal_clears_the_stale_error(out, again):
     assert side.error == "" and side.recipe is draft
     assert len(page.worker.requests) == asked + 1  # a fresh preview decides when Save is back
     assert page.worker.requests[-1].recipe is draft
+
+
+def test_reselecting_after_a_refusal_keeps_the_preview_already_in_flight(out):
+    page = opened(out, dpi=300)
+    page.side.set_geometry_mode(True)
+    side = page.side
+    side.set_crop_aspect("4:3")
+    inflight = page.worker.requests[-1]  # not finished: the refusal arrives while it renders
+    with pytest.raises(ActionBlockedError):
+        side.set_crop_aspect("16:9")
+    side.report_error(TOO_SMALL)
+    asked, draft = len(page.worker.requests), side.recipe
+    side.set_crop_aspect("4:3")  # the same box: nothing changes but the stale message
+    assert side.error == "" and side.recipe is draft
+    assert side._pending is None and side.generation == inflight.generation
+    shown = preview(draft, inflight.generation, out)
+    finish(page, PhotoEditResult("preview", inflight.generation, draft, shown))
+    assert len(page.worker.requests) == asked  # no second render was queued
+    assert side.preview is shown and side.error == "" and side.can_save

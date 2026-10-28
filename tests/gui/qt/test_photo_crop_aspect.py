@@ -1,5 +1,6 @@
 """Crop shapes in the real photo editor: the view child, the controls, keys and ratio drags."""
 
+import math
 from pathlib import Path
 
 import numpy as np
@@ -14,6 +15,7 @@ from PySide6.QtQml import QQmlEngine, QQmlExpression
 from PySide6.QtTest import QTest
 
 from fastfoto_linux.gui.photoeditaspect import PRESETS, aspect_crop
+from fastfoto_linux.gui.photoeditcoords import source_crop
 from fastfoto_linux.gui.photoeditjobs import PhotoEditResult
 from tests.gui.photoedit_helpers import preview
 from tests.gui.qt import test_qml
@@ -308,4 +310,48 @@ def test_a_canvas_click_without_movement_makes_no_box(make_bridge, open_window, 
     for fx, fy in ((0.37, 0.41), (0.5, 0.5), (0.25, 0.75)):
         x, y = fx * canvas.width(), fy * canvas.height()
         assert js(canvas, f"aspectCrop({x!r}, {y!r}, {x!r}, {y!r})") is None
+    assert warnings == []
+
+
+def tie_press(picture, source):
+    """A canvas x whose source pixel is a micro-pixel tie: round(v, 6) and half-up disagree."""
+    left = (picture.width() - picture.property("paintedWidth")) / 2
+    scale = source[0] / picture.property("paintedWidth")
+    for k in range(source[0] - 1):
+        x = left + (k + 0.9999995) / scale
+        for step in range(-6, 7):
+            for _ in range(abs(step)):
+                x = math.nextafter(x, math.inf if step > 0 else -math.inf)
+            v = (mapped(picture, x, 0.0)[0] - left) * source[0] / picture.property("paintedWidth")
+            if math.floor(round(v, 6)) != math.floor(math.floor(v * 1e6 + 0.5) / 1e6):
+                return x
+            x = left + (k + 0.9999995) / scale
+    raise AssertionError("no tie press found")
+
+
+@pytest.mark.parametrize("source", [(100, 60), (1000, 600)])
+def test_a_micro_pixel_tie_is_read_the_same_by_the_canvas_and_python(
+    make_bridge, open_window, out, source
+):
+    _bridge, _view, _window, page, warnings = editor_page(make_bridge, open_window, out)
+    enter_mode(page)
+    canvas, picture = child(page, "photoEditCanvas"), child(page, "photoCanvasImage")
+    canvas.setProperty("viewZoom", 1)
+    canvas.setProperty("sourceWidth", source[0])
+    canvas.setProperty("sourceHeight", source[1])
+    canvas.setProperty("cropRatio", [4, 3])
+    press = tie_press(picture, source)
+    end = (0.9 * canvas.width(), 0.8 * canvas.height())
+    points = [(press, 0.2 * canvas.height()), end]
+    flat = f"{points[0][0]!r}, {points[0][1]!r}, {points[1][0]!r}, {points[1][1]!r}"
+    want = python_box(picture, points, [4, 3], source)
+    assert want is not None and js(canvas, f"aspectCrop({flat})") == list(want)
+    (x0, y0), (x1, y1) = (mapped(picture, *p) for p in points)
+    free = source_crop(
+        x0, y0, x1, y1, min_width=1, min_height=1, source_width=source[0],
+        source_height=source[1], painted_width=picture.property("paintedWidth"),
+        painted_height=picture.property("paintedHeight"), item_width=picture.width(),
+        item_height=picture.height(),
+    )  # fmt: skip
+    assert free is not None and js(canvas, f"sourceCrop({flat})") == list(free)
     assert warnings == []

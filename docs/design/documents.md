@@ -19,7 +19,7 @@ CLI and the desktop app. This replaces the document scanning done in the Windows
 ## Non-goals (this round)
 Splitting one batch into several PDFs; PDF/A; page editing; OCR languages other than English in the
 Flatpak (only `eng` and `osd` are bundled); the scanner's hardware auto-crop (`--adf-crp`: the epsonds backend ignores it, checked in the
-transport PR); software deskew (the scanner's own deskew stays on).
+transport PR); software deskew beyond the opt-in per-page `--deskew` (the scanner's own deskew stays on).
 
 ## Command line
 ```

@@ -14,7 +14,9 @@ DESIGN = (ROOT / "docs" / "design" / "documents.md").read_text(encoding="utf-8")
 README = (ROOT / "README.md").read_text(encoding="utf-8")
 ROADMAP = (ROOT / "docs" / "roadmaps" / "enhancements.md").read_text(encoding="utf-8")
 SECTION = " ".join(DESIGN.split("### Deskew", 1)[-1].split("\n## ", 1)[0].split())
-ACCURACY_CLAIM = re.compile(r"(?i)(improv|better|boost)\w*\s+(the\s+)?ocr|ocr accuracy|\d+ ?% accura")
+ACCURACY_CLAIM = re.compile(
+    r"(?i)(improv|better|boost)\w*\s+(the\s+)?ocr|ocr accuracy|\d+ ?% accura"
+)
 
 
 def test_the_subsection_follows_despeckle_inside_paper_cleanup() -> None:

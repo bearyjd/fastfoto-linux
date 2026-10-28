@@ -296,7 +296,8 @@ def apply_fixes(img: np.ndarray, fixes: Sequence[EyeFix], *, strength: float = 1
     return result
 
 
-def _eligible_faces(img: np.ndarray, dpi: float, detector: FaceDetector | None) -> tuple[Face, ...]:
+def eligible_faces(img: np.ndarray, dpi: float, detector: FaceDetector | None) -> tuple[Face, ...]:
+    """Faces that pass the score and physical-size gates, as used by auto red-eye."""
     if isinstance(dpi, bool) or not math.isfinite(dpi) or dpi <= 0:
         raise ValueError(f"dpi must be a positive finite number, got {dpi!r}")
     ensure_rgb_uint8(img)
@@ -312,7 +313,7 @@ def detect_fixes(
     img: np.ndarray, dpi: float, detector: FaceDetector | None = None
 ) -> tuple[EyeFix, ...]:
     """Pending pupil fixes with the same full-resolution and physical-size gates as auto."""
-    return find_red_eyes(img, _eligible_faces(img, dpi, detector))
+    return find_red_eyes(img, eligible_faces(img, dpi, detector))
 
 
 def remove_red_eye(img: np.ndarray, dpi: int, detector: FaceDetector | None = None) -> np.ndarray:
@@ -321,7 +322,7 @@ def remove_red_eye(img: np.ndarray, dpi: int, detector: FaceDetector | None = No
     ``img`` is an upright RGB uint8 array and is not modified. Faces whose eyes are closer than
     ``MIN_INTEROCULAR_MM`` at ``dpi`` are skipped.
     """
-    faces = _eligible_faces(img, dpi, detector)
+    faces = eligible_faces(img, dpi, detector)
     fixes = find_red_eyes(img, faces)
     logger.info("red-eye: corrected %d eye(s) in %d face(s)", len(fixes), len(faces))
     return apply_fixes(img, fixes)

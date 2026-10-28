@@ -43,6 +43,7 @@ uv run ffscan devices                     # USB scanners and whether the USB gap
 uv run ffscan scan --out ~/Scans --mkdir --album "Family Trips" --date 1975-06
 uv run ffscan scan --out ~/Scans --net scanner.local --backs always --keep-raw
 uv run ffscan process page-*.png --out ~/Scans --album "Family Trips"
+uv run ffscan eval redeye MANIFEST.json   # red-eye evaluation harness; see docs/design/redeye-evaluation.md
 ```
 
 - `devices` only reads sysfs; it never talks to the scanner. Over USB the scanner needs the gap

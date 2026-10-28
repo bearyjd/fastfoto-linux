@@ -98,7 +98,9 @@ Item {
             const last = found[found.length - 1];
             return last[0] * last[1] > found[0][0] * found[0][1] ? last : found[0];
         };
-        const want = Math.max(ax.extent, Math.ceil(ay.extent * rw / rh));
+        // The least width whose rounded height reaches the drag's height (none when it has none).
+        const covering = ay.extent === 0 ? 0 : Math.ceil((2 * ay.extent - 1) * rw / (2 * rh));
+        const want = Math.max(ax.extent, covering);
         const [bw, bh] = want <= Math.min(ax.room, reach(ay.room, rw, rh))
             ? [want, halfUp(want * rh, rw)]
             : shapeIn(ax.room, ay.room);

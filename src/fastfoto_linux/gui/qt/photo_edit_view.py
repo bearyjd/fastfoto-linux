@@ -10,6 +10,7 @@ from PySide6.QtCore import Property, QObject, QUrl, Signal, Slot
 
 from fastfoto_linux.gui.qt.photo_aspect_view import PhotoAspectView
 from fastfoto_linux.gui.qt.photos_model import file_url
+from fastfoto_linux.gui.qt.slotargs import confirmed_flag
 from fastfoto_linux.gui.state import ActionBlockedError
 from fastfoto_linux.photo_edits import (
     EyeEdit,
@@ -387,9 +388,12 @@ class PhotoEditView(QObject):
         self._call(self._side.save)
 
     @Slot(result=bool)
-    @Slot(bool, result=bool)
-    def close(self, discard_confirmed: bool = False) -> bool:
-        answer = self._side.close(discard_confirmed)
+    @Slot("QVariant", result=bool)
+    def close(self, discard_confirmed: object = False) -> bool:
+        confirmed = self._call(confirmed_flag, discard_confirmed)
+        if confirmed is None:
+            return False
+        answer = self._side.close(confirmed)
         if not answer:
             self.closeConfirmationRequired.emit()
         return answer

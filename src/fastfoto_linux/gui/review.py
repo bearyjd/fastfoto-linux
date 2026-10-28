@@ -1,5 +1,6 @@
 """Immutable review state, page rows and explanatory words, independent of Qt."""
 
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -180,8 +181,16 @@ def colour_values(
     return policy.value, mode.value, reason.value, override, text
 
 
-def cleanup_values(draft: DocumentDraft, page: PageAnalysis, resolved_mode: str) -> tuple[str, str]:
-    """The page's own paper cleanup choice ("" when it follows the document) and its words."""
+def cleanup_values(
+    draft: DocumentDraft,
+    page: PageAnalysis,
+    resolved_mode: str,
+    status: CleanupStatus | None = None,
+) -> tuple[str, str]:
+    """The page's own paper cleanup choice ("" when it follows the document) and its words.
+
+    ``status`` is what the last preview of this page at this level did, if known.
+    """
     edit = draft.edits.get(page.number, PageEdit())
     override = edit.cleanup.value if edit.cleanup is not None else ""
     if resolved_mode == ColourMode.BW.value:
@@ -190,7 +199,12 @@ def cleanup_values(draft: DocumentDraft, page: PageAnalysis, resolved_mode: str)
     if level is CleanupPolicy.OFF:
         return override, "Paper cleanup: off"
     source = "this page" if edit.cleanup is not None else "document setting"
-    return override, f"Paper cleanup: {level.value.capitalize()} requested ({source})"
+    words = f"Paper cleanup: {level.value.capitalize()} requested ({source})"
+    if status is CleanupStatus.APPLIED:
+        words += " — applied"
+    elif status is not None:
+        words += f" — skipped: {CLEANUP_SKIP_LABELS[status]}"
+    return override, words
 
 
 def despeckle_words(draft: DocumentDraft, resolved_mode: str) -> str:
@@ -201,9 +215,14 @@ def despeckle_words(draft: DocumentDraft, resolved_mode: str) -> str:
 
 
 def review_items(
-    state: ReviewState, document_policy: ColourPolicy | ColourMode = ColourPolicy.COLOUR
+    state: ReviewState,
+    document_policy: ColourPolicy | ColourMode = ColourPolicy.COLOUR,
+    known: Mapping[int, CleanupStatus] | None = None,
 ) -> tuple[ReviewItem, ...]:
-    """All raw pages in review order, including the pages that do not go into a PDF."""
+    """All raw pages in review order, including the pages that do not go into a PDF.
+
+    ``known`` maps a page number to what its current preview did with the paper cleanup.
+    """
     draft = state.draft
     output = draft_edit.parts(draft)
     part_numbers = {
@@ -234,7 +253,7 @@ def review_items(
                 part_numbers.get(number, 0),
                 page.blank and not included,
                 *colour,
-                *cleanup_values(draft, page, colour[1]),
+                *cleanup_values(draft, page, colour[1], (known or {}).get(number)),
                 cropped,
                 CROP_TEXT if cropped else "",
                 despeckle_words(draft, colour[1]),

@@ -966,6 +966,67 @@ document level for this run only, a page's own level still wins, and `--fresh` d
   spaced over 2.5 mm, and a lone decimal point in a sparse table are removed; dust over 0.30 mm
   or within 2.5 mm of text stays. No claim is made about OCR results; the evidence is synthetic.
 
+### Deskew
+
+- **What it is.** "Straighten tilted pages" is opt-in and per page: `--deskew` on `ffscan doc scan`
+  and `doc process` (off by default; `--no-deskew` clears the angles of a raw folder's review file
+  and, because a changed angle clears a page's crop, also the crop of a page that had both). It
+  targets *residual* skew: the scanner already deskews in hardware (`--adf-skew`, on by default),
+  so this is for copies printed skewed or a feeder slip. A page's angle is `deskew_tenths`, tenths
+  of a degree clockwise from -100 to 100, 0 meaning none. The setting only seeds angles for a new
+  analysis; it is not stored. The estimate is never stored, only the applied angle.
+- **Order.** Load, trim, deskew, then crop, then turn, then the cleanup or the black and white
+  render, in the preview and the PDF alike ("deskew, then crop, then turn"). The estimate runs on
+  the trimmed page, in the frame the angle applies to. The warp keeps the page's width and height
+  (the same frame), turns it about the pixel centre with the fixed-point `straighten.trig`, and
+  fills the corners white on every channel. A 1-bit page is resampled by nearest neighbour so it
+  still holds only 0 and 255. The photo editor's inscribed straighten frame is not used: it would
+  cut document margins. Seeding skips a page that has a crop, and setting an angle clears the crop.
+- **Estimate.** A projection profile in integers only, on a work grid of 100 dpi (the page
+  divided by `dpi // 100`, area-averaged grey). Ink is darker than the smaller of Otsu's level and
+  200. The ink pixels (at most 1,000,000, thinned by an even stride) are turned by each candidate
+  angle and the angle with the largest sum of squared row counts wins: 41 angles from -10 to 10
+  degrees in steps of 0.5, then every tenth within 0.5 of the best. Ties go to the smaller angle,
+  then the negative one. It takes 20 to 70 ms on a generated A4 page at 300 dpi.
+- **When it abstains.** The first reason that applies is the status, and the page is left as
+  scanned:
+
+  | status | rule |
+  |---|---|
+  | `low_dpi` | under 100 dpi |
+  | `too_large` | the work grid has more than 12 million pixels (as paper cleanup) |
+  | `little_ink` | fewer than 1500 ink pixels on the work grid |
+  | `not_text` | ink is more than 35% of the work grid (a photo or a dark page) |
+  | `edge` | the best coarse angle is -10 or 10 degrees: the tilt may be larger |
+  | `unsure` | the best score at least 2.0 degrees from the peak is 92% or more of the peak |
+  | `would_clip` | turning the ink by the angle puts a point more than 1 work pixel outside the frame |
+  | `level` | the angle is under 0.3 degrees (0.3 itself applies) |
+  | `estimated` | otherwise |
+
+  `cropped` (seeding skipped a page with a crop) and `no_source` (the draft has no folder to read
+  the page from) are reported by the seeding step. In a dry run a page shows `deskew 1.4°` or
+  `deskew skipped (unsure)`.
+- **Confidence.** The separation is the best score at least 2.0 degrees from the peak divided by
+  the peak. Measured on the generated fixtures of the tests: clean text 0.47 to 0.53, pages with
+  jittered baselines, mixed heights, a noise block and a table 0.67 to 0.71, two blocks tilted
+  in opposite directions 0.99, random scatter 0.99; a smooth photo is `not_text`. The 92% limit
+  sits between them. A window of 1.0 degree was rejected because the harder pages came too close
+  to the two-tilt page.
+- **The sidecar.** The review file is format version 6 only when a page has an angle: the shape
+  of version 5 (a required top-level `cleanup` and `despeckle`, which may be false) plus an
+  edit key `deskew`, null or a whole number from -100 to 100 but not 0. Versions 1 to 5 refuse a
+  `deskew` key; a bool, a float, 0 or a value out of range is refused in version 6 with a message
+  that names the field and not the value. Despeckle keeps its own constant (version 5) and a
+  despeckle-only draft is still written as the same version 5 bytes. Cached page bytes are never
+  reused for a straightened page.
+- **Limits.** Calibration is on synthetic pages only (generated text, tables and a noise block);
+  nothing here claims an accuracy on real scans or on OCR. Text that is tilted on straight paper
+  and reaches the corners abstains from about 4 degrees (`would_clip`) because the frame is not
+  enlarged; a skewed *sheet* is not affected, as its trim box circumscribes it. A page that is
+  sideways or upside down abstains, as the estimate runs before the quarter turns. Pages with
+  more than one tilt, forms, handwriting and photos with captions may abstain often, which is
+  safe. More than 10 degrees is not measured. A cream page shows white corner wedges.
+
 ## Manual crop
 
 - **What it is.** In the desktop review a reviewer drags a rectangle on a page's source view

@@ -164,6 +164,13 @@ uv run ffscan doc process back-*.png front-*.png --out ~/Documents/Scans --ocr o
   colour pages are not changed, and a dot with colour in the source (a red tick) is kept. It is
   a setting of the document (review file format version 5); `--no-despeckle` turns it off, and
   without either flag `doc process` keeps what a review file holds. No claim is made about OCR.
+- **Straighten tilted pages** (`--deskew`; off by default) measures the tilt of a page of text
+  (0.3 to 10 degrees, on a 100 dpi copy of the page) and turns the page clockwise by the opposite
+  angle in the same page frame, with white corners, before any crop. It leaves a page alone when
+  it cannot measure the tilt reliably (little text, a photo, two tilts, text the turn would push
+  off the page). It is per page: the angles are kept in the review file (format version 6), and
+  `--no-deskew` clears them. The scanner already deskews in hardware, so this is for residual
+  skew. The evidence is synthetic pages; no claim is made about real scans or OCR.
 - **Crop** (desktop review, source view): drag a rectangle on a page to keep only that area, at
   least 5 mm on each side. The crop is cut from the trimmed page before the page is turned and
   cleaned, so the preview and the PDF agree. The page is not analysed again, so its blank,

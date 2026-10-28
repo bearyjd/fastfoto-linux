@@ -991,11 +991,13 @@ document level for this run only, a page's own level still wins, and `--fresh` d
   second tilt (a tilt beyond 10 degrees is never applied). Ties go to the smaller angle, then the
   negative one. The three highest samples beyond 10 degrees are searched again in tenths, to
   either side, so a narrow second peak (dashed lines) is not lost between samples. It takes about
-  0.1 s on a generated A4 page at 300 dpi on a busy machine. The clip check uses the first and
-  last content pixel of every row, not the thinned ink. Content is anything 40 levels darker than
-  the paper's median in the darkest full-resolution pixel of each work cell, so a one pixel stroke
-  or hairline counts, and a single dark speck near an edge can make a page `would_clip`
-  (safe). A second peak narrower than that, and not among the three highest, can still be missed;
+  0.1 s on a generated A4 page at 300 dpi on a busy machine. The clip check turns the four corners of the first and last content cell of every row,
+  in exact integer arithmetic (no flooring, no allowance: the content lies inside its cells, so it
+  cannot leave the frame unless a corner does). Content is anything 40 levels darker than the
+  paper's median in the darkest full-resolution pixel of each work cell, so a one pixel stroke,
+  a hairline or a small footer digit counts. The cost is that a cell is taken whole, so a mark
+  within one work cell (about 1 mm) of the frame edge may make a page `would_clip` (safe), as
+  can a single dark speck there. A second peak narrower than that, and not among the three highest, can still be missed;
   the limit is accepted.
 - **When it abstains.** The first reason that applies is the status, and the page is left as
   scanned:
@@ -1008,7 +1010,7 @@ document level for this run only, a page's own level still wins, and `--fresh` d
   | `not_text` | ink is more than 35% of the work grid (a photo or a dark page) |
   | `edge` | the best angle is -10 or 10 degrees: the tilt may be larger |
   | `unsure` | the best score at least 2.0 degrees from the peak (out to 45 degrees) is 92% or more of the peak |
-  | `would_clip` | turning the ink by the angle puts a point more than 1 work pixel outside the frame |
+  | `would_clip` | turning a corner of any content cell by the angle puts it outside the frame (no allowance) |
   | `level` | the angle is under 0.3 degrees (0.3 itself applies) |
   | `estimated` | otherwise |
 

@@ -14,7 +14,6 @@ MAX_INK_PCT = 35  # more ink than this share of the work grid is a photo or a da
 MAX_POINTS = 250_000  # ink points scored; more are taken by an even stride
 SEPARATION_TENTHS = 20  # the confidence looks at angles at least this far from the best
 SEPARATION_PCT = 92  # abstain when the best far score is at least this share of the best
-CLIP_SLACK_PX = 1  # ink may land this many work pixels outside the frame
 
 
 def check_tenths(tenths: object) -> int:

@@ -76,15 +76,22 @@ def _centred(mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return ys.astype(np.int64) - mask.shape[0] // 2, xs.astype(np.int64) - mask.shape[1] // 2
 
 
-def _extremes(mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """The first and last marked pixel of every row, centred: the corners of the convex hull of
-    the marks are among them, so they bound every turn of the marks."""
+def _extremes(mask: np.ndarray, step: int, frame: tuple[int, int]) -> np.ndarray:
+    """The corners (x, y, in full-resolution pixel edges) of the first and the last marked cell of
+    every row of ``mask``, one row per corner. A cell covers ``step`` pixels each way, the last
+    row and column of cells also the pixels left over to the frame's end (height, width). Every
+    corner of the convex hull of the cells is one of these, so they bound every turn of the
+    content."""
+    height, width = frame
     rows = np.flatnonzero(mask.any(axis=1))
-    first = mask[rows].argmax(axis=1)
-    last = mask.shape[1] - 1 - mask[rows, ::-1].argmax(axis=1)
-    ys = np.concatenate([rows, rows]).astype(np.int64) - mask.shape[0] // 2
-    xs = np.concatenate([first, last]).astype(np.int64) - mask.shape[1] // 2
-    return ys, xs
+    ends = np.concatenate(
+        [mask[rows].argmax(axis=1), mask.shape[1] - 1 - mask[rows, ::-1].argmax(axis=1)]
+    )
+    cells = np.concatenate([rows, rows])
+    y0, x0 = cells.astype(np.int64) * step, ends.astype(np.int64) * step
+    y1 = np.where(cells == mask.shape[0] - 1, height, y0 + step)
+    x1 = np.where(ends == mask.shape[1] - 1, width, x0 + step)
+    return np.stack([np.stack([x, y], axis=1) for x in (x0, x1) for y in (y0, y1)]).reshape(-1, 2)
 
 
 def _score(ys: np.ndarray, xs: np.ndarray, tenths: int) -> int:
@@ -103,19 +110,27 @@ def _best(scores: dict[int, int]) -> int:
     return best
 
 
-def _clips(ys: np.ndarray, xs: np.ndarray, tenths: int, shape: tuple[int, int]) -> bool:
-    """Whether turning the points clockwise by ``tenths`` puts one outside the frame."""
+def _clips(corners: np.ndarray, tenths: int, frame: tuple[int, int]) -> bool:
+    """Whether turning the content clockwise by ``tenths`` puts any corner of a content cell
+    outside the frame, with no allowance and no rounding.
+
+    The corners are pixel edges, so the frame is ``[0, width] x [0, height]`` and the turn is about
+    its centre, as in ``deskew_warp``. In half-pixel units about the centre a corner is
+    ``u = 2x - width``, ``v = 2y - height`` and the frame is ``|u| <= width``, ``|v| <= height``.
+    The turned corner is ``(u cos - v sin, u sin + v cos)``; with cos and sin the integers of
+    ``straighten.trig`` (scaled by 2**24, the very values the warp divides by 2**24) the products
+    are exact in int64 (``|u|, |v| < 2**18``, so below 2**43), and they are compared with the frame
+    scaled by 2**24. Nothing is floored or rounded, so the content, which lies inside its cells,
+    cannot leave the frame unless a corner does."""
+    height, width = frame
     cos, sin = trig(tenths)
-    new_x = (xs * cos - ys * sin) >> TRIG_BITS
-    new_y = (xs * sin + ys * cos) >> TRIG_BITS
-    slack = tables.CLIP_SLACK_PX
-    low_x, low_y = -(shape[1] // 2) - slack, -(shape[0] // 2) - slack
-    high_x, high_y = shape[1] - 1 - shape[1] // 2 + slack, shape[0] - 1 - shape[0] // 2 + slack
+    u = 2 * corners[:, 0] - width
+    v = 2 * corners[:, 1] - height
+    new_u = u * cos - v * sin
+    new_v = u * sin + v * cos
     return bool(
-        (new_x < low_x).any()
-        or (new_x > high_x).any()
-        or (new_y < low_y).any()
-        or (new_y > high_y).any()
+        (np.abs(new_u) > (width << TRIG_BITS)).any()
+        or (np.abs(new_v) > (height << TRIG_BITS)).any()
     )
 
 
@@ -164,12 +179,14 @@ def estimate_skew(page: LoadedPage, *, cancel: threading.Event | None = None) ->
     peak = scores[estimate]
     far = max(s for a, s in scores.items() if abs(a - estimate) >= tables.SEPARATION_TENTHS)
     content = ink | (darkest < int(np.median(small)) - tables.CONTENT_DELTA)
-    return _verdict(_extremes(content), ink.shape, estimate, (far, peak))
+    step = max(1, min(page.dpi // tables.WORK_DPI, height, width))
+    corners = _extremes(content, step, (height, width))
+    return _verdict(corners, (height, width), estimate, (far, peak))
 
 
 def _verdict(
-    corners: tuple[np.ndarray, np.ndarray],
-    shape: tuple[int, int],
+    corners: np.ndarray,
+    frame: tuple[int, int],
     estimate: int,
     scores: tuple[int, int],
 ) -> SkewEstimate:
@@ -179,7 +196,7 @@ def _verdict(
     separation = far * 100 // peak
     if far * 100 >= tables.SEPARATION_PCT * peak:
         return SkewEstimate(SkewStatus.UNSURE, 0, separation)
-    if _clips(*corners, estimate, shape):
+    if _clips(corners, estimate, frame):
         return SkewEstimate(SkewStatus.WOULD_CLIP, 0, separation)
     if abs(estimate) < tables.MIN_TENTHS:
         return SkewEstimate(SkewStatus.LEVEL, 0, separation)

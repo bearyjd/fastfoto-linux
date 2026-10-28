@@ -8,6 +8,7 @@ from fastfoto_linux.documents.deskew import SkewStatus, estimate_skew
 from fastfoto_linux.documents.loader import LoadedPage
 from fastfoto_linux.documents.modes import ColourMode
 from tests.documents.deskew_fixtures import (
+    dashed_blocks,
     loaded,
     skewed,
     text_page,
@@ -65,3 +66,24 @@ def test_a_second_tilt_between_the_samples_or_beyond_ten_degrees_makes_it_unsure
 def test_a_page_of_one_tilt_is_still_measured_with_the_wider_search() -> None:
     found = estimate_skew(loaded(skewed(text_page(np.random.default_rng(3)), -96)))
     assert found.status is SkewStatus.ESTIMATED
+
+
+def test_a_one_pixel_stroke_in_the_corner_stops_the_turn_at_full_resolution() -> None:
+    pixels = skewed(text_page(np.random.default_rng(3), dpi=600), 80)
+    assert estimate_skew(loaded(pixels, dpi=600)).status is SkewStatus.ESTIMATED
+    pixels[:240, :1] = 0  # averaged over a work pixel it is grey 200
+    assert estimate_skew(loaded(pixels, dpi=600)).status is SkewStatus.WOULD_CLIP
+
+
+def test_a_one_pixel_hairline_on_the_bottom_edge_stops_the_turn() -> None:
+    pixels = skewed(text_page(np.random.default_rng(3), dpi=600), 80)
+    pixels[-1:, :300] = 0  # in the rows the work grid's blocks leave over
+    assert estimate_skew(loaded(pixels, dpi=600)).status is SkewStatus.WOULD_CLIP
+
+
+@pytest.mark.parametrize("rival", [252, -252, 247])
+def test_a_second_tilt_between_the_half_degree_samples_makes_it_unsure(rival: int) -> None:
+    assert estimate_skew(loaded(dashed_blocks((40, rival)))).status in {
+        SkewStatus.UNSURE,
+        SkewStatus.EDGE,
+    }

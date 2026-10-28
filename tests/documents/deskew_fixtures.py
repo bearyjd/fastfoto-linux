@@ -131,3 +131,12 @@ def loaded(pixels: np.ndarray, *, dpi: int = DPI) -> LoadedPage:
 def rgb(pixels: np.ndarray, *, dpi: int = DPI) -> LoadedPage:
     """A colour page whose three channels are ``pixels``."""
     return LoadedPage(np.dstack([pixels] * 3), ColourMode.COLOUR, dpi)
+
+
+def dashed_blocks(tilts: tuple[int, int]) -> np.ndarray:
+    """Two blocks of thin dashed lines (a narrow peak in the profile), turned by ``tilts``."""
+    half = np.full((_px(HEIGHT_MM / 2), _px(WIDTH_MM)), PAPER, np.uint8)
+    for top in range(_px(14), half.shape[0] - _px(14), _px(4)):
+        for left in range(_px(14), half.shape[1] - _px(16), _px(3)):
+            half[top : top + 2, left : left + _px(2)] = INK
+    return np.vstack([skewed(half, tilts[0]), skewed(half, tilts[1])])

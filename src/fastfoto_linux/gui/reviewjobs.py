@@ -125,7 +125,7 @@ def _preview_image(
     cleanup = page_cleanup(draft, page) if request.cleaned else CleanupPolicy.OFF
     # The original side keeps the mode, turns and crop but not the specks removal.
     despeckle = effective_despeckle(draft.despeckle and request.cleaned, mode)
-    if on_cleanup is not None:
+    if on_cleanup is not None or on_despeckle is not None:
         pixels = render_page(
             loaded,
             mode,

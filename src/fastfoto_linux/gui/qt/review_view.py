@@ -9,13 +9,14 @@ from typing import TYPE_CHECKING, Any
 
 from PySide6.QtCore import Property, QObject, QTimer, QUrl, Signal, Slot
 
-from fastfoto_linux.documents.cleanup import page_cleanup
+from fastfoto_linux.documents.cleanup import CleanupStatus, page_cleanup
 from fastfoto_linux.documents.draft import DocumentDraft, PageAnalysis
 from fastfoto_linux.documents.draft_edit import parts
 from fastfoto_linux.documents.modes import CleanupPolicy, ColourMode, ColourPolicy
 from fastfoto_linux.gui import reviewcrop
 from fastfoto_linux.gui.qt.photos_model import file_url
 from fastfoto_linux.gui.qt.review_model import ReviewModel
+from fastfoto_linux.gui.qt.slotargs import confirmed_flag
 from fastfoto_linux.gui.report import Banner
 from fastfoto_linux.gui.review import (
     MODE_LABELS,
@@ -58,12 +59,25 @@ class ReviewView(QObject):
         state = self._side.state
         settings = self._side._settings
         policy = settings.colour if settings else ColourPolicy.COLOUR
-        self._items.set_items(review_items(state, policy) if state else ())
+        self._items.set_items(review_items(state, policy, self._known_cleanup()) if state else ())
         if state and state.draft is not self._last_draft:
             self._last_draft = state.draft
             if self._side.dirty:
                 self._timer.start()
         self.changed.emit()
+
+    def _known_cleanup(self) -> dict[int, CleanupStatus]:
+        """The previewed page's cleanup result, while the page's level is still the rendered one."""
+        side, cached = self._side, self._side._preview_cached
+        status = side.preview_cleanup_status
+        if status is None or cached is None or side.state is None or not cached.cleaned:
+            return {}
+        page = side.state.draft.pages[side.preview_number - 1]
+        # Every edit that changes pixels restarts the preview (and clears the status), so this
+        # level check is only a backstop against a status that outlived its draft.
+        if page_cleanup(cached.draft, page) is not page_cleanup(side.state.draft, page):
+            return {}
+        return {side.preview_number: status}
 
     @Property(bool, notify=changed)
     def active(self) -> bool:
@@ -369,6 +383,6 @@ class ReviewView(QObject):
     def _preview_output(self, number: int, cleaned: bool, crop: tuple[int, int] | None) -> str:
         return self._side.preview(number, "output", cleaned=cleaned, crop=crop)
 
-    @Slot(bool)
-    def deleteOriginals(self, confirmed: bool = False) -> None:
-        self._call(self._side.delete_originals, confirmed)
+    @Slot("QVariant")
+    def deleteOriginals(self, confirmed: object = False) -> None:
+        self._call(lambda: self._side.delete_originals(confirmed_flag(confirmed)))

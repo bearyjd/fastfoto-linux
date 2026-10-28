@@ -287,3 +287,40 @@ def test_a_v3_sidecar_keeps_its_own_cleanup_on_reopen(out):
 def test_a_fresh_scan_still_takes_the_forms_level(out):
     side, _page, _seen = side_opening(out, "light")
     assert side._current_settings().cleanup is LIGHT
+
+
+# -- the panel names the result of the page that was previewed ------------------------------------
+
+
+def known_rows(state, known):
+    return {row.number: row for row in review_items(state, ColourPolicy.AUTO, known)}
+
+
+def test_a_known_skip_is_added_to_the_previewed_pages_words(out):
+    state = ReviewState(decided_draft(out)).set_document_cleanup(LIGHT)
+    text = known_rows(state, {1: CleanupStatus.DARK})[1].cleanup_text
+    assert text == "Paper cleanup: Light requested (document setting) — skipped: paper too dark"
+    assert "skipped" in text
+
+
+def test_a_known_applied_result_is_added_too(out):
+    state = ReviewState(decided_draft(out)).set_document_cleanup(LIGHT)
+    text = known_rows(state, {1: CleanupStatus.APPLIED})[1].cleanup_text
+    assert text == "Paper cleanup: Light requested (document setting) — applied"
+
+
+def test_without_a_known_result_or_for_another_page_the_words_are_unchanged(out):
+    state = ReviewState(decided_draft(out)).set_document_cleanup(LIGHT)
+    plain = rows(state)
+    assert known_rows(state, {})[1].cleanup_text == plain[1].cleanup_text
+    assert known_rows(state, None)[1].cleanup_text == plain[1].cleanup_text
+    other = known_rows(state, {3: CleanupStatus.DARK})
+    assert other[1].cleanup_text == plain[1].cleanup_text
+    assert "—" not in other[1].cleanup_text
+
+
+def test_off_and_black_and_white_pages_never_gain_a_result(out):
+    state = ReviewState(decided_draft(out)).set_document_cleanup(STRONG).set_cleanup(1, OFF)
+    got = known_rows(state, {1: CleanupStatus.DARK, 2: CleanupStatus.BW})
+    assert got[1].cleanup_text == "Paper cleanup: off"
+    assert got[2].cleanup_text == "Paper cleanup: not used for black and white output"

@@ -222,3 +222,9 @@ def test_the_original_side_and_a_switch_that_is_off_report_off(out):
     assert worker_status(analysed(out), out, cleaned=False).despeckle_status is DespeckleStatus.OFF
     off = analysed(out, despeckle=False)
     assert worker_status(off, out).despeckle_status is DespeckleStatus.OFF
+
+
+def test_the_despeckle_hook_is_called_without_a_cleanup_hook(out):
+    statuses = []
+    preview(analysed(out), on_despeckle=statuses.append)
+    assert statuses == [DespeckleStatus.APPLIED]

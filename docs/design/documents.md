@@ -1006,7 +1006,13 @@ document level for this run only, a page's own level still wins, and `--fresh` d
   within one work cell (about 1 mm) of the frame edge may make a page `would_clip` (safe), as
   can a single dark speck there. The residual limit: a mark closer to the paper than the margin
   (under 12 levels, or under 8 noise spreads on a noisy scan) is not content and can still be cut by the turn. A narrow second peak that is not among the three highest outer samples can still be missed;
-  the limit is accepted.
+  the limit is accepted. Known false abstention (fails safe, the page is left as scanned):
+  heavily noisy, evenly lit scans (about sigma 5 or more, no vignette) measure a noise spread
+  of only about 2 from the cell medians, so ordinary noise pixels near the frame edge can cross
+  the floor and make the page `would_clip`. The measurements above include a vignette, which
+  inflates the spread and hid this. Typical scans (sigma 1 to 3) are unaffected. Follow-up: take
+  the noise from pixel statistics of the paper background instead of the cell medians, and add
+  no-vignette noisy fixtures.
 - **When it abstains.** The first reason that applies is the status, and the page is left as
   scanned:
 

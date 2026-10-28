@@ -1,0 +1,67 @@
+"""The estimate fails closed on odd pages, and its clipping and confidence checks see everything."""
+
+import numpy as np
+import pytest
+
+from fastfoto_linux.documents import deskew_tables
+from fastfoto_linux.documents.deskew import SkewStatus, estimate_skew
+from fastfoto_linux.documents.loader import LoadedPage
+from fastfoto_linux.documents.modes import ColourMode
+from tests.documents.deskew_fixtures import (
+    loaded,
+    skewed,
+    text_page,
+    two_skews,
+)
+
+
+@pytest.mark.parametrize(("shape", "dpi"), [((20, 20), 2400), ((1, 5000), 300), ((5000, 1), 300)])
+def test_a_tiny_or_extreme_page_is_not_an_error(shape, dpi: int) -> None:
+    pixels = np.random.default_rng(0).integers(0, 256, shape, dtype=np.uint8)
+    assert estimate_skew(loaded(pixels, dpi=dpi)).status is not SkewStatus.ESTIMATED
+
+
+def _corner_mark(pixels: np.ndarray, value: int) -> np.ndarray:
+    out = pixels.copy()
+    out[:60, :60] = value
+    return out
+
+
+@pytest.mark.parametrize("value", [30, 150])
+def test_a_mark_in_the_corner_that_the_turn_would_push_out_stops_it(value: int) -> None:
+    pixels = _corner_mark(skewed(text_page(np.random.default_rng(3)), 80), value)
+    assert estimate_skew(loaded(pixels)).status is SkewStatus.WOULD_CLIP
+
+
+def test_a_mark_that_stays_inside_does_not_stop_it() -> None:
+    mid = skewed(text_page(np.random.default_rng(3)), 80)
+    mid[1000:1060, 800:860] = 150
+    assert estimate_skew(loaded(mid)).status is SkewStatus.ESTIMATED
+
+
+@pytest.mark.parametrize("stride_points", [300, 1000, 3000])
+def test_the_clipping_check_sees_points_a_thinned_score_dropped(monkeypatch, stride_points) -> None:
+    monkeypatch.setattr(deskew_tables, "MAX_POINTS", stride_points)
+    pixels = skewed(text_page(np.random.default_rng(3)), 80)
+    pixels[-9:, -9:] = 30  # three work pixels each way, last in the scan order
+    assert estimate_skew(loaded(pixels)).status is SkewStatus.WOULD_CLIP
+
+
+@pytest.mark.parametrize("dpi", [100, 150, 300])
+def test_a_black_and_white_page_is_measured(dpi: int) -> None:
+    grey = skewed(text_page(np.random.default_rng(3), dpi=dpi), 41)
+    bw = np.where(grey < 128, 0, 255).astype(np.uint8)
+    found = estimate_skew(LoadedPage(bw, ColourMode.BW, dpi))
+    assert found.status is SkewStatus.ESTIMATED
+    assert abs(found.tenths - -41) <= 1
+
+
+@pytest.mark.parametrize("tilts", [(10, -33), (-17, 24), (100, -330), (60, 255)])
+def test_a_second_tilt_between_the_samples_or_beyond_ten_degrees_makes_it_unsure(tilts) -> None:
+    page = loaded(two_skews(0, tilts))
+    assert estimate_skew(page).status in {SkewStatus.UNSURE, SkewStatus.EDGE}
+
+
+def test_a_page_of_one_tilt_is_still_measured_with_the_wider_search() -> None:
+    found = estimate_skew(loaded(skewed(text_page(np.random.default_rng(3)), -96)))
+    assert found.status is SkewStatus.ESTIMATED

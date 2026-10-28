@@ -12,7 +12,7 @@ from fastfoto_linux.documents.analyse import analyse_document
 from fastfoto_linux.documents.build import build_document
 from fastfoto_linux.documents.deskew import SkewStatus
 from fastfoto_linux.documents.deskew_draft import analyse_and_seed, estimate_deskew, estimate_page
-from fastfoto_linux.documents.draft import DocumentDraft
+from fastfoto_linux.documents.draft import DocumentDraft, TrimBox
 from fastfoto_linux.documents.draft_edit import set_crop, set_deskew, set_included
 from fastfoto_linux.documents.errors import (
     DocumentCancelledError,
@@ -139,3 +139,13 @@ def test_the_deskew_setting_must_be_a_bool(out, bad) -> None:
 def test_a_page_that_is_not_there_is_refused(raw, out, number: int) -> None:
     with pytest.raises(DocumentEditError):
         estimate_page(draft_of(raw, out), number)
+
+
+def test_a_trim_box_that_leaves_nothing_is_unsure_not_an_error(raw, out) -> None:
+    draft = draft_of(raw, out)
+    broken = replace(draft.pages[0], trim=TrimBox(left=10**6, right=0, top=0, bottom=0))
+    draft = replace(draft, pages=(broken, *draft.pages[1:]))
+    assert estimate_page(draft, 1).status is SkewStatus.UNSURE
+    seeded, statuses = estimate_deskew(draft)
+    assert statuses[1] is SkewStatus.UNSURE
+    assert seeded.edits.get(1) is None

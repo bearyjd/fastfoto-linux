@@ -115,11 +115,12 @@ def skewed(pixels: np.ndarray, tenths: int) -> np.ndarray:
     return cv2.warpAffine(pixels, matrix, (width, height), flags=cv2.INTER_LINEAR, borderValue=fill)
 
 
-def two_skews(seed: int = 0, tenths: int = 40) -> np.ndarray:
-    """Two blocks of text, the top one turned clockwise by 4 degrees, the bottom one counter."""
+def two_skews(seed: int = 0, tilts: tuple[int, int] = (40, -40)) -> np.ndarray:
+    """Two blocks of text, the top one turned clockwise by ``tilts[0]`` tenths, the bottom one by
+    ``tilts[1]``."""
     rng = np.random.default_rng(seed)
     half = text_page(rng, height_mm=HEIGHT_MM / 2, margin_mm=14)
-    return np.vstack([skewed(half, tenths), skewed(half, -tenths)])
+    return np.vstack([skewed(half, tilts[0]), skewed(half, tilts[1])])
 
 
 def loaded(pixels: np.ndarray, *, dpi: int = DPI) -> LoadedPage:

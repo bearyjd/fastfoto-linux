@@ -12,9 +12,11 @@ import pytest
 from fastfoto_linux.cli import cmd_doc, main
 from fastfoto_linux.cli.app import build_parser
 from fastfoto_linux.cli.doc_options import build_settings
-from fastfoto_linux.documents import write
+from fastfoto_linux.cli.errors import EXIT_USAGE
+from fastfoto_linux.documents import cleanup, write
 from fastfoto_linux.documents.draft_edit import set_crop, set_deskew
 from fastfoto_linux.documents.draft_store import REVIEW_FILE, read_review, save_draft
+from fastfoto_linux.documents.errors import UnsupportedPageError
 from fastfoto_linux.documents.page_crop import PageCrop
 from fastfoto_linux.session.raw import list_pages
 from tests.cli.doc_cleanup_helpers import OCR_OFF
@@ -212,3 +214,45 @@ def test_the_recovery_hint_repeats_the_flag(tmp_path, doc_transport, capsys, fix
     command = printed_command(capsys.readouterr().err)
     assert command == expected(root, 2, "--dpi", "300", "--deskew", "--ocr", "off")
     assert shlex.split(command)[0] == "ffscan"
+
+
+def blank_second(folder: Path) -> tuple[Path, tuple[Path, ...]]:
+    raw = raw_of(folder)
+    write_png(raw[0] / "page-0002.png", np.full((787, 590), 240, np.uint8), dpi=DPI)
+    return raw
+
+
+def row(lines: list[str], number: int) -> str:
+    return next(line for line in lines if line.startswith(f"{number} "))
+
+
+def test_pages_brought_back_are_measured_and_pages_dropped_are_not(tmp_path, out, capsys) -> None:
+    raw = blank_second(tmp_path)
+    kept = dry_run(capsys, raw[0], out, "--deskew", "--keep", "2")
+    assert "deskew skipped (little_ink)" in row(kept, 2)
+    dropped = dry_run(capsys, raw[0], out, "--deskew", "--drop", "1")
+    assert "deskew" not in row(dropped, 1)
+    assert "left out" in row(dropped, 1)
+
+
+def test_a_stored_angle_on_a_page_too_large_to_straighten_is_said_to_be_skipped(
+    tmp_path, out, capsys, monkeypatch
+) -> None:
+    raw = raw_of(tmp_path)
+    store(raw, out)
+    monkeypatch.setattr(cleanup, "MAX_WORK_PIXELS", 1000)
+    lines = dry_run(capsys, raw[0], out)
+    assert "deskew skipped (too_large)" in row(lines, 1)
+    assert "deskew 5.5" not in row(lines, 1)
+
+
+@pytest.mark.parametrize("failure", [UnsupportedPageError("x"), ValueError("x")])
+def test_a_page_that_cannot_be_read_again_is_a_usage_error(
+    tmp_path, out, monkeypatch, capsys, failure
+) -> None:
+    def refuse(*args, **kwargs):
+        raise failure
+
+    monkeypatch.setattr(cmd_doc, "estimate_deskew", refuse)
+    assert run(raw_of(tmp_path)[0], out, "--deskew") == EXIT_USAGE
+    assert "Traceback" not in capsys.readouterr().err

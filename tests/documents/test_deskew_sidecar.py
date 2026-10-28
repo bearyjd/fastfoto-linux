@@ -1,4 +1,4 @@
-"""Sidecar format 6: written only for a deskew angle, read strictly, never granted to older files."""
+"""Sidecar format 6: written only for a deskew angle, read strictly, never given to older files."""
 
 import json
 from dataclasses import replace

@@ -17,14 +17,14 @@ from types import MappingProxyType
 from typing import Any
 
 from fastfoto_linux.documents.assess import MAX_BOXES
-from fastfoto_linux.documents.cleanup_json import EDIT_KEYS, uses_cleanup
+from fastfoto_linux.documents.cleanup_json import uses_cleanup
 from fastfoto_linux.documents.colour_json import decode_decision, decode_policy
 from fastfoto_linux.documents.crop_json import (
-    CROP_EDIT_KEYS,
     CropFormatError,
     parse_crop,
     uses_crop,
 )
+from fastfoto_linux.documents.deskew_json import DeskewFormatError, parse_deskew, uses_deskew
 from fastfoto_linux.documents.despeckle_json import uses_despeckle
 from fastfoto_linux.documents.draft import (
     QUARTER_TURNS,
@@ -43,9 +43,10 @@ from fastfoto_linux.documents.page_crop import PageCrop
 from fastfoto_linux.documents.settings import DocumentSettings
 from fastfoto_linux.documents.sidecar_versions import (
     CLEANUP_VERSION,
-    CROP_VERSION,
+    CROP_VERSION,  # noqa: F401 - the tests read it here
     DESPECKLE_VERSION,
     READ_VERSIONS,
+    check_edit_keys,
     version_for,
 )
 from fastfoto_linux.output.errors import InvalidPrefixError
@@ -97,18 +98,21 @@ def encode_review(
     """The JSON of ``draft`` (and the options of ``settings``, if given). The draft's read-only
     maps are written out by hand. The lowest format version that fits is written (see
     ``sidecar_versions``): 2 exactly as it always was, 3 for paper cleanup, 4 for a crop, 5 for
-    despeckle."""
+    despeckle, 6 for a deskew angle."""
+    deskew = uses_deskew(draft)
     despeckle = uses_despeckle(draft)
-    cropped = despeckle or uses_crop(draft)  # version 5 has the shape of version 4
+    cropped = deskew or despeckle or uses_crop(draft)  # versions 5 and 6 have the shape of 4
     cleanup = cropped or uses_cleanup(draft)
     data: dict[str, Any] = {
-        "version": version_for(despeckle=despeckle, cropped=cropped, cleanup=cleanup),
+        "version": version_for(
+            deskew=deskew, despeckle=despeckle, cropped=cropped, cleanup=cleanup
+        ),
         "analysis_version": analysis_version,
         "duplex": draft.duplex,
         "keep_blank": draft.keep_blank,
         "pages": [page_json(page) for page in draft.pages],
         "edits": {
-            str(number): edit_page_json(edit, cleanup=cleanup, cropped=cropped)
+            str(number): edit_page_json(edit, cleanup=cleanup, cropped=cropped, deskew=deskew)
             for number, edit in sorted(draft.edits.items())
         },
         "order": list(draft.order),
@@ -117,8 +121,8 @@ def encode_review(
     }
     if cleanup:
         data["cleanup"] = draft.cleanup.value
-    if despeckle:
-        data["despeckle"] = True
+    if data["version"] >= DESPECKLE_VERSION:
+        data["despeckle"] = draft.despeckle
     if settings is not None:
         data["fallback_dpi"] = settings.fallback_dpi
     options = None if settings is None else options_json(settings)
@@ -251,21 +255,17 @@ def _cleanup(value: Any, what: str) -> CleanupPolicy:
         raise ReviewFormatError(f"{what} must be off, light or strong") from error
 
 
-def _check_keys(entry: dict[str, Any], version: int) -> None:
-    if version < CROP_VERSION and "crop" in entry:
-        raise ReviewFormatError("crop needs format version 4")
-    if version >= CROP_VERSION and set(entry) != CROP_EDIT_KEYS:
-        raise ReviewFormatError("an edit must have exactly include, turns, colour, cleanup, crop")
-    if version == CLEANUP_VERSION and set(entry) != EDIT_KEYS:
-        raise ReviewFormatError("an edit must have exactly include, turns, colour, cleanup")
-    if version < CLEANUP_VERSION and "cleanup" in entry:
-        raise ReviewFormatError("cleanup needs format version 3")
-
-
 def _crop(entry: dict[str, Any]) -> PageCrop | None:
     try:
         return parse_crop(entry.get("crop"), "an edit's crop")
     except CropFormatError as error:
+        raise ReviewFormatError(str(error)) from error
+
+
+def _deskew(entry: dict[str, Any]) -> int | None:
+    try:
+        return parse_deskew(entry.get("deskew"), "an edit's deskew")
+    except DeskewFormatError as error:
         raise ReviewFormatError(str(error)) from error
 
 
@@ -274,7 +274,9 @@ def _edits(value: Any, count: int, version: int) -> Mapping[int, PageEdit]:
     for key, raw in _dict(value, "edits").items():
         number = _number_key(key, "edits", count)
         entry = _dict(raw, "an edit")
-        _check_keys(entry, version)
+        problem = check_edit_keys(entry, version)
+        if problem is not None:
+            raise ReviewFormatError(problem)
         include = entry.get("include")
         if include is not None:
             include = _flag(include, "include")
@@ -287,6 +289,7 @@ def _edits(value: Any, count: int, version: int) -> Mapping[int, PageEdit]:
             if entry.get("cleanup") is None
             else _cleanup(entry["cleanup"], "an edit's cleanup"),
             _crop(entry),
+            _deskew(entry),
         )
     return MappingProxyType(edits)
 

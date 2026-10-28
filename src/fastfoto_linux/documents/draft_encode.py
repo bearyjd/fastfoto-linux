@@ -41,8 +41,12 @@ def options_json(settings: DocumentSettings) -> dict[str, str] | None:
     }
 
 
-def edit_page_json(edit: PageEdit, *, cleanup: bool, cropped: bool) -> dict[str, Any]:
+def edit_page_json(
+    edit: PageEdit, *, cleanup: bool, cropped: bool, deskew: bool = False
+) -> dict[str, Any]:
     data = edit_json(edit, with_cleanup=cleanup)
     if cropped:
         data["crop"] = crop_json(edit.crop)
+    if deskew:
+        data["deskew"] = edit.deskew_tenths
     return data

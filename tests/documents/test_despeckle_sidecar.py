@@ -49,7 +49,7 @@ def decode(data: Any) -> DocumentDraft:
 def test_the_versions_are_spelled_out() -> None:
     assert DESPECKLE_VERSION == 5
     assert CROP_VERSION == 4
-    assert READ_VERSIONS == (1, 2, 3, 4, 5)
+    assert READ_VERSIONS == (1, 2, 3, 4, 5, 6)
 
 
 def test_a_draft_without_despeckle_is_written_as_main_wrote_it() -> None:

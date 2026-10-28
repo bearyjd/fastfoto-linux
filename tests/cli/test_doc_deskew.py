@@ -13,7 +13,6 @@ from fastfoto_linux.cli import cmd_doc, main
 from fastfoto_linux.cli.app import build_parser
 from fastfoto_linux.cli.doc_options import build_settings
 from fastfoto_linux.documents import write
-from fastfoto_linux.documents.deskew_draft import analyse_and_seed
 from fastfoto_linux.documents.draft_edit import set_crop, set_deskew
 from fastfoto_linux.documents.draft_store import REVIEW_FILE, read_review, save_draft
 from fastfoto_linux.documents.page_crop import PageCrop
@@ -193,19 +192,16 @@ def test_loose_pages_take_the_shortcut_through_build(tmp_path, out, monkeypatch)
     assert spy.seen == []  # carried bytes are reused: nothing is read again
 
 
-def test_the_scan_session_gets_the_setting_and_the_seeding_hook(
-    tmp_path, doc_transport, monkeypatch
-) -> None:
+def test_the_scan_session_gets_the_setting(tmp_path, doc_transport, monkeypatch) -> None:
     seen: dict[str, Any] = {}
 
     def session(request, **hooks):
         seen["deskew"] = request.settings.deskew
-        seen["analyse"] = hooks.get("analyse")
         raise KeyboardInterrupt
 
     monkeypatch.setattr(cmd_doc, "run_document_session", session)
     assert doc_scan(tmp_path, "--deskew") == 130  # the stand-in ends as an interrupt
-    assert seen == {"deskew": True, "analyse": analyse_and_seed}
+    assert seen == {"deskew": True}
 
 
 def test_the_recovery_hint_repeats_the_flag(tmp_path, doc_transport, capsys, fixed_stamp) -> None:

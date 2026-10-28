@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 
+from fastfoto_linux.documents.deskew_json import DeskewFormatError, parse_deskew
 from fastfoto_linux.documents.draft import DocumentDraft
 from fastfoto_linux.documents.draft_edit import set_deskew, set_document_cleanup
 from fastfoto_linux.documents.draft_json import ReviewFormatError, decode_review, encode_review
@@ -139,3 +140,14 @@ def test_older_versions_never_hold_a_deskew_key(version: int) -> None:
 @pytest.mark.parametrize("version", [1, 2, 3, 4, 5])
 def test_older_files_still_read(version: int) -> None:
     assert all(edit.deskew_tenths is None for edit in decode(_older(version)).edits.values())
+
+
+@pytest.mark.parametrize("bad", [0, True, False, 101, -101, 1.0, "1", [1]])
+def test_parse_deskew_refuses_what_is_no_angle(bad) -> None:
+    with pytest.raises(DeskewFormatError):
+        parse_deskew(bad, "an edit's deskew")
+
+
+@pytest.mark.parametrize("good", [None, -100, -1, 1, 100])
+def test_parse_deskew_accepts_null_and_the_limits(good) -> None:
+    assert parse_deskew(good, "an edit's deskew") == good

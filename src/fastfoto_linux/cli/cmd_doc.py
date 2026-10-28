@@ -51,7 +51,7 @@ from fastfoto_linux.documents import (
 from fastfoto_linux.documents.analyse import analyse_document
 from fastfoto_linux.documents.auto_colour import page_colour
 from fastfoto_linux.documents.deskew import SkewStatus
-from fastfoto_linux.documents.deskew_draft import analyse_and_seed, estimate_deskew
+from fastfoto_linux.documents.deskew_draft import estimate_deskew
 from fastfoto_linux.documents.draft import DocumentDraft
 from fastfoto_linux.documents.draft_edit import (
     PageEdits,
@@ -311,7 +311,6 @@ def _scan_into(request: DocumentScanRequest, root: Path) -> int:
             on_stage=announce_stage,
             scan=run_scan,
             build=build_document,
-            analyse=analyse_and_seed,
         )
     except (DocumentSettingsError, OcrMissingError) as error:  # refused before any scan
         _raise_failure(error)

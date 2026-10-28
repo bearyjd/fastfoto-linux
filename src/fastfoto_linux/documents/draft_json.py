@@ -43,7 +43,6 @@ from fastfoto_linux.documents.page_crop import PageCrop
 from fastfoto_linux.documents.settings import DocumentSettings
 from fastfoto_linux.documents.sidecar_versions import (
     CLEANUP_VERSION,
-    CROP_VERSION,  # noqa: F401 - the tests read it here
     DESPECKLE_VERSION,
     READ_VERSIONS,
     check_edit_keys,

@@ -29,7 +29,14 @@ def _full_page_tilted(tenths: int) -> np.ndarray:
     return tilted[top : top + blank().shape[0], left : left + blank().shape[1]]
 
 
+def _half_dark() -> np.ndarray:
+    page = text_page(np.random.default_rng(3))
+    page[page.shape[0] // 2 :] = 20
+    return page
+
+
 CASES = {
+    "half dark": (lambda: loaded(_half_dark()), {SkewStatus.NOT_TEXT}),
     "blank": (lambda: loaded(blank()), {SkewStatus.LITTLE_INK}),
     "one short line": (lambda: loaded(one_short_line()), {SkewStatus.LITTLE_INK}),
     "smooth photo": (lambda: loaded(smooth_photo()), {SkewStatus.NOT_TEXT, SkewStatus.UNSURE}),

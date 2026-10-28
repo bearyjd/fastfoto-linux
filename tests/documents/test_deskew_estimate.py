@@ -3,6 +3,7 @@
 import numpy as np
 import pytest
 
+from fastfoto_linux.documents import deskew_tables
 from fastfoto_linux.documents.deskew import SkewStatus, estimate_skew
 from fastfoto_linux.documents.deskew_warp import deskewed
 from fastfoto_linux.documents.modes import ColourMode
@@ -52,8 +53,6 @@ def test_two_calls_agree() -> None:
 
 
 def test_a_subsampled_huge_ink_case_is_stable(monkeypatch: pytest.MonkeyPatch) -> None:
-    from fastfoto_linux.documents import deskew_tables
-
     page = loaded(skewed(text_page(np.random.default_rng(4)), 27))
     monkeypatch.setattr(deskew_tables, "MAX_POINTS", 5000)
     first = estimate_skew(page)

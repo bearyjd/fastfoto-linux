@@ -135,6 +135,14 @@ def estimate_skew(page: LoadedPage, *, cancel: threading.Event | None = None) ->
         for angle, score in coarse.items()
         if abs(angle - estimate) >= tables.SEPARATION_TENTHS
     )
+    return _verdict(ys, xs, shape, estimate, (far, peak))
+
+
+def _verdict(
+    ys: np.ndarray, xs: np.ndarray, shape: tuple[int, int], estimate: int, scores: tuple[int, int]
+) -> SkewEstimate:
+    """The last three abstains and the answer, for the best angle and (far, peak) scores."""
+    far, peak = scores
     separation = far * 100 // peak
     if far * 100 >= tables.SEPARATION_PCT * peak:
         return SkewEstimate(SkewStatus.UNSURE, 0, separation)

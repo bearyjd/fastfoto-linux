@@ -130,7 +130,9 @@ def test_the_job_passes_the_cancel_event_to_the_estimate(out):
     assert seen[0][:2] == (draft, 1) and isinstance(seen[0][2], threading.Event)
 
 
-@pytest.mark.parametrize("error", [DocumentError("x"), OSError("x"), ValueError("x")])
+@pytest.mark.parametrize(
+    "error", [DocumentError("x"), OSError("x"), ValueError("x"), RuntimeError("x")]
+)
 def test_an_error_is_an_error_marker_with_no_message(out, error):
     secret = str(out / "page-0001.png")
 

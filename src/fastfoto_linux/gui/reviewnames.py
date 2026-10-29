@@ -52,7 +52,8 @@ def crop_tag(crop: PageCrop | None, turns: int, deskew: int | None = None) -> st
     Without a tilt the text is the one the tag always had. ``crop`` None means the whole page.
     """
     if deskew is None:
-        assert crop is not None
+        if crop is None:
+            raise ValueError("a tag needs a crop or an angle")
         text = f"{crop.left}.{crop.top}.{crop.right}.{crop.bottom}.r{turns}"
     else:
         edges = "full" if crop is None else f"{crop.left}.{crop.top}.{crop.right}.{crop.bottom}"

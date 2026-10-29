@@ -62,9 +62,8 @@ class ReviewDeskew:
 
     def straighten(self, number: int) -> None:
         side = self._side
-        if not self.can_straighten:
+        if not self.can_straighten or side.state is None:
             raise ActionBlockedError("wait for the current page job")
-        assert side.state is not None
         if number != side.state.focus:
             raise ActionBlockedError("select the page first")
         draft = side.state.draft

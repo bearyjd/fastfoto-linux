@@ -114,3 +114,8 @@ def test_capture_originals_lists_a_straight_preview(out):
     (previews / "page-0001-straight-p041.jpg").write_bytes(b"x")
     saved = capture_originals(source)
     assert f"{PREVIEW_DIR}/page-0001-straight-p041.jpg" in {name for name, _ in saved.artifacts}
+
+
+def test_a_tag_needs_a_crop_or_an_angle():
+    with pytest.raises(ValueError):
+        crop_tag(None, 0)

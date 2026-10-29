@@ -274,3 +274,19 @@ def test_straightening_a_real_skewed_page_applies_the_measured_angle(out):
     side.preview(1, "source")
     assert previews and previews[-1][0].edits[1].deskew_tenths == tenths
     assert State.REVIEWING is page.controller.state
+
+
+def test_a_worker_error_while_measuring_frees_the_button(out):
+    side, _page, _calls = started(out)
+    side.deskew.straighten(1)
+    assert side.deskew.pending is not None
+    assert side.error(RuntimeError("boom")) is False
+    assert side.deskew.pending is None and side.deskew.can_straighten
+
+
+def test_undo_straighten_works_while_the_worker_is_busy(out):
+    side, page, _calls = started(out)
+    side.edit("set_deskew", 1, 41)
+    page.worker.busy = True
+    side.deskew.clear(1)
+    assert edit_of(side).deskew_tenths is None

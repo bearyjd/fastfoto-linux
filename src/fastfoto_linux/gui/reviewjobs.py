@@ -320,9 +320,9 @@ class ReviewJobs:
         try:
             found = self._estimate(draft, number, cancel=cancel)
             answer = DeskewAnswer(draft, number, found.status, found.tenths)
-        except (DocumentError, OSError, ValueError):
-            # An OSError can carry the page's path: the answer says only that it failed.
-            logger.info("page %d tilt could not be measured", number)
+        except Exception:  # whatever it was, the button must come back
+            # The log may hold a path; the answer says only that it failed.
+            logger.exception("page %d tilt could not be measured", number)
             answer = DeskewAnswer(draft, number, DESKEW_ERROR)
         return functools.partial(self._sink.on_review_deskew, answer)
 

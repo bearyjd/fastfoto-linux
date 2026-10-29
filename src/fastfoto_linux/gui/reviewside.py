@@ -253,6 +253,7 @@ class ReviewSide:
         self._set(State.REVIEWING)
 
     def error(self, error: Exception) -> bool:
+        self.deskew.pending = None  # a job that failed cannot answer
         if self._pending and self.state is not None:
             self._pending = ""
             self._set(State.REVIEWING, document_error_banner(error))

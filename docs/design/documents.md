@@ -19,7 +19,7 @@ CLI and the desktop app. This replaces the document scanning done in the Windows
 ## Non-goals (this round)
 Splitting one batch into several PDFs; PDF/A; page editing; OCR languages other than English in the
 Flatpak (only `eng` and `osd` are bundled); the scanner's hardware auto-crop (`--adf-crp`: the epsonds backend ignores it, checked in the
-transport PR); software deskew (the scanner's own deskew stays on).
+transport PR); software deskew beyond the opt-in per-page `--deskew` (the scanner's own deskew stays on).
 
 ## Command line
 ```
@@ -965,6 +965,92 @@ document level for this run only, a page's own level still wins, and `--fresh` d
 - **Known limits.** A deliberate isolated dot more than 2.5 mm from any ink, dotted leaders
   spaced over 2.5 mm, and a lone decimal point in a sparse table are removed; dust over 0.30 mm
   or within 2.5 mm of text stays. No claim is made about OCR results; the evidence is synthetic.
+
+### Deskew
+
+- **What it is.** "Straighten tilted pages" is opt-in and per page: `--deskew` on `ffscan doc scan`
+  and `doc process` (off by default; `--no-deskew` clears the angles of a raw folder's review file
+  and, because a changed angle clears a page's crop, also the crop of a page that had both). It
+  targets *residual* skew: the scanner already deskews in hardware (`--adf-skew`, on by default),
+  so this is for copies printed skewed or a feeder slip. A page's angle is `deskew_tenths`, tenths
+  of a degree clockwise from -100 to 100, 0 meaning none. The setting only seeds angles for a new
+  analysis; it is not stored. The estimate is never stored, only the applied angle.
+- **Order.** Load, trim, deskew, then crop, then turn, then the cleanup or the black and white
+  render, in the preview and the PDF alike ("deskew, then crop, then turn"). The estimate runs on
+  the trimmed page, in the frame the angle applies to. The warp keeps the page's width and height
+  (the same frame), turns it about the pixel centre with the fixed-point `straighten.trig`, and
+  fills the corners white on every channel. A 1-bit page is resampled by nearest neighbour so it
+  still holds only 0 and 255. The photo editor's inscribed straighten frame is not used: it would
+  cut document margins. Seeding skips a page that has a crop, and setting an angle clears the crop.
+- **Estimate.** A projection profile in integers only, on a work grid of 100 dpi (the page
+  divided by `dpi // 100`, area-averaged grey; that step was calibrated at 300 dpi, and is kept
+  within the page's size). Ink is at or darker than the smaller of Otsu's level and 200 (so a
+  0/255 page works). The ink pixels (at most 250,000, thinned by an even stride) are turned by
+  each candidate angle and the angle with the largest sum of squared row counts wins: every tenth
+  from -10 to 10 degrees, and every half degree out to 45 degrees, which is scored only to find a
+  second tilt (a tilt beyond 10 degrees is never applied). Ties go to the smaller angle, then the
+  negative one. The three highest samples beyond 10 degrees are searched again in tenths, to
+  either side, so a narrow second peak (dashed lines) is not lost between samples. It takes about
+  0.1 s on a generated A4 page at 300 dpi on a busy machine. The clip check turns the four corners of the first and last content cell of every row,
+  in exact integer arithmetic (no flooring, no allowance: the content lies inside its cells, so it
+  cannot leave the frame unless a corner does). Content is the darkest full-resolution pixel of a work cell at or below a floor: the median of those
+  darkest pixels (the paper's level) minus the larger of 12 levels and 8 noise spreads, where the
+  spread is the median distance of the cells above that median from it (ink only darkens cells,
+  so the paper side measures the noise: on clean paper it is 0, on a noisy scan a cell's
+  darkest pixel sits about two sigma below the paper and the spread grows with sigma). So a grey
+  mark 12 levels darker than clean paper, a one pixel stroke, a hairline or a small footer digit counts. Measured on the generated text pages (15 mm margins, tilts of 0.3 to 9.6 degrees, 24 pages for
+  each noise level, with paper texture and a mild vignette): noise sigma 0, 2, 4 and 6 gave 24 of
+  24 `estimated` each, against 24 of 24 for the earlier fixed margin of 40 levels; a spread
+  factor of 6 gave 15 of 24 false `would_clip` at sigma 6, and 4 gave 24 of 24 at sigma 4. The
+  cost is that a cell is taken whole, so a mark
+  within one work cell (about 1 mm) of the frame edge may make a page `would_clip` (safe), as
+  can a single dark speck there. The residual limit: a mark closer to the paper than the margin
+  (under 12 levels, or under 8 noise spreads on a noisy scan) is not content and can still be cut by the turn. A narrow second peak that is not among the three highest outer samples can still be missed;
+  the limit is accepted. Known false abstention (fails safe, the page is left as scanned):
+  heavily noisy, evenly lit scans (about sigma 5 or more, no vignette) measure a noise spread
+  of only about 2 from the cell medians, so ordinary noise pixels near the frame edge can cross
+  the floor and make the page `would_clip`. The measurements above include a vignette, which
+  inflates the spread and hid this. Typical scans (sigma 1 to 3) are unaffected. Follow-up: take
+  the noise from pixel statistics of the paper background instead of the cell medians, and add
+  no-vignette noisy fixtures.
+- **When it abstains.** The first reason that applies is the status, and the page is left as
+  scanned:
+
+  | status | rule |
+  |---|---|
+  | `low_dpi` | under 100 dpi |
+  | `too_large` | the work grid has more than 12 million pixels (as paper cleanup) |
+  | `little_ink` | fewer than 1500 ink pixels on the work grid |
+  | `not_text` | ink is more than 35% of the work grid (a photo or a dark page) |
+  | `edge` | the best angle is -10 or 10 degrees: the tilt may be larger |
+  | `unsure` | the best score at least 2.0 degrees from the peak (out to 45 degrees) is 92% or more of the peak |
+  | `would_clip` | turning a corner of any content cell by the angle puts it outside the frame (no allowance) |
+  | `level` | the angle is under 0.3 degrees (0.3 itself applies) |
+  | `estimated` | otherwise |
+
+  `cropped` (seeding skipped a page with a crop) and `no_source` (the draft has no folder to read
+  the page from) are reported by the seeding step. In a dry run a page shows `deskew 1.4°` or
+  `deskew skipped (unsure)`.
+- **Confidence.** The separation is the best score at least 2.0 degrees from the peak divided by
+  the peak. Measured on the generated fixtures of the tests: clean text 0.51 to 0.53, pages with
+  jittered baselines, mixed heights, a noise block and a table 0.76 to 0.83, two blocks tilted
+  in opposite directions 0.99, random scatter 1.18 to 1.19; a smooth photo is `not_text`. The 92% limit
+  sits between them. A window of 1.0 degree was rejected because the harder pages came too close
+  to the two-tilt page.
+- **The sidecar.** The review file is format version 6 only when a page has an angle: the shape
+  of version 5 (a required top-level `cleanup` and `despeckle`, which may be false) plus an
+  edit key `deskew`, null or a whole number from -100 to 100 but not 0. Versions 1 to 5 refuse a
+  `deskew` key; a bool, a float, 0 or a value out of range is refused in version 6 with a message
+  that names the field and not the value. Despeckle keeps its own constant (version 5) and a
+  despeckle-only draft is still written as the same version 5 bytes. Cached page bytes are never
+  reused for a straightened page.
+- **Limits.** Calibration is on synthetic pages only (generated text, tables and a noise block);
+  nothing here claims an accuracy on real scans or on OCR. Text that is tilted on straight paper
+  and reaches the corners abstains from about 4 degrees (`would_clip`) because the frame is not
+  enlarged; a skewed *sheet* is not affected, as its trim box circumscribes it. A page that is
+  sideways or upside down abstains, as the estimate runs before the quarter turns. Pages with
+  more than one tilt, forms, handwriting and photos with captions may abstain often, which is
+  safe. More than 10 degrees is not measured. A cream page shows white corner wedges.
 
 ## Manual crop
 

@@ -10,7 +10,6 @@ import pytest
 from fastfoto_linux.documents.analyse import ANALYSIS_VERSION
 from fastfoto_linux.documents.draft import DocumentDraft, PageEdit
 from fastfoto_linux.documents.draft_json import (
-    CROP_VERSION,
     ReviewFormatError,
     decode_review,
     encode_review,
@@ -23,6 +22,7 @@ from fastfoto_linux.documents.draft_store import (
     save_draft,
 )
 from fastfoto_linux.documents.modes import CleanupPolicy, ColourPolicy
+from fastfoto_linux.documents.sidecar_versions import CROP_VERSION
 from tests.documents.edit_helpers import draft_of
 from tests.documents.store_helpers import put_sidecar, raw_folder, store_settings, touch_page
 

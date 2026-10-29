@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from fastfoto_linux.documents.draft_json import CROP_VERSION
+from fastfoto_linux.documents.sidecar_versions import CROP_VERSION
 
 ROOT = Path(__file__).resolve().parents[2]
 DOCUMENTS = {

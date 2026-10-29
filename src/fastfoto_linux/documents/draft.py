@@ -13,6 +13,7 @@ from pathlib import Path
 from types import MappingProxyType
 
 from fastfoto_linux.documents.auto_colour import ColourDecision
+from fastfoto_linux.documents.deskew_tables import check_tenths
 from fastfoto_linux.documents.encode import EncodedPage
 from fastfoto_linux.documents.loader import LoadedPage
 from fastfoto_linux.documents.modes import CleanupPolicy, ColourPolicy
@@ -151,13 +152,15 @@ class PageEdit:
     """What the reviewer did to one page. ``include`` None follows the verdict (a page that
     looks blank is left out, any other stays); True or False overrides it. ``quarter_turns`` are
     clockwise turns of 90 degrees, 0 to 3. ``cleanup`` None follows the document's paper
-    cleanup; a level overrides it for this page."""
+    cleanup; a level overrides it for this page. ``deskew_tenths`` is the clockwise tilt taken out
+    of the trimmed page before the crop and turns (``deskew_warp``); None leaves it as scanned."""
 
     include: bool | None = None
     quarter_turns: int = 0
     colour: ColourPolicy | None = None
     cleanup: CleanupPolicy | None = None
     crop: PageCrop | None = None
+    deskew_tenths: int | None = None  # clockwise tenths of a degree, -100 to 100 but not 0
 
     def __post_init__(self) -> None:
         if self.colour is not None and not isinstance(self.colour, ColourPolicy):
@@ -166,6 +169,8 @@ class PageEdit:
             raise ValueError("page cleanup must be a known cleanup level")
         if self.crop is not None and not isinstance(self.crop, PageCrop):
             raise ValueError("page crop must be a page crop")
+        if self.deskew_tenths is not None and check_tenths(self.deskew_tenths) == 0:
+            raise ValueError("deskew must be None, not 0, when there is no angle")
         if not 0 <= self.quarter_turns < QUARTER_TURNS:
             raise ValueError(f"quarter turns must be 0 to 3, got {self.quarter_turns}")
 

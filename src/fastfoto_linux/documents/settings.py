@@ -32,6 +32,7 @@ class DocumentSettings:
     duplex: bool = True  # pages are sheets' sides in order, (1, 2), (3, 4) ...; False: all fronts
     cleanup: CleanupPolicy = CleanupPolicy.OFF  # paper cleanup a new analysis starts with
     despeckle: bool = False  # remove small isolated specks from black and white pages
+    deskew: bool = False  # a new analysis seeds the tilt of each page it can measure
 
 
 @dataclass(frozen=True)
@@ -66,6 +67,8 @@ def check_settings(settings: DocumentSettings) -> CheckedSettings:
         raise DocumentSettingsError("cleanup must be off, light or strong")
     if type(settings.despeckle) is not bool:
         raise DocumentSettingsError("despeckle must be true or false")
+    if type(settings.deskew) is not bool:
+        raise DocumentSettingsError("deskew must be true or false")
     try:
         validate_langs(settings.langs)
     except ValueError as error:

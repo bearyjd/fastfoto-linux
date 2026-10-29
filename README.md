@@ -574,6 +574,12 @@ and export render from the retained source. Existing version-1 red-eye recipes r
 neutral adjustments; a tone edit uses the new version-2 recipe. See the
 [photo adjustment contract](docs/design/photo-tone.md) for replay and compatibility details.
 
+**White balance** (API and recipe only; editor controls follow): a recipe can carry an integer
+temperature and tint from -100 to 100 (neutral 0; positive temperature is warmer, positive tint is
+more magenta), applied in linear light after crop and rotation and before tone. A non-neutral balance
+saves a version-5 recipe that older app versions reject; the JPEG stays a normal image. See the
+[white balance contract](docs/design/photo-white-balance.md).
+
 **Crop and rotate** turns the photo in 90° steps (**Rotate left** / **Rotate right**) and crops it
 to a rectangle you drag on the picture or set with the **Left / Top / Right / Bottom** boxes. Cropping
 and turning use exact pixels with no resampling, and happen after red-eye correction and before tone

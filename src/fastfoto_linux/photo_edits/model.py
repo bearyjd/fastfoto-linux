@@ -3,6 +3,7 @@
 import math
 from dataclasses import dataclass, field
 from pathlib import Path
+from threading import Event
 
 import numpy as np
 
@@ -21,16 +22,20 @@ GEOMETRY_SCHEMA_VERSION = 3
 GEOMETRY_ALGORITHM_VERSION = "photo-geometry-v1"
 STRAIGHTEN_SCHEMA_VERSION = 4
 STRAIGHTEN_ALGORITHM_VERSION = "photo-geometry-v2"
+WHITE_BALANCE_SCHEMA_VERSION = 5
+WHITE_BALANCE_ALGORITHM_VERSION = "photo-color-v1"
 RECIPE_VERSIONS = {
     LEGACY_SCHEMA_VERSION: LEGACY_ALGORITHM_VERSION,
     TONE_SCHEMA_VERSION: TONE_ALGORITHM_VERSION,
     GEOMETRY_SCHEMA_VERSION: GEOMETRY_ALGORITHM_VERSION,
     STRAIGHTEN_SCHEMA_VERSION: STRAIGHTEN_ALGORITHM_VERSION,
+    WHITE_BALANCE_SCHEMA_VERSION: WHITE_BALANCE_ALGORITHM_VERSION,
 }
 MIN_CROP_MM = 5.0
 CROP_COORDINATES = 4
 TONE_CONTROL_LIMIT = 50
 TONE_PERCENT_LIMIT = 100
+WB_CONTROL_LIMIT = 100
 MAX_RECIPE_BYTES = 2_000_000
 MAX_EYES = 128
 MAX_MASK_PIXELS = 1_000_000
@@ -94,6 +99,11 @@ class PhotoEditError(ValueError):
 
 class PhotoEditCancelledError(PhotoEditError):
     """The caller cancelled before publication."""
+
+
+def check_cancel(cancel: Event) -> None:
+    if cancel.is_set():
+        raise PhotoEditCancelledError("photo edit cancelled")
 
 
 @dataclass(frozen=True, eq=False)
@@ -199,6 +209,18 @@ class PhotoTone:
 
 
 @dataclass(frozen=True)
+class PhotoWhiteBalance:
+    """Immutable integer temperature (+ warmer) and tint (+ magenta) for the linear-light gains."""
+
+    temperature: int = 0
+    tint: int = 0
+
+    def __post_init__(self) -> None:
+        integer(self.temperature, -WB_CONTROL_LIMIT, WB_CONTROL_LIMIT, "temperature")
+        integer(self.tint, -WB_CONTROL_LIMIT, WB_CONTROL_LIMIT, "tint")
+
+
+@dataclass(frozen=True)
 class PhotoGeometry:
     """Straighten (tenths of a degree, clockwise), then a crop in that frame, then quarter turns.
 
@@ -271,6 +293,16 @@ def _check_straighten(recipe: "PhotoEditRecipe") -> None:
         raise PhotoEditError(f"straighten angle leaves less than the {MIN_CROP_MM:g} mm minimum")
 
 
+def _check_white_balance(recipe: "PhotoEditRecipe") -> None:
+    if not isinstance(recipe.white_balance, PhotoWhiteBalance):
+        raise PhotoEditError("recipe white balance requires validated temperature and tint")
+    if (
+        recipe.schema_version < WHITE_BALANCE_SCHEMA_VERSION
+        and recipe.white_balance != PhotoWhiteBalance()
+    ):
+        raise PhotoEditError("recipe version cannot contain white balance")
+
+
 @dataclass(frozen=True, eq=False)
 class PhotoEditRecipe:
     """Replay from source, never from a previously encoded derivative."""
@@ -282,6 +314,7 @@ class PhotoEditRecipe:
     quality: int = 95
     tone: PhotoTone = field(default_factory=PhotoTone, kw_only=True)
     geometry: PhotoGeometry = field(default_factory=PhotoGeometry, kw_only=True)
+    white_balance: PhotoWhiteBalance = field(default_factory=PhotoWhiteBalance, kw_only=True)
 
     def __post_init__(self) -> None:
         if not isinstance(self.source, PhotoSource):
@@ -291,6 +324,7 @@ class PhotoEditRecipe:
             raise PhotoEditError("recipe tone requires validated photo adjustments")
         if self.schema_version == LEGACY_SCHEMA_VERSION and self.tone != PhotoTone():
             raise PhotoEditError("legacy recipes cannot contain tone adjustments")
+        _check_white_balance(self)
         if not isinstance(self.geometry, PhotoGeometry):
             raise PhotoEditError("recipe geometry requires a validated crop and rotation")
         if self.geometry.straighten_tenths:

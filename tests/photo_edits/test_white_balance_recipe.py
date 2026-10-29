@@ -29,7 +29,8 @@ WB = PhotoWhiteBalance(10, -20)
 def _v5(tmp_path: Path, balance: PhotoWhiteBalance = WB) -> tuple[object, PhotoEditRecipe]:
     source = source_at(tmp_path)
     base = straight_recipe(source, PhotoGeometry(1, (3, 4, 100, 70), 37), tone=TONE, eyes=(eye(),))
-    return source, update_white_balance(base, balance)
+    # Go through a non-neutral balance: only that upgrades a draft, and a v5 draft never drops.
+    return source, update_white_balance(update_white_balance(base, WB), balance)
 
 
 def _payload(tmp_path: Path) -> tuple[object, dict]:

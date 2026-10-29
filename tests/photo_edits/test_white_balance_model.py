@@ -6,8 +6,7 @@ from pathlib import Path
 import pytest
 
 import fastfoto_linux.photo_edits as package
-from fastfoto_linux.photo_edits import PhotoEditError, PhotoEditRecipe, PhotoWhiteBalance
-from fastfoto_linux.photo_edits import model
+from fastfoto_linux.photo_edits import PhotoEditError, PhotoEditRecipe, PhotoWhiteBalance, model
 from tests.photo_edits.helpers import source_at
 
 V5 = (5, "photo-color-v1")

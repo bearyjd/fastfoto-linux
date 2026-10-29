@@ -14,6 +14,7 @@ from fastfoto_linux.photo_edits import (
     PhotoGeometry,
     PhotoTone,
     PhotoWhiteBalance,
+    color,
     make_preview,
     parse_recipe,
     recipe_bytes,
@@ -22,7 +23,6 @@ from fastfoto_linux.photo_edits import (
     update_tone,
     update_white_balance,
 )
-from fastfoto_linux.photo_edits import color
 from tests.photo_edits.helpers import eye, source_at
 from tests.photo_edits.straighten_helpers import TONE, noise, straight_recipe
 from tests.photo_edits.tone_helpers import reference_tone, tone_source
@@ -30,7 +30,6 @@ from tests.photo_edits.wb_helpers import (
     GOLDEN_PAIRS,
     gains,
     luminance,
-    raw_gains,
     reference_lut,
     reference_wb,
 )
@@ -62,11 +61,7 @@ def test_luts_match_the_scalar_reference(t: int, m: int) -> None:
     assert np.array_equal(lut, reference_lut(t, m))
     assert (lut[:, 0] == 0).all()
     assert (np.diff(lut.astype(int), axis=1) >= 0).all()
-    normalised = sum(
-        w * v / luminance(raw_gains(t, m))
-        for w, v in zip((0.2126, 0.7152, 0.0722), raw_gains(t, m))
-    )
-    assert abs(normalised - 1) < 1e-12
+    assert abs(luminance(g) - 1) < 1e-12
 
 
 def test_a_unit_gain_lut_is_the_identity() -> None:

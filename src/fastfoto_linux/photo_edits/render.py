@@ -13,18 +13,19 @@ from PIL import Image
 from fastfoto_linux.documents.private_io import ensure_private_dir, write_private_atomic
 from fastfoto_linux.enhance import redeye
 from fastfoto_linux.enhance.faces import FaceDetector
+from fastfoto_linux.photo_edits.color import apply_white_balance
 from fastfoto_linux.photo_edits.geometry import apply_geometry
 from fastfoto_linux.photo_edits.model import (
     MAX_MASK_PIXELS,
     PREVIEW_MAX_PX,
     EyeEdit,
-    PhotoEditCancelledError,
     PhotoEditError,
     PhotoEditRecipe,
     PhotoGeometry,
     PhotoPreview,
     PhotoSource,
     PhotoTone,
+    check_cancel,
     finite,
     integer,
 )
@@ -66,9 +67,10 @@ def _apply_tone(pixels: np.ndarray, tone: PhotoTone, cancel: Event) -> None:
         tile[:] = _tone_tile(tile, tone)
 
 
-def check_cancel(cancel: Event) -> None:
-    if cancel.is_set():
-        raise PhotoEditCancelledError("photo edit cancelled")
+def _apply_color(pixels: np.ndarray, recipe: PhotoEditRecipe, cancel: Event) -> None:
+    """White balance, then tone, in place on an owned buffer."""
+    apply_white_balance(pixels, recipe.white_balance, cancel)
+    _apply_tone(pixels, recipe.tone, cancel)
 
 
 def detect_eyes(
@@ -150,12 +152,12 @@ def _eye_buffer(source: PhotoSource, recipe: PhotoEditRecipe, cancel: Event) -> 
 
 
 def render(source: PhotoSource, recipe: PhotoEditRecipe, *, cancel: Event) -> np.ndarray:
-    """Render eyes, then straighten, crop and turn, then tone, without changing source pixels."""
+    """Render eyes, straighten, crop, turn, white balance, then tone; the source is untouched."""
     result = _eye_buffer(source, recipe, cancel)
     if recipe.geometry != PhotoGeometry():
         result = apply_geometry(result, recipe.geometry, cancel=cancel)
         check_cancel(cancel)
-    _apply_tone(result, recipe.tone, cancel)
+    _apply_color(result, recipe, cancel)
     check_cancel(cancel)
     return result
 
@@ -191,10 +193,10 @@ def _straightened_images(
     icc = source.icc_profile
     buffer = _eye_buffer(source, recipe, cancel)
     after = apply_geometry(buffer, recipe.geometry, cancel=cancel)
-    _apply_tone(after, recipe.tone, cancel)
+    _apply_color(after, recipe, cancel)
     after_blob, size = _preview_jpeg(after, bounded=True, icc_profile=icc)
     del after
-    _apply_tone(buffer, recipe.tone, cancel)
+    _apply_color(buffer, recipe, cancel)
     before_blob, _ = _preview_jpeg(source.pixels, bounded=True, icc_profile=icc)
     working_blob, _ = _preview_jpeg(buffer, bounded=True, icc_profile=icc)
     blobs = [before_blob, after_blob, working_blob]

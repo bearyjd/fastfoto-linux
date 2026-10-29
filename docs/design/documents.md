@@ -1100,7 +1100,7 @@ What it shows:
 
 Limits: every page is synthetic (drawn strokes, smooth lighting models, Gaussian noise); real paper
 texture, show-through, ink bleed, fonts and scanner optics are absent, and F1 on drawn strokes is not
-OCR accuracy. **No claim about OCR quality follows from these numbers.** A real decision needs
+recognition results. **No claim about OCR quality follows from these numbers.** A real decision needs
 transcription truth from real scans (the roadmap item in `docs/roadmaps/enhancements.md`); until then
 revisit only if real pages show the dark-edge failure above. Wolf and other variants were not tried.
 

@@ -1091,12 +1091,12 @@ What it shows:
 - Otsu fails on the shadow-band and strong-gradient pages, as expected for a global threshold; on the mild-gradient pages it scores as well as the others.
 - Sauvola matches or beats the current method on every page but one, loses faint ink on the low-contrast page
   (likely cause, untested: its fixed spread constant R = 128 pulls the threshold below weak strokes; only R = 128 and k = 0.34 were run, neither tuned) and is about 1.7 times slower at 600 dpi (about equal at 300 dpi).
-- Sauvola beats the current method only on the strong gradient, where the paper at the dark edge is
+- Sauvola's only substantial improvement over the current method is on the strong gradient (on the noise page it is ahead by about 0.004 F1), where the paper at the dark edge is
   darker than `VERY_DARK` (96) and the absolute floor blackens it. That is the documented limit of
   the current method, on a page whose paper is under 40% of its normal tone; the mild gradient
   (down to 55%) is handled equally by both. Such a page is better scanned in grey or colour.
 - The bare OpenCV adaptive mean (without the floor) also scores 1.000 there, consistent with the floor being the cause.
-- On these synthetic cases the win is limited to one extreme page and comes with a loss on faint ink. How often real scans look like that page is unmeasured.
+- On these synthetic cases the only substantial win is on one extreme page and comes with a loss on faint ink. How often real scans look like that page is unmeasured.
 
 Limits: every page is synthetic (drawn strokes, smooth lighting models, Gaussian noise); real paper
 texture, show-through, ink bleed, fonts and scanner optics are absent, and F1 on drawn strokes is not

@@ -79,6 +79,8 @@ def test_older_schemas_reject_the_key(tmp_path: Path, version: tuple[int, str]) 
     payload.update(schema_version=version[0], algorithm_version=version[1])
     if version[0] < 4:
         del payload["geometry"]["straighten_tenths"]
+    if version[0] < 3:
+        del payload["geometry"]  # keep only the white_balance key as the reason to reject
     with pytest.raises(PhotoEditError, match="photo recipe"):
         parse_recipe(codec.json_bytes(payload), source)
 

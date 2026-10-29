@@ -25,6 +25,7 @@ from fastfoto_linux.photo_edits import (
     update_tone,
     update_white_balance,
 )
+from fastfoto_linux.photo_edits.render import _preview_jpeg
 from tests.photo_edits.helpers import eye, source_at
 from tests.photo_edits.straighten_helpers import TONE, noise, straight_recipe
 from tests.photo_edits.tone_helpers import reference_tone, tone_source
@@ -106,7 +107,9 @@ def test_a_v5_balance_changes_pixels_and_never_touches_the_source(tmp_path: Path
 def test_render_order_is_geometry_then_white_balance_then_tone(tmp_path: Path) -> None:
     source = source_at(tmp_path)
     balance = PhotoWhiteBalance(100, 40)
-    recipe = straight_recipe(source, PhotoGeometry(1, (10, 5, 100, 80)), tone=TONE, eyes=(eye(),))
+    recipe = straight_recipe(
+        source, PhotoGeometry(1, (10, 5, 100, 80), 37), tone=TONE, eyes=(eye(),)
+    )
     recipe = update_white_balance(recipe, balance)
     neutral = replace(recipe, white_balance=PhotoWhiteBalance(), tone=PhotoTone())
     base = render(source, neutral, cancel=Event())
@@ -204,3 +207,16 @@ def test_the_luts_are_pinned_across_platforms() -> None:
     g = color.wb_gains(PhotoWhiteBalance(37, -58))
     digest = hashlib.sha256(b"".join(color.channel_lut(x).tobytes() for x in g)).hexdigest()
     assert digest == "74e2998c5abbc58c2b04648abbb0ce41cf94e87383618cf312379d9ea6a808ea"
+
+
+def test_the_levelled_frame_preview_matches_the_final_render(tmp_path: Path) -> None:
+    source = source_at(tmp_path)
+    recipe = update_white_balance(
+        straight_recipe(source, PhotoGeometry(0, None, 37), tone=TONE), PhotoWhiteBalance(100, 100)
+    )
+    preview = make_preview(source, recipe, cache_dir=tmp_path / "c", generation=1, cancel=Event())
+    level = replace(recipe, geometry=PhotoGeometry(straighten_tenths=37))
+    expected = _preview_jpeg(
+        render(source, level, cancel=Event()), bounded=True, icc_profile=source.icc_profile
+    )[0]
+    assert preview.straightened.read_bytes() == expected

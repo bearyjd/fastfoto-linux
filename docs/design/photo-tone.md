@@ -5,7 +5,7 @@ The photo editor adds Brightness and Contrast (-50 through 50), Saturation (-100
 defaults to 100. At full adjustment strength, Saturation -100 makes equal RGB channels.
 
 These controls follow accepted red-eye correction and white balance. Adjustment strength affects tone alone;
-zero keeps the eye-corrected RGB pixels exactly before JPEG encoding. Neutral brightness, contrast and saturation are
+zero keeps the pixels entering the tone stage (eye-corrected, then white balanced) exactly before JPEG encoding. Neutral brightness, contrast and saturation are
 an exact no-op at every strength. Reset adjustments restores neutral values in one undoable
 action and preserves eyes. The page Reset restores the complete recipe as it was opened.
 

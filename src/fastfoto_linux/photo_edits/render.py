@@ -192,6 +192,12 @@ def _straightened_images(
     """Blobs for an angled draft, keeping at most the eye buffer and one warped buffer alive."""
     icc = source.icc_profile
     buffer = _eye_buffer(source, recipe, cancel)
+    # Colour follows every warp, as in render(); the levelled frame is warped before its colour.
+    level = PhotoGeometry(straighten_tenths=recipe.geometry.straighten_tenths)
+    frame = apply_geometry(buffer, level, cancel=cancel)
+    _apply_color(frame, recipe, cancel)
+    frame_blob, _ = _preview_jpeg(frame, bounded=True, icc_profile=icc)
+    del frame
     after = apply_geometry(buffer, recipe.geometry, cancel=cancel)
     _apply_color(after, recipe, cancel)
     after_blob, size = _preview_jpeg(after, bounded=True, icc_profile=icc)
@@ -202,9 +208,7 @@ def _straightened_images(
     blobs = [before_blob, after_blob, working_blob]
     if selected_id is not None:
         blobs += _roi_blobs(source, recipe, selected_id, buffer)
-    level = PhotoGeometry(straighten_tenths=recipe.geometry.straighten_tenths)
-    frame = apply_geometry(buffer, level, cancel=cancel)
-    blobs.append(_preview_jpeg(frame, bounded=True, icc_profile=icc)[0])
+    blobs.append(frame_blob)
     return blobs, size
 
 

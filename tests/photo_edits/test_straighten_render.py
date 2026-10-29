@@ -138,7 +138,8 @@ def test_preview_after_equals_the_bounded_render_and_straightened_is_last(tmp_pa
     assert (preview.preview_width, preview.preview_height) == thumb.size
     assert preview.straightened is not None and preview.straightened.name.endswith("-3.jpg")
     working = render(source, replace(recipe, geometry=PhotoGeometry()), cancel=Event())
-    flat = apply_geometry(working, PhotoGeometry(0, None, 23))
+    # The levelled frame is warped first and coloured after, like the final render.
+    flat = render(source, replace(recipe, geometry=PhotoGeometry(0, None, 23)), cancel=Event())
     assert preview.straightened.read_bytes() == jpeg(flat, source)
     assert preview.working.read_bytes() == jpeg(working, source)
     assert preview.before.read_bytes() == jpeg(source.pixels, source)

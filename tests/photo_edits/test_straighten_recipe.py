@@ -258,6 +258,10 @@ def test_literal_v3_fixture_is_canonical_and_reopens_byte_identically(tmp_path: 
 
 
 def test_older_fixtures_are_byte_for_byte_unchanged() -> None:
-    pinned = {"legacy-v1.json": "dceabcf408a69ca0", "legacy-v2.json": "dc20902cb666d82c"}
+    pinned = {
+        "legacy-v1.json": "dceabcf408a69ca0",
+        "legacy-v2.json": "dc20902cb666d82c",
+        "legacy-v4.json": "c7285cacf418ab08",
+    }
     for name, prefix in pinned.items():
         assert hashlib.sha256((FIXTURES / name).read_bytes()).hexdigest().startswith(prefix)

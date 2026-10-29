@@ -1093,7 +1093,7 @@ What it shows:
   (likely cause, untested: its fixed spread constant R = 128 pulls the threshold below weak strokes; only R = 128 and k = 0.34 were run, neither tuned) and is about 1.7 times slower at 600 dpi (about equal at 300 dpi).
 - Sauvola's only substantial improvement over the current method is on the strong gradient (on the noise page it is ahead by about 0.004 F1), where the paper at the dark edge is
   darker than `VERY_DARK` (96) and the absolute floor blackens it. That is the documented limit of
-  the current method, on a page whose paper is under 40% of its normal tone; the mild gradient
+  the current method, on a page whose paper falls to 40% of its normal tone; the mild gradient
   (down to 55%) is handled equally by both. Such a page is better scanned in grey or colour.
 - The bare OpenCV adaptive mean (without the floor) also scores 1.000 there, consistent with the floor being the cause.
 - On these synthetic cases the only substantial win is on one extreme page and comes with a loss on faint ink. How often real scans look like that page is unmeasured.

@@ -67,11 +67,6 @@ def draw_ink(dpi: int, seed: int) -> np.ndarray:
     return ink.astype(bool)
 
 
-def _smooth_field(shape: tuple[int, int], rng: np.random.Generator, cells: int) -> np.ndarray:
-    coarse = rng.random((cells, cells)).astype(np.float32)
-    return cv2.resize(coarse, (shape[1], shape[0]), interpolation=cv2.INTER_CUBIC)
-
-
 def _gradient(shape: tuple[int, int], strength: float) -> np.ndarray:
     ramp = np.linspace(1.0 - strength, 1.0, shape[1], dtype=np.float32)
     return np.broadcast_to(ramp, shape)
@@ -134,7 +129,7 @@ def adaptive_mean(grey: np.ndarray, dpi: int) -> np.ndarray:
     return white == WHITE
 
 
-def otsu(grey: np.ndarray, dpi: int) -> np.ndarray:
+def otsu(grey: np.ndarray, _dpi: int) -> np.ndarray:
     _, white = cv2.threshold(grey, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
     return white == WHITE
 
@@ -198,7 +193,7 @@ def runtime_ms(dpi: int) -> dict[str, float]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     parser.add_argument("--dpi", type=int, default=300)
     parser.add_argument("--seeds", type=int, default=3)
     args = parser.parse_args()

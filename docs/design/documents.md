@@ -1089,13 +1089,13 @@ Run time for one Letter page, best of 2, single thread: 300 dpi: current about 1
 
 What it shows:
 - Otsu fails whenever the lighting varies (shadow, strong gradient), as expected for a global threshold.
-- Sauvola matches the current method on every page but one, loses faint ink on the low-contrast page
-  (its fixed spread constant R = 128 pulls the threshold below weak strokes) and is about 1.5 times slower at 600 dpi (about equal at 300 dpi).
+- Sauvola matches or beats the current method on every page but one, loses faint ink on the low-contrast page
+  (likely cause, untested: its fixed spread constant R = 128 pulls the threshold below weak strokes; only R = 128 and k = 0.34 were run, neither tuned) and is about 1.7 times slower at 600 dpi (about equal at 300 dpi).
 - Sauvola beats the current method only on the strong gradient, where the paper at the dark edge is
   darker than `VERY_DARK` (96) and the absolute floor blackens it. That is the documented limit of
   the current method, on a page whose paper is under 40% of its normal tone; the mild gradient
   (down to 55%) is handled equally by both. Such a page is better scanned in grey or colour.
-- The bare OpenCV adaptive mean (without the floor) also scores 1.000 there, so the floor is the cause.
+- The bare OpenCV adaptive mean (without the floor) also scores 1.000 there, consistent with the floor being the cause.
 - The win is therefore neither clear nor large on realistic input, and it comes with a loss on faint ink.
 
 Limits: every page is synthetic (drawn strokes, smooth lighting models, Gaussian noise); real paper

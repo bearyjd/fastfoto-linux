@@ -178,6 +178,50 @@ Kirigami.ScrollablePage {
                 }
             }
 
+            RowLayout {
+                Layout.fillWidth: true
+                QQC2.Button {
+                    objectName: "reviewStraightenButton"
+                    text: qsTr("Straighten page")
+                    enabled: !!page.selectedItem.number && (bridge.review.deskew?.canStraighten ?? false)
+                    Accessible.name: qsTr("Straighten page")
+                    onClicked: bridge.review.deskew.straightenPage(page.selectedItem.number)
+                }
+                QQC2.Button {
+                    objectName: "reviewUnstraightenButton"
+                    text: qsTr("Undo straighten")
+                    enabled: !!page.selectedItem.number && !!page.selectedItem.deskewText
+                    Accessible.name: qsTr("Undo straighten")
+                    onClicked: bridge.review.deskew.clearStraighten(page.selectedItem.number)
+                }
+                QQC2.Label {
+                    objectName: "reviewDeskewText"
+                    Layout.fillWidth: true
+                    text: page.selectedItem.deskewText ?? ""
+                    textFormat: Text.PlainText
+                    wrapMode: Text.WordWrap
+                }
+            }
+
+            QQC2.Label {
+                objectName: "reviewDeskewMessage"
+                Layout.fillWidth: true
+                text: bridge.review.deskew?.message ?? ""
+                visible: text !== ""
+                textFormat: Text.PlainText
+                wrapMode: Text.WordWrap
+            }
+
+            QQC2.Label {
+                objectName: "reviewDeskewCropHint"
+                Layout.fillWidth: true
+                text: qsTr("Straightening removes this page's crop.")
+                visible: !!page.selectedItem.cropped
+                textFormat: Text.PlainText
+                wrapMode: Text.WordWrap
+                color: Kirigami.Theme.disabledTextColor
+            }
+
             Repeater {
                 id: names
                 objectName: "reviewPartNames"

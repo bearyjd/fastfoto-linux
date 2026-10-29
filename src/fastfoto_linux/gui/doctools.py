@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from fastfoto_linux.documents import DocumentResult, find_ocrmypdf
+from fastfoto_linux.documents.deskew import SkewEstimate
 from fastfoto_linux.documents.draft import DocumentDraft
 from fastfoto_linux.documents.ocr_tools import (
     DNF_INSTALL_HINT,
@@ -31,6 +32,7 @@ class DocumentTools:
     open_review: Callable[..., DocumentDraft] | None = None
     write_review: Callable[..., DocumentResult] | None = None
     preview_review: Callable[..., Path] | None = None
+    estimate_review: Callable[..., SkewEstimate] | None = None
     find_ocr: Callable[[], str | None] = find_ocrmypdf
     in_flatpak: Callable[[], bool] = inside_flatpak
     check_languages: Callable[[str], None] | None = None

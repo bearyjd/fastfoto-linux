@@ -57,6 +57,7 @@ def test_the_kept_review_retry_seeds_only_when_the_scan_asked_for_it(out, monkey
     finish(sink, worker)
     kept = sink.value("finished")
     sink.finished.clear()
+    sink.events.clear()
     worker.process_kept(kept)
     finish(sink, worker)
     assert len(calls) == (1 if deskew else 0)

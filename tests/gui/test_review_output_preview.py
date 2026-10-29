@@ -67,7 +67,9 @@ def test_worker_completion_carries_the_exact_frozen_policy_and_view_snapshot(out
     tasks, seen = [], []
     sink = DocRecordingSink()
     sink.on_review_preview = seen.append
-    tools = SimpleNamespace(open_review=None, write_review=None, preview_review=None)
+    tools = SimpleNamespace(
+        open_review=None, write_review=None, preview_review=None, estimate_review=None
+    )
     worker = ReviewJobs(sink, tasks.append, tools)
     worker._preview = lambda *args, **kwargs: out / "previews" / "page-0001-output-grey.jpg"
     worker.preview_page(request)

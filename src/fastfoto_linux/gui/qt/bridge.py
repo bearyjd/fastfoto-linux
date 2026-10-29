@@ -161,6 +161,7 @@ class Bridge(QObject):
         self._photo_edit = PhotoEditView(self)
         self._power = PowerView(self)
         self.on_review_preview = lambda answer: self._send("on_review_preview", answer)
+        self.on_review_deskew = lambda answer: self._send("on_review_deskew", answer)
         self.on_photo_edit_result = lambda answer: self._send("on_photo_edit_result", answer)
         self._close_signalled = False
         self._closed = False

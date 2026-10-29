@@ -15,11 +15,13 @@ from PIL import Image
 from fastfoto_linux.documents import DocumentCancelledError, DocumentError, DocumentSettings
 from fastfoto_linux.documents.auto_colour import page_colour
 from fastfoto_linux.documents.cleanup import CleanupStatus, page_cleanup
+from fastfoto_linux.documents.deskew import SkewStatus
+from fastfoto_linux.documents.deskew_draft import estimate_deskew, estimate_page
 from fastfoto_linux.documents.despeckle import DespeckleStatus
 from fastfoto_linux.documents.draft import DocumentDraft, PageEdit
 from fastfoto_linux.documents.draft_store import THUMBS_DIR, open_draft
 from fastfoto_linux.documents.encode import effective_despeckle, render_page
-from fastfoto_linux.documents.loader import load_page
+from fastfoto_linux.documents.loader import LoadedPage, load_page
 from fastfoto_linux.documents.modes import CleanupPolicy, ColourMode, ColourPolicy
 from fastfoto_linux.documents.page_crop import edited_page
 from fastfoto_linux.documents.private_io import ensure_private_dir, write_private_atomic
@@ -32,6 +34,7 @@ from fastfoto_linux.gui.reviewnames import (
     output_preview_names,
     output_suffix,
     prune_crop_previews,
+    straight_suffix,
 )
 from fastfoto_linux.session import DocumentRawReason, DocumentSessionResult, Stage
 from fastfoto_linux.session.raw import list_pages
@@ -46,6 +49,7 @@ PREVIEW_QUALITY = 90
 PREVIEW_CROP_PX = 1024  # the actual-pixel crop: a window of the output, never scaled
 CROP_SCALE = 1000  # the crop centre is given in permille of the page
 Job = Callable[[threading.Event], Callable[[], None]]
+DESKEW_ERROR = "error"  # the estimate job failed; the answer says so, never why
 
 
 @dataclass(frozen=True)
@@ -95,6 +99,17 @@ class PreviewCompletion:
     dpi: int | None = None  # the page's resolution, source view
 
 
+@dataclass(frozen=True)
+class DeskewAnswer:
+    """What measuring one page's tilt found: the draft and page it was asked for, the outcome
+    (``tenths`` is set only for ``ESTIMATED``) and ``DESKEW_ERROR`` when the job failed."""
+
+    draft: DocumentDraft
+    number: int
+    status: SkewStatus | str
+    tenths: int = 0
+
+
 # The legacy tuple (draft, number, path, error) may end with a PreviewMeta.
 PreviewResult = tuple[DocumentDraft, int, Path | None, str] | PreviewCompletion
 __all__ = ["PREVIEW_DIR", "output_preview_names"]  # moved to reviewnames, still imported here
@@ -116,7 +131,7 @@ def _preview_image(
     if request.view == "source":
         if on_size is not None:
             on_size(loaded.pixels.shape[1], loaded.pixels.shape[0], loaded.dpi)
-        return loaded.pixels, ""
+        return _straightened_source(loaded, draft.edits.get(number, PageEdit()))
     mode = page_colour(draft, page, request.policy)
     if cancel.is_set():
         raise DocumentCancelledError("preview cancelled")
@@ -144,9 +159,20 @@ def _preview_image(
     else:
         pixels = render_page(loaded, mode, cleanup, cancel=cancel)
     suffix = output_suffix(mode, cleanup, edit.quarter_turns, despeckle=despeckle)
-    if edit.crop is not None:
-        suffix += f"-c{crop_tag(edit.crop, edit.quarter_turns)}"
+    if edit.crop is not None or edit.deskew_tenths is not None:
+        suffix += f"-c{crop_tag(edit.crop, edit.quarter_turns, edit.deskew_tenths)}"
     return pixels, suffix
+
+
+def _straightened_source(loaded: LoadedPage, edit: PageEdit) -> tuple[np.ndarray, str]:
+    """The source pixels, straightened by the edit's tilt alone (no crop, no turns: the frame the
+    crop is stored in is unchanged), and the name suffix; plain when nothing was rotated."""
+    if edit.deskew_tenths is None:
+        return loaded.pixels, ""
+    straight = edited_page(loaded, PageEdit(deskew_tenths=edit.deskew_tenths)).pixels
+    if straight is loaded.pixels:  # a page too large for the work grid is left as scanned
+        return loaded.pixels, ""
+    return straight, straight_suffix(edit.deskew_tenths)
 
 
 def _crop_window(pixels: np.ndarray, centre: tuple[int, int]) -> np.ndarray:
@@ -222,6 +248,7 @@ class ReviewJobs:
         self._open = tools.open_review or open_draft
         self._write = tools.write_review or write_document
         self._preview = tools.preview_review or make_preview
+        self._estimate = tools.estimate_review or estimate_page
 
     def analyse_folder(self, folder: Path, settings: DocumentSettings) -> None:
         self._start(lambda cancel: self._analyse(folder, settings, cancel))
@@ -239,6 +266,8 @@ class ReviewJobs:
                 cancel=cancel,
                 on_page=lambda n, total: self._sink.on_build_page((n, total)),
             )
+            if settings.deskew:  # a scan that asked for it; a past scan is opened with it off
+                draft, _statuses = estimate_deskew(draft, cancel=cancel)
         except DocumentCancelledError:
             result = DocumentSessionResult(cancelled=True, raw_dir=folder)
         except (DocumentError, OSError) as error:
@@ -281,6 +310,21 @@ class ReviewJobs:
             return
         assert number is not None
         self._start(lambda cancel: self._previewed(draft, number, cancel))
+
+    def estimate_page(self, draft: DocumentDraft, number: int) -> None:
+        self._start(lambda cancel: self._estimated(draft, number, cancel))
+
+    def _estimated(
+        self, draft: DocumentDraft, number: int, cancel: threading.Event
+    ) -> Callable[[], None]:
+        try:
+            found = self._estimate(draft, number, cancel=cancel)
+            answer = DeskewAnswer(draft, number, found.status, found.tenths)
+        except (DocumentError, OSError, ValueError):
+            # An OSError can carry the page's path: the answer says only that it failed.
+            logger.info("page %d tilt could not be measured", number)
+            answer = DeskewAnswer(draft, number, DESKEW_ERROR)
+        return functools.partial(self._sink.on_review_deskew, answer)
 
     def _previewed(
         self, draft: DocumentDraft, number: int, cancel: threading.Event

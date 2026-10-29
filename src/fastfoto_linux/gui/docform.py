@@ -49,6 +49,7 @@ class DocumentForm:
     langs: str = DEFAULT_LANGS
     cleanup: str = CleanupPolicy.OFF.value
     despeckle: bool = False
+    deskew: bool = False
 
 
 DOCUMENT_FIELD_NAMES = tuple(field.name for field in fields(DocumentForm))
@@ -80,6 +81,12 @@ def _check_despeckle(form: DocumentForm) -> str | None:
     return f"Remove specks must be on or off, not {form.despeckle!r}."
 
 
+def _check_deskew(form: DocumentForm) -> str | None:
+    if type(form.deskew) is bool:
+        return None
+    return f"Straighten tilted pages must be on or off, not {form.deskew!r}."
+
+
 def _choice(name: str, value: object, choices: tuple[object, ...]) -> str | None:
     if value in choices:
         return None
@@ -94,6 +101,7 @@ def validate_document_form(form: DocumentForm) -> dict[str, str]:
         ("dpi", _choice("resolution", form.dpi, DOCUMENT_DPI)),
         ("cleanup", _choice("paper cleanup", form.cleanup, DOCUMENT_CLEANUPS)),
         ("despeckle", _check_despeckle(form)),
+        ("deskew", _check_deskew(form)),
         ("langs", _check_langs(form)),
     )
     return {name: message for name, message in checks if message is not None}
@@ -117,6 +125,8 @@ def update_document_field(form: DocumentForm, name: str, value: object) -> Docum
         raise ValueError(f"the documents form has no field {name!r}")
     if name == "despeckle" and type(value) is not bool:
         raise ValueError("Remove specks must be on or off")
+    if name == "deskew" and type(value) is not bool:
+        raise ValueError("Straighten tilted pages must be on or off")
     if name in _BOOL_FIELDS:
         return replace(form, **{name: bool(value)})
     if name == "dpi":
@@ -148,6 +158,7 @@ def to_document_settings(
         duplex=form.both_sides,
         cleanup=CleanupPolicy(form.cleanup),
         despeckle=form.despeckle,
+        deskew=form.deskew,
     )
 
 

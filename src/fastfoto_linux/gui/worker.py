@@ -16,6 +16,7 @@ from fastfoto_linux.documents import (
     OcrMode,
     build_document,
 )
+from fastfoto_linux.documents.deskew_draft import analyse_and_seed
 from fastfoto_linux.documents.ocr_languages import require_languages
 from fastfoto_linux.gui.docform import DocumentForm, document_errors, to_document_request
 from fastfoto_linux.gui.docreport import os_error_words
@@ -35,7 +36,7 @@ from fastfoto_linux.gui.photoeditjobs import (
 )
 from fastfoto_linux.gui.power import PowerResult, PowerTools
 from fastfoto_linux.gui.power_recovery import PowerRecovery
-from fastfoto_linux.gui.reviewjobs import PreviewResult, ReviewJobs
+from fastfoto_linux.gui.reviewjobs import DeskewAnswer, PreviewResult, ReviewJobs
 from fastfoto_linux.output import WrittenFiles
 from fastfoto_linux.pipeline.process import ProcessResult, process_pages
 from fastfoto_linux.scanner import ScanTarget, default_shim_candidates, resolve_target
@@ -81,6 +82,7 @@ class WorkerSink(Protocol):
     def on_finished(self, result: SessionResult | DocumentSessionResult) -> None: ...
     def on_error(self, error: Exception) -> None: ...
     def on_review_preview(self, answer: PreviewResult) -> None: ...
+    def on_review_deskew(self, answer: DeskewAnswer) -> None: ...
     def on_photo_edit_result(self, result: PhotoEditResult) -> None: ...
     def on_power(self, answer: PowerResult) -> None: ...
 
@@ -131,6 +133,7 @@ class Worker:
         self.analyse_folder = self._review_jobs.analyse_folder
         self.write_draft = self._review_jobs.write_draft
         self.preview_page = self._review_jobs.preview_page
+        self.estimate_page = self._review_jobs.estimate_page
 
     @property
     def busy(self) -> bool:
@@ -339,6 +342,7 @@ class Worker:
             on_stage=self._sink.on_stage,
             cancel=cancel,
             build=self._reporting_build(),
+            analyse=analyse_and_seed,
         )
         return functools.partial(self._sink.on_finished, result)
 

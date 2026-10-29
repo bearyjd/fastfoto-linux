@@ -83,7 +83,6 @@ def test_the_controls_exist_with_names(deskew_window):
     assert undo.property("text") == accessible_name(undo) == "Undo straighten"
     for name in ("reviewDeskewText", "reviewDeskewMessage", "reviewDeskewCropHint"):
         assert child(window, name) is not None
-    assert accessible_name(child(window, "reviewDeskewCropHint")) or True
     assert warnings == []
 
 
@@ -112,7 +111,7 @@ def test_the_buttons_follow_the_angle(deskew_window):
     assert undo.property("enabled") is True and straighten.property("enabled") is False
     click(undo)
     settle()
-    assert bridge.controller.review.state.draft.edits[1].deskew_tenths is None
+    assert 1 not in bridge.controller.review.state.draft.edits
     assert label.property("text") == "" and straighten.property("enabled") is True
     assert undo.property("enabled") is False
 
@@ -127,7 +126,6 @@ def test_a_sentence_is_shown_for_an_abstention(deskew_window):
     settle()
     message = child(window, "reviewDeskewMessage")
     assert message.property("text") == SENTENCES[SkewStatus.LEVEL]
-    assert message.property("textFormat") == 0 or True
     assert child(window, "reviewStraightenButton").property("enabled") is True
 
 

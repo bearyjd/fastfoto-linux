@@ -617,6 +617,13 @@ on black-and-white ones) shows the page with and without it; the label says "spe
 when some were, and otherwise why not (for example "no specks removed: resolution too low"). A scan opened again from its original pages starts with it off unless its review file
 holds it. Grey and colour pages are not changed, and no claim is made about OCR.
 
+**Straighten tilted pages** (off by default) is a checkbox on the form: it measures each new scan's
+page tilt (0.3 to 10 degrees) and straightens it. In the review, **Straighten page** measures the
+selected page and **Undo straighten** clears it; a page that cannot be measured says why. Straightening
+removes the page's crop, and Undo does not bring it back. Pages opened again from their originals are
+never measured (their stored angles are kept). The original side of the preview shows the
+straightened page. No claim is made about OCR or real-scan accuracy.
+
 Use the explicit download action to fetch the missing models for the selected languages before
 scanning. If page-orientation data is missing, it is shown separately and must also be explicitly
 downloaded. Opening the picker, selecting a language, installing the app, or starting OCR never

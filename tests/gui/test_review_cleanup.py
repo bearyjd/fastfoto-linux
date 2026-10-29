@@ -211,7 +211,9 @@ def real_open(folder, settings, *, jobs_sink=None):
     """Run the analysis job exactly as the worker would for the settings the side passed."""
     sink = jobs_sink or DocRecordingSink()
     tasks = []
-    tools = SimpleNamespace(open_review=None, write_review=None, preview_review=None)
+    tools = SimpleNamespace(
+        open_review=None, write_review=None, preview_review=None, estimate_review=None
+    )
     ReviewJobs(sink, tasks.append, tools).analyse_folder(folder, settings)
     tasks[0](threading.Event())()
     result = sink.value("finished")

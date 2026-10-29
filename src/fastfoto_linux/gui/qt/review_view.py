@@ -15,6 +15,7 @@ from fastfoto_linux.documents.draft_edit import parts
 from fastfoto_linux.documents.modes import CleanupPolicy, ColourMode, ColourPolicy
 from fastfoto_linux.gui import reviewcrop
 from fastfoto_linux.gui.qt.photos_model import file_url
+from fastfoto_linux.gui.qt.review_deskew_view import ReviewDeskewView
 from fastfoto_linux.gui.qt.review_model import ReviewModel
 from fastfoto_linux.gui.qt.slotargs import confirmed_flag
 from fastfoto_linux.gui.report import Banner
@@ -44,6 +45,8 @@ class ReviewView(QObject):
         self._controller = bridge.controller
         self._side = bridge.controller.review
         self._items = ReviewModel(self)
+        self._deskew = ReviewDeskewView(self)
+        self.changed.connect(self._deskew.changed)
         self._last_draft = None
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
@@ -86,6 +89,10 @@ class ReviewView(QObject):
     @Property(QObject, constant=True)
     def items(self) -> ReviewModel:
         return self._items
+
+    @Property(QObject, constant=True)
+    def deskew(self) -> QObject:
+        return self._deskew
 
     @Property(str, notify=changed)
     def summary(self) -> str:

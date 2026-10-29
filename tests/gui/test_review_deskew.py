@@ -9,6 +9,7 @@ from PIL import Image
 
 from fastfoto_linux.documents import DocumentSettings, OcrMode
 from fastfoto_linux.documents.deskew import SkewStatus, estimate_skew
+from fastfoto_linux.documents.draft import PageEdit
 from fastfoto_linux.documents.draft_store import open_draft
 from fastfoto_linux.documents.loader import load_page
 from fastfoto_linux.documents.page_crop import PageCrop
@@ -37,7 +38,7 @@ def started(out):
 
 
 def edit_of(side, number=1):
-    return side.state.draft.edits.get(number)
+    return side.state.draft.edits.get(number, PageEdit())
 
 
 # -- the sentences -----------------------------------------------------------------------------
@@ -100,9 +101,8 @@ def test_the_message_goes_when_the_page_changes_or_the_draft_is_edited(out):
     side.deskew.ready(answer(side, status=SkewStatus.LEVEL, tenths=0))
     assert side.deskew.message_text(1) and side.deskew.message_text(2) == ""
     side.edit("focused", 2)
-    assert side.deskew.message_text(2) == ""
+    assert side.deskew.message_text(2) == "" and side.deskew.message_text(1) == ""
     side.edit("focused", 1)
-    assert side.deskew.message_text(1) != ""
     side.edit("toggle", 3)
     assert side.deskew.message_text(1) == ""
 
@@ -256,7 +256,9 @@ def test_straightening_a_real_skewed_page_applies_the_measured_angle(out):
     side.state = ReviewState(opened_draft)
     tasks, previews = [], []
     sink = SimpleNamespace(on_review_deskew=side.deskew.ready)
-    tools = SimpleNamespace(open_review=None, write_review=None, preview_review=None)
+    tools = SimpleNamespace(
+        open_review=None, write_review=None, preview_review=None, estimate_review=None
+    )
     jobs = ReviewJobs(sink, tasks.append, tools)
     page.worker.estimate_page = jobs.estimate_page
     page.worker.preview_page = lambda *args: previews.append(args)

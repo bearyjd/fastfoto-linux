@@ -43,4 +43,5 @@ def test_the_design_note_describes_the_desktop_controls_and_the_preview_names() 
 
 def test_the_roadmap_no_longer_says_desktop_deskew_is_unimplemented() -> None:
     row = " ".join(next(line for line in ROADMAP.splitlines() if "deskew" in line.lower()).split())
-    assert "remain unimplemented" not in row
+    assert "deskew in the desktop app" not in row
+    assert "the API and the desktop form and review screen" in row

@@ -1,5 +1,6 @@
 """White-balance LUT goldens, bypass, render order, tiles, cancellation and previews."""
 
+import hashlib
 import json
 from dataclasses import replace
 from pathlib import Path
@@ -10,6 +11,7 @@ import pytest
 
 from fastfoto_linux.photo_edits import (
     PhotoEditCancelledError,
+    PhotoEditError,
     PhotoEditRecipe,
     PhotoGeometry,
     PhotoTone,
@@ -188,3 +190,17 @@ def test_saved_recipe_replays_to_the_same_pixels(tmp_path: Path) -> None:
         render(source, recipe, cancel=Event()), render(source, again, cancel=Event())
     )
     assert json.loads(recipe_bytes(again))["white_balance"] == {"temperature": 33, "tint": -44}
+
+
+def test_a_non_contiguous_buffer_is_refused_instead_of_silently_copied() -> None:
+    wide = noise(6, 8)[:, ::2]
+    assert not wide.flags.c_contiguous
+    with pytest.raises(PhotoEditError, match="contiguous"):
+        color.apply_white_balance(wide, WB, Event())
+    color.apply_white_balance(wide, PhotoWhiteBalance(), Event())
+
+
+def test_the_luts_are_pinned_across_platforms() -> None:
+    g = color.wb_gains(PhotoWhiteBalance(37, -58))
+    digest = hashlib.sha256(b"".join(color.channel_lut(x).tobytes() for x in g)).hexdigest()
+    assert digest == "74e2998c5abbc58c2b04648abbb0ce41cf94e87383618cf312379d9ea6a808ea"

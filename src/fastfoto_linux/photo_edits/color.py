@@ -5,8 +5,9 @@ from threading import Event
 
 import numpy as np
 
-from fastfoto_linux.photo_edits.model import PhotoWhiteBalance, check_cancel
+from fastfoto_linux.photo_edits.model import PhotoEditError, PhotoWhiteBalance, check_cancel
 
+# Separate from render.TONE_TILE_PIXELS so tests can shrink each stage's tiles independently.
 WB_TILE_PIXELS = 262_144
 GAIN_SCALE = 200
 REC709 = (0.2126, 0.7152, 0.0722)
@@ -58,6 +59,8 @@ def apply_white_balance(pixels: np.ndarray, wb: PhotoWhiteBalance, cancel: Event
     if wb == PhotoWhiteBalance():
         return
     luts = [channel_lut(gain) for gain in wb_gains(wb)]
+    if not pixels.flags.c_contiguous:
+        raise PhotoEditError("white balance needs a contiguous RGB buffer")
     flat = pixels.reshape(-1, 3)
     for start in range(0, len(flat), WB_TILE_PIXELS):
         check_cancel(cancel)

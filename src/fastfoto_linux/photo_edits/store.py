@@ -17,6 +17,7 @@ from fastfoto_linux.photo_edits.model import (
     PhotoEditRecipe,
     PhotoSource,
     SavedPhotoEdit,
+    check_cancel,
     sibling_name,
 )
 from fastfoto_linux.photo_edits.recipe import (
@@ -27,7 +28,7 @@ from fastfoto_linux.photo_edits.recipe import (
     recipe_bytes,
     recipe_object,
 )
-from fastfoto_linux.photo_edits.render import check_cancel, render
+from fastfoto_linux.photo_edits.render import render
 from fastfoto_linux.photo_edits.source import load_source, source_bytes, verify_source
 
 MAX_VERSIONS = 9999

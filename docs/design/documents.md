@@ -1084,11 +1084,11 @@ Foreground F1 at 300 dpi, mean of 3 seeds (precision allows 1 px of slack at str
 | shadow band | 1.000 | **0.770** | 1.000 |
 | strong gradient (paper down to 40%) | **0.936** | **0.452** | 1.000 |
 
-Run time for one Letter page, best of 2, single thread: 300 dpi: current about 100 ms, Otsu 5 ms, Sauvola
+Run time for one Letter page, best of 2, OpenCV limited to 1 thread by the script (`cv2.setNumThreads(1)`; the NumPy parts are single-threaded elementwise code): 300 dpi: current about 100 ms, Otsu about 6 ms, Sauvola
 85 ms; 600 dpi: current about 240 ms, Otsu 22 ms, Sauvola 380 ms (timings vary a few percent per run).
 
 What it shows:
-- Otsu fails whenever the lighting varies (shadow, strong gradient), as expected for a global threshold.
+- Otsu fails on the shadow-band and strong-gradient pages, as expected for a global threshold; on the mild-gradient pages it scores as well as the others.
 - Sauvola matches or beats the current method on every page but one, loses faint ink on the low-contrast page
   (likely cause, untested: its fixed spread constant R = 128 pulls the threshold below weak strokes; only R = 128 and k = 0.34 were run, neither tuned) and is about 1.7 times slower at 600 dpi (about equal at 300 dpi).
 - Sauvola beats the current method only on the strong gradient, where the paper at the dark edge is
@@ -1096,7 +1096,7 @@ What it shows:
   the current method, on a page whose paper is under 40% of its normal tone; the mild gradient
   (down to 55%) is handled equally by both. Such a page is better scanned in grey or colour.
 - The bare OpenCV adaptive mean (without the floor) also scores 1.000 there, consistent with the floor being the cause.
-- The win is therefore neither clear nor large on realistic input, and it comes with a loss on faint ink.
+- On these synthetic cases the win is limited to one extreme page and comes with a loss on faint ink. How often real scans look like that page is unmeasured.
 
 Limits: every page is synthetic (drawn strokes, smooth lighting models, Gaussian noise); real paper
 texture, show-through, ink bleed, fonts and scanner optics are absent, and F1 on drawn strokes is not

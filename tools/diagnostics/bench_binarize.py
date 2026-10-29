@@ -197,6 +197,8 @@ def main() -> None:
     parser.add_argument("--dpi", type=int, default=300)
     parser.add_argument("--seeds", type=int, default=3)
     args = parser.parse_args()
+    cv2.setNumThreads(1)
+    print(f"OpenCV threads: {cv2.getNumThreads()}")
     names = list(METHODS)
     print(f"quality at {args.dpi} dpi, {args.seeds} seeds (precision/recall/F1/agreement)")
     table = quality_table(args.dpi, args.seeds)

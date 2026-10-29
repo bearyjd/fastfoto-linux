@@ -1051,6 +1051,19 @@ document level for this run only, a page's own level still wins, and `--fresh` d
   sideways or upside down abstains, as the estimate runs before the quarter turns. Pages with
   more than one tilt, forms, handwriting and photos with captions may abstain often, which is
   safe. More than 10 degrees is not measured. A cream page shows white corner wedges.
+- **The desktop app.** The Documents form has **Straighten tilted pages** (off by default,
+  remembered): it seeds the angles of a *new* scan, through `analyse_and_seed` in the scan session
+  (and in the retry that makes the review of a part-way scan). A past scan, or a scan opened
+  again, is opened with it off: its stored angles are kept and none is measured. In the review
+  page, **Straighten page** measures the page in focus on the worker thread (one decode, bounded)
+  and applies the angle, or says why not in a fixed sentence per status (no path or error text);
+  **Undo straighten** clears the angle. Straightening clears the page's crop, and Undo does not
+  bring it back (the review has no undo stack); the page says so while it is cropped. An answer
+  for a page the reviewer has left, or for an edited draft, is dropped. The source view of a
+  straightened page shows the straightened pixels, in the same frame (the crop is drawn on it),
+  as `page-NNNN-straight-{p|m}NNN.jpg`; an output preview of such a page carries the angle in its
+  `-c` hash. These names, like the cropped ones, are built from the page number and the angle only
+  and are pruned and deleted by one pattern.
 
 ## Manual crop
 

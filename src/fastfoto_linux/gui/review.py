@@ -65,6 +65,9 @@ class ReviewState:
     def set_crop(self, number: int, crop: PageCrop | None) -> "ReviewState":
         return replace(self, draft=draft_edit.set_crop(self.draft, number, crop))
 
+    def set_deskew(self, number: int, tenths: int | None) -> "ReviewState":
+        return replace(self, draft=draft_edit.set_deskew(self.draft, number, tenths))
+
     def move(self, number: int, to: int) -> "ReviewState":
         return replace(self, draft=draft_edit.move(self.draft, number, to))
 
@@ -110,6 +113,7 @@ class ReviewItem:
     cropped: bool = False
     crop_text: str = ""
     despeckle_text: str = ""
+    deskew_text: str = ""
 
 
 CROP_TEXT = "Cropped by hand"
@@ -207,6 +211,14 @@ def cleanup_values(
     return override, words
 
 
+def deskew_words(tenths: int | None) -> str:
+    """How far a straightened page was turned, in whole tenths (never a formatted float)."""
+    if tenths is None:
+        return ""
+    angle = abs(tenths)
+    return f"Straightened by {angle // 10}.{angle % 10}°"
+
+
 def despeckle_words(draft: DocumentDraft, resolved_mode: str) -> str:
     """Said of a page only when the document switch will act on it (black and white output)."""
     if draft.despeckle and resolved_mode == ColourMode.BW.value:
@@ -257,6 +269,7 @@ def review_items(
                 cropped,
                 CROP_TEXT if cropped else "",
                 despeckle_words(draft, colour[1]),
+                deskew_words(draft.edits.get(number, PageEdit()).deskew_tenths),
             )
         )
     return tuple(rows)

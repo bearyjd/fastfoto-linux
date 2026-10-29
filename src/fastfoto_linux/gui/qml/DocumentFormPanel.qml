@@ -208,6 +208,36 @@ QQC2.ScrollView {
             color: Kirigami.Theme.disabledTextColor
         }
 
+        QQC2.CheckBox {
+            id: docDeskewBoxControl
+            objectName: "docDeskewBox"
+            Layout.fillWidth: true
+            Layout.minimumWidth: 0
+            text: qsTr("Straighten tilted pages")
+            checked: bridge.documents.form.deskew ?? false
+            enabled: panel.editable
+            Accessible.name: qsTr("Straighten tilted pages")
+            onToggled: bridge.setDocumentField("deskew", checked)
+
+            contentItem: QQC2.Label {
+                leftPadding: docDeskewBoxControl.indicator.width + docDeskewBoxControl.spacing
+                text: docDeskewBoxControl.text
+                textFormat: Text.PlainText
+                wrapMode: Text.WordWrap
+                verticalAlignment: Text.AlignVCenter
+                opacity: docDeskewBoxControl.enabled ? 1 : 0.5
+            }
+        }
+
+        QQC2.Label {
+            objectName: "docDeskewHint"
+            Layout.fillWidth: true
+            text: qsTr("Measures each new scan's page tilt (0.3 to 10 degrees) and straightens it; you can undo it per page in the review. Pages opened again are never measured.")
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+            color: Kirigami.Theme.disabledTextColor
+        }
+
         QQC2.ComboBox {
             objectName: "docDpiBox"
             implicitWidth: Kirigami.Units.gridUnit * 16

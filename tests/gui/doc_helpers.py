@@ -83,6 +83,9 @@ class DocRecordingSink(RecordingSink):
     def on_ocr(self, _: object = None) -> None:
         self._add("ocr")
 
+    def on_review_deskew(self, answer: object) -> None:
+        self._add("review_deskew", answer)
+
 
 class ScriptedDocumentSession:
     """Stands in for run_document_session: plays one document scan for the UI tests.

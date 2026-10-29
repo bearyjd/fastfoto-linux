@@ -19,7 +19,9 @@ from tests.gui.review_helpers import draft
 def jobs_for(out, *, opener=None, writer=None):
     jobs = []
     sink = DocRecordingSink()
-    tools = SimpleNamespace(open_review=opener, write_review=writer, preview_review=None)
+    tools = SimpleNamespace(
+        open_review=opener, write_review=writer, preview_review=None, estimate_review=None
+    )
     return ReviewJobs(sink, jobs.append, tools), jobs, sink
 
 

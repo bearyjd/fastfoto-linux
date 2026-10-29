@@ -115,6 +115,7 @@ class Controller:
         )
         self.on_power = self.power.complete
         self.on_review_preview = self.review.preview_ready
+        self.on_review_deskew = self.review.deskew.ready
         self._set_form(form or ScanForm(), disk=disk_check is None)
 
     # -- what the page shows -------------------------------------------------------------

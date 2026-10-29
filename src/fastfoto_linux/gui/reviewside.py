@@ -16,17 +16,14 @@ from fastfoto_linux.gui.docreport import document_error_banner
 from fastfoto_linux.gui.report import Banner
 from fastfoto_linux.gui.review import ReviewState
 from fastfoto_linux.gui.reviewdelete import SavedOriginals, capture_originals, delete_originals
+from fastfoto_linux.gui.reviewdeskew import ReviewDeskew
 from fastfoto_linux.gui.reviewjobs import (
     PreviewCompletion,
     PreviewMeta,
     PreviewRequest,
     PreviewResult,
 )
-from fastfoto_linux.gui.reviewnames import (
-    PREVIEW_DIR,
-    is_output_preview_name,
-    output_preview_names,
-)
+from fastfoto_linux.gui.reviewnames import PREVIEW_DIR, preview_name_allowed
 from fastfoto_linux.gui.state import ActionBlockedError, Mode, State, transition
 from fastfoto_linux.session import DocumentSessionResult, SessionResult
 
@@ -35,7 +32,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 # Operations that can change a page's output pixels; each names its page number first.
-PAGE_AFFECTING = frozenset({"toggle", "rotate", "set_colour", "set_cleanup", "set_crop"})
+PAGE_AFFECTING = frozenset(
+    {"toggle", "rotate", "set_colour", "set_cleanup", "set_crop", "set_deskew"}
+)
 # Operations that can change every page's output pixels; they take no page number.
 DOCUMENT_AFFECTING = frozenset({"set_document_cleanup", "set_document_despeckle"})
 _OPENABLE = frozenset(
@@ -68,6 +67,7 @@ class ReviewSide:
         self._preview_requested: PreviewRequest | None = None
         self._preview_running: PreviewRequest | None = None
         self._preview_cached: PreviewRequest | None = None
+        self.deskew = ReviewDeskew(self)
 
     @property
     def active(self) -> bool:
@@ -110,7 +110,9 @@ class ReviewSide:
             affects = operation in DOCUMENT_AFFECTING or (
                 operation in PAGE_AFFECTING and bool(args) and args[0] == number
             )
-            if number and affects and (self.preview_view == "output" or request is not None):
+            # A straightened page changes the source preview too (its pixels and its name).
+            redo = self.preview_view == "output" or request is not None or operation == "set_deskew"
+            if number and affects and redo:
                 self._preview_requested = None
                 self.preview(
                     number, self.preview_view, cleaned=self.preview_cleaned, crop=self.preview_crop
@@ -156,9 +158,10 @@ class ReviewSide:
         c.set_mode(Mode.DOCUMENTS)
         # A past scan starts with cleanup Off and Remove specks off: the form's choices only seed
         # new scans, and an old or missing sidecar would otherwise take them. Only a sidecar that
-        # holds them (version 3 for cleanup, 5 for despeckle) can say otherwise.
+        # holds them (version 3 for cleanup, 5 for despeckle) can say otherwise. Straighten is off
+        # too: stored angles are kept, none are measured.
         self._opening_settings = replace(
-            self._current_settings(), cleanup=CleanupPolicy.OFF, despeckle=False
+            self._current_settings(), cleanup=CleanupPolicy.OFF, despeckle=False, deskew=False
         )
         c._worker.analyse_folder(folder, self._opening_settings)
         self._pending = "open"
@@ -250,6 +253,7 @@ class ReviewSide:
         self._set(State.REVIEWING)
 
     def error(self, error: Exception) -> bool:
+        self.deskew.pending = None  # a job that failed cannot answer
         if self._pending and self.state is not None:
             self._pending = ""
             self._set(State.REVIEWING, document_error_banner(error))
@@ -342,13 +346,9 @@ class ReviewSide:
     def _preview_path_valid(request: PreviewRequest, path: Path | None) -> bool:
         if path is None:
             return True
-        if request.view == "source":
-            allowed = path.name == f"page-{request.number:04d}.jpg"
-        else:
-            allowed = path.name in output_preview_names(request.number) or is_output_preview_name(
-                request.number, path.name
-            )
-        return path.parent == request.draft.raw_dir / PREVIEW_DIR and allowed
+        return path.parent == request.draft.raw_dir / PREVIEW_DIR and preview_name_allowed(
+            request.number, request.view, path.name
+        )
 
     def preview_ready(self, answer: PreviewResult) -> None:
         if not self.active or self.state is None:
@@ -374,6 +374,10 @@ class ReviewSide:
                 self.preview_size, self.preview_dpi = completion.size, completion.dpi
                 self._preview_cached = request
             self._controller._changed()
+        self.resume_preview()
+
+    def resume_preview(self) -> None:
+        """Send the newest wanted preview if none runs and the worker is free."""
         pending = self._preview_requested
         if pending and self._preview_running is None and not self._worker_busy:
             self._dispatch_preview(pending)

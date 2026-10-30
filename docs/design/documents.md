@@ -1065,6 +1065,45 @@ document level for this run only, a page's own level still wins, and `--fresh` d
   `-c` hash. These names, like the cropped ones, are built from the page number and the angle only
   and are pruned and deleted by one pattern.
 
+## Binarisation benchmark (synthetic)
+
+Decision: **the current black-and-white method stays; nothing was switched or added as an option.**
+`tools/diagnostics/bench_binarize.py` (not run by the app or CI) compares four methods on seeded
+synthetic Letter pages with a known ink mask: `current` (`documents/bilevel.py`: adaptive mean plus
+the closing check and the `VERY_DARK` floor), the bare OpenCV `adaptive_mean` rule, `otsu` (one global
+threshold) and `sauvola` (box-filter mean and spread over the same 8 mm window, k = 0.34, R = 128; a
+NumPy/OpenCV formulation, no new dependency). Pages: clean, mild and strong lighting gradient, a soft
+shadow band, low contrast (ink 150 on paper 235), Gaussian noise, stains, gradient plus noise.
+
+Foreground F1 at 300 dpi, mean of 3 seeds (precision allows 1 px of slack at stroke edges):
+
+| Page | current | otsu | sauvola |
+|---|---|---|---|
+| clean, mild gradient, noise, stains, gradient + noise | 0.996 to 1.000 | 1.000 | 1.000 |
+| low contrast | 1.000 | 1.000 | **0.847** (recall 0.73) |
+| shadow band | 1.000 | **0.770** | 1.000 |
+| strong gradient (paper down to 40%) | **0.936** | **0.452** | 1.000 |
+
+Run time for one Letter page, best of 2, OpenCV limited to 1 thread by the script (`cv2.setNumThreads(1)`; the NumPy parts are single-threaded elementwise code): 300 dpi: current about 100 ms, Otsu about 6 ms, Sauvola
+85 ms; 600 dpi: current about 240 ms, Otsu 22 ms, Sauvola 380 ms (timings vary a few percent per run).
+
+What it shows:
+- Otsu fails on the shadow-band and strong-gradient pages, as expected for a global threshold; on the mild-gradient pages it scores as well as the others.
+- Sauvola matches or beats the current method on every page but one, loses faint ink on the low-contrast page
+  (likely cause, untested: its fixed spread constant R = 128 pulls the threshold below weak strokes; only R = 128 and k = 0.34 were run, neither tuned) and is about 1.7 times slower at 600 dpi (about equal at 300 dpi).
+- Sauvola's only substantial improvement over the current method is on the strong gradient (on the noise page it is ahead by about 0.004 F1), where the paper at the dark edge is
+  darker than `VERY_DARK` (96) and the absolute floor blackens it. That is the documented limit of
+  the current method, on a page whose paper falls to 40% of its normal tone; the mild gradient
+  (down to 55%) is handled equally by both. Such a page is better scanned in grey or colour.
+- The bare OpenCV adaptive mean (without the floor) also scores 1.000 there, consistent with the floor being the cause.
+- On these synthetic cases the only substantial win is on one extreme page and comes with a loss on faint ink. How often real scans look like that page is unmeasured.
+
+Limits: every page is synthetic (drawn strokes, smooth lighting models, Gaussian noise); real paper
+texture, show-through, ink bleed, fonts and scanner optics are absent, and F1 on drawn strokes is not
+recognition results. **No claim about OCR quality follows from these numbers.** A real decision needs
+transcription truth from real scans (the roadmap item in `docs/roadmaps/enhancements.md`); until then
+revisit only if real pages show the dark-edge failure above. Wolf and other variants were not tried.
+
 ## Manual crop
 
 - **What it is.** In the desktop review a reviewer drags a rectangle on a page's source view

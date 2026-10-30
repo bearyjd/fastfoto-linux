@@ -36,3 +36,12 @@ def test_the_qml_offers_the_documented_presets_and_hint():
     for item in PRESETS:
         assert f'presetId: "{item.id}"' in text
     assert "lower is cooler (blue), higher is warmer (yellow)" in text
+
+
+def test_reset_adjustments_is_documented_as_covering_tone_and_white_balance():
+    tone = " ".join((ROOT / "docs" / "design" / "photo-tone.md").read_text("utf-8").split())
+    for text in (README, tone):
+        assert "Reset adjustments" in text
+        assert "tone and white balance" in text
+    assert "sets every tone and white balance value" in README
+    assert "overwrites" in README

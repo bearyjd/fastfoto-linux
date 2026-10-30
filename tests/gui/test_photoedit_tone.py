@@ -7,7 +7,12 @@ import pytest
 
 from fastfoto_linux.gui.photoeditjobs import PhotoEditResult
 from fastfoto_linux.gui.state import ActionBlockedError
-from fastfoto_linux.photo_edits import PhotoEditRecipe, PhotoTone, SavedPhotoEdit
+from fastfoto_linux.photo_edits import (
+    PhotoEditRecipe,
+    PhotoTone,
+    PhotoWhiteBalance,
+    SavedPhotoEdit,
+)
 from tests.gui.photoedit_helpers import finish, opened, preview, setup
 
 
@@ -70,10 +75,12 @@ def test_reset_adjustments_preserves_accepted_eyes_and_is_one_undo(out):
     accepted = page.side.recipe.eyes
     page.side.set_tone("saturation", -100)
     page.side.set_tone("strength", 0)
+    page.side.set_white_balance("temperature", -40)
     adjusted = page.side.recipe
     pixels = page.source.pixels.copy()
     page.side.reset_tone()
     assert page.side.recipe.tone == PhotoTone()
+    assert page.side.recipe.white_balance == PhotoWhiteBalance()
     assert page.side.recipe.eyes is accepted
     assert page.side.recipe.eyes[0].accepted
     np.testing.assert_array_equal(page.source.pixels, pixels)

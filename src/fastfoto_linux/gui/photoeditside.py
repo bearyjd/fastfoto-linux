@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from fastfoto_linux.gui.photoeditaspectactions import PhotoAspectActions
+from fastfoto_linux.gui.photoeditcolor import PhotoColorActions
 from fastfoto_linux.gui.photoeditgeometry import PhotoGeometryActions
 from fastfoto_linux.gui.photoeditjobs import PhotoEditRequest, PhotoEditResult, PhotoEditTools
 from fastfoto_linux.gui.photos import PhotoItem
@@ -15,8 +16,10 @@ from fastfoto_linux.photo_edits import (
     PhotoEditRecipe,
     PhotoPreview,
     PhotoTone,
+    PhotoWhiteBalance,
     SavedPhotoEdit,
     update_tone,
+    update_white_balance,
 )
 
 if TYPE_CHECKING:
@@ -51,7 +54,7 @@ def _preview_paths(preview: PhotoPreview | None) -> set[Path]:
     }
 
 
-class PhotoEditSide(PhotoGeometryActions, PhotoAspectActions):
+class PhotoEditSide(PhotoGeometryActions, PhotoAspectActions, PhotoColorActions):
     def __init__(
         self,
         controller: "Controller",
@@ -230,7 +233,7 @@ class PhotoEditSide(PhotoGeometryActions, PhotoAspectActions):
 
     def reset_tone(self) -> None:
         recipe = self._require_edit()
-        updated = update_tone(recipe, PhotoTone())
+        updated = update_white_balance(update_tone(recipe, PhotoTone()), PhotoWhiteBalance())
         if updated is not recipe:
             self._change(updated)
 

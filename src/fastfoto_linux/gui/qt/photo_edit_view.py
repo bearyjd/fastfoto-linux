@@ -2,13 +2,13 @@
 
 import logging
 from collections.abc import Callable
-from dataclasses import asdict
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from PySide6.QtCore import Property, QObject, QUrl, Signal, Slot
 
 from fastfoto_linux.gui.qt.photo_aspect_view import PhotoAspectView
+from fastfoto_linux.gui.qt.photo_color_view import PhotoColorView
 from fastfoto_linux.gui.qt.photos_model import file_url
 from fastfoto_linux.gui.qt.slotargs import confirmed_flag
 from fastfoto_linux.gui.state import ActionBlockedError
@@ -16,7 +16,6 @@ from fastfoto_linux.photo_edits import (
     EyeEdit,
     PhotoEditError,
     PhotoGeometry,
-    PhotoTone,
     frame_size,
     min_crop_size,
     output_size,
@@ -57,12 +56,17 @@ class PhotoEditView(QObject):
     def __init__(self, bridge: "Bridge") -> None:
         super().__init__(bridge)
         self._controller = bridge.controller
-        self._aspect = PhotoAspectView(self)
-        self.changed.connect(self._aspect.changed)
+        self._aspect, self._color = PhotoAspectView(self), PhotoColorView(self)
+        for child in (self._aspect, self._color):
+            self.changed.connect(child.changed)
 
     @Property(QObject, constant=True)
     def aspect(self) -> QObject:
         return self._aspect
+
+    @Property(QObject, constant=True)
+    def color(self) -> QObject:
+        return self._color
 
     @property
     def _side(self) -> "PhotoEditSide":
@@ -238,11 +242,6 @@ class PhotoEditView(QObject):
     def candidates(self) -> list[dict[str, object]]:
         return [_candidate(eye) for eye in self._side.recipe.eyes] if self._side.recipe else []
 
-    @Property("QVariantMap", notify=changed)
-    def tone(self) -> dict[str, int]:
-        recipe = self._side.recipe
-        return asdict(recipe.tone if recipe else PhotoTone())
-
     @Property(str, notify=changed)
     def selectedId(self) -> str:
         return self._side.selected_id
@@ -307,14 +306,6 @@ class PhotoEditView(QObject):
     @Slot(str, int)
     def setStrength(self, eye_id: str, value: int) -> None:
         self._call(self._side.set_strength, eye_id, value)
-
-    @Slot(str, int)
-    def setTone(self, field: str, value: int) -> None:
-        self._call(self._side.set_tone, field, value)
-
-    @Slot()
-    def resetTone(self) -> None:
-        self._call(self._side.reset_tone)
 
     @Slot(bool)
     def setGeometryMode(self, value: bool) -> None:

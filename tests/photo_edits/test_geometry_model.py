@@ -41,6 +41,7 @@ def test_constants_and_version_table() -> None:
         3: "photo-geometry-v1",
         4: "photo-geometry-v2",
         5: "photo-color-v1",
+        6: "photo-detail-v1",
     }
     # New drafts stay on the tone schema.
     assert (model_module.SCHEMA_VERSION, model_module.ALGORITHM_VERSION) == (2, "photo-tone-v1")
@@ -55,6 +56,8 @@ def test_constants_and_version_table() -> None:
         (4, "photo-geometry-v1"),
         (5, "photo-geometry-v2"),
         (4, "photo-color-v1"),
+        (6, "photo-color-v1"),
+        (5, "photo-detail-v1"),
         (0, "redeye-v1"),
         (True, "redeye-v1"),
         (3.0, "photo-geometry-v1"),

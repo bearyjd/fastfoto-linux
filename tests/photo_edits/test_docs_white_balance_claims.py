@@ -8,7 +8,7 @@ from fastfoto_linux.photo_edits.recipe import WHITE_BALANCE_KEYS
 
 ROOT = Path(__file__).resolve().parents[2]
 DESIGN = " ".join((ROOT / "docs" / "design" / "photo-white-balance.md").read_text("utf-8").split())
-ORDER = "eyes, straighten, crop, quarter turns, white balance, tone"
+ORDER = "eyes, denoise, straighten, crop, quarter turns, white balance, tone, sharpen"
 
 
 def test_the_design_note_states_the_ranges_and_neutral() -> None:

@@ -564,7 +564,7 @@ cannot be edited.
 **Brightness** and **Contrast** range from -50 to 50; **Saturation** ranges from -100
 (grayscale at full adjustment strength) to 100. Their neutral value is 0. **Adjustment strength** blends these three
 adjustments from 0 to 100; it leaves eye-correction strength separate. You can adjust tone
-when no eyes were detected. **Reset adjustments** restores neutral tone values and strength
+when no eyes were detected. **Reset adjustments** restores neutral tone and white balance values and strength
 100 while keeping eye corrections. Each slider drag is one Undo step. The page's **Reset**
 still restores the recipe as it was opened, including saved adjustments.
 
@@ -577,7 +577,7 @@ neutral adjustments; a tone edit uses the new version-2 recipe. See the
 **White balance** has **Temperature** and **Tint** sliders from -100 to 100 (neutral 0; higher
 temperature is warmer, higher tint is more magenta), applied in linear light after crop and rotation
 and before tone. Four **Presets** set every white balance and tone value at once: `Warm`, `Cool`,
-`Faded print` and `Black and white`. A preset is one Undo step and is a starting point, not a
+`Faded print` and `Black and white`. A preset sets every tone and white balance value (it overwrites existing tone) and is one Undo step. It is a starting point, not a
 calibrated correction; it is not saved in the recipe, so the highlighted preset only shows that the
 current values match it. **Reset adjustments** also returns Temperature and Tint to 0, in one Undo
 step. A non-neutral balance saves a version-5 recipe that older app versions reject; the JPEG stays a

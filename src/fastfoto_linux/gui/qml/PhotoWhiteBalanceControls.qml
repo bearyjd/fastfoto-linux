@@ -60,6 +60,7 @@ ColumnLayout {
     Flow {
         Layout.fillWidth: true
         spacing: 4
+        // Keep these ids in step with PRESETS in gui/photoeditpresets.py.
         PresetButton { presetId: "warm" }
         PresetButton { presetId: "cool" }
         PresetButton { presetId: "faded" }

@@ -28,11 +28,13 @@ def with_pixels(tmp_path: Path, pixels: np.ndarray, *, dpi: float = 300.0) -> Ph
     )
 
 
-def noisy_pixels(height: int = 64, width: int = 96, *, seed: int = 3) -> np.ndarray:
+def noisy_pixels(
+    height: int = 64, width: int = 96, *, seed: int = 3, sigma: float = 8.0
+) -> np.ndarray:
     """A flat patch with independent per-channel noise: luma and chroma grain."""
     rng = np.random.default_rng(seed)
     flat = np.full((height, width, 3), (128, 120, 110), dtype=np.float64)
-    return np.clip(flat + rng.normal(0, 8, flat.shape), 0, 255).round().astype(np.uint8)
+    return np.clip(flat + rng.normal(0, sigma, flat.shape), 0, 255).round().astype(np.uint8)
 
 
 def noisy_source(tmp_path: Path, *, dpi: float = 300.0, height: int = 64, width: int = 96):

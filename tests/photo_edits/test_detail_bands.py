@@ -15,7 +15,13 @@ from fastfoto_linux.photo_edits import (
     render,
     update_detail,
 )
-from tests.photo_edits.detail_helpers import NlmSpy, noisy_source, reference_window, with_pixels
+from tests.photo_edits.detail_helpers import (
+    NlmSpy,
+    noisy_pixels,
+    noisy_source,
+    reference_window,
+    with_pixels,
+)
 from tests.photo_edits.helpers import eye
 from tests.photo_edits.straighten_helpers import noise
 
@@ -26,11 +32,11 @@ def tiny_bands(monkeypatch):
 
 
 def _image() -> np.ndarray:
-    return noise(131, 24, seed=5)
+    return noisy_pixels(131, 96, seed=5, sigma=20.0)
 
 
 def test_denoise_bands_equal_the_whole_image_kernel(tiny_bands, monkeypatch) -> None:
-    control = PhotoDetail(70, 70, 0)
+    control = PhotoDetail(100, 100, 0)
     whole = detail._denoise_kernel(control)(_image())
     spy = NlmSpy()
     monkeypatch.setattr(detail, "cv2", spy)
@@ -77,10 +83,11 @@ def test_the_window_matches_the_reference_over_a_dpi_range() -> None:
 
 def test_a_cancel_after_the_first_band_stops_the_next(tiny_bands, monkeypatch) -> None:
     cancel = Event()
-    monkeypatch.setattr(detail, "cv2", NlmSpy(on_call=lambda n: cancel.set() if n == 1 else None))
-    pixels = _image()
+    spy = NlmSpy(on_call=lambda n: cancel.set() if n == 1 else None)
+    monkeypatch.setattr(detail, "cv2", spy)
     with pytest.raises(PhotoEditCancelledError):
-        detail.apply_denoise(pixels, PhotoDetail(70, 0, 0), cancel)
+        detail.apply_denoise(_image(), PhotoDetail(70, 0, 0), cancel)
+    assert len(spy.calls) == 1
 
 
 def test_a_cancelled_render_leaves_the_source_and_masks_untouched(
@@ -90,9 +97,11 @@ def test_a_cancelled_render_leaves_the_source_and_masks_untouched(
     before, mask = source.pixels.copy(), eye().mask.copy()
     recipe = update_detail(PhotoEditRecipe(source, (eye(),)), PhotoDetail(50, 0, 50))
     cancel = Event()
-    monkeypatch.setattr(detail, "cv2", NlmSpy(on_call=lambda n: cancel.set()))
+    spy = NlmSpy(on_call=lambda n: cancel.set())
+    monkeypatch.setattr(detail, "cv2", spy)
     with pytest.raises(PhotoEditCancelledError):
         render(source, recipe, cancel=cancel)
+    assert len(spy.calls) == 1
     assert np.array_equal(source.pixels, before)
     assert np.array_equal(recipe.eyes[0].mask, mask)
 

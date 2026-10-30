@@ -22,11 +22,9 @@ from fastfoto_linux.photo_edits.model import (
     PhotoEditError,
     PhotoEditRecipe,
     PhotoGeometry,
-    PhotoPreview,
     PhotoSource,
     PhotoTone,
     PhotoWhiteBalance,
-    SavedPhotoEdit,
     frame_size,
     min_crop_size,
 )
@@ -36,6 +34,7 @@ from fastfoto_linux.photo_edits.recipe import (
     update_white_balance,
 )
 from fastfoto_linux.photo_edits.render import detect_eyes, make_preview, manual_eye, render
+from fastfoto_linux.photo_edits.results import PhotoPreview, SavedPhotoEdit
 from fastfoto_linux.photo_edits.source import load_source
 from fastfoto_linux.photo_edits.store import open_edit, parse_recipe, recipe_bytes, save_edit
 from fastfoto_linux.photo_edits.straighten import STRAIGHTEN_LIMIT_TENTHS, straightened_size

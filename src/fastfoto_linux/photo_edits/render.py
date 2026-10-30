@@ -22,13 +22,13 @@ from fastfoto_linux.photo_edits.model import (
     PhotoEditError,
     PhotoEditRecipe,
     PhotoGeometry,
-    PhotoPreview,
     PhotoSource,
     PhotoTone,
     check_cancel,
     finite,
     integer,
 )
+from fastfoto_linux.photo_edits.results import PhotoPreview
 
 GAUSS_SUPPORT_SIGMAS = 4
 MIN_PADDING_PX = 2

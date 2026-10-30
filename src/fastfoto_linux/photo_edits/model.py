@@ -7,6 +7,7 @@ from threading import Event
 
 import numpy as np
 
+from fastfoto_linux.photo_edits.results import PhotoPreview, SavedPhotoEdit  # noqa: F401
 from fastfoto_linux.photo_edits.straighten import STRAIGHTEN_LIMIT_TENTHS, straightened_size
 from fastfoto_linux.pipeline.geometry import mm_to_px
 
@@ -347,30 +348,3 @@ class PhotoEditRecipe:
                 raise PhotoEditError("total eye mask pixels exceed the recipe limit")
             if eye.roi[2] > self.source.width or eye.roi[3] > self.source.height:
                 raise PhotoEditError("eye ROI lies outside the retained source")
-
-
-@dataclass(frozen=True)
-class PhotoPreview:
-    """Bounded private preview URLs and the full-resolution coordinate space."""
-
-    before: Path
-    after: Path
-    source_width: int
-    source_height: int
-    preview_width: int
-    preview_height: int
-    source_sha256: str
-    generation: int
-    roi_before: Path | None = None
-    roi_after: Path | None = None
-    working: Path | None = field(default=None, kw_only=True)
-    straightened: Path | None = field(default=None, kw_only=True)
-
-
-@dataclass(frozen=True)
-class SavedPhotoEdit:
-    """An immutable derivative and its committed recipe sidecar."""
-
-    image: Path
-    sidecar: Path
-    recipe: PhotoEditRecipe

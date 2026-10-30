@@ -22,9 +22,10 @@ version, and a reopened edit starts at `Free`.
 ## Order of operations
 
 Red-eye correction runs first, in source coordinates on the full retained original. The
-straighten warp comes next, then the crop is cut from that result, the cropped pixels are turned clockwise, and tone is applied
-last. Tone is per pixel, so rendering with geometry equals turning and cropping a render that
-has none. Every render starts from the retained source, so repeated edits never accumulate
+straighten warp comes next, then the crop is cut from that result, the cropped pixels are turned clockwise, then white
+balance and tone are applied last, in that order (eyes, straighten, crop, quarter turns, white balance, tone). White
+balance and tone are per pixel, so without an angle, rendering with geometry equals turning and
+cropping a render that has none; with an angle, the warp interpolates the uncorrected pixels first. Every render starts from the retained source, so repeated edits never accumulate
 JPEG re-encoding. Eyes are always edited on the whole source; their masks are never moved.
 
 ## Recipe schema 3 (`photo-geometry-v1`)

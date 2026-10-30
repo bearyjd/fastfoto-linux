@@ -583,6 +583,9 @@ current values match it. **Reset adjustments** also returns Temperature and Tint
 step. A non-neutral balance saves a version-5 recipe that older app versions reject; the JPEG stays a
 normal image. See the [white balance contract](docs/design/photo-white-balance.md).
 
+**Noise reduction and sharpening** are available through the API and the version-6 recipe only;
+editor controls follow. See the [photo detail contract](docs/design/photo-detail.md).
+
 **Crop and rotate** turns the photo in 90° steps (**Rotate left** / **Rotate right**) and crops it
 to a rectangle you drag on the picture or set with the **Left / Top / Right / Bottom** boxes. Cropping
 and turning use exact pixels with no resampling, and happen after red-eye correction and before tone

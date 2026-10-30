@@ -3,7 +3,6 @@
 import hashlib
 import io
 import math
-from dataclasses import replace
 from pathlib import Path
 from threading import Event
 
@@ -14,6 +13,7 @@ from fastfoto_linux.documents.private_io import ensure_private_dir, write_privat
 from fastfoto_linux.enhance import redeye
 from fastfoto_linux.enhance.faces import FaceDetector
 from fastfoto_linux.photo_edits.color import apply_white_balance
+from fastfoto_linux.photo_edits.detail import apply_denoise, apply_sharpen
 from fastfoto_linux.photo_edits.geometry import apply_geometry
 from fastfoto_linux.photo_edits.model import (
     MAX_MASK_PIXELS,
@@ -22,13 +22,13 @@ from fastfoto_linux.photo_edits.model import (
     PhotoEditError,
     PhotoEditRecipe,
     PhotoGeometry,
-    PhotoPreview,
     PhotoSource,
     PhotoTone,
     check_cancel,
     finite,
     integer,
 )
+from fastfoto_linux.photo_edits.results import PhotoPreview
 
 GAUSS_SUPPORT_SIGMAS = 4
 MIN_PADDING_PX = 2
@@ -67,10 +67,11 @@ def _apply_tone(pixels: np.ndarray, tone: PhotoTone, cancel: Event) -> None:
         tile[:] = _tone_tile(tile, tone)
 
 
-def _apply_color(pixels: np.ndarray, recipe: PhotoEditRecipe, cancel: Event) -> None:
-    """White balance, then tone, in place on an owned buffer."""
+def _apply_color(pixels: np.ndarray, recipe: PhotoEditRecipe, dpi: float, cancel: Event) -> None:
+    """The post stage, in place on an owned buffer: white balance, tone, then sharpen."""
     apply_white_balance(pixels, recipe.white_balance, cancel)
     _apply_tone(pixels, recipe.tone, cancel)
+    apply_sharpen(pixels, recipe.detail, dpi, cancel)
 
 
 def detect_eyes(
@@ -151,13 +152,23 @@ def _eye_buffer(source: PhotoSource, recipe: PhotoEditRecipe, cancel: Event) -> 
     return result
 
 
+def _pre_stage(source: PhotoSource, recipe: PhotoEditRecipe, cancel: Event) -> np.ndarray:
+    """The source-space buffer: eye corrections, then denoise, before any resampling."""
+    buffer = _eye_buffer(source, recipe, cancel)
+    apply_denoise(buffer, recipe.detail, cancel)
+    return buffer
+
+
 def render(source: PhotoSource, recipe: PhotoEditRecipe, *, cancel: Event) -> np.ndarray:
-    """Render eyes, straighten, crop, turn, white balance, then tone; the source is untouched."""
-    result = _eye_buffer(source, recipe, cancel)
+    """Render eyes, denoise, straighten, crop, turn, white balance, tone, then sharpen.
+
+    The source is untouched. Sharpen is last because it does not commute with resampling or crop.
+    """
+    result = _pre_stage(source, recipe, cancel)
     if recipe.geometry != PhotoGeometry():
         result = apply_geometry(result, recipe.geometry, cancel=cancel)
         check_cancel(cancel)
-    _apply_color(result, recipe, cancel)
+    _apply_color(result, recipe, source.effective_dpi, cancel)
     check_cancel(cancel)
     return result
 
@@ -191,18 +202,18 @@ def _straightened_images(
 ) -> tuple[list[bytes], tuple[int, int]]:
     """Blobs for an angled draft, keeping at most the eye buffer and one warped buffer alive."""
     icc = source.icc_profile
-    buffer = _eye_buffer(source, recipe, cancel)
+    buffer = _pre_stage(source, recipe, cancel)
     # Colour follows every warp, as in render(); the levelled frame is warped before its colour.
     level = PhotoGeometry(straighten_tenths=recipe.geometry.straighten_tenths)
     frame = apply_geometry(buffer, level, cancel=cancel)
-    _apply_color(frame, recipe, cancel)
+    _apply_color(frame, recipe, source.effective_dpi, cancel)
     frame_blob, _ = _preview_jpeg(frame, bounded=True, icc_profile=icc)
     del frame
     after = apply_geometry(buffer, recipe.geometry, cancel=cancel)
-    _apply_color(after, recipe, cancel)
+    _apply_color(after, recipe, source.effective_dpi, cancel)
     after_blob, size = _preview_jpeg(after, bounded=True, icc_profile=icc)
     del after
-    _apply_color(buffer, recipe, cancel)
+    _apply_color(buffer, recipe, source.effective_dpi, cancel)
     before_blob, _ = _preview_jpeg(source.pixels, bounded=True, icc_profile=icc)
     working_blob, _ = _preview_jpeg(buffer, bounded=True, icc_profile=icc)
     blobs = [before_blob, after_blob, working_blob]
@@ -218,17 +229,19 @@ def _preview_images(
     """Blobs: before, after, working, [roi_before, roi_after], and straightened last if angled."""
     if recipe.geometry.straighten_tenths:
         return _straightened_images(source, recipe, selected_id, cancel)
-    neutral = recipe.geometry == PhotoGeometry()
-    working = render(source, replace(recipe, geometry=PhotoGeometry()), cancel=cancel)
-    before_blob, _ = _preview_jpeg(source.pixels, bounded=True, icc_profile=source.icc_profile)
-    working_blob, working_size = _preview_jpeg(
-        working, bounded=True, icc_profile=source.icc_profile
-    )
-    after_blob, size = working_blob, working_size
-    if not neutral:
-        after = apply_geometry(working, recipe.geometry)
-        check_cancel(cancel)
-        after_blob, size = _preview_jpeg(after, bounded=True, icc_profile=source.icc_profile)
+    dpi, icc = source.effective_dpi, source.icc_profile
+    working = _pre_stage(source, recipe, cancel)
+    after = None
+    if recipe.geometry != PhotoGeometry():
+        # Sharpen does not commute with crop: run the post stage on the cropped buffer.
+        after = apply_geometry(working, recipe.geometry, cancel=cancel)
+        _apply_color(after, recipe, dpi, cancel)
+    _apply_color(working, recipe, dpi, cancel)
+    before_blob, _ = _preview_jpeg(source.pixels, bounded=True, icc_profile=icc)
+    working_blob, size = _preview_jpeg(working, bounded=True, icc_profile=icc)
+    after_blob = working_blob
+    if after is not None:
+        after_blob, size = _preview_jpeg(after, bounded=True, icc_profile=icc)
     blobs = [before_blob, after_blob, working_blob]
     if selected_id is not None:
         blobs += _roi_blobs(source, recipe, selected_id, working)

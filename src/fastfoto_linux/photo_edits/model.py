@@ -7,6 +7,8 @@ from threading import Event
 
 import numpy as np
 
+# PhotoPreview and SavedPhotoEdit moved to results.py; re-exported here for older importers.
+from fastfoto_linux.photo_edits.results import PhotoPreview, SavedPhotoEdit  # noqa: F401
 from fastfoto_linux.photo_edits.straighten import STRAIGHTEN_LIMIT_TENTHS, straightened_size
 from fastfoto_linux.pipeline.geometry import mm_to_px
 
@@ -24,18 +26,22 @@ STRAIGHTEN_SCHEMA_VERSION = 4
 STRAIGHTEN_ALGORITHM_VERSION = "photo-geometry-v2"
 WHITE_BALANCE_SCHEMA_VERSION = 5
 WHITE_BALANCE_ALGORITHM_VERSION = "photo-color-v1"
+DETAIL_SCHEMA_VERSION = 6
+DETAIL_ALGORITHM_VERSION = "photo-detail-v1"
 RECIPE_VERSIONS = {
     LEGACY_SCHEMA_VERSION: LEGACY_ALGORITHM_VERSION,
     TONE_SCHEMA_VERSION: TONE_ALGORITHM_VERSION,
     GEOMETRY_SCHEMA_VERSION: GEOMETRY_ALGORITHM_VERSION,
     STRAIGHTEN_SCHEMA_VERSION: STRAIGHTEN_ALGORITHM_VERSION,
     WHITE_BALANCE_SCHEMA_VERSION: WHITE_BALANCE_ALGORITHM_VERSION,
+    DETAIL_SCHEMA_VERSION: DETAIL_ALGORITHM_VERSION,
 }
 MIN_CROP_MM = 5.0
 CROP_COORDINATES = 4
 TONE_CONTROL_LIMIT = 50
 TONE_PERCENT_LIMIT = 100
 WB_CONTROL_LIMIT = 100
+DETAIL_CONTROL_LIMIT = 100
 MAX_RECIPE_BYTES = 2_000_000
 MAX_EYES = 128
 MAX_MASK_PIXELS = 1_000_000
@@ -221,6 +227,20 @@ class PhotoWhiteBalance:
 
 
 @dataclass(frozen=True)
+class PhotoDetail:
+    """Immutable integer luma and chroma noise reduction and sharpening, each 0 (off) to 100."""
+
+    denoise_luma: int = 0
+    denoise_chroma: int = 0
+    sharpen: int = 0
+
+    def __post_init__(self) -> None:
+        integer(self.denoise_luma, 0, DETAIL_CONTROL_LIMIT, "luma noise reduction")
+        integer(self.denoise_chroma, 0, DETAIL_CONTROL_LIMIT, "chroma noise reduction")
+        integer(self.sharpen, 0, DETAIL_CONTROL_LIMIT, "sharpen")
+
+
+@dataclass(frozen=True)
 class PhotoGeometry:
     """Straighten (tenths of a degree, clockwise), then a crop in that frame, then quarter turns.
 
@@ -303,6 +323,13 @@ def _check_white_balance(recipe: "PhotoEditRecipe") -> None:
         raise PhotoEditError("recipe version cannot contain white balance")
 
 
+def _check_detail(recipe: "PhotoEditRecipe") -> None:
+    if not isinstance(recipe.detail, PhotoDetail):
+        raise PhotoEditError("recipe detail requires validated noise reduction and sharpening")
+    if recipe.schema_version < DETAIL_SCHEMA_VERSION and recipe.detail != PhotoDetail():
+        raise PhotoEditError("recipe version cannot contain detail adjustments")
+
+
 @dataclass(frozen=True, eq=False)
 class PhotoEditRecipe:
     """Replay from source, never from a previously encoded derivative."""
@@ -315,6 +342,7 @@ class PhotoEditRecipe:
     tone: PhotoTone = field(default_factory=PhotoTone, kw_only=True)
     geometry: PhotoGeometry = field(default_factory=PhotoGeometry, kw_only=True)
     white_balance: PhotoWhiteBalance = field(default_factory=PhotoWhiteBalance, kw_only=True)
+    detail: PhotoDetail = field(default_factory=PhotoDetail, kw_only=True)
 
     def __post_init__(self) -> None:
         if not isinstance(self.source, PhotoSource):
@@ -325,6 +353,7 @@ class PhotoEditRecipe:
         if self.schema_version == LEGACY_SCHEMA_VERSION and self.tone != PhotoTone():
             raise PhotoEditError("legacy recipes cannot contain tone adjustments")
         _check_white_balance(self)
+        _check_detail(self)
         if not isinstance(self.geometry, PhotoGeometry):
             raise PhotoEditError("recipe geometry requires a validated crop and rotation")
         if self.geometry.straighten_tenths:
@@ -347,30 +376,3 @@ class PhotoEditRecipe:
                 raise PhotoEditError("total eye mask pixels exceed the recipe limit")
             if eye.roi[2] > self.source.width or eye.roi[3] > self.source.height:
                 raise PhotoEditError("eye ROI lies outside the retained source")
-
-
-@dataclass(frozen=True)
-class PhotoPreview:
-    """Bounded private preview URLs and the full-resolution coordinate space."""
-
-    before: Path
-    after: Path
-    source_width: int
-    source_height: int
-    preview_width: int
-    preview_height: int
-    source_sha256: str
-    generation: int
-    roi_before: Path | None = None
-    roi_after: Path | None = None
-    working: Path | None = field(default=None, kw_only=True)
-    straightened: Path | None = field(default=None, kw_only=True)
-
-
-@dataclass(frozen=True)
-class SavedPhotoEdit:
-    """An immutable derivative and its committed recipe sidecar."""
-
-    image: Path
-    sidecar: Path
-    recipe: PhotoEditRecipe

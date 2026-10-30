@@ -1,7 +1,6 @@
 # Photo denoise and sharpen
 
-API and recipe only; the editor controls follow in a later change, and there is no command-line
-flag (no CLI command uses `photo_edits`). Three integer controls, `denoise_luma`,
+API and recipe only; editor controls follow, and there is no CLI flag (no CLI command uses `photo_edits`). Three integer controls, `denoise_luma`,
 `denoise_chroma` and `sharpen`, each 0 to 100 with neutral 0. Every value is a plain integer:
 booleans, floats, `NaN`, infinities and strings are rejected.
 

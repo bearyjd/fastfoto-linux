@@ -6,7 +6,8 @@ warmer (more red, less blue); positive tint is magenta (less green), negative is
 
 ## Order of operations
 
-Rendering replays from the retained source: eyes, straighten, crop, quarter turns, white balance, tone.
+Rendering replays from the retained source: eyes, denoise, straighten, crop, quarter turns, white balance, tone, sharpen
+(detail sits at both ends, see [photo detail](photo-detail.md)).
 White balance is per pixel, so it sits after geometry like tone. It writes uint8, and tone reads
 that: the intermediate quantization is accepted. Adjustment strength does not blend white balance.
 A neutral balance (0, 0) is a hard bypass: no table is built and no pixel is read, so the output is

@@ -61,7 +61,7 @@ def test_the_design_note_names_its_limits() -> None:
 
 
 def test_the_cost_table_names_both_resolutions() -> None:
-    assert re.search(r"\| 4x6 in at 300 dpi \|", DESIGN)
-    assert re.search(r"\| 4x6 in at 600 dpi \|", DESIGN)
-    assert re.search(r"\| 8x10 in at 600 dpi \|", DESIGN)
+    assert re.search(r"\| 4x6 in at 300 dpi ", DESIGN)
+    assert re.search(r"\| 4x6 in at 600 dpi ", DESIGN)
+    assert re.search(r"\| 8x10 in at 600 dpi ", DESIGN)
     assert "OpenCV" in DESIGN

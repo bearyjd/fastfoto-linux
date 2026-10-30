@@ -81,11 +81,13 @@ def test_older_schemas_write_no_detail_key(tmp_path: Path, schema: int) -> None:
 
 @pytest.mark.parametrize("schema", [2, 3, 4, 5])
 def test_older_schemas_reject_a_detail_key(tmp_path: Path, schema: int) -> None:
-    source, recipe = _v5(tmp_path)
-    payload = json.loads(recipe_bytes(recipe))
-    payload.update(schema_version=schema, algorithm_version=codec.RECIPE_VERSIONS[schema])
+    source = source_at(tmp_path)
+    payload = json.loads(
+        recipe_bytes(PhotoEditRecipe(source, (), schema, codec.RECIPE_VERSIONS[schema]))
+    )
+    assert parse_recipe(codec.json_bytes(payload), source).detail == PhotoDetail()
     payload["detail"] = {"denoise_luma": 0, "denoise_chroma": 0, "sharpen": 0}
-    with pytest.raises(PhotoEditError, match="photo recipe"):
+    with pytest.raises(PhotoEditError, match="invalid photo recipe fields"):
         parse_recipe(codec.json_bytes(payload), source)
 
 

@@ -134,3 +134,35 @@ def test_a_short_image_is_a_single_band(tmp_path: Path) -> None:
     source = noisy_source(tmp_path, height=5, width=7)
     recipe = update_detail(PhotoEditRecipe(source), PhotoDetail(50, 50, 50))
     assert render(source, recipe, cancel=Event()).shape == (5, 7, 3)
+
+
+def test_a_very_wide_image_is_refused_with_a_fixed_message() -> None:
+    wide = np.zeros((1, 140_000, 3), dtype=np.uint8)
+    with pytest.raises(PhotoEditError, match="^image too wide for detail adjustments$"):
+        detail.apply_denoise(wide, PhotoDetail(50, 0, 0), Event())
+    wider = np.zeros((1, 500_000, 3), dtype=np.uint8)
+    with pytest.raises(PhotoEditError, match="^image too wide for detail adjustments$"):
+        detail.apply_sharpen(wider, PhotoDetail(0, 0, 50), 300.0, Event())
+
+
+def test_the_band_cap_leaves_every_realistic_scan_alone() -> None:
+    halo = detail.DENOISE_HALO
+    for width in (1800, 3600, 6000, 100_000):
+        rows = max(4 * halo, detail.DETAIL_BAND_PIXELS // width)
+        assert (rows + 2 * halo) * width <= detail.MAX_BAND_PIXELS
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        np.zeros((8, 8, 3), dtype=np.float32),
+        np.zeros((8, 8), dtype=np.uint8),
+        np.zeros((8, 8, 4), dtype=np.uint8),
+        np.zeros((0, 8, 3), dtype=np.uint8),
+    ],
+)
+def test_only_uint8_rgb_buffers_are_accepted(bad: np.ndarray) -> None:
+    with pytest.raises(PhotoEditError, match="uint8 RGB"):
+        detail.apply_denoise(bad, PhotoDetail(50, 50, 0), Event())
+    with pytest.raises(PhotoEditError, match="uint8 RGB"):
+        detail.apply_sharpen(bad, PhotoDetail(0, 0, 50), 300.0, Event())

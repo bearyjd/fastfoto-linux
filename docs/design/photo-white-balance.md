@@ -40,6 +40,17 @@ non-neutral balance upgrades a draft to schema 5; a draft never downgrades, so a
 returned to neutral stays schema 5. New drafts stay on schema 2. Older app versions reject schema 5
 recipes; the saved JPEG stays a normal image. Saved files are never rewritten in place.
 
+## Editor controls and presets
+
+The editor shows **Temperature** and **Tint** sliders (-100 to 100, step 1) above the tone sliders,
+in render order. A slider drag is one undo step. Four presets set absolute values for white balance
+and tone (strength 100) in one undo step: Warm (25, 0), Cool (-25, 0), Faded print (temperature -10,
+tint -10, contrast 15, saturation 25) and Black and white (contrast 10, saturation -100). They are
+editor-only and are not stored in the recipe; the highlighted preset is derived from equal values.
+Faded print counters the red and magenta drift of aged colour prints. The preset values are starting
+points from synthetic reasoning, not calibrated on scans. **Reset adjustments** also neutralizes
+white balance, in one undo step; the page Reset still restores the opened recipe.
+
 ## Limits
 
 - The source is treated as sRGB-encoded; embedded profiles are not converted, so linearization is
@@ -48,4 +59,5 @@ recipes; the saved JPEG stays a normal image. Saved files are never rewritten in
   temperature). There is no highlight protection.
 - The gain scale (+-100 is a factor of 2 between red and blue) is an uncalibrated default.
 - Evidence is synthetic: the tests check arithmetic and compatibility, not photographic quality.
-- Not in scope: automatic or eyedropper balance, Kelvin units, masked balance, command-line flags.
+- Not in scope: automatic or eyedropper balance, Kelvin units, masked balance, command-line flags,
+  storing the chosen preset.

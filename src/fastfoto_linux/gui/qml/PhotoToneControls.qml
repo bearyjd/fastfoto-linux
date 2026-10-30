@@ -29,14 +29,14 @@ ColumnLayout {
             to: control.maximum
             stepSize: 1
             snapMode: QQC2.Slider.SnapAlways
-            value: control.editor.tone[control.field]
+            value: control.editor.color.tone[control.field]
             enabled: control.editor.canEdit
             Accessible.name: control.label
             onPressedChanged: {
                 if (pressed) control.editor.beginGesture();
                 else control.editor.endGesture();
             }
-            onMoved: control.editor.setTone(control.field, Math.round(value))
+            onMoved: control.editor.color.setTone(control.field, Math.round(value))
         }
     }
 
@@ -79,6 +79,6 @@ ColumnLayout {
         text: qsTr("Reset adjustments")
         Accessible.name: qsTr("Reset adjustments")
         enabled: root.editor.canEdit
-        onClicked: root.editor.resetTone()
+        onClicked: root.editor.color.resetTone()
     }
 }

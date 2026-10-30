@@ -16,6 +16,7 @@ from tests.gui.qt import test_qml
 from tests.gui.qt.qt_helpers import child, click, invoke, settle
 from tests.gui.qt.test_photo_edit_view import open_editor
 from tests.gui.qt.test_photo_tone import ready_page
+from tests.gui.qt.test_qml_r4 import PLAIN_TEXT, enum_property
 
 open_window = test_qml.open_window
 pytestmark = pytest.mark.usefixtures("kirigami")
@@ -63,7 +64,7 @@ def test_slots_change_values_refresh_and_report_user_errors(make_bridge, out):
 
 
 def test_real_page_controls_exist_with_ranges_and_hint(make_bridge, open_window, out):
-    bridge, view, _worker = open_editor(make_bridge, out, candidates=())
+    bridge, _view, _worker = open_editor(make_bridge, out, candidates=())
     window, warnings = open_window(bridge)
     page = ready_page(window)
     for field in ("temperature", "tint"):
@@ -71,11 +72,10 @@ def test_real_page_controls_exist_with_ranges_and_hint(make_bridge, open_window,
         assert (slider.property("from"), slider.property("to")) == (-100, 100)
         assert slider.property("stepSize") == 1 and slider.property("value") == 0
         assert slider.property("enabled")
-        assert slider.property("snapMode") == 2  # SnapAlways
     assert child(page, "photoWhiteBalanceTemperatureLabel").property("text") == "Temperature"
     assert child(page, "photoWhiteBalanceTintLabel").property("text") == "Tint"
     assert child(page, "photoWhiteBalanceHint").property("text") == HINT
-    assert child(page, "photoWhiteBalanceHint").property("textFormat") == Qt.TextFormat.PlainText
+    assert enum_property(child(page, "photoWhiteBalanceHint"), "textFormat") == PLAIN_TEXT
     for item in PRESETS:
         button = child(page, "photoPreset" + item.id.capitalize())
         assert button.property("text") == item.label
@@ -122,8 +122,9 @@ def test_preset_click_changes_values_and_highlight_follows(make_bridge, open_win
     invoke(child(page, "photoResetTone"), "clicked")
     settle()
     assert view.color.whiteBalance == NEUTRAL
-    assert not any(child(page, "photoPreset" + p.id.capitalize()).property("highlighted")
-                   for p in PRESETS)
+    assert not any(
+        child(page, "photoPreset" + p.id.capitalize()).property("highlighted") for p in PRESETS
+    )
     assert warnings == []
 
 

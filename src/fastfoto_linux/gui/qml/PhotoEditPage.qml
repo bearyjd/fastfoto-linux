@@ -147,6 +147,10 @@ Kirigami.Page {
                         Layout.fillWidth: true
                         editor: page.editor
                     }
+                    PhotoWhiteBalanceControls {
+                        Layout.fillWidth: true
+                        editor: page.editor
+                    }
                     PhotoToneControls {
                         Layout.fillWidth: true
                         editor: page.editor

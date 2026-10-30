@@ -1,7 +1,6 @@
 """White balance and preset drafts use the existing immutable editor lifecycle."""
 
 import math
-from dataclasses import replace
 
 import pytest
 
@@ -203,9 +202,12 @@ def test_page_reset_restores_the_opened_recipe_including_white_balance(out):
 
 def test_page_reset_keeps_an_opened_white_balance(out):
     page = opened(out)
-    seeded = replace(page.side.recipe, white_balance=PhotoWhiteBalance(12, -3), schema_version=5)
     seeded = PhotoEditRecipe(
-        seeded.source, seeded.eyes, schema_version=5, white_balance=seeded.white_balance
+        page.source,
+        page.side.recipe.eyes,
+        schema_version=5,
+        algorithm_version="photo-color-v1",
+        white_balance=PhotoWhiteBalance(12, -3),
     )
     page.side._initial = page.side.recipe = seeded
     page.side.set_white_balance("temperature", 50)

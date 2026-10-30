@@ -3,6 +3,8 @@
 from fastfoto_linux.photo_edits.geometry import apply_geometry, output_size
 from fastfoto_linux.photo_edits.model import (
     ALGORITHM_VERSION,
+    DETAIL_ALGORITHM_VERSION,
+    DETAIL_SCHEMA_VERSION,
     GEOMETRY_ALGORITHM_VERSION,
     GEOMETRY_SCHEMA_VERSION,
     MAX_EYES,
@@ -18,6 +20,7 @@ from fastfoto_linux.photo_edits.model import (
     WHITE_BALANCE_ALGORITHM_VERSION,
     WHITE_BALANCE_SCHEMA_VERSION,
     EyeEdit,
+    PhotoDetail,
     PhotoEditCancelledError,
     PhotoEditError,
     PhotoEditRecipe,
@@ -29,6 +32,7 @@ from fastfoto_linux.photo_edits.model import (
     min_crop_size,
 )
 from fastfoto_linux.photo_edits.recipe import (
+    update_detail,
     update_geometry,
     update_tone,
     update_white_balance,
@@ -41,6 +45,8 @@ from fastfoto_linux.photo_edits.straighten import STRAIGHTEN_LIMIT_TENTHS, strai
 
 __all__ = [
     "ALGORITHM_VERSION",
+    "DETAIL_ALGORITHM_VERSION",
+    "DETAIL_SCHEMA_VERSION",
     "GEOMETRY_ALGORITHM_VERSION",
     "GEOMETRY_SCHEMA_VERSION",
     "MAX_EYES",
@@ -57,6 +63,7 @@ __all__ = [
     "WHITE_BALANCE_ALGORITHM_VERSION",
     "WHITE_BALANCE_SCHEMA_VERSION",
     "EyeEdit",
+    "PhotoDetail",
     "PhotoEditCancelledError",
     "PhotoEditError",
     "PhotoEditRecipe",
@@ -80,6 +87,7 @@ __all__ = [
     "render",
     "save_edit",
     "straightened_size",
+    "update_detail",
     "update_geometry",
     "update_tone",
     "update_white_balance",

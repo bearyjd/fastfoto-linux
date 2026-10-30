@@ -86,7 +86,7 @@ def test_a_cancel_after_the_first_band_stops_the_next(tiny_bands, monkeypatch) -
 def test_a_cancelled_render_leaves_the_source_and_masks_untouched(
     tmp_path: Path, tiny_bands, monkeypatch
 ) -> None:
-    source = with_pixels(tmp_path, noise(131, 24, seed=7))
+    source = with_pixels(tmp_path, noise(131, 64, seed=7))
     before, mask = source.pixels.copy(), eye().mask.copy()
     recipe = update_detail(PhotoEditRecipe(source, (eye(),)), PhotoDetail(50, 0, 50))
     cancel = Event()

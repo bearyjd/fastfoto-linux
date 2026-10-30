@@ -9,6 +9,7 @@ from typing import Any
 import numpy as np
 
 from fastfoto_linux.photo_edits.model import (
+    DETAIL_SCHEMA_VERSION,
     GEOMETRY_SCHEMA_VERSION,
     LEGACY_SCHEMA_VERSION,
     MAX_EYES,
@@ -23,6 +24,7 @@ from fastfoto_linux.photo_edits.model import (
     TONE_SCHEMA_VERSION,
     WHITE_BALANCE_SCHEMA_VERSION,
     EyeEdit,
+    PhotoDetail,
     PhotoEditError,
     PhotoEditRecipe,
     PhotoGeometry,
@@ -41,6 +43,7 @@ TONE_KEYS = frozenset({"brightness", "contrast", "saturation", "strength"})
 GEOMETRY_KEYS = frozenset({"quarter_turns", "crop"})
 STRAIGHTEN_KEYS = GEOMETRY_KEYS | {"straighten_tenths"}
 WHITE_BALANCE_KEYS = frozenset({"temperature", "tint"})
+DETAIL_KEYS = frozenset({"denoise_luma", "denoise_chroma", "sharpen"})
 ROOT_KEYS = frozenset({"schema_version", "algorithm_version", "quality", "source", "eyes"})
 SOURCE_KEYS = (
     "sha256",
@@ -96,6 +99,8 @@ def recipe_object(recipe: PhotoEditRecipe) -> dict[str, Any]:
         payload["geometry"] = geometry
     if recipe.schema_version >= WHITE_BALANCE_SCHEMA_VERSION:
         payload["white_balance"] = asdict(recipe.white_balance)
+    if recipe.schema_version >= DETAIL_SCHEMA_VERSION:
+        payload["detail"] = asdict(recipe.detail)
     return payload
 
 
@@ -137,7 +142,7 @@ def read_object(data: bytes) -> dict[str, Any]:
 
 def _read_checked(
     data: bytes,
-) -> tuple[dict[str, Any], PhotoTone, PhotoGeometry, PhotoWhiteBalance]:
+) -> tuple[dict[str, Any], PhotoTone, PhotoGeometry, PhotoWhiteBalance, PhotoDetail]:
     """The validated recipe object with its edit controls, validated here and only here."""
     if not isinstance(data, bytes) or not 0 < len(data) <= MAX_RECIPE_BYTES:
         raise PhotoEditError("photo recipe exceeds its byte limit or is empty")
@@ -155,15 +160,17 @@ def _read_checked(
         expected |= {"geometry"}
     if value["schema_version"] >= WHITE_BALANCE_SCHEMA_VERSION:
         expected |= {"white_balance"}
+    if value["schema_version"] >= DETAIL_SCHEMA_VERSION:
+        expected |= {"detail"}
     fields(value, expected, "photo recipe")
     integer(value["quality"], 1, 100, "JPEG quality")
     tone, geometry = _read_tone(value), _read_geometry(value)
-    white_balance = _read_white_balance(value)
+    white_balance, detail = _read_white_balance(value), _read_detail(value)
     if "output" in value:
         output = fields(value["output"], {"name", "sha256"}, "output identity")
         sibling_name(output["name"])
         digest(output["sha256"])
-    return value, tone, geometry, white_balance
+    return value, tone, geometry, white_balance, detail
 
 
 def _read_tone(payload: dict[str, Any]) -> PhotoTone:
@@ -179,6 +186,12 @@ def _read_white_balance(payload: dict[str, Any]) -> PhotoWhiteBalance:
     return PhotoWhiteBalance(
         **fields(payload["white_balance"], WHITE_BALANCE_KEYS, "white balance")
     )
+
+
+def _read_detail(payload: dict[str, Any]) -> PhotoDetail:
+    if payload["schema_version"] < DETAIL_SCHEMA_VERSION:
+        return PhotoDetail()
+    return PhotoDetail(**fields(payload["detail"], DETAIL_KEYS, "photo detail"))
 
 
 def _read_geometry(payload: dict[str, Any]) -> PhotoGeometry:
@@ -264,7 +277,7 @@ def _eye(value: object) -> EyeEdit:
 
 def parse_recipe(data: bytes, source: PhotoSource) -> PhotoEditRecipe:
     """Decode a bounded recipe only when its retained source identity matches."""
-    payload, tone, geometry, white_balance = _read_checked(data)
+    payload, tone, geometry, white_balance, detail = _read_checked(data)
     stored_source = fields(payload["source"], {"name", *SOURCE_KEYS}, "source identity")
     sibling_name(stored_source["name"])
     if any(type(stored_source[key]) is bool for key in SOURCE_KEYS):
@@ -292,6 +305,7 @@ def parse_recipe(data: bytes, source: PhotoSource) -> PhotoEditRecipe:
         tone=tone,
         geometry=geometry,
         white_balance=white_balance,
+        detail=detail,
     )
 
 
@@ -336,4 +350,18 @@ def update_white_balance(recipe: PhotoEditRecipe, balance: PhotoWhiteBalance) ->
         white_balance=balance,
         schema_version=schema,
         algorithm_version=RECIPE_VERSIONS[schema],
+    )
+
+
+def update_detail(recipe: PhotoEditRecipe, detail: PhotoDetail) -> PhotoEditRecipe:
+    """Preserve no-op identity; a non-neutral detail reaches schema 6, and no draft ever drops."""
+    if not isinstance(recipe, PhotoEditRecipe) or not isinstance(detail, PhotoDetail):
+        raise PhotoEditError("detail updates require a recipe and validated detail")
+    if recipe.detail == detail:
+        return recipe
+    schema = recipe.schema_version
+    if detail != PhotoDetail():
+        schema = max(schema, DETAIL_SCHEMA_VERSION)
+    return replace(
+        recipe, detail=detail, schema_version=schema, algorithm_version=RECIPE_VERSIONS[schema]
     )

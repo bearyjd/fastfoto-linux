@@ -23,8 +23,7 @@ from fastfoto_linux.photo_edits import (
     update_tone,
     update_white_balance,
 )
-from fastfoto_linux.photo_edits import render as render_module
-from fastfoto_linux.photo_edits.render import _preview_jpeg
+from fastfoto_linux.photo_edits.render import _apply_tone, _eye_buffer, _preview_jpeg
 from tests.photo_edits.detail_helpers import (
     Forbidden,
     NlmSpy,
@@ -151,7 +150,7 @@ def _full_recipe(source, geometry: PhotoGeometry) -> PhotoEditRecipe:
 
 def _chain(source, recipe, *, denoise_first: bool, sharpen_last: bool) -> np.ndarray:
     cancel = Event()
-    buffer = render_module._eye_buffer(source, recipe, cancel)
+    buffer = _eye_buffer(source, recipe, cancel)
     if denoise_first:
         detail.apply_denoise(buffer, recipe.detail, cancel)
     buffer = apply_geometry(buffer, recipe.geometry)
@@ -160,7 +159,7 @@ def _chain(source, recipe, *, denoise_first: bool, sharpen_last: bool) -> np.nda
     if not sharpen_last:
         detail.apply_sharpen(buffer, recipe.detail, source.effective_dpi, cancel)
     color.apply_white_balance(buffer, recipe.white_balance, cancel)
-    render_module._apply_tone(buffer, recipe.tone, cancel)
+    _apply_tone(buffer, recipe.tone, cancel)
     if sharpen_last:
         detail.apply_sharpen(buffer, recipe.detail, source.effective_dpi, cancel)
     return buffer

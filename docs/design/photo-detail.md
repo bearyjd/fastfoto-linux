@@ -14,8 +14,7 @@ white balance or tone. One pass serves every preview image. The cost is that are
 are denoised too. Sharpen runs last, after every resample and after tone, because it reads
 neighbours and so does not commute with a crop; the preview therefore crops before it sharpens, and
 its "after" image equals the export. This differs from the roadmap hypothesis of denoising after
-geometry; it does keep "sharpen only after geometry and denoise". Render has no resize step.
-The follow-up "small" export must sharpen after its own downscale, or say that it does not.
+geometry; it does keep "sharpen only after geometry and denoise". Render has no resize; a follow-up "small" export must sharpen after its own downscale or say it does not.
 
 ## Math
 
@@ -35,8 +34,8 @@ Sharpen, per band (halo of ksize // 2 rows):
 
 `H_LUMA_MAX` = 10 and `H_CHROMA_MAX` = 15. Denoise is applied as deltas so there is no lossy colour
 round trip; a strength of 0 changes nothing. Sharpen adds the same delta to R, G and B, so it
-makes no colour fringes. Sigma follows `effective_dpi`, so 300 and 600 dpi scans of one print look
-alike. A flat image is unchanged by both stages.
+makes no colour fringes. Sigma follows `effective_dpi` (same physical sigma at any resolution).
+A flat image is unchanged by both stages.
 
 ## Recipe: schema 6 (`photo-detail-v1`)
 
@@ -63,7 +62,10 @@ rows, so extra memory is about one band plus two halos and never a second copy o
 Cancellation is checked before each band and after each stage; one filter call cannot be
 interrupted, so the band size bounds the latency. Nothing in a recipe sizes a loop or an allocation:
 window, halo, the sigma clamp and the strength maxima are constants, and total work is bounded by the
-source pixel limit. OpenCV's thread count is never changed. A non-contiguous buffer is refused.
+source pixel limit. A band is capped at 8388608 pixels with its halo: an image wider than about
+139000 pixels is refused ("image too wide for detail adjustments"); no scan up to 8x10 in at 600 dpi
+is near it. Denoise of an 89 MP image takes minutes on one thread; cancel latency is one band.
+OpenCV's thread count is never changed. A non-contiguous buffer is refused.
 
 ## CPU cost
 
@@ -96,5 +98,4 @@ nothing about the sharpness of a real scan. Rerun the script on the target machi
 - The fitted 1600 px preview barely shows detail; only the eye close-up is shown 1:1.
 - Every white balance or tone change re-runs denoise at full resolution, because there is no stage
   cache; large scans take seconds to preview.
-- Not in scope: automatic strength or noise estimation, GPU, dust and scratch repair, masked or local
-  detail, a 1:1 loupe, export resizing and command-line flags.
+- Not in scope: automatic strength, GPU, dust repair, masked detail, a 1:1 loupe, export resizing, CLI flags.

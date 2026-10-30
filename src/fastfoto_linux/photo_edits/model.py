@@ -7,6 +7,7 @@ from threading import Event
 
 import numpy as np
 
+# PhotoPreview and SavedPhotoEdit moved to results.py; re-exported here for older importers.
 from fastfoto_linux.photo_edits.results import PhotoPreview, SavedPhotoEdit  # noqa: F401
 from fastfoto_linux.photo_edits.straighten import STRAIGHTEN_LIMIT_TENTHS, straightened_size
 from fastfoto_linux.pipeline.geometry import mm_to_px

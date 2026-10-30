@@ -64,6 +64,7 @@ def test_the_band_size_follows_the_halo_and_the_pixel_budget(monkeypatch) -> Non
     assert len(spy.calls) == 4
     spy.calls.clear()
     monkeypatch.setattr(detail, "DETAIL_BAND_PIXELS", 10**9)
+    monkeypatch.setattr(detail, "MAX_BAND_PIXELS", 10**12)
     detail.apply_denoise(_image(), PhotoDetail(50, 0, 0), Event())
     assert len(spy.calls) == 1
 
@@ -138,10 +139,10 @@ def test_a_short_image_is_a_single_band(tmp_path: Path) -> None:
 
 def test_a_very_wide_image_is_refused_with_a_fixed_message() -> None:
     wide = np.zeros((1, 140_000, 3), dtype=np.uint8)
-    with pytest.raises(PhotoEditError, match="^image too wide for detail adjustments$"):
+    with pytest.raises(PhotoEditError, match=r"^image too wide for detail adjustments$"):
         detail.apply_denoise(wide, PhotoDetail(50, 0, 0), Event())
     wider = np.zeros((1, 500_000, 3), dtype=np.uint8)
-    with pytest.raises(PhotoEditError, match="^image too wide for detail adjustments$"):
+    with pytest.raises(PhotoEditError, match=r"^image too wide for detail adjustments$"):
         detail.apply_sharpen(wider, PhotoDetail(0, 0, 50), 300.0, Event())
 
 

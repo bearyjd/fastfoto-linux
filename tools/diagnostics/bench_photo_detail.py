@@ -167,9 +167,16 @@ def bench_size(label: str, inches: tuple[int, int, int], runs: int, default_thre
         print(f"  {line}")
 
 
+def positive_int(text: str) -> int:
+    value = int(text)
+    if value < 1:
+        raise argparse.ArgumentTypeError("must be at least 1")
+    return value
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--runs", type=int, default=DEFAULT_RUNS)
+    parser.add_argument("--runs", type=positive_int, default=DEFAULT_RUNS)
     parser.add_argument("--sizes", nargs="+", choices=sorted(INCH_SIZES), default=list(INCH_SIZES))
     args = parser.parse_args()
     default_threads = cv2.getNumThreads()

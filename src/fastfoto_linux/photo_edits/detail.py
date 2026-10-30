@@ -15,6 +15,9 @@ DENOISE_HALO = NLM_TEMPLATE // 2 + NLM_SEARCH // 2
 H_LUMA_MAX = 10.0
 H_CHROMA_MAX = 15.0
 DETAIL_BAND_PIXELS = 1_048_576
+MAX_BAND_PIXELS = 8 * DETAIL_BAND_PIXELS
+RGB_CHANNELS = 3
+RGB_NDIM = 3
 SHARPEN_AMOUNT_MAX = 1.5
 SHARPEN_REFERENCE_DPI = 300.0
 SHARPEN_SIGMA_MIN = 0.5
@@ -38,10 +41,19 @@ def _round_uint8(values: np.ndarray) -> np.ndarray:
 
 def _bands(pixels: np.ndarray, halo: int, kernel: Kernel, cancel: Event) -> None:
     """Filter full-width row bands in place; each sees `halo` original rows on both sides."""
+    if (
+        pixels.dtype != np.uint8
+        or pixels.ndim != RGB_NDIM
+        or pixels.shape[2] != RGB_CHANNELS
+        or pixels.size == 0
+    ):
+        raise PhotoEditError("detail needs a non-empty uint8 RGB buffer")
     if not pixels.flags.c_contiguous:
         raise PhotoEditError("detail needs a contiguous RGB buffer")
     height, width = pixels.shape[:2]
     step = max(MIN_BAND_HALOS * halo, DETAIL_BAND_PIXELS // width)
+    if (step + 2 * halo) * width > MAX_BAND_PIXELS:
+        raise PhotoEditError("image too wide for detail adjustments")
     carry = pixels[:0].copy()
     for start in range(0, height, step):
         check_cancel(cancel)

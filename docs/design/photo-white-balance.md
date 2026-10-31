@@ -50,7 +50,8 @@ tint -10, contrast 15, saturation 25) and Black and white (contrast 10, saturati
 editor-only and are not stored in the recipe; the highlighted preset is derived from equal values.
 Faded print counters the red and magenta drift of aged colour prints. The preset values are starting
 points from synthetic reasoning, not calibrated on scans. **Reset adjustments** also neutralizes
-white balance, in one undo step; the page Reset still restores the opened recipe.
+white balance (and clears Noise reduction, Colour noise and Sharpen), in one undo step; the page
+Reset still restores the opened recipe.
 
 ## Limits
 

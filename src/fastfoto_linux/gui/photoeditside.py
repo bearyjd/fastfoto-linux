@@ -13,11 +13,13 @@ from fastfoto_linux.gui.photos import PhotoItem
 from fastfoto_linux.gui.state import ActionBlockedError, Mode
 from fastfoto_linux.photo_edits import (
     EyeEdit,
+    PhotoDetail,
     PhotoEditRecipe,
     PhotoPreview,
     PhotoTone,
     PhotoWhiteBalance,
     SavedPhotoEdit,
+    update_detail,
     update_tone,
     update_white_balance,
 )
@@ -233,7 +235,10 @@ class PhotoEditSide(PhotoGeometryActions, PhotoAspectActions, PhotoColorActions)
 
     def reset_tone(self) -> None:
         recipe = self._require_edit()
-        updated = update_white_balance(update_tone(recipe, PhotoTone()), PhotoWhiteBalance())
+        updated = update_detail(
+            update_white_balance(update_tone(recipe, PhotoTone()), PhotoWhiteBalance()),
+            PhotoDetail(),
+        )
         if updated is not recipe:
             self._change(updated)
 

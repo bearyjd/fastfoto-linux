@@ -155,6 +155,10 @@ Kirigami.Page {
                         Layout.fillWidth: true
                         editor: page.editor
                     }
+                    PhotoDetailControls {
+                        Layout.fillWidth: true
+                        editor: page.editor
+                    }
                     Kirigami.Heading {
                         objectName: "photoRedEyeHeading"
                         text: qsTr("Red-eye correction")

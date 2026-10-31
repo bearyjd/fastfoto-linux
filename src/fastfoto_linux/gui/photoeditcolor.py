@@ -4,12 +4,13 @@ from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from fastfoto_linux.gui.photoeditpresets import matching_preset, preset
-from fastfoto_linux.photo_edits import update_tone, update_white_balance
+from fastfoto_linux.photo_edits import update_detail, update_tone, update_white_balance
 
 if TYPE_CHECKING:
     from fastfoto_linux.gui.photoeditside import PhotoEditSide
 
 WB_FIELDS = frozenset({"temperature", "tint"})
+DETAIL_FIELDS = frozenset({"denoise_luma", "denoise_chroma", "sharpen"})
 
 
 class PhotoColorActions:
@@ -24,6 +25,15 @@ class PhotoColorActions:
         if field not in WB_FIELDS:
             raise ValueError("Choose a temperature or tint adjustment.")
         updated = update_white_balance(recipe, replace(recipe.white_balance, **{field: value}))
+        if updated is not recipe:
+            self._change(updated)
+
+    def set_detail(self: "PhotoEditSide", field: str, value: int) -> None:
+        """ValueError for an unknown field; PhotoEditError for a bad value."""
+        recipe = self._require_edit()
+        if field not in DETAIL_FIELDS:
+            raise ValueError("Choose a noise reduction or sharpening adjustment.")
+        updated = update_detail(recipe, replace(recipe.detail, **{field: value}))
         if updated is not recipe:
             self._change(updated)
 

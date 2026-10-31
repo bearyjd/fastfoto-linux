@@ -564,8 +564,8 @@ cannot be edited.
 **Brightness** and **Contrast** range from -50 to 50; **Saturation** ranges from -100
 (grayscale at full adjustment strength) to 100. Their neutral value is 0. **Adjustment strength** blends these three
 adjustments from 0 to 100; it leaves eye-correction strength separate. You can adjust tone
-when no eyes were detected. **Reset adjustments** restores neutral tone and white balance values and strength
-100 while keeping eye corrections. Each slider drag is one Undo step. The page's **Reset**
+when no eyes were detected. **Reset adjustments** restores neutral tone, white balance and detail values (Noise reduction,
+Colour noise and Sharpen) and strength 100 while keeping eye corrections. Each slider drag is one Undo step. The page's **Reset**
 still restores the recipe as it was opened, including saved adjustments.
 
 Adjustments operate on the retained JPEG's stored RGB channels after accepted red-eye
@@ -579,12 +579,18 @@ temperature is warmer, higher tint is more magenta), applied in linear light aft
 and before tone. Four **Presets** set every white balance and tone value at once: `Warm`, `Cool`,
 `Faded print` and `Black and white`. A preset sets every tone and white balance value (it overwrites existing tone) and is one Undo step. It is a starting point, not a
 calibrated correction; it is not saved in the recipe, so the highlighted preset only shows that the
-current values match it. **Reset adjustments** also returns Temperature and Tint to 0, in one Undo
-step. A non-neutral balance saves a version-5 recipe that older app versions reject; the JPEG stays a
+current values match it. **Reset adjustments** also returns Temperature and Tint to 0 (and Noise reduction, Colour
+noise and Sharpen, see Detail below), in one Undo step. A non-neutral balance saves a version-5 recipe that older app versions reject; the JPEG stays a
 normal image. See the [white balance contract](docs/design/photo-white-balance.md).
 
-**Noise reduction and sharpening** are available through the API and the version-6 recipe only;
-editor controls follow. See the [photo detail contract](docs/design/photo-detail.md).
+**Detail** has **Noise reduction**, **Colour noise** and **Sharpen** sliders from 0 to 100 (neutral 0),
+below the tone sliders. They are off by default and can be slow on large scans: they are computed at
+full resolution, so a 600 dpi scan can take several seconds to preview, and the fitted preview shows
+sharpening only faintly. Strong noise reduction removes real texture, and high sharpening produces
+halos. Each slider drag is one Undo step. **Reset adjustments** also returns Noise reduction, Colour
+noise and Sharpen to 0, in the same single Undo step; presets leave them alone. A non-zero setting
+saves a version-6 recipe that older app versions reject; the JPEG stays a normal image. See the
+[photo detail contract](docs/design/photo-detail.md).
 
 **Crop and rotate** turns the photo in 90° steps (**Rotate left** / **Rotate right**) and crops it
 to a rectangle you drag on the picture or set with the **Left / Top / Right / Bottom** boxes. Cropping

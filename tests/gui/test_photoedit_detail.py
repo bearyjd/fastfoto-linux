@@ -4,7 +4,13 @@ import math
 
 import pytest
 
-from fastfoto_linux.photo_edits import PhotoDetail, PhotoEditError, PhotoTone, PhotoWhiteBalance
+from fastfoto_linux.photo_edits import (
+    PhotoDetail,
+    PhotoEditError,
+    PhotoEditRecipe,
+    PhotoTone,
+    PhotoWhiteBalance,
+)
 from tests.gui.photoedit_helpers import opened
 
 BAD_FIELD = "Choose a noise reduction or sharpening adjustment."
@@ -103,10 +109,20 @@ def test_reset_adjustments_on_neutral_draft_is_still_a_no_op(out):
 
 def test_page_reset_restores_the_opened_recipe_including_detail(out):
     page = opened(out)
-    page.side.set_detail("sharpen", 50)
-    page.side.set_detail("denoise_luma", 10)
+    seeded = PhotoEditRecipe(
+        page.source,
+        page.side.recipe.eyes,
+        schema_version=6,
+        algorithm_version="photo-detail-v1",
+        detail=PhotoDetail(12, 0, 55),
+    )
+    page.side._initial = page.side.recipe = seeded
+    page.side.set_detail("sharpen", 90)
+    page.side.set_detail("denoise_chroma", 10)
     page.side.reset()
-    assert page.side.recipe is page.side._initial
+    assert page.side.recipe is seeded
+    assert page.side.recipe.detail == PhotoDetail(12, 0, 55)
+    page.side.reset_tone()
     assert page.side.recipe.detail == PhotoDetail()
 
 

@@ -43,6 +43,7 @@ uv run ffscan devices                     # USB scanners and whether the USB gap
 uv run ffscan scan --out ~/Scans --mkdir --album "Family Trips" --date 1975-06
 uv run ffscan scan --out ~/Scans --net scanner.local --backs always --keep-raw
 uv run ffscan process page-*.png --out ~/Scans --album "Family Trips"
+uv run ffscan process page-*.png --out ~/Scans --preset small   # smaller files; see below
 uv run ffscan eval redeye MANIFEST.json   # red-eye evaluation harness; see docs/design/redeye-evaluation.md
 ```
 
@@ -100,6 +101,12 @@ uv run ffscan eval redeye MANIFEST.json   # red-eye evaluation harness; see docs
   degraded sheet, a scanner error, Ctrl-C, SIGTERM or SIGHUP), when a back was dropped for lack
   of writing (the run says so; raw PNGs use disk space), and always with `--keep-raw`;
   `--discard-raw` deletes them after an otherwise clean run even if a back was dropped.
+- Export presets: `--preset lossless|high-quality|small` (photos and `ffscan doc`; names are exact).
+  `small` shrinks photos to 2048 px and document colour/grey pages to 200 dpi; `lossless` writes
+  PNG photos and Flate document pages (large files; the photo editor and `ffscan library` do not
+  open PNG masters); `high-quality` is JPEG 95/92 without chroma subsampling. Metadata is kept.
+  `--preset` cannot be combined with `--quality`. Without it the output is unchanged. PDF/A is
+  not offered. See `docs/design/export-presets.md`.
 - Exit codes: 0 ok, 1 processing error, 2 usage, 3 scanner not found, shim missing, scanner not
   answering or in use by another program, 4 no documents in the feeder. `-v` logs progress,
   `--debug` adds tracebacks.

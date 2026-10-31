@@ -9,7 +9,7 @@ from fastfoto_linux.cli.options import DEFAULT_DPI, FEED_FACE_DOWN, FEED_FACE_UP
 from fastfoto_linux.enhance.orient import auto_orient
 from fastfoto_linux.enhance.redeye import remove_red_eye
 from fastfoto_linux.enhance.restore import restore_colour
-from fastfoto_linux.output import DEFAULT_QUALITY, DateRange, PhotoDate
+from fastfoto_linux.output import DateRange, PhotoDate
 from fastfoto_linux.output.errors import InvalidAlbumError, InvalidDateError
 from fastfoto_linux.output.metadata import MAX_NOTES_CHARS
 from fastfoto_linux.output.naming import album_dir, default_prefix, sanitise_album
@@ -260,7 +260,6 @@ def to_settings(form: ScanForm) -> ProcessSettings:
         duplex=True,
         back_policy=BackPolicy(form.backs),
         expect_front_first=form.loaded == FEED_FACE_DOWN,
-        quality=DEFAULT_QUALITY,
         keep_original=form.keep_original,
         enhancers=enhancers,
         orienter=auto_orient if form.orient else None,

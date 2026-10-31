@@ -34,7 +34,7 @@ def test_the_defaults(settings_of, out) -> None:
     assert settings.duplex is True
     assert settings.back_policy is BackPolicy.AUTO
     assert settings.expect_front_first is False  # photos face up, top edge first: back first
-    assert settings.quality == 95
+    assert settings.effective_quality == 95
     assert settings.keep_original is True
     assert settings.orienter is auto_orient
     assert settings.enhancers == (restore_colour,)  # red-eye is opt-in (about 17% visible damage)
@@ -78,7 +78,7 @@ def test_every_value_option(settings_of) -> None:
     assert settings.date == PhotoDate(1975, 6, 14)
     assert settings.notes == "Lake house"
     assert settings.prefix == "Trip"
-    assert settings.quality == 80
+    assert settings.effective_quality == 80
     assert settings.back_policy is BackPolicy.ALWAYS
     assert settings.duplex is False
     assert settings.keep_original is False

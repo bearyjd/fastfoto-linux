@@ -24,7 +24,7 @@ Stages in order:
 - `pipeline/print_sizes.py`: `PRINT_SIZES_INCH`, `SIZE_TOLERANCE_MM`
 - `enhance/orient.py`: `CANDIDATE_ROTATIONS`, `CONFIDENCE_FLOOR`; `enhance/faces.py`: `MODEL_FILENAME`, `DEFAULT_SCORE_THRESHOLD`
 - `enhance/restore.py`: `MAX_CLIP_PCT`, `MAX_SATURATION_GAIN`; `enhance/redeye.py`: `MIN_FACE_SCORE`, `PUPIL_*`
-- `output/writer.py`: `MIN_QUALITY`, `MAX_QUALITY`; `output/metadata.py`: `MAX_NOTES_CHARS`
+- `output/presets.py`: `PHOTO_EXPORTS`, `DOCUMENT_EXPORTS` (export preset tables; `ProcessSettings.preset`); `output/writer.py`: `MIN_QUALITY`, `MAX_QUALITY`; `output/metadata.py`: `MAX_NOTES_CHARS`
 
 Errors: `pipeline/batch_errors.py` (`BatchError`, `NoPhotoOnSheetError`, `UnreadablePageError`, `PageResolutionError`).
 <!-- /AUTO-GENERATED -->

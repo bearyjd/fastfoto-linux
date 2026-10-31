@@ -46,6 +46,7 @@ from fastfoto_linux.documents.page_crop import edited_page
 from fastfoto_linux.documents.pdf import assemble_pdf
 from fastfoto_linux.documents.publish import publish_pdfs
 from fastfoto_linux.documents.settings import DocumentSettings, check_settings
+from fastfoto_linux.output.presets import ExportPreset
 
 logger = logging.getLogger(__name__)
 
@@ -188,28 +189,35 @@ def _encoded(run: "_Run", page: PageAnalysis, edit: PageEdit) -> EncodedPage:
     mode: ColourMode | None = None
     if page.colour is not None or policy is not ColourPolicy.AUTO:
         mode = page_colour(run.draft, page, run.settings.colour)
-        if _reusable(kept, mode, cleanup, despeckle):
+        if _reusable(kept, mode, cleanup, despeckle, run.settings.preset):
             return kept  # type: ignore[return-value]
     loaded = _read_page(page, edit, run.draft)
     if mode is None:  # Auto on a page that was not analysed: classify it once, here
         mode = resolve_colour(classify_colour(loaded), policy)
-        if _reusable(kept, mode, cleanup, despeckle):
+        if _reusable(kept, mode, cleanup, despeckle, run.settings.preset):
             return kept  # type: ignore[return-value]
     if run.on_page is not None:
         run.on_page(page.number, len(run.draft.pages))
-    return encode_page(loaded, mode, cleanup, despeckle=despeckle, cancel=run.cancel)
+    return encode_page(
+        loaded, mode, cleanup, despeckle=despeckle, cancel=run.cancel, preset=run.settings.preset
+    )
 
 
 def _reusable(
-    kept: EncodedPage | None, mode: ColourMode, cleanup: CleanupPolicy, despeckle: bool
+    kept: EncodedPage | None,
+    mode: ColourMode,
+    cleanup: CleanupPolicy,
+    despeckle: bool,
+    preset: ExportPreset | None,
 ) -> bool:
-    """The bytes a page carries are good when made in this mode at this cleanup level and with
-    this despeckle switch."""
+    """The bytes a page carries are good when made in this mode at this cleanup level, with this
+    despeckle switch and this export preset (analysis encodes with none)."""
     return (
         kept is not None
         and kept.mode is mode
         and kept.cleanup is effective_cleanup(cleanup, mode)
         and kept.despeckle is effective_despeckle(despeckle, mode)
+        and kept.preset is preset
     )
 
 

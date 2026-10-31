@@ -15,6 +15,7 @@ from fastfoto_linux.documents.ocr_tools import ocr_missing_text
 from fastfoto_linux.documents.publish import require_output_folder
 from fastfoto_linux.output.errors import InvalidPrefixError
 from fastfoto_linux.output.naming import sanitise_prefix
+from fastfoto_linux.output.presets import PRESET_MESSAGE, ExportPreset
 
 DEFAULT_NAME = "Document"
 
@@ -33,6 +34,7 @@ class DocumentSettings:
     cleanup: CleanupPolicy = CleanupPolicy.OFF  # paper cleanup a new analysis starts with
     despeckle: bool = False  # remove small isolated specks from black and white pages
     deskew: bool = False  # a new analysis seeds the tilt of each page it can measure
+    preset: ExportPreset | None = None  # write-time only; never stored in review.json
 
 
 @dataclass(frozen=True)
@@ -69,6 +71,8 @@ def check_settings(settings: DocumentSettings) -> CheckedSettings:
         raise DocumentSettingsError("despeckle must be true or false")
     if type(settings.deskew) is not bool:
         raise DocumentSettingsError("deskew must be true or false")
+    if settings.preset is not None and not isinstance(settings.preset, ExportPreset):
+        raise DocumentSettingsError(PRESET_MESSAGE)
     try:
         validate_langs(settings.langs)
     except ValueError as error:

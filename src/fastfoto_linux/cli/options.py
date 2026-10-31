@@ -7,8 +7,14 @@ from fastfoto_linux.cli.errors import EXIT_USAGE, CliError
 from fastfoto_linux.enhance.orient import auto_orient
 from fastfoto_linux.enhance.redeye import remove_red_eye
 from fastfoto_linux.enhance.restore import restore_colour
-from fastfoto_linux.output import DEFAULT_QUALITY, PhotoDate
+from fastfoto_linux.output import PhotoDate
 from fastfoto_linux.output.errors import InvalidDateError
+from fastfoto_linux.output.presets import (
+    PHOTO_EXPORTS,
+    PRESET_CHOICES,
+    ExportPreset,
+    parse_preset,
+)
 from fastfoto_linux.output.writer import MAX_QUALITY, MIN_QUALITY
 from fastfoto_linux.pipeline.process import Enhancer, ProcessSettings
 from fastfoto_linux.pipeline.sides import BackPolicy
@@ -36,6 +42,24 @@ def _quality(text: str) -> int:
             f"quality must be a whole number from {MIN_QUALITY} to {MAX_QUALITY}, got {text!r}"
         )
     return value
+
+
+def preset_arg(text: str) -> ExportPreset:
+    """``--preset``: an exact preset name; the message never repeats the input."""
+    try:
+        return parse_preset(text)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError(str(error)) from error
+
+
+_PHOTO_SMALL = PHOTO_EXPORTS[ExportPreset.SMALL]
+_PHOTO_HIGH = PHOTO_EXPORTS[ExportPreset.HIGH_QUALITY]
+PRESET_HELP = (
+    f"export preset ({', '.join(PRESET_CHOICES)}): lossless writes PNG, high-quality writes "
+    f"JPEG {_PHOTO_HIGH.quality} without chroma subsampling, small shrinks the long edge to "
+    f"{_PHOTO_SMALL.max_edge} px at JPEG {_PHOTO_SMALL.quality}; metadata is kept. Cannot be "
+    "combined with --quality (default: none, the usual output)"
+)
 
 
 def host(text: str) -> str:
@@ -79,9 +103,8 @@ def add_output_options(parser: argparse.ArgumentParser) -> None:
     where.add_argument("--prefix", help="file name prefix (default: the album name, or FastFoto)")
     where.add_argument("--date", type=_date, metavar="YYYY[-MM[-DD]]", help="when the photos date")
     where.add_argument("--notes", help="text stored in every photo's metadata")
-    where.add_argument(
-        "--quality", type=_quality, default=DEFAULT_QUALITY, help="JPEG quality (default: 95)"
-    )
+    where.add_argument("--quality", type=_quality, default=None, help="JPEG quality (default: 95)")
+    where.add_argument("--preset", type=preset_arg, default=None, metavar="NAME", help=PRESET_HELP)
     keep = where.add_mutually_exclusive_group()
     keep.add_argument(
         "--keep-original",
@@ -179,6 +202,8 @@ def build_settings(args: argparse.Namespace) -> ProcessSettings:
     """
     enabled = ((args.restore, restore_colour), (args.redeye, remove_red_eye))
     enhancers: tuple[Enhancer, ...] = tuple(func for on, func in enabled if on)
+    if args.preset is not None and args.quality is not None:
+        raise CliError("--preset sets the quality; use --preset or --quality, not both", EXIT_USAGE)
     try:
         return ProcessSettings(
             output_root=args.out,
@@ -190,6 +215,7 @@ def build_settings(args: argparse.Namespace) -> ProcessSettings:
             back_policy=BackPolicy(args.backs),
             expect_front_first=args.feed == FEED_FACE_DOWN,
             quality=args.quality,
+            preset=args.preset,
             keep_original=args.keep_original,
             enhancers=enhancers,
             orienter=auto_orient if args.orient else None,

@@ -1,13 +1,11 @@
-"""Write scanned photos to album folders as JPEG with EXIF and XMP metadata."""
+"""Write scanned photos to album folders as JPEG or PNG with EXIF and XMP metadata."""
 
-import io
 import operator
 from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
 
 from fastfoto_linux.output.errors import (
     InvalidImageError,
@@ -31,6 +29,8 @@ from fastfoto_linux.output.naming import (
     sanitise_prefix,
     unprocessed_paths,
 )
+from fastfoto_linux.output.photo_encode import encode_photo, photo_ext
+from fastfoto_linux.output.presets import PRESET_MESSAGE, ExportPreset
 
 DEFAULT_QUALITY = 95
 MAX_DPI = 4800
@@ -38,7 +38,7 @@ MAX_INDEX_ATTEMPTS = 5
 MIN_QUALITY = 1
 MAX_QUALITY = 100
 RGB_CHANNELS = 3
-CHROMA_444 = 0  # Pillow's subsampling value for 4:4:4 (no chroma subsampling)
+FAMILY_EXTS = (".jpg", ".png")  # a number is shared by a photo's files in either format
 
 
 def _now() -> datetime:
@@ -113,20 +113,14 @@ def _require_root(output_root: Path) -> None:
         )
 
 
-def _encode_jpeg(
-    array: np.ndarray | None, *, dpi: int, quality: int, exif: bytes, xmp: bytes
-) -> bytes:
-    buffer = io.BytesIO()
-    Image.fromarray(array).save(
-        buffer,
-        "JPEG",
-        quality=quality,
-        subsampling=CHROMA_444,
-        dpi=(dpi, dpi),
-        exif=exif,
-        xmp=xmp,
-    )
-    return buffer.getvalue()
+def _family(directory: Path, prefix: str, index: int) -> tuple[Path, ...]:
+    """Every name number ``index`` can take, in each of the photo formats."""
+    names: list[Path] = []
+    for ext in FAMILY_EXTS:
+        paths = photo_paths(directory, prefix, index, ext=ext)
+        names += [paths.original, paths.enhanced, paths.back]
+        names += unprocessed_paths(directory, prefix, index, ext=ext)
+    return tuple(names)
 
 
 def _publish_photo(
@@ -135,6 +129,7 @@ def _publish_photo(
     blobs: tuple[bytes | None, bytes | None, bytes | None],
     *,
     unprocessed: bool = False,
+    ext: str = ".jpg",
 ) -> WrittenFiles:
     """Number the photo and publish its files; the caller holds the folder lock.
 
@@ -143,17 +138,18 @@ def _publish_photo(
 
     If another writer that does not take the lock got there first, a file collides, nothing is
     written, and the next number is tried, up to MAX_INDEX_ATTEMPTS times. A number belongs to the
-    whole family of names (``_NNNN``, ``_a``, ``_b``, ``_unprocessed``, ``_unprocessed_b``): it is
-    refused when any of them exists, so even such a writer cannot reuse a number for different
-    files (say, one writes only the original and the other only ``_a``).
+    whole family of names (``_NNNN``, ``_a``, ``_b``, ``_unprocessed``, ``_unprocessed_b``, with
+    ``.jpg`` or ``.png``): it is refused when any of them exists, so even such a writer cannot
+    reuse a number for different files (say, one writes only the original and the other only
+    ``_a``, or one writes JPEG and the other PNG).
     """
     index = 0
     collision: OutputCollisionError | None = None
     for _ in range(MAX_INDEX_ATTEMPTS):
         index = max(next_index(directory, file_prefix), index + 1)
-        paths = photo_paths(directory, file_prefix, index)
-        whole_front, whole_back = unprocessed_paths(directory, file_prefix, index)
-        family = (paths.original, paths.enhanced, paths.back, whole_front, whole_back)
+        paths = photo_paths(directory, file_prefix, index, ext=ext)
+        whole_front, whole_back = unprocessed_paths(directory, file_prefix, index, ext=ext)
+        family = _family(directory, file_prefix, index)
         if taken := next((path for path in family if path.exists()), None):
             collision = OutputCollisionError(f"{taken} already exists; number {index} is taken")
             continue
@@ -187,11 +183,14 @@ def write_photo(  # noqa: PLR0913
     scanned_at: datetime | None = None,
     quality: int = DEFAULT_QUALITY,
     keep_original: bool = True,
+    preset: ExportPreset | None = None,
 ) -> WrittenFiles:
-    """Write one photo as JPEG files in ``<output_root>/<album>/``, never overwriting.
+    """Write one photo as JPEG (PNG with the lossless preset) files in ``<output_root>/<album>/``,
+    never overwriting.
 
     Every image is an ``HxWx3`` uint8 **RGB** array (not OpenCV's BGR); inputs are not modified.
-    ``front`` is written as ``<prefix>_NNNN.jpg``, ``enhanced`` as ``_a`` and ``back`` as ``_b``,
+    ``front`` is written as ``<prefix>_NNNN.jpg`` (``.png`` for the lossless preset; the same
+    holds for every name below), ``enhanced`` as ``_a`` and ``back`` as ``_b``,
     the latter two only when given. With ``keep_original=False`` the plain original is skipped
     when an enhanced copy exists, but is still written when there is none. ``prefix`` defaults to
     the album name (``FastFoto`` with no album) and numbering continues after the highest
@@ -220,6 +219,7 @@ def write_photo(  # noqa: PLR0913
         scanned_at=scanned_at,
         quality=quality,
         keep_original=keep_original,
+        preset=preset,
     )
 
 
@@ -237,6 +237,7 @@ def _write(  # noqa: PLR0913
     scanned_at: datetime | None,
     quality: int,
     keep_original: bool,
+    preset: ExportPreset | None,
     unprocessed: bool = False,
 ) -> WrittenFiles:
     """What ``write_photo`` and ``write_unprocessed`` share: check, encode, number and publish.
@@ -247,6 +248,8 @@ def _write(  # noqa: PLR0913
         if array is not None:
             _check_image(name, array)
     dpi, quality = _check_options(dpi, quality)
+    if preset is not None and not isinstance(preset, ExportPreset):
+        raise ValueError(PRESET_MESSAGE)
     directory = album_dir(output_root, album)
     file_prefix = sanitise_prefix(prefix) if prefix is not None else default_prefix(album)
     _require_root(output_root)
@@ -264,12 +267,14 @@ def _write(  # noqa: PLR0913
     def encode(array: np.ndarray | None) -> bytes | None:
         if array is None:
             return None
-        return _encode_jpeg(array, dpi=dpi, quality=quality, exif=exif, xmp=xmp)
+        return encode_photo(array, dpi=dpi, quality=quality, preset=preset, exif=exif, xmp=xmp)
 
     blobs = (encode(front if keep_front else None), encode(enhanced), encode(back))
     directory.mkdir(exist_ok=True)
     with locked_folder(directory):
-        return _publish_photo(directory, file_prefix, blobs, unprocessed=unprocessed)
+        return _publish_photo(
+            directory, file_prefix, blobs, unprocessed=unprocessed, ext=photo_ext(preset)
+        )
 
 
 def write_unprocessed(  # noqa: PLR0913
@@ -285,11 +290,13 @@ def write_unprocessed(  # noqa: PLR0913
     notes: str | None = None,
     scanned_at: datetime | None = None,
     quality: int = DEFAULT_QUALITY,
+    preset: ExportPreset | None = None,
 ) -> WrittenFiles:
     """Write the whole pages of a sheet that could not be turned into a photo.
 
-    Like :func:`write_photo` (same folder, numbering, locking, JPEG settings and metadata), but
-    ``front`` is written as ``<prefix>_NNNN_unprocessed.jpg`` and ``back``, when given, as
+    Like :func:`write_photo` (same folder, numbering, locking, encoding and metadata), but
+    ``front`` is written as ``<prefix>_NNNN_unprocessed.jpg`` (or ``.png``) and ``back``, when
+    given, as
     ``<prefix>_NNNN_unprocessed_b.jpg`` (it ends in ``_b``, so tools that look for backs find
     it). ``reason`` says in words why the sheet is not a photo; it comes back as
     ``WrittenFiles.unprocessed_reason``. The sheet takes the next number, so it keeps its place
@@ -316,6 +323,7 @@ def write_unprocessed(  # noqa: PLR0913
         scanned_at=scanned_at,
         quality=quality,
         keep_original=True,
+        preset=preset,
         unprocessed=True,
     )
     return replace(files, unprocessed_reason=reason)

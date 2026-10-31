@@ -28,5 +28,6 @@ Support: `units.py:mm_to_px`; errors `errors.py` (`DocumentError`, `AllPagesBlan
 - Session: `session/documents.py:run_document_session` (scan -> `build_document` -> settle raw; `build_document` is injectable); request `session/request.py:DocumentScanRequest`; result `DocumentSessionResult`, `DocumentRawReason`
 - CLI: `cli/cmd_doc.py` (`ffscan doc process|scan`: `run_process`, `run_scan_command`, `process_command`); options `cli/doc_options.py` (`add_document_options`, `add_document_scan_options`, `build_settings`); summaries `cli/doc_summary.py`
 - GUI: `gui/docform.py`, `gui/docside.py`, `gui/docreport.py`, `gui/documents.py`
+- Export presets: `DocumentSettings.preset` (write-time only), `encode.py:encode_page(preset=)`; `docs/design/export-presets.md`
 - Design notes: `docs/design/documents.md`
 <!-- /AUTO-GENERATED -->

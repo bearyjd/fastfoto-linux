@@ -1,8 +1,19 @@
 # Photo denoise and sharpen
 
-API and recipe only; editor controls follow, and there is no CLI flag (no CLI command uses `photo_edits`). Three integer controls, `denoise_luma`,
+The photo editor has sliders for these controls (see Editor below); there is no CLI flag (no CLI command uses `photo_edits`). Three integer controls, `denoise_luma`,
 `denoise_chroma` and `sharpen`, each 0 to 100 with neutral 0. Every value is a plain integer:
 booleans, floats, `NaN`, infinities and strings are rejected.
+
+## Editor
+
+A **Detail** section after the tone sliders has **Noise reduction** (`denoise_luma`), **Colour
+noise** (`denoise_chroma`) and **Sharpen**, each 0 to 100 in steps of 1. The section is in render
+order: detail comes last. The filters are opt-in and off by default, and they can be slow on large
+scans (see CPU cost), so the section says that the preview is computed at full resolution and shows
+sharpening only faintly. A slider drag is one undo step. **Reset adjustments** also clears Noise
+reduction, Colour noise and Sharpen, in the same single undo step as tone and white balance; the
+page Reset still restores the opened recipe. Presets leave detail alone and the highlighted preset
+ignores it.
 
 ## Order of operations
 

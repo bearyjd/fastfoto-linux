@@ -6,7 +6,7 @@ defaults to 100. At full adjustment strength, Saturation -100 makes equal RGB ch
 
 These controls follow accepted red-eye correction and white balance. Optional denoise runs before the geometry and sharpen runs after tone (see `photo-detail.md`: eyes, denoise, straighten, crop, quarter turns, white balance, tone, sharpen). Adjustment strength affects tone alone;
 zero keeps the pixels entering the tone stage (eye-corrected, denoised, then white balanced) exactly before JPEG encoding. Neutral brightness, contrast and saturation are
-an exact no-op at every strength. Reset adjustments restores neutral tone and white balance in one undoable
+an exact no-op at every strength. Reset adjustments restores neutral tone and white balance, and also clears Noise reduction, Colour noise and Sharpen, in one undoable
 action and preserves eyes. The page Reset restores the complete recipe as it was opened.
 
 ## Source, preview and saving

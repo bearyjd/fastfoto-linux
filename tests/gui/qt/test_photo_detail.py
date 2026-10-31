@@ -77,7 +77,7 @@ def test_each_slider_moved_calls_set_detail_for_its_own_field(make_bridge, open_
     window, warnings = open_window(bridge)
     window.setHeight(2400)
     page = ready_page(window)
-    for name, (field, _label) in CONTROLS.items():
+    for name in CONTROLS:
         invoke(child(page, name), "moved")
         settle()
     assert view.color.detail == NEUTRAL

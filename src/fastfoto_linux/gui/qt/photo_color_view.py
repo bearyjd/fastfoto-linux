@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 from PySide6.QtCore import Property, QObject, Signal, Slot
 
 from fastfoto_linux.gui.photoeditpresets import PRESETS
-from fastfoto_linux.photo_edits import PhotoTone, PhotoWhiteBalance
+from fastfoto_linux.photo_edits import PhotoDetail, PhotoTone, PhotoWhiteBalance
 
 if TYPE_CHECKING:
     from fastfoto_linux.gui.photoeditside import PhotoEditSide
@@ -34,6 +34,11 @@ class PhotoColorView(QObject):
         recipe = self._side.recipe
         return asdict(recipe.white_balance if recipe else PhotoWhiteBalance())
 
+    @Property("QVariantMap", notify=changed)
+    def detail(self) -> dict[str, int]:
+        recipe = self._side.recipe
+        return asdict(recipe.detail if recipe else PhotoDetail())
+
     @Property("QVariantList", constant=True)
     def presets(self) -> list[dict[str, str]]:
         return [dict(id=item.id, label=item.label) for item in PRESETS]
@@ -53,6 +58,10 @@ class PhotoColorView(QObject):
     @Slot(str, int)
     def setWhiteBalance(self, field: str, value: int) -> None:
         self._view._call(self._side.set_white_balance, field, value)
+
+    @Slot(str, int)
+    def setDetail(self, field: str, value: int) -> None:
+        self._view._call(self._side.set_detail, field, value)
 
     @Slot(str)
     def applyPreset(self, preset_id: str) -> None:

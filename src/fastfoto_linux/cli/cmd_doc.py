@@ -349,6 +349,7 @@ def process_command(pages: Sequence[Path], request: DocumentScanRequest, root: P
         (settings.cleanup is not CleanupPolicy.OFF, ["--cleanup", settings.cleanup.value]),
         (settings.despeckle, ["--despeckle"]),
         (settings.deskew, ["--deskew"]),
+        (settings.preset is not None, ["--preset", str(settings.preset)]),
         (settings.name != DEFAULT_NAME, ["--name", settings.name]),
         (settings.ocr is not OcrMode.AUTO, ["--ocr", settings.ocr.value]),
         (settings.langs != DEFAULT_LANGS, ["--lang", settings.langs]),

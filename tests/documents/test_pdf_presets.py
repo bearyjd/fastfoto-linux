@@ -24,7 +24,7 @@ def open_pdf(pages: list[EncodedPage]) -> pikepdf.Pdf:
 
 
 def image_of(pdf: pikepdf.Pdf) -> pikepdf.Object:
-    return next(iter(pdf.pages[0].images.values()))
+    return next(iter(pdf.pages[0].get_images().values()))
 
 
 def filter_of(pdf: pikepdf.Pdf) -> str:

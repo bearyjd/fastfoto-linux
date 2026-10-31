@@ -4,7 +4,7 @@ import argparse
 from pathlib import Path
 
 from fastfoto_linux.cli.errors import EXIT_USAGE, CliError
-from fastfoto_linux.cli.options import add_transport_options
+from fastfoto_linux.cli.options import add_transport_options, preset_arg
 from fastfoto_linux.documents import (
     DEFAULT_LANGS,
     DEFAULT_NAME,
@@ -19,6 +19,12 @@ from fastfoto_linux.documents.loader import MAX_DPI, MIN_DPI
 from fastfoto_linux.output.errors import InvalidPrefixError
 from fastfoto_linux.output.naming import sanitise_prefix
 from fastfoto_linux.session import DEFAULT_DOCUMENT_DPI, DOCUMENT_DPI
+
+PRESET_HELP_DOC = (
+    "export preset: lossless embeds colour and grey pages as PNG (Flate), high-quality uses "
+    "JPEG 92 without chroma subsampling, small caps colour and grey pages at 200 dpi with JPEG "
+    "60; black and white pages stay lossless CCITT G4 (default: none, today's output)"
+)
 
 
 def _langs(text: str) -> str:
@@ -79,6 +85,9 @@ def add_document_options(parser: argparse.ArgumentParser) -> None:
         help="straighten pages whose text is tilted by 0.3 to 10 degrees, when the tilt can be "
         "measured reliably (default: off, or the angles a raw folder's review.json holds; "
         "--no-deskew also removes a crop made on a straightened page)",
+    )
+    pdf.add_argument(
+        "--preset", type=preset_arg, default=None, metavar="NAME", help=PRESET_HELP_DOC
     )
     pdf.add_argument(
         "--keep-blank", action="store_true", help="keep blank pages instead of dropping them"
@@ -146,6 +155,7 @@ def build_settings(args: argparse.Namespace) -> DocumentSettings:
         cleanup=CleanupPolicy(args.cleanup) if args.cleanup is not None else CleanupPolicy.OFF,
         despeckle=args.despeckle is True,
         deskew=args.deskew is True,
+        preset=args.preset,
         keep_blank=args.keep_blank,
         ocr=OcrMode(args.ocr),
         langs=args.lang,

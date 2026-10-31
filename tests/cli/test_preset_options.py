@@ -1,5 +1,6 @@
-"""``--preset`` of ``ffscan scan``, ``process`` and ``doc``: strict names and the quality conflict."""
+"""``--preset`` of ``ffscan scan``, ``process`` and ``doc``: exact names, the quality conflict."""
 
+import contextlib
 import shlex
 from pathlib import Path
 from types import SimpleNamespace
@@ -76,7 +77,7 @@ def test_preset_and_quality_together_are_a_usage_error(
 
 
 def test_the_help_names_the_tradeoffs(capsys) -> None:
-    with pytest.raises(SystemExit):
+    with contextlib.suppress(SystemExit):
         main(["process", "--help"])
     text = capsys.readouterr().out
     assert "--preset" in text

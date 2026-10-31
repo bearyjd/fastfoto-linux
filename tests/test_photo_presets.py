@@ -1,6 +1,7 @@
 """Photo export presets through ``write_photo`` and ``write_unprocessed``, read back from disk."""
 
 from pathlib import Path
+from xml.sax.saxutils import escape
 
 import numpy as np
 import pytest
@@ -75,7 +76,7 @@ def test_metadata_dpi_and_orientation_survive_every_preset(
     assert ORIENTATION not in exif
     assert ICC not in picture.info
     xmp = picture.info["xmp"].decode("utf-8")
-    assert NOTES in xmp
+    assert escape(NOTES) in xmp
     assert ALBUM in xmp
     assert round(picture.info["dpi"][0]) == DPI
     assert picture.size == (96, 64)  # upright: still landscape

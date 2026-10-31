@@ -152,13 +152,16 @@ def _stem(prefix: str, index: int) -> str:
     return f"{prefix}_{index:0{INDEX_WIDTH}d}"
 
 
-def photo_paths(directory: Path, prefix: str, index: int) -> PhotoPaths:
-    """Paths of the original, enhanced (``_a``) and back (``_b``) files for ``index``."""
+def photo_paths(directory: Path, prefix: str, index: int, *, ext: str = ".jpg") -> PhotoPaths:
+    """Paths of the original, enhanced (``_a``) and back (``_b``) files for ``index``.
+
+    ``ext`` comes from the export preset table, never from user input.
+    """
     stem = _stem(prefix, index)
     return PhotoPaths(
-        original=directory / f"{stem}.jpg",
-        enhanced=directory / f"{stem}_a.jpg",
-        back=directory / f"{stem}_b.jpg",
+        original=directory / f"{stem}{ext}",
+        enhanced=directory / f"{stem}_a{ext}",
+        back=directory / f"{stem}_b{ext}",
     )
 
 
@@ -169,7 +172,9 @@ def pdf_path(directory: Path, prefix: str, index: int) -> Path:
     return directory / f"{prefix}_{index:0{INDEX_WIDTH}d}.pdf"
 
 
-def unprocessed_paths(directory: Path, prefix: str, index: int) -> tuple[Path, Path]:
+def unprocessed_paths(
+    directory: Path, prefix: str, index: int, *, ext: str = ".jpg"
+) -> tuple[Path, Path]:
     """Paths of the whole-page front and back files for ``index``; the back ends in ``_b``."""
     stem = _stem(prefix, index) + UNPROCESSED_SUFFIX
-    return directory / f"{stem}.jpg", directory / f"{stem}_b.jpg"
+    return directory / f"{stem}{ext}", directory / f"{stem}_b{ext}"

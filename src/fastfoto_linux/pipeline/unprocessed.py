@@ -115,6 +115,7 @@ def _save(pages: tuple[Path, ...], settings: "ProcessSettings", reason: str) -> 
         notes=settings.notes,
         scanned_at=scan_time(plan.dated_by),
         quality=settings.quality,
+        preset=settings.preset,
     )
     logger.info("saved %s whole: %s", ", ".join(page.name for page in pages), plan.reason)
     return files

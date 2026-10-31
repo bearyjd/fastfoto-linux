@@ -20,6 +20,8 @@ from fastfoto_linux.documents.despeckle import (
 )
 from fastfoto_linux.documents.loader import WHITE, LoadedPage
 from fastfoto_linux.documents.modes import CleanupPolicy, ColourMode, output_mode
+from fastfoto_linux.output.presets import DOCUMENT_EXPORTS, ExportPreset
+from fastfoto_linux.output.resample import downscale_to_dpi
 
 logger = logging.getLogger(__name__)
 
@@ -40,11 +42,21 @@ class EncodedPage:
         CleanupPolicy.OFF
     )  # the level it was made with (OFF for black and white)
     despeckle: bool = False  # the effective switch it was made with (False unless black and white)
+    preset: ExportPreset | None = None  # the export preset it was made with
 
 
-def _jpeg(pixels: np.ndarray, dpi: int) -> bytes:
+def _jpeg(pixels: np.ndarray, dpi: int, preset: ExportPreset | None = None) -> bytes:
     buffer = io.BytesIO()
-    Image.fromarray(pixels).save(buffer, "JPEG", quality=JPEG_QUALITY, dpi=(dpi, dpi))
+    if preset is None:
+        Image.fromarray(pixels).save(buffer, "JPEG", quality=JPEG_QUALITY, dpi=(dpi, dpi))
+        return buffer.getvalue()
+    export = DOCUMENT_EXPORTS[preset]
+    if export.quality is None:
+        Image.fromarray(pixels).save(buffer, "PNG", dpi=(dpi, dpi))
+    else:
+        Image.fromarray(pixels).save(
+            buffer, "JPEG", quality=export.quality, subsampling=export.subsampling, dpi=(dpi, dpi)
+        )
     return buffer.getvalue()
 
 
@@ -70,13 +82,14 @@ def effective_despeckle(flag: bool, mode: ColourMode) -> bool:
     return flag and mode is ColourMode.BW
 
 
-def encode_page(
+def encode_page(  # noqa: PLR0913 - the hooks are the interface
     page: LoadedPage,
     requested: ColourMode,
     cleanup: CleanupPolicy = CleanupPolicy.OFF,
     *,
     despeckle: bool = False,
     cancel: threading.Event | None = None,
+    preset: ExportPreset | None = None,
 ) -> EncodedPage:
     """Write ``page`` in the mode ``output_mode(page.kind, requested)`` allows.
 
@@ -88,17 +101,25 @@ def encode_page(
     ``despeckle``). The input is not modified.
     """
     mode = output_mode(page.kind, requested)
-    height, width = page.pixels.shape[:2]
     pixels = render_page(page, mode, cleanup, despeckle=despeckle, cancel=cancel)
-    data = _group4(pixels == WHITE, page.dpi) if mode is ColourMode.BW else _jpeg(pixels, page.dpi)
+    dpi = page.dpi
+    if mode is ColourMode.BW:
+        data = _group4(pixels == WHITE, dpi)
+    else:
+        max_dpi = None if preset is None else DOCUMENT_EXPORTS[preset].max_dpi
+        if max_dpi is not None:
+            pixels, dpi = downscale_to_dpi(pixels, dpi, max_dpi)
+        data = _jpeg(pixels, dpi, preset)
+    height, width = pixels.shape[:2]
     return EncodedPage(
         data,
         mode,
         width,
         height,
-        page.dpi,
+        dpi,
         effective_cleanup(cleanup, mode),
         effective_despeckle(despeckle, mode),
+        preset,
     )
 
 

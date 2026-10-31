@@ -25,6 +25,7 @@ from fastfoto_linux.output import (
 from fastfoto_linux.output.errors import InvalidNotesError
 from fastfoto_linux.output.metadata import MAX_NOTES_CHARS
 from fastfoto_linux.output.naming import sanitise_album, sanitise_prefix
+from fastfoto_linux.output.presets import PRESET_MESSAGE, ExportPreset
 from fastfoto_linux.output.writer import MAX_QUALITY, MIN_QUALITY
 from fastfoto_linux.pipeline.io import scan_time
 from fastfoto_linux.pipeline.issues import SheetIssue, sheet_issue, sheet_pages
@@ -67,6 +68,7 @@ class ProcessSettings:
     back_policy: BackPolicy = BackPolicy.AUTO
     expect_front_first: bool | None = None
     quality: int = DEFAULT_QUALITY
+    preset: ExportPreset | None = None
     keep_original: bool = True
     enhancers: tuple[Enhancer, ...] = ()
     orienter: Orienter | None = None
@@ -82,6 +84,10 @@ class ProcessSettings:
             )
         if not MIN_QUALITY <= self.quality <= MAX_QUALITY:
             raise ValueError(f"quality must be {MIN_QUALITY}-{MAX_QUALITY}, got {self.quality}")
+        if self.preset is not None and not isinstance(self.preset, ExportPreset):
+            raise ValueError(PRESET_MESSAGE)
+        if self.preset is not None and self.quality != DEFAULT_QUALITY:
+            raise ValueError("a preset sets the quality; give a preset or a quality, not both")
 
 
 @dataclass(frozen=True)
@@ -379,6 +385,7 @@ def _write(photo: Photo, prepared: _Prepared, settings: ProcessSettings) -> Writ
         scanned_at=scan_time(photo.source_pages[0]),
         quality=settings.quality,
         keep_original=settings.keep_original,
+        preset=settings.preset,
     )
 
 

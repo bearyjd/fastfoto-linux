@@ -178,6 +178,47 @@ QQC2.ScrollView {
             color: Kirigami.Theme.disabledTextColor
         }
 
+        QQC2.ComboBox {
+            objectName: "docPresetBox"
+            implicitWidth: Kirigami.Units.gridUnit * 16
+            Kirigami.FormData.label: qsTr("File size:")
+            Layout.fillWidth: true
+            readonly property var presetChoices: [
+                {
+                    "text": qsTr("Standard"),
+                    "value": ""
+                },
+                {
+                    "text": qsTr("High quality"),
+                    "value": "high-quality"
+                },
+                {
+                    "text": qsTr("Small"),
+                    "value": "small"
+                },
+                {
+                    "text": qsTr("Lossless"),
+                    "value": "lossless"
+                }
+            ]
+            model: presetChoices
+            textRole: "text"
+            valueRole: "value"
+            currentIndex: Math.max(0, presetChoices.findIndex(choice => choice.value === bridge.documents.form.preset))
+            enabled: panel.editable
+            Accessible.name: qsTr("File size")
+            onActivated: bridge.setDocumentField("preset", currentValue)
+        }
+
+        QQC2.Label {
+            objectName: "docPresetHint"
+            Layout.fillWidth: true
+            text: qsTr("Standard keeps the page format as before. High quality uses a finer JPEG. Small stores pages at 200 dpi at most. Lossless stores colour and grey pages as PNG, which makes a large PDF. Black-and-white pages are always lossless.")
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+            font: Kirigami.Theme.smallFont
+        }
+
         QQC2.CheckBox {
             id: docDespeckleBoxControl
             objectName: "docDespeckleBox"

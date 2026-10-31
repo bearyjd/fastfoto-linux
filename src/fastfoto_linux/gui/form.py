@@ -13,6 +13,7 @@ from fastfoto_linux.output import DateRange, PhotoDate
 from fastfoto_linux.output.errors import InvalidAlbumError, InvalidDateError
 from fastfoto_linux.output.metadata import MAX_NOTES_CHARS
 from fastfoto_linux.output.naming import album_dir, default_prefix, sanitise_album
+from fastfoto_linux.output.presets import PHOTO_EXPORTS, PRESET_CHOICES, ExportPreset, parse_preset
 from fastfoto_linux.pipeline.process import Enhancer, ProcessSettings
 from fastfoto_linux.pipeline.sides import BackPolicy
 from fastfoto_linux.scanner import SUPPORTED_DPI, ScanTarget
@@ -21,6 +22,8 @@ from fastfoto_linux.session import RawPolicy, ScanRequest
 FEED_CHOICES = (FEED_FACE_UP, FEED_FACE_DOWN)
 BACK_CHOICES = tuple(policy.value for policy in BackPolicy)
 NUMBER_PATTERN = "####"  # the real number is only known when the photo is written
+PRESET_CHOICES_WITH_STANDARD = ("", *PRESET_CHOICES)  # "" is Standard: no preset
+PRESET_ERROR = "Choose Standard, High quality, Small or Lossless."
 
 
 @dataclass(frozen=True)
@@ -41,6 +44,7 @@ class ScanForm:
     redeye: bool = False
     dpi: int = DEFAULT_DPI
     keep_original: bool = True
+    preset: str = ""  # "" is Standard (no preset); else an export preset's name
 
 
 FIELD_NAMES = tuple(field.name for field in fields(ScanForm))
@@ -132,6 +136,28 @@ def _check_notes(form: ScanForm) -> str | None:
     return None
 
 
+def preset_of(value: object) -> ExportPreset | None:
+    """The preset a form value names: None for Standard (``""``), else the exact allowlisted name.
+
+    Raises ValueError with a fixed message (the value is never repeated) for anything else.
+    """
+    if type(value) is str and value == "":
+        return None
+    try:
+        return parse_preset(value)
+    except ValueError:
+        raise ValueError(PRESET_ERROR) from None
+
+
+def check_preset(value: object) -> str | None:
+    """A fixed message when ``value`` is not Standard or a preset name, else None."""
+    try:
+        preset_of(value)
+    except ValueError:
+        return PRESET_ERROR
+    return None
+
+
 def _choice(name: str, value: object, choices: tuple[object, ...]) -> str | None:
     if value in choices:
         return None
@@ -147,6 +173,7 @@ _SYNTAX_CHECKS: tuple[tuple[str, _Check], ...] = (
     ("loaded", lambda form: _choice("loading direction", form.loaded, FEED_CHOICES)),
     ("backs", lambda form: _choice("backs setting", form.backs, BACK_CHOICES)),
     ("dpi", lambda form: _choice("resolution", form.dpi, SUPPORTED_DPI)),
+    ("preset", lambda form: check_preset(form.preset)),
 )
 _DISK_CHECKS: tuple[tuple[str, _Check], ...] = (
     ("output_folder", _check_folder_disk),
@@ -222,7 +249,9 @@ def destination(form: ScanForm) -> str | None:
         folder = _folder(form) if album is None else _folder(form) / sanitise_album(album)
     except InvalidAlbumError:
         return None
-    return f"{folder}/{prefix}_{NUMBER_PATTERN}.jpg"
+    preset = preset_of(form.preset)
+    ext = ".jpg" if preset is None else PHOTO_EXPORTS[preset].ext
+    return f"{folder}/{prefix}_{NUMBER_PATTERN}{ext}"
 
 
 def update_field(form: ScanForm, name: str, value: object) -> ScanForm:
@@ -233,6 +262,9 @@ def update_field(form: ScanForm, name: str, value: object) -> ScanForm:
         return replace(form, **{name: bool(value)})
     if name == "dpi":
         return replace(form, dpi=whole_number(name, value))
+    if name == "preset":
+        preset_of(value)  # a bad choice is refused, not stored
+        return replace(form, preset=value)  # type: ignore[arg-type]
     return replace(form, **{name: str(value)})
 
 
@@ -263,6 +295,7 @@ def to_settings(form: ScanForm) -> ProcessSettings:
         keep_original=form.keep_original,
         enhancers=enhancers,
         orienter=auto_orient if form.orient else None,
+        preset=preset_of(form.preset),
     )
 
 

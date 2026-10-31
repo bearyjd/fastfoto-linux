@@ -65,4 +65,22 @@ write re-read the raw pages (`on_page` fires); slower, but correct (`EncodedPage
   validator in CI and confirming ocrmypdf `--output-type pdfa` options for the pinned version.
   No PDF/A code or flag exists. Do not add `-O2`/`-O3` (lossy).
 - Open: real-scan check of small sizes, 200 DPI OCR quality and lossless sizes; editor-save
-  presets (needs recipe schema 7); GUI dropdowns (PR B).
+  presets (needs recipe schema 7).
+
+## GUI (PR B)
+
+Both forms have a `preset` field (`""` is Standard, else an exact preset name) and a **File
+size** drop-down (`presetBox`, `docPresetBox`) with a one-line hint. The value is checked by
+`gui/form.py:preset_of` (Standard, or `parse_preset`): `update_field` and
+`update_document_field` refuse anything else with one fixed message that does not repeat the
+input, and `validate` flags it the same way. The Qt slot receives a QVariant and the same check
+runs before the value is stored. The prefs file takes only the four exact strings; any other
+value (wrong case, spaces, a non-string, a bool) is ignored with the existing log line and the
+field stays Standard. Old prefs without the key load as Standard.
+
+- The Photos name preview shows `.png` for Lossless.
+- The results grid lists and shows `.png` photos (Qt reads PNG; names use the stem).
+- **Edit photo** is disabled for a `.png` original (`photoeditside.eligibility`) with the fixed
+  reason shown in the cell. Opening a saved edit whose source is a PNG still hits the editor's
+  existing JPEG-only refusal.
+- The Documents form passes the preset to `DocumentSettings`; it is write-time only, as in the CLI.

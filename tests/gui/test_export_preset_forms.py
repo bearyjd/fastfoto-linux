@@ -33,7 +33,7 @@ from fastfoto_linux.output.presets import ExportPreset
 GOOD = [("high-quality", ExportPreset.HIGH_QUALITY), ("small", ExportPreset.SMALL)]
 GOOD += [("lossless", ExportPreset.LOSSLESS)]
 BAD = ["Small", " small", "small\n", "small\x00", "png", "secret/../x", True, 1, None, b"small"]
-FIXED = "preset must be lossless, high-quality or small"
+FIXED = "Choose Standard, High quality, Small or Lossless."
 
 
 @pytest.fixture
@@ -112,7 +112,10 @@ def test_old_prefs_without_the_key_mean_standard(path: Path) -> None:
     assert load_form(path).preset == "" and load_document_form(path).preset == ""
 
 
-@pytest.mark.parametrize("bad", ["Small", " small", "small\n", "", "../x", True, 1, None, ["small"]])
+BAD_PREFS = ["Small", " small", "small\n", "../x", True, 1, None, ["small"]]
+
+
+@pytest.mark.parametrize("bad", BAD_PREFS)
 def test_an_unknown_pref_value_falls_back_to_standard(
     path: Path, bad: object, caplog: pytest.LogCaptureFixture
 ) -> None:

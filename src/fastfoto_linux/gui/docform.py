@@ -16,6 +16,8 @@ from fastfoto_linux.gui.form import (
     NUMBER_PATTERN,
     FormInvalidError,
     ScanForm,
+    check_preset,
+    preset_of,
     validate,
     validate_syntax,
     whole_number,
@@ -50,6 +52,7 @@ class DocumentForm:
     cleanup: str = CleanupPolicy.OFF.value
     despeckle: bool = False
     deskew: bool = False
+    preset: str = ""  # "" is Standard (no preset); else an export preset's name
 
 
 DOCUMENT_FIELD_NAMES = tuple(field.name for field in fields(DocumentForm))
@@ -102,6 +105,7 @@ def validate_document_form(form: DocumentForm) -> dict[str, str]:
         ("cleanup", _choice("paper cleanup", form.cleanup, DOCUMENT_CLEANUPS)),
         ("despeckle", _check_despeckle(form)),
         ("deskew", _check_deskew(form)),
+        ("preset", check_preset(form.preset)),
         ("langs", _check_langs(form)),
     )
     return {name: message for name, message in checks if message is not None}
@@ -131,6 +135,9 @@ def update_document_field(form: DocumentForm, name: str, value: object) -> Docum
         return replace(form, **{name: bool(value)})
     if name == "dpi":
         return replace(form, dpi=whole_number(name, value))
+    if name == "preset":
+        preset_of(value)  # a bad choice is refused, not stored
+        return replace(form, preset=value)  # type: ignore[arg-type]
     return replace(form, **{name: str(value)})
 
 
@@ -159,6 +166,7 @@ def to_document_settings(
         cleanup=CleanupPolicy(form.cleanup),
         despeckle=form.despeckle,
         deskew=form.deskew,
+        preset=preset_of(form.preset),
     )
 
 

@@ -39,7 +39,7 @@ def test_color_child_contract_and_slots(make_bridge, out):
     assert color.whiteBalance == NEUTRAL and color.activePreset == ""
     assert color.presets == [dict(id=p.id, label=p.label) for p in PRESETS]
     meta = color.metaObject()
-    for slot in ("setWhiteBalance(QString,int)", "applyPreset(QString)"):
+    for slot in ("setWhiteBalance(QString,QVariant)", "applyPreset(QString)"):
         assert meta.indexOfSlot(slot) >= 0, slot
 
 

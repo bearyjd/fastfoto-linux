@@ -29,6 +29,7 @@ class PhotoColorActions:
             self._change(updated)
 
     def set_detail(self: "PhotoEditSide", field: str, value: int) -> None:
+        """ValueError for an unknown field; PhotoEditError for a bad value."""
         recipe = self._require_edit()
         if field not in DETAIL_FIELDS:
             raise ValueError("Choose a noise reduction or sharpening adjustment.")

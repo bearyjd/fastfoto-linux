@@ -35,7 +35,7 @@ def test_color_child_contract_and_slot(make_bridge, out):
     _bridge, view, _worker = open_editor(make_bridge, out)
     meta = view.color.metaObject()
     assert meta.indexOfProperty("detail") >= 0
-    assert meta.indexOfSlot("setDetail(QString,int)") >= 0
+    assert meta.indexOfSlot("setDetail(QString,QVariant)") >= 0
     assert view.color.detail == NEUTRAL
 
 

@@ -1,6 +1,7 @@
 """The colour child of the photo editor view: tone, white balance and presets."""
 
 from dataclasses import asdict
+from math import isfinite
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Property, QObject, Signal, Slot
@@ -11,6 +12,16 @@ from fastfoto_linux.photo_edits import PhotoDetail, PhotoTone, PhotoWhiteBalance
 if TYPE_CHECKING:
     from fastfoto_linux.gui.photoeditside import PhotoEditSide
     from fastfoto_linux.gui.qt.photo_edit_view import PhotoEditView
+
+
+def _whole(value: object) -> int:
+    """QML numbers arrive as int or float; anything else, or a fraction, is refused unconverted."""
+    if not isinstance(value, bool) and isinstance(value, (int, float)):
+        if isinstance(value, int):
+            return value
+        if isfinite(value) and value.is_integer():
+            return int(value)
+    raise ValueError("Enter a whole number for this adjustment.")
 
 
 class PhotoColorView(QObject):
@@ -47,21 +58,21 @@ class PhotoColorView(QObject):
     def activePreset(self) -> str:
         return self._side.active_preset
 
-    @Slot(str, int)
-    def setTone(self, field: str, value: int) -> None:
-        self._view._call(self._side.set_tone, field, value)
+    @Slot(str, "QVariant")
+    def setTone(self, field: str, value: object) -> None:
+        self._view._call(lambda: self._side.set_tone(field, _whole(value)))
 
     @Slot()
     def resetTone(self) -> None:
         self._view._call(self._side.reset_tone)
 
-    @Slot(str, int)
-    def setWhiteBalance(self, field: str, value: int) -> None:
-        self._view._call(self._side.set_white_balance, field, value)
+    @Slot(str, "QVariant")
+    def setWhiteBalance(self, field: str, value: object) -> None:
+        self._view._call(lambda: self._side.set_white_balance(field, _whole(value)))
 
-    @Slot(str, int)
-    def setDetail(self, field: str, value: int) -> None:
-        self._view._call(self._side.set_detail, field, value)
+    @Slot(str, "QVariant")
+    def setDetail(self, field: str, value: object) -> None:
+        self._view._call(lambda: self._side.set_detail(field, _whole(value)))
 
     @Slot(str)
     def applyPreset(self, preset_id: str) -> None:

@@ -64,3 +64,11 @@ def test_detail_sliders_are_documented_as_opt_in_and_slow_on_large_scans():
         encoding="utf-8"
     )
     assert "Optional and off by default" in qml
+
+
+def test_both_readme_reset_sentences_name_the_detail_sliders():
+    first = "**Reset adjustments** restores neutral tone, white balance and detail values (Noise reduction, Colour noise and Sharpen)"
+    second = "**Reset adjustments** also returns Temperature and Tint to 0 (and Noise reduction, Colour noise and Sharpen, see Detail below), in one Undo step"
+    assert first in README and second in README
+    third = "**Reset adjustments** also returns Noise reduction, Colour noise and Sharpen to 0, in the same single Undo step"
+    assert third in README

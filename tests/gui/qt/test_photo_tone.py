@@ -26,7 +26,7 @@ def test_qt_tone_map_slots_refresh_errors_and_reset_preserve_eyes(make_bridge, o
     bridge, view, _worker = open_editor(make_bridge, out)
     assert view.color.metaObject().indexOfProperty("tone") >= 0
     assert view.color.tone == NEUTRAL
-    assert view.color.metaObject().indexOfSlot("setTone(QString,int)") >= 0
+    assert view.color.metaObject().indexOfSlot("setTone(QString,QVariant)") >= 0
     assert view.color.metaObject().indexOfSlot("resetTone()") >= 0
     view.setAccepted("left", True)
     view.color.setTone("brightness", 25)

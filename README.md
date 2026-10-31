@@ -564,8 +564,8 @@ cannot be edited.
 **Brightness** and **Contrast** range from -50 to 50; **Saturation** ranges from -100
 (grayscale at full adjustment strength) to 100. Their neutral value is 0. **Adjustment strength** blends these three
 adjustments from 0 to 100; it leaves eye-correction strength separate. You can adjust tone
-when no eyes were detected. **Reset adjustments** restores neutral tone and white balance values and strength
-100 while keeping eye corrections. Each slider drag is one Undo step. The page's **Reset**
+when no eyes were detected. **Reset adjustments** restores neutral tone, white balance and detail values (Noise reduction,
+Colour noise and Sharpen) and strength 100 while keeping eye corrections. Each slider drag is one Undo step. The page's **Reset**
 still restores the recipe as it was opened, including saved adjustments.
 
 Adjustments operate on the retained JPEG's stored RGB channels after accepted red-eye
@@ -579,8 +579,8 @@ temperature is warmer, higher tint is more magenta), applied in linear light aft
 and before tone. Four **Presets** set every white balance and tone value at once: `Warm`, `Cool`,
 `Faded print` and `Black and white`. A preset sets every tone and white balance value (it overwrites existing tone) and is one Undo step. It is a starting point, not a
 calibrated correction; it is not saved in the recipe, so the highlighted preset only shows that the
-current values match it. **Reset adjustments** also returns Temperature and Tint to 0, in one Undo
-step. A non-neutral balance saves a version-5 recipe that older app versions reject; the JPEG stays a
+current values match it. **Reset adjustments** also returns Temperature and Tint to 0 (and Noise reduction, Colour
+noise and Sharpen, see Detail below), in one Undo step. A non-neutral balance saves a version-5 recipe that older app versions reject; the JPEG stays a
 normal image. See the [white balance contract](docs/design/photo-white-balance.md).
 
 **Detail** has **Noise reduction**, **Colour noise** and **Sharpen** sliders from 0 to 100 (neutral 0),

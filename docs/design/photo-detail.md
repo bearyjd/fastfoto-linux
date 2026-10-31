@@ -1,8 +1,9 @@
 # Photo denoise and sharpen
 
-The photo editor has sliders for these controls (see Editor below); there is no CLI flag (no CLI command uses `photo_edits`). Three integer controls, `denoise_luma`,
-`denoise_chroma` and `sharpen`, each 0 to 100 with neutral 0. Every value is a plain integer:
-booleans, floats, `NaN`, infinities and strings are rejected.
+The photo editor has sliders for these controls (see Editor below); there is no CLI flag (no CLI
+command uses `photo_edits`). Three integer controls, `denoise_luma`, `denoise_chroma` and `sharpen`,
+each 0 to 100 with neutral 0. Every value is a plain integer: booleans, floats, `NaN`, infinities
+and strings are rejected.
 
 ## Editor
 

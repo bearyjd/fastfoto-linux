@@ -14,6 +14,7 @@ from fastfoto_linux.gui.docform import (
     validate_document_form,
 )
 from fastfoto_linux.gui.form import (
+    FormInvalidError,
     ScanForm,
     destination,
     to_settings,
@@ -125,3 +126,31 @@ def test_an_unknown_pref_value_falls_back_to_standard(
         photos, docs = load_form(path), load_document_form(path)
     assert photos.preset == "" and docs.preset == ""
     assert validate_syntax(replace(photos, output_folder="/tmp")).get("preset") is None
+
+
+@pytest.mark.parametrize("where", ["photos", "documents"])
+def test_a_rejected_pref_logs_the_field_name_only(
+    path: Path, where: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    path.parent.mkdir(parents=True)
+    bad = "secret/../x"
+    data = {"preset": bad} if where == "photos" else {"documents": {"preset": bad}}
+    path.write_text(json.dumps(data))
+    with caplog.at_level(logging.WARNING):
+        (load_form if where == "photos" else load_document_form)(path)
+    messages = [record.getMessage() for record in caplog.records]
+    assert messages and all("preset" in message for message in messages)
+    assert all(bad not in message and str(path) not in message for message in messages)
+    assert all(
+        bad not in str(record.args) and str(path) not in str(record.args)
+        for record in caplog.records
+    )
+
+
+def test_a_form_built_with_a_bad_preset_does_not_crash_the_preview_or_run(form: ScanForm) -> None:
+    bad = replace(form, preset="x")
+    assert destination(bad).endswith("_####.jpg")  # type: ignore[union-attr]
+    with pytest.raises(FormInvalidError) as caught:
+        to_settings(bad)
+    assert caught.value.errors == {"preset": FIXED}
+    assert update_field(form, "preset", "small").preset == "small"

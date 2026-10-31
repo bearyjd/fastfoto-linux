@@ -7,9 +7,14 @@ from fastfoto_linux.cli.errors import EXIT_USAGE, CliError
 from fastfoto_linux.enhance.orient import auto_orient
 from fastfoto_linux.enhance.redeye import remove_red_eye
 from fastfoto_linux.enhance.restore import restore_colour
-from fastfoto_linux.output import DEFAULT_QUALITY, PhotoDate
+from fastfoto_linux.output import PhotoDate
 from fastfoto_linux.output.errors import InvalidDateError
-from fastfoto_linux.output.presets import PRESET_CHOICES, ExportPreset, parse_preset
+from fastfoto_linux.output.presets import (
+    PHOTO_EXPORTS,
+    PRESET_CHOICES,
+    ExportPreset,
+    parse_preset,
+)
 from fastfoto_linux.output.writer import MAX_QUALITY, MIN_QUALITY
 from fastfoto_linux.pipeline.process import Enhancer, ProcessSettings
 from fastfoto_linux.pipeline.sides import BackPolicy
@@ -47,10 +52,13 @@ def preset_arg(text: str) -> ExportPreset:
         raise argparse.ArgumentTypeError(str(error)) from error
 
 
+_PHOTO_SMALL = PHOTO_EXPORTS[ExportPreset.SMALL]
+_PHOTO_HIGH = PHOTO_EXPORTS[ExportPreset.HIGH_QUALITY]
 PRESET_HELP = (
-    f"export preset ({', '.join(PRESET_CHOICES)}): lossless writes PNG/Flate, high-quality "
-    "keeps full detail at a high JPEG quality, small shrinks pictures for much smaller files; "
-    "metadata is kept. Cannot be combined with --quality (default: none, today's output)"
+    f"export preset ({', '.join(PRESET_CHOICES)}): lossless writes PNG, high-quality writes "
+    f"JPEG {_PHOTO_HIGH.quality} without chroma subsampling, small shrinks the long edge to "
+    f"{_PHOTO_SMALL.max_edge} px at JPEG {_PHOTO_SMALL.quality}; metadata is kept. Cannot be "
+    "combined with --quality (default: none, the usual output)"
 )
 
 
@@ -206,7 +214,7 @@ def build_settings(args: argparse.Namespace) -> ProcessSettings:
             duplex=not args.simplex,
             back_policy=BackPolicy(args.backs),
             expect_front_first=args.feed == FEED_FACE_DOWN,
-            quality=DEFAULT_QUALITY if args.quality is None else args.quality,
+            quality=args.quality,
             preset=args.preset,
             keep_original=args.keep_original,
             enhancers=enhancers,

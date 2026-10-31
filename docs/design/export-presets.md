@@ -18,7 +18,9 @@ the enum member does, and the file extension comes from the table.
 A preset applies to every file of a sheet: original, `_a`, `_b` and the `_unprocessed` whole
 pages. **small also downscales the whole pages**; re-cropping needs a rescan or `high-quality`.
 `--preset` and `--quality` are exclusive (usage error, exit 2). `--quality` has no argparse
-default so that `--preset small --quality 95` is caught; `ProcessSettings` refuses the mix too.
+default so that `--preset small --quality 95` is caught. `ProcessSettings.quality` is likewise
+`None` when unset (`effective_quality` gives 95), and any explicit quality next to a preset is
+refused at the API level too.
 
 ## Document pages (colour and grey)
 
@@ -53,6 +55,9 @@ write re-read the raw pages (`on_page` fires); slower, but correct (`EncodedPage
 - Numbers: a photo's number is shared across `.jpg` and `.png` (a number is taken if any name
   of the family exists in either format).
 - A lossless PNG of a 1200 DPI photo can be about 100 MB. The writer has no output size cap.
+- Lossless document pages are large: a full A4 colour page at 600 dpi is about 35 million
+  pixels, tens of MB as Flate, and the PDF is assembled in memory, so a long document needs
+  that much RAM per kept page. No size warning is shown.
 - Bomb limits are unchanged: document pages still come through `documents/loader.py`.
 - "Lossless" PDFs: the plain PDF is verified lossless; OCR output relies on ocrmypdf `-O1`
   (lossless), which CI does not test. The OCR command is unchanged.

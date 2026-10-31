@@ -1,4 +1,4 @@
-"""Write scanned photos to album folders as JPEG with EXIF and XMP metadata."""
+"""Write scanned photos to album folders as JPEG or PNG with EXIF and XMP metadata."""
 
 import operator
 from dataclasses import dataclass, replace
@@ -185,10 +185,12 @@ def write_photo(  # noqa: PLR0913
     keep_original: bool = True,
     preset: ExportPreset | None = None,
 ) -> WrittenFiles:
-    """Write one photo as JPEG files in ``<output_root>/<album>/``, never overwriting.
+    """Write one photo as JPEG (PNG with the lossless preset) files in ``<output_root>/<album>/``,
+    never overwriting.
 
     Every image is an ``HxWx3`` uint8 **RGB** array (not OpenCV's BGR); inputs are not modified.
-    ``front`` is written as ``<prefix>_NNNN.jpg``, ``enhanced`` as ``_a`` and ``back`` as ``_b``,
+    ``front`` is written as ``<prefix>_NNNN.jpg`` (``.png`` for the lossless preset; the same
+    holds for every name below), ``enhanced`` as ``_a`` and ``back`` as ``_b``,
     the latter two only when given. With ``keep_original=False`` the plain original is skipped
     when an enhanced copy exists, but is still written when there is none. ``prefix`` defaults to
     the album name (``FastFoto`` with no album) and numbering continues after the highest
@@ -292,8 +294,9 @@ def write_unprocessed(  # noqa: PLR0913
 ) -> WrittenFiles:
     """Write the whole pages of a sheet that could not be turned into a photo.
 
-    Like :func:`write_photo` (same folder, numbering, locking, JPEG settings and metadata), but
-    ``front`` is written as ``<prefix>_NNNN_unprocessed.jpg`` and ``back``, when given, as
+    Like :func:`write_photo` (same folder, numbering, locking, encoding and metadata), but
+    ``front`` is written as ``<prefix>_NNNN_unprocessed.jpg`` (or ``.png``) and ``back``, when
+    given, as
     ``<prefix>_NNNN_unprocessed_b.jpg`` (it ends in ``_b``, so tools that look for backs find
     it). ``reason`` says in words why the sheet is not a photo; it comes back as
     ``WrittenFiles.unprocessed_reason``. The sheet takes the next number, so it keeps its place

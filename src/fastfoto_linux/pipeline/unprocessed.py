@@ -1,9 +1,10 @@
 """Save the whole pages of a sheet that could not be turned into a photo.
 
 The sheet keeps its own number in the sequence, so that no photo of the batch goes missing
-unnoticed: its front page is written as ``<prefix>_NNNN_unprocessed.jpg`` and its back as
-``<prefix>_NNNN_unprocessed_b.jpg``. Nothing is cut away: the user needs the whole scanner frame
-to find the photo, and a long white area costs only file size.
+unnoticed: its front page is written as ``<prefix>_NNNN_unprocessed`` and its back as
+``<prefix>_NNNN_unprocessed_b`` (``.jpg``, or ``.png`` for the lossless preset). Nothing is
+cut away: the user needs the whole scanner frame to find the photo, and a long white area costs
+only file size.
 """
 
 import logging
@@ -114,7 +115,7 @@ def _save(pages: tuple[Path, ...], settings: "ProcessSettings", reason: str) -> 
         date=settings.date,
         notes=settings.notes,
         scanned_at=scan_time(plan.dated_by),
-        quality=settings.quality,
+        quality=settings.effective_quality,
         preset=settings.preset,
     )
     logger.info("saved %s whole: %s", ", ".join(page.name for page in pages), plan.reason)

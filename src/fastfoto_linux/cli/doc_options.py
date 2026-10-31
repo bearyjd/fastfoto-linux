@@ -18,12 +18,16 @@ from fastfoto_linux.documents import (
 from fastfoto_linux.documents.loader import MAX_DPI, MIN_DPI
 from fastfoto_linux.output.errors import InvalidPrefixError
 from fastfoto_linux.output.naming import sanitise_prefix
+from fastfoto_linux.output.presets import DOCUMENT_EXPORTS, ExportPreset
 from fastfoto_linux.session import DEFAULT_DOCUMENT_DPI, DOCUMENT_DPI
 
+_DOC_SMALL = DOCUMENT_EXPORTS[ExportPreset.SMALL]
+_DOC_HIGH = DOCUMENT_EXPORTS[ExportPreset.HIGH_QUALITY]
 PRESET_HELP_DOC = (
-    "export preset: lossless embeds colour and grey pages as PNG (Flate), high-quality uses "
-    "JPEG 92 without chroma subsampling, small caps colour and grey pages at 200 dpi with JPEG "
-    "60; black and white pages stay lossless CCITT G4 (default: none, today's output)"
+    "export preset: lossless embeds colour and grey pages as PNG (Flate; large files), "
+    f"high-quality uses JPEG {_DOC_HIGH.quality} without chroma subsampling, small caps colour "
+    f"and grey pages at {_DOC_SMALL.max_dpi} dpi with JPEG {_DOC_SMALL.quality}; black and "
+    "white pages stay lossless CCITT G4 (default: none, the usual output)"
 )
 
 

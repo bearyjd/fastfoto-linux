@@ -83,5 +83,6 @@ def test_dpi_within_the_limit_is_unchanged() -> None:
 
 @pytest.mark.parametrize("call", [lambda p: downscale(p, 0), lambda p: downscale_to_dpi(p, 600, 0)])
 def test_a_limit_below_one_is_refused(call) -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError) as caught:
         call(picture(10, 10))
+    assert "0" not in str(caught.value)  # the refused value is not echoed

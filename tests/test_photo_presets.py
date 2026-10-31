@@ -209,3 +209,38 @@ def test_the_writer_refuses_a_preset_that_is_not_a_member(tmp_path: Path, bad: o
     with pytest.raises(ValueError, match="preset must be lossless, high-quality or small"):
         write(make_root(tmp_path), textured(), bad)  # type: ignore[arg-type]
     assert list((tmp_path / "out").iterdir()) == []
+
+
+@pytest.mark.parametrize("preset", PRESETS, ids=str)
+def test_every_file_of_a_sheet_keeps_its_date_and_xmp(
+    tmp_path: Path, preset: ExportPreset | None
+) -> None:
+    result = write(
+        make_root(tmp_path, "a"),
+        textured(seed=1),
+        preset,
+        enhanced=textured(seed=2),
+        back=textured(seed=3),
+    )
+    whole = write_unprocessed(
+        textured(seed=4),
+        dpi=DPI,
+        output_root=make_root(tmp_path, "b"),
+        reason="no photo found",
+        back=textured(seed=5),
+        album=ALBUM,
+        date=DATE,
+        notes=NOTES,
+        scanned_at=SCANNED,
+        preset=preset,
+    )
+
+    paths = [*result.paths, *whole.paths]
+    assert len(paths) == 5
+    for path in paths:
+        assert path.suffix == expected_ext(preset)
+        picture = opened(path)
+        assert picture.getexif().get_ifd(EXIF_IFD)[DATETIME_ORIGINAL] == DATE.exif_datetime
+        xmp = picture.info["xmp"].decode("utf-8")
+        assert escape(NOTES) in xmp
+        assert ALBUM in xmp

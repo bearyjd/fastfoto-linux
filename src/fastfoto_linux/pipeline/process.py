@@ -67,7 +67,7 @@ class ProcessSettings:
     duplex: bool = True
     back_policy: BackPolicy = BackPolicy.AUTO
     expect_front_first: bool | None = None
-    quality: int = DEFAULT_QUALITY
+    quality: int | None = None  # None: DEFAULT_QUALITY, or the preset's own
     preset: ExportPreset | None = None
     keep_original: bool = True
     enhancers: tuple[Enhancer, ...] = ()
@@ -82,12 +82,17 @@ class ProcessSettings:
             raise InvalidNotesError(
                 f"notes are {len(self.notes)} characters long; the limit is {MAX_NOTES_CHARS}"
             )
-        if not MIN_QUALITY <= self.quality <= MAX_QUALITY:
+        if self.quality is not None and not MIN_QUALITY <= self.quality <= MAX_QUALITY:
             raise ValueError(f"quality must be {MIN_QUALITY}-{MAX_QUALITY}, got {self.quality}")
         if self.preset is not None and not isinstance(self.preset, ExportPreset):
             raise ValueError(PRESET_MESSAGE)
-        if self.preset is not None and self.quality != DEFAULT_QUALITY:
+        if self.preset is not None and self.quality is not None:
             raise ValueError("a preset sets the quality; give a preset or a quality, not both")
+
+    @property
+    def effective_quality(self) -> int:
+        """The JPEG quality for a run without a preset: ``quality``, else the default."""
+        return DEFAULT_QUALITY if self.quality is None else self.quality
 
 
 @dataclass(frozen=True)
@@ -383,7 +388,7 @@ def _write(photo: Photo, prepared: _Prepared, settings: ProcessSettings) -> Writ
         date=settings.date,
         notes=settings.notes,
         scanned_at=scan_time(photo.source_pages[0]),
-        quality=settings.quality,
+        quality=settings.effective_quality,
         keep_original=settings.keep_original,
         preset=settings.preset,
     )

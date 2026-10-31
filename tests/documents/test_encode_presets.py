@@ -9,7 +9,7 @@ from PIL import Image, JpegImagePlugin
 from fastfoto_linux.documents.encode import encode_page
 from fastfoto_linux.documents.loader import LoadedPage
 from fastfoto_linux.documents.modes import ColourMode
-from fastfoto_linux.output.presets import ExportPreset
+from fastfoto_linux.output.presets import DOCUMENT_EXPORTS, ExportPreset
 
 C, G, B = ColourMode.COLOUR, ColourMode.GREY, ColourMode.BW
 ALL = [None, *ExportPreset]
@@ -60,6 +60,14 @@ def test_high_quality_is_444_and_bigger_than_the_default() -> None:
     assert JpegImagePlugin.get_sampling(decode(high.data)) == 0
     assert JpegImagePlugin.get_sampling(decode(plain.data)) == 2
     assert len(high.data) > len(plain.data)
+
+
+def test_small_colour_pages_use_the_tables_chroma_subsampling() -> None:
+    small = encode_page(colour(100), C, preset=ExportPreset.SMALL)
+
+    expected = DOCUMENT_EXPORTS[ExportPreset.SMALL].subsampling
+    assert expected == 2
+    assert JpegImagePlugin.get_sampling(decode(small.data)) == expected
 
 
 def test_small_caps_a_600_dpi_page_at_200_dpi() -> None:

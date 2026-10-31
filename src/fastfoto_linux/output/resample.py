@@ -11,7 +11,7 @@ def downscale(pixels: np.ndarray, max_edge: int) -> tuple[np.ndarray, float]:
     Raises ValueError for ``max_edge`` below 1.
     """
     if max_edge < 1:
-        raise ValueError(f"max_edge must be at least 1, got {max_edge}")
+        raise ValueError("max_edge must be at least 1")
     height, width = pixels.shape[:2]
     if max(height, width) <= max_edge:
         return pixels, 1.0
@@ -27,7 +27,7 @@ def downscale_to_dpi(pixels: np.ndarray, dpi: int, max_dpi: int) -> tuple[np.nda
     Raises ValueError for ``max_dpi`` below 1.
     """
     if max_dpi < 1:
-        raise ValueError(f"max_dpi must be at least 1, got {max_dpi}")
+        raise ValueError("max_dpi must be at least 1")
     if dpi <= max_dpi:
         return pixels, dpi
     scale = max_dpi / dpi

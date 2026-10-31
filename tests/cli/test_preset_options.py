@@ -34,7 +34,7 @@ def test_a_preset_reaches_the_process_settings(photo_main, spy) -> None:
 
     settings: ProcessSettings = spy[-1][1]
     assert settings.preset is ExportPreset.SMALL
-    assert settings.quality == 95
+    assert settings.quality is None
 
 
 @pytest.mark.parametrize("preset", list(ExportPreset))
@@ -46,12 +46,12 @@ def test_every_name_is_accepted(photo_main, spy, preset: ExportPreset) -> None:
 def test_no_flag_means_no_preset_and_quality_95(photo_main, spy) -> None:
     assert photo_main() == 0
     assert spy[-1][1].preset is None
-    assert spy[-1][1].quality == 95
+    assert spy[-1][1].effective_quality == 95
 
 
 def test_quality_alone_still_works(photo_main, spy) -> None:
     assert photo_main("--quality", "90") == 0
-    assert spy[-1][1].quality == 90
+    assert spy[-1][1].effective_quality == 90
     assert spy[-1][1].preset is None
 
 
@@ -107,3 +107,19 @@ def test_the_recovery_command_keeps_the_preset(tmp_path: Path) -> None:
         assert ("--preset" in words) is expected
         if expected:
             assert words[words.index("--preset") + 1] == "lossless"
+
+
+def test_the_help_texts_state_the_table_values() -> None:
+    from fastfoto_linux.cli.doc_options import PRESET_HELP_DOC  # noqa: PLC0415
+    from fastfoto_linux.cli.options import PRESET_HELP  # noqa: PLC0415
+    from fastfoto_linux.output.presets import DOCUMENT_EXPORTS, PHOTO_EXPORTS  # noqa: PLC0415
+
+    photo, doc = PHOTO_EXPORTS, DOCUMENT_EXPORTS
+    for number in (photo[ExportPreset.SMALL].max_edge, photo[ExportPreset.SMALL].quality):
+        assert str(number) in PRESET_HELP
+    for number in (
+        doc[ExportPreset.SMALL].max_dpi,
+        doc[ExportPreset.SMALL].quality,
+        doc[ExportPreset.HIGH_QUALITY].quality,
+    ):
+        assert str(number) in PRESET_HELP_DOC

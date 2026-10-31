@@ -103,7 +103,8 @@ uv run ffscan eval redeye MANIFEST.json   # red-eye evaluation harness; see docs
   `--discard-raw` deletes them after an otherwise clean run even if a back was dropped.
 - Export presets: `--preset lossless|high-quality|small` (photos and `ffscan doc`; names are exact).
   `small` shrinks photos to 2048 px and document colour/grey pages to 200 dpi; `lossless` writes
-  PNG photos and Flate document pages (large files; the photo editor and `ffscan library` do not
+  PNG photos and Flate document pages (very large files: tens of MB per 600 dpi page, held in
+  memory while the PDF is assembled; the photo editor and `ffscan library` do not
   open PNG masters); `high-quality` is JPEG 95/92 without chroma subsampling. Metadata is kept.
   `--preset` cannot be combined with `--quality`. Without it the output is unchanged. PDF/A is
   not offered. See `docs/design/export-presets.md`.

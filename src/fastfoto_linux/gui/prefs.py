@@ -21,6 +21,7 @@ from fastfoto_linux.gui.form import (
     BACK_CHOICES,
     FEED_CHOICES,
     FIELD_NAMES,
+    PRESET_CHOICES_WITH_STANDARD,
     ScanForm,
     absolute_folder,
 )
@@ -40,12 +41,18 @@ OLD_FEED_KEY = (
     "feed"  # what the loading direction was stored as, with the names the wrong way round
 )
 _FROM_OLD_FEED = {FEED_FACE_DOWN: FEED_FACE_UP, FEED_FACE_UP: FEED_FACE_DOWN}
-_CHOICES = {"loaded": FEED_CHOICES, "backs": BACK_CHOICES, "dpi": SUPPORTED_DPI}
+_CHOICES = {
+    "loaded": FEED_CHOICES,
+    "backs": BACK_CHOICES,
+    "dpi": SUPPORTED_DPI,
+    "preset": PRESET_CHOICES_WITH_STANDARD,
+}
 _TYPES = {field.name: field.type for field in fields(ScanForm)}
 _DOCUMENT_CHOICES = {
     "colour": DOCUMENT_COLOURS,
     "dpi": DOCUMENT_DPI,
     "cleanup": DOCUMENT_CLEANUPS,
+    "preset": PRESET_CHOICES_WITH_STANDARD,
 }
 _DOCUMENT_TYPES = {field.name: field.type for field in fields(DocumentForm)}
 
@@ -146,7 +153,7 @@ def _usable(
     if good and name in choices:
         good = value in choices[name]
     if not good:
-        logger.warning("ignoring %s in %s: %r is not a usable value", name, path, value)
+        logger.warning("ignoring %s in the settings file: not a usable value", name)
     return good
 
 

@@ -34,6 +34,8 @@ def eligibility(item: PhotoItem) -> str:
         return "This sheet was not processed into a photo; red-eye review needs a cropped photo."
     if item.original is None:
         return "The cropped, upright original JPEG was not kept. Keep original for later edits."
+    if item.original.suffix.lower() == ".png":
+        return "Photo edits need a JPEG original; this photo was saved as a lossless PNG."
     if not item.original.is_file():
         return "The retained original JPEG is missing. Restore it before reviewing red eyes."
     return ""

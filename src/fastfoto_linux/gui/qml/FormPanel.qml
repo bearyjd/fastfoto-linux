@@ -196,6 +196,47 @@ QQC2.ScrollView {
             onActivated: bridge.setField("dpi", currentValue)
         }
 
+        QQC2.ComboBox {
+            objectName: "presetBox"
+            implicitWidth: Kirigami.Units.gridUnit * 16
+            Kirigami.FormData.label: qsTr("File size:")
+            Layout.fillWidth: true
+            readonly property var presetChoices: [
+                {
+                    "text": qsTr("Standard"),
+                    "value": ""
+                },
+                {
+                    "text": qsTr("High quality"),
+                    "value": "high-quality"
+                },
+                {
+                    "text": qsTr("Small"),
+                    "value": "small"
+                },
+                {
+                    "text": qsTr("Lossless (PNG)"),
+                    "value": "lossless"
+                }
+            ]
+            model: presetChoices
+            textRole: "text"
+            valueRole: "value"
+            currentIndex: Math.max(0, presetChoices.findIndex(choice => choice.value === bridge.form.preset))
+            enabled: panel.editable
+            Accessible.name: qsTr("File size")
+            onActivated: bridge.setField("preset", currentValue)
+        }
+
+        QQC2.Label {
+            objectName: "presetHint"
+            Layout.fillWidth: true
+            text: qsTr("Small shrinks photos to 2048 pixels; Lossless saves large PNG files the editor cannot open.")
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+            font: Kirigami.Theme.smallFont
+        }
+
         Item {
             Kirigami.FormData.isSection: true
             Kirigami.FormData.label: qsTr("Improve each photo")

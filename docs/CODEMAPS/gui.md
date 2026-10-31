@@ -9,6 +9,7 @@ Three layers; only `qt/` imports PySide6 (excluded from the main coverage run, t
 - `controller.py:Controller`: page state, folder, banner, scanner check; `set_mode`; owns the two sides
 - `worker.py:Worker` (one job thread: `check`, `scan`, `scan_documents`, `process_kept`, `cancel`) reports through `WorkerSink`
 - `modes.py`: `ModeSide` protocol, `PhotosSide`, `View`, `WorkerPort`; `docside.py:DocumentsSide`
+- Export preset field: `form.py:preset_of` (shared by both forms and prefs); Edit disabled for PNG in `photoeditside.eligibility`.
 - Forms/validation: `form.py:ScanForm`, `docform.py:DocumentForm`, `validate_document_form`, `to_document_settings`
 - Text/banners: `report.py` (`Banner`, `result_banner`, `error_banner`), `docreport.py`
 - Items: `photos.py:PhotoItem`, `documents.py:DocumentItem`; `prefs.py` (load/save forms and mode, JSON in user config); `doctools.py` (Documents-mode seams the tests replace)

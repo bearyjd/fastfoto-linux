@@ -45,3 +45,22 @@ def test_reset_adjustments_is_documented_as_covering_tone_and_white_balance():
         assert "tone and white balance" in text
     assert "sets every tone and white balance value" in README
     assert "overwrites" in README
+
+
+def test_reset_adjustments_is_documented_as_also_clearing_detail():
+    detail_labels = "Noise reduction, Colour noise and Sharpen"
+    for name in ("photo-tone.md", "photo-white-balance.md", "photo-detail.md"):
+        text = " ".join((ROOT / "docs" / "design" / name).read_text("utf-8").split())
+        assert "Reset adjustments" in text and detail_labels in text, name
+    assert "Reset adjustments" in README and detail_labels in README
+    assert "presets leave" in README.lower() and "one Undo step" in README
+
+
+def test_detail_sliders_are_documented_as_opt_in_and_slow_on_large_scans():
+    design = " ".join((ROOT / "docs" / "design" / "photo-detail.md").read_text("utf-8").split())
+    for text in (README, design):
+        assert "off by default" in text and "slow" in text
+    qml = (ROOT / "src" / "fastfoto_linux" / "gui" / "qml" / "PhotoDetailControls.qml").read_text(
+        encoding="utf-8"
+    )
+    assert "Optional and off by default" in qml

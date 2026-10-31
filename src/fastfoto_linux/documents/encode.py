@@ -45,12 +45,16 @@ class EncodedPage:
     preset: ExportPreset | None = None  # the export preset it was made with
 
 
-def _jpeg(pixels: np.ndarray, dpi: int, preset: ExportPreset | None = None) -> bytes:
+def _jpeg(pixels: np.ndarray, dpi: int) -> bytes:
     buffer = io.BytesIO()
-    if preset is None:
-        Image.fromarray(pixels).save(buffer, "JPEG", quality=JPEG_QUALITY, dpi=(dpi, dpi))
-        return buffer.getvalue()
+    Image.fromarray(pixels).save(buffer, "JPEG", quality=JPEG_QUALITY, dpi=(dpi, dpi))
+    return buffer.getvalue()
+
+
+def _preset_image(pixels: np.ndarray, dpi: int, preset: ExportPreset) -> bytes:
+    """A colour or grey page as the export ``preset`` writes it (JPEG, or PNG for lossless)."""
     export = DOCUMENT_EXPORTS[preset]
+    buffer = io.BytesIO()
     if export.quality is None:
         Image.fromarray(pixels).save(buffer, "PNG", dpi=(dpi, dpi))
     else:
@@ -106,10 +110,13 @@ def encode_page(  # noqa: PLR0913 - the hooks are the interface
     if mode is ColourMode.BW:
         data = _group4(pixels == WHITE, dpi)
     else:
-        max_dpi = None if preset is None else DOCUMENT_EXPORTS[preset].max_dpi
-        if max_dpi is not None:
-            pixels, dpi = downscale_to_dpi(pixels, dpi, max_dpi)
-        data = _jpeg(pixels, dpi, preset)
+        if preset is None:
+            data = _jpeg(pixels, dpi)
+        else:
+            max_dpi = DOCUMENT_EXPORTS[preset].max_dpi
+            if max_dpi is not None:
+                pixels, dpi = downscale_to_dpi(pixels, dpi, max_dpi)
+            data = _preset_image(pixels, dpi, preset)
     height, width = pixels.shape[:2]
     return EncodedPage(
         data,

@@ -67,8 +67,13 @@ def test_detail_sliders_are_documented_as_opt_in_and_slow_on_large_scans():
 
 
 def test_both_readme_reset_sentences_name_the_detail_sliders():
-    first = "**Reset adjustments** restores neutral tone, white balance and detail values (Noise reduction, Colour noise and Sharpen)"
-    second = "**Reset adjustments** also returns Temperature and Tint to 0 (and Noise reduction, Colour noise and Sharpen, see Detail below), in one Undo step"
-    assert first in README and second in README
-    third = "**Reset adjustments** also returns Noise reduction, Colour noise and Sharpen to 0, in the same single Undo step"
-    assert third in README
+    labels = "Noise reduction, Colour noise and Sharpen"
+    first = (
+        f"**Reset adjustments** restores neutral tone, white balance and detail values ({labels})"
+    )
+    second = (
+        "**Reset adjustments** also returns Temperature and Tint to 0 "
+        f"(and {labels}, see Detail below), in one Undo step"
+    )
+    third = f"**Reset adjustments** also returns {labels} to 0, in the same single Undo step"
+    assert first in README and second in README and third in README

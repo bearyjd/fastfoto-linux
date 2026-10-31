@@ -49,7 +49,7 @@ def test_non_integral_qml_values_are_rejected_without_touching_the_draft(
 @pytest.mark.parametrize("expression", GOOD)
 def test_integral_qml_numbers_are_accepted(make_bridge, out, target, expression):
     slot, field, prop = target
-    bridge, view, _worker = open_editor(make_bridge, out)
+    _bridge, view, _worker = open_editor(make_bridge, out)
     call_from_qml(view.color, slot, field, expression)
     assert not view.error
     assert getattr(view.color, prop)[field] == int(float(expression))

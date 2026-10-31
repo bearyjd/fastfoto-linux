@@ -109,14 +109,13 @@ def encode_page(  # noqa: PLR0913 - the hooks are the interface
     dpi = page.dpi
     if mode is ColourMode.BW:
         data = _group4(pixels == WHITE, dpi)
+    elif preset is None:
+        data = _jpeg(pixels, dpi)
     else:
-        if preset is None:
-            data = _jpeg(pixels, dpi)
-        else:
-            max_dpi = DOCUMENT_EXPORTS[preset].max_dpi
-            if max_dpi is not None:
-                pixels, dpi = downscale_to_dpi(pixels, dpi, max_dpi)
-            data = _preset_image(pixels, dpi, preset)
+        max_dpi = DOCUMENT_EXPORTS[preset].max_dpi
+        if max_dpi is not None:
+            pixels, dpi = downscale_to_dpi(pixels, dpi, max_dpi)
+        data = _preset_image(pixels, dpi, preset)
     height, width = pixels.shape[:2]
     return EncodedPage(
         data,

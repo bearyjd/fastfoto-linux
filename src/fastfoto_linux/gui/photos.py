@@ -5,8 +5,8 @@ from pathlib import Path
 
 from fastfoto_linux.output import WrittenFiles
 
-ENHANCED_SUFFIX = "_a"  # the enhanced copy is "<name>_a.jpg" beside "<name>.jpg"
-BACK_SUFFIX = "_b"  # the back is "<name>_b.jpg"
+ENHANCED_SUFFIX = "_a"  # the enhanced copy is "<name>_a.<ext>" beside "<name>.<ext>"
+BACK_SUFFIX = "_b"  # the back is "<name>_b.<ext>" (.jpg, or .png for Lossless)
 
 
 @dataclass(frozen=True)

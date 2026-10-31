@@ -213,7 +213,7 @@ QQC2.ScrollView {
         QQC2.Label {
             objectName: "docPresetHint"
             Layout.fillWidth: true
-            text: qsTr("Standard keeps the page format as before. High quality uses a finer JPEG. Small stores pages at 200 dpi at most. Lossless stores colour and grey pages as PNG, which makes a large PDF. Black-and-white pages are always lossless.")
+            text: qsTr("Small stores pages at 200 dpi at most; Lossless makes a large PDF.")
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
             font: Kirigami.Theme.smallFont

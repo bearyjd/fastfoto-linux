@@ -153,7 +153,7 @@ def _usable(
     if good and name in choices:
         good = value in choices[name]
     if not good:
-        logger.warning("ignoring %s in %s: %r is not a usable value", name, path, value)
+        logger.warning("ignoring %s in the settings file: not a usable value", name)
     return good
 
 

@@ -231,7 +231,7 @@ QQC2.ScrollView {
         QQC2.Label {
             objectName: "presetHint"
             Layout.fillWidth: true
-            text: qsTr("Standard saves JPEG as before. Small shrinks photos to at most 2048 pixels. Lossless saves very large PNG files, and those photos cannot be opened in the photo editor.")
+            text: qsTr("Small shrinks photos to 2048 pixels; Lossless saves large PNG files the editor cannot open.")
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
             font: Kirigami.Theme.smallFont

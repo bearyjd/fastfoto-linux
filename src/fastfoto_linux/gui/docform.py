@@ -17,6 +17,7 @@ from fastfoto_linux.gui.form import (
     FormInvalidError,
     ScanForm,
     check_preset,
+    preset_name,
     preset_of,
     validate,
     validate_syntax,
@@ -136,8 +137,7 @@ def update_document_field(form: DocumentForm, name: str, value: object) -> Docum
     if name == "dpi":
         return replace(form, dpi=whole_number(name, value))
     if name == "preset":
-        preset_of(value)  # a bad choice is refused, not stored
-        return replace(form, preset=value)  # type: ignore[arg-type]
+        return replace(form, preset=preset_name(value))  # a bad choice is refused, not stored
     return replace(form, **{name: str(value)})
 
 

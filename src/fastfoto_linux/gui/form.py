@@ -149,6 +149,15 @@ def preset_of(value: object) -> ExportPreset | None:
         raise ValueError(PRESET_ERROR) from None
 
 
+def preset_name(value: object) -> str:
+    """The form text for ``value``: ``""`` for Standard, else the preset's exact name.
+
+    Raises ValueError (fixed message) for anything that is not on the list.
+    """
+    preset = preset_of(value)
+    return "" if preset is None else preset.value
+
+
 def check_preset(value: object) -> str | None:
     """A fixed message when ``value`` is not Standard or a preset name, else None."""
     try:
@@ -249,7 +258,10 @@ def destination(form: ScanForm) -> str | None:
         folder = _folder(form) if album is None else _folder(form) / sanitise_album(album)
     except InvalidAlbumError:
         return None
-    preset = preset_of(form.preset)
+    try:
+        preset = preset_of(form.preset)
+    except ValueError:  # validation reports it; the preview shows the Standard name
+        preset = None
     ext = ".jpg" if preset is None else PHOTO_EXPORTS[preset].ext
     return f"{folder}/{prefix}_{NUMBER_PATTERN}{ext}"
 
@@ -263,8 +275,7 @@ def update_field(form: ScanForm, name: str, value: object) -> ScanForm:
     if name == "dpi":
         return replace(form, dpi=whole_number(name, value))
     if name == "preset":
-        preset_of(value)  # a bad choice is refused, not stored
-        return replace(form, preset=value)  # type: ignore[arg-type]
+        return replace(form, preset=preset_name(value))  # a bad choice is refused, not stored
     return replace(form, **{name: str(value)})
 
 

@@ -177,3 +177,68 @@ def test_the_guard_alone_refuses_what_pillow_might_forgive() -> None:
     flipped = good[:crc_at] + bytes([good[crc_at] ^ 1]) + good[crc_at + 1 :]
     with pytest.raises(PhotoEditError, match="not a supported"):
         check_png(flipped)
+
+
+def test_a_second_ihdr_is_refused_even_when_pillow_would_load_it(tmp_path: Path) -> None:
+    second = (b"IHDR", h.ihdr(h.WIDTH, h.HEIGHT, depth=16))
+    data = h.with_chunks(h.master_png(), before_idat=(second,))
+    _refused(tmp_path, data, "not a supported")
+    with pytest.raises(PhotoEditError, match="not a supported"):
+        check_png(data)
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        pytest.param((b"tRNS", b"\x00\x00\x00\x00\x00\x00"), id="trns"),
+        pytest.param((b"cHRM", b"\x00" * 32), id="chrm"),
+        pytest.param((b"cICP", b"\x09\x10\x00\x01"), id="cicp"),
+        pytest.param((b"mDCv", b"\x00" * 24), id="mdcv"),
+        pytest.param((b"cLLi", b"\x00" * 8), id="clli"),
+        pytest.param((b"gAMA", (100000).to_bytes(4, "big")), id="gama-other"),
+        pytest.param((b"gAMA", (45455).to_bytes(4, "big") + b"\x00"), id="gama-length"),
+    ],
+)
+def test_transparency_and_unkept_colour_settings_are_refused(tmp_path: Path, extra: tuple) -> None:
+    data = h.with_chunks(h.master_png(), before_idat=(extra,))
+    _refused(tmp_path, data, "transparency or colour settings")
+    with pytest.raises(PhotoEditError, match="transparency or colour settings"):
+        check_png(data)
+
+
+def test_srgb_nominal_gamma_is_accepted(tmp_path: Path) -> None:
+    gama = (b"gAMA", (45455).to_bytes(4, "big"))
+    assert _load(tmp_path, h.with_chunks(h.master_png(), before_idat=(gama,))).width == h.WIDTH
+
+
+@pytest.mark.parametrize(
+    "kind,data",
+    [
+        (b"pHYs", (23622).to_bytes(4, "big") * 2 + b"\x01"),
+        (b"iCCP", b"p\x00\x00x\x9c\x03\x00\x00\x00\x00\x01"),
+    ],
+)
+def test_duplicate_phys_or_iccp_is_refused(tmp_path: Path, kind: bytes, data: bytes) -> None:
+    base = h.master_png()
+    if kind == b"iCCP":
+        base = h.with_chunks(base, before_idat=((kind, data),))
+    assert any(k == kind for k, _ in h.split(base))
+    _refused(tmp_path, h.with_chunks(base, before_idat=((kind, data),)), "metadata")
+
+
+def test_compressed_xmp_is_capped_after_decompression(tmp_path: Path) -> None:
+    packet = b"<x:xmpmeta>" + b" " * 70_000 + b"</x:xmpmeta>"
+    chunk_ = h.itxt_xmp(packet, compressed=True)
+    assert len(chunk_[1]) < 1000
+    data = h.replace_kind(h.master_png(), b"iTXt", chunk_)
+    _refused(tmp_path, data, "metadata")
+
+
+def test_a_small_compressed_xmp_still_loads(tmp_path: Path) -> None:
+    packet = b"<x:xmpmeta>" + b" " * 100 + b"</x:xmpmeta>"
+    data = h.replace_kind(h.master_png(), b"iTXt", h.itxt_xmp(packet, compressed=True))
+    assert _load(tmp_path, data).xmp == packet
+
+
+def test_malformed_exif_is_a_clean_refusal(tmp_path: Path) -> None:
+    _refused(tmp_path, h.exif_png(h.ASCII_XRES), "not a supported")

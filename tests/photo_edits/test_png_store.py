@@ -1,12 +1,22 @@
 """PNG in, PNG out: the edit keeps the master's format, metadata and 600 dpi."""
 
+import hashlib
+import json
+from dataclasses import replace
 from pathlib import Path
 from threading import Event
 
 import numpy as np
+import pytest
 from PIL import Image
 
-from fastfoto_linux.photo_edits import load_source, open_edit, recipe_bytes, save_edit
+from fastfoto_linux.photo_edits import (
+    PhotoEditError,
+    load_source,
+    open_edit,
+    recipe_bytes,
+    save_edit,
+)
 from fastfoto_linux.photo_edits.model import PhotoEditRecipe
 from tests.photo_edits import png_helpers as h
 from tests.photo_edits.helpers import source_at
@@ -63,3 +73,96 @@ def test_a_jpeg_master_skips_numbers_taken_by_a_png_edit(tmp_path: Path) -> None
     source = source_at(tmp_path)
     (tmp_path / "photo_0001_edit-0001.png").write_bytes(b"x")
     assert save_edit(source, _recipe(source), cancel=Event()).image.name.endswith("0002.jpg")
+
+
+def test_open_edit_reports_the_png_format_and_an_equal_recipe(tmp_path: Path) -> None:
+    source = load_source(_master(tmp_path))
+    recipe = _recipe(source)
+    reopened, again = open_edit(save_edit(source, recipe, cancel=Event()).sidecar)
+    assert reopened.format == "PNG"
+    assert recipe_bytes(again) == recipe_bytes(recipe)
+
+
+def test_a_tampered_png_output_is_refused_on_reopen(tmp_path: Path) -> None:
+    source = load_source(_master(tmp_path))
+    saved = save_edit(source, _recipe(source), cancel=Event())
+    saved.image.write_bytes(saved.image.read_bytes() + b"x")
+    with pytest.raises(PhotoEditError, match="output hash changed"):
+        open_edit(saved.sidecar)
+
+
+def test_a_sidecar_pairing_a_png_source_with_a_jpg_output_is_refused(tmp_path: Path) -> None:
+    source = load_source(_master(tmp_path))
+    saved = save_edit(source, _recipe(source), cancel=Event())
+    jpg = saved.image.with_suffix(".jpg")
+    jpg.write_bytes(saved.image.read_bytes())
+    payload = json.loads(saved.sidecar.read_bytes())
+    payload["output"] = {"name": jpg.name, "sha256": hashlib.sha256(jpg.read_bytes()).hexdigest()}
+    saved.sidecar.write_bytes(json.dumps(payload).encode())
+    with pytest.raises(PhotoEditError, match="formats do not match"):
+        open_edit(saved.sidecar)
+
+
+def test_a_jpeg_source_with_a_png_output_name_is_refused(tmp_path: Path) -> None:
+    source = source_at(tmp_path)
+    saved = save_edit(source, _recipe(source), cancel=Event())
+    png = saved.image.with_suffix(".png")
+    png.write_bytes(saved.image.read_bytes())
+    payload = json.loads(saved.sidecar.read_bytes())
+    payload["output"] = {"name": png.name, "sha256": hashlib.sha256(png.read_bytes()).hexdigest()}
+    saved.sidecar.write_bytes(json.dumps(payload).encode())
+    with pytest.raises(PhotoEditError, match="formats do not match"):
+        open_edit(saved.sidecar)
+
+
+def _big_description_master(tmp_path: Path, size: int = 65_450) -> Path:
+    exif = Image.Exif()
+    exif[270] = "a" * size
+    tiff = exif.tobytes()[6:]
+    assert len(tiff) <= 65_533
+    path = tmp_path / "photo_0001.png"
+    path.write_bytes(h.replace_kind(h.master_png(), b"eXIf", (b"eXIf", tiff)))
+    return path
+
+
+def test_metadata_that_grows_past_the_input_limit_is_refused_on_save(tmp_path: Path) -> None:
+    source = load_source(_big_description_master(tmp_path))
+    with pytest.raises(PhotoEditError, match="metadata is too large"):
+        save_edit(source, _recipe(source), cancel=Event())
+    assert not list(tmp_path.glob("*_edit-*"))
+
+
+def test_xmp_that_grows_past_the_input_limit_is_refused_on_save(tmp_path: Path) -> None:
+    base = load_source(_master(tmp_path))
+    huge = replace(
+        base, xmp=b'<x:xmpmeta xmlns:x="adobe:ns:meta/">' + b" " * 65_600 + b"</x:xmpmeta>"
+    )
+    with pytest.raises(PhotoEditError, match="metadata is too large"):
+        save_edit(huge, _recipe(huge), cancel=Event())
+
+
+def test_a_jpeg_save_refuses_oversized_metadata_the_same_way(tmp_path: Path) -> None:
+    base = source_at(tmp_path)
+    exif = Image.Exif()
+    exif[270] = "a" * 65_450
+    huge = replace(base, exif=exif.tobytes())
+    with pytest.raises(PhotoEditError, match="metadata is too large"):
+        save_edit(huge, _recipe(huge), cancel=Event())
+
+
+def test_a_save_with_unwritable_exif_raises_photo_edit_error(tmp_path: Path) -> None:
+    source = replace(load_source(_master(tmp_path)), exif=b"Exif\x00\x00" + h.ASCII_XRES)
+    with pytest.raises(PhotoEditError):
+        save_edit(source, _recipe(source), cancel=Event())
+
+
+def test_600_dpi_survives_two_generations_exactly(tmp_path: Path) -> None:
+    source = load_source(_master(tmp_path))
+    first = save_edit(source, _recipe(source), cancel=Event())
+    reopened, recipe = open_edit(first.sidecar)
+    assert reopened.effective_dpi == 600
+    second = save_edit(reopened, recipe, cancel=Event())
+    edit = load_source(second.image)
+    assert (edit.dpi_x, edit.dpi_y) == (600, 600)
+    third = save_edit(edit, _recipe(edit), cancel=Event())
+    assert load_source(third.image).effective_dpi == 600

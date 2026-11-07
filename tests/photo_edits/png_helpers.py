@@ -76,3 +76,21 @@ def saved(mode: str, **kwargs: object) -> bytes:
     buffer = io.BytesIO()
     Image.new(mode, (WIDTH, HEIGHT)).save(buffer, "PNG", **kwargs)
     return buffer.getvalue()
+
+
+def itxt_xmp(packet: bytes, *, compressed: bool) -> tuple[bytes, bytes]:
+    head = b"XML:com.adobe.xmp\x00" + (b"\x01\x00" if compressed else b"\x00\x00") + b"\x00\x00"
+    return b"iTXt", head + (zlib.compress(packet) if compressed else packet)
+
+
+def replace_kind(png: bytes, kind: bytes, new: tuple[bytes, bytes] | None) -> bytes:
+    """Swap (or drop, with None) every chunk of ``kind``; a replacement goes before IDAT."""
+    kept = [c for c in split(png) if c[0] != kind]
+    return with_chunks(assemble(kept), before_idat=(new,) if new else ())
+
+
+def exif_png(tiff: bytes) -> bytes:
+    return replace_kind(master_png(), b"eXIf", (b"eXIf", tiff))
+
+
+ASCII_XRES = b"MM\x00*\x00\x00\x00\x08\x00\x01\x01\x1a\x00\x02\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00"

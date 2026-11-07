@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.invalid/fastfoto-linux/corpus/MANIFEST.schema.json",
+  "title": "FastFoto Linux corpus manifest",
+  "description": "Documentation of the manifest. The loader (corpus_manifest.py) is hand-written and is the authority; a test keeps this file in step with its constants. Per-feature annotation payloads are validated by the harnesses that use them.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "version", "split_seed", "items"],
+  "properties": {
+    "format": {"const": "fastfoto-corpus"},
+    "version": {"const": 1},
+    "split_seed": {
+      "description": "Seed of the tuning/heldout split (the same rule as red-eye's split_salt).",
+      "type": "string",
+      "pattern": "^[0-9a-f]{16,64}$"
+    },
+    "items": {
+      "type": "array",
+      "maxItems": 10000,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "path", "sha256", "kind", "split", "source", "licence", "consent_scope", "annotations"],
+        "properties": {
+          "id": {"description": "Opaque: never a name of a person or place.", "type": "string", "pattern": "^(?!\\.{1,2}$)[A-Za-z0-9._-]{1,128}$"},
+          "path": {
+            "description": "Relative POSIX path under the manifest directory; no symlink component.",
+            "type": "string",
+            "maxLength": 1024,
+            "pattern": "^(?!/)(?!.*//)(?!.*/$)(?!(.*/)?\\.\\.?(/|$))[^\\\\\\u0000-\\u001f\\u007f-\\u009f]+$"
+          },
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "kind": {"enum": ["photo", "document"]},
+          "split": {"description": "Must equal the split derived from split_seed, the group (or sha256).", "enum": ["tuning", "heldout"]},
+          "source": {"description": "Where the item came from. Never copied into reports.", "type": "string", "minLength": 1, "maxLength": 512, "pattern": "\\S"},
+          "licence": {"type": "string", "minLength": 1, "maxLength": 512, "pattern": "\\S"},
+          "consent_scope": {"enum": ["private-eval", "redistributable"]},
+          "group": {"description": "A print, its rescans and crops: they share one split.", "type": "string", "pattern": "^(?!\\.{1,2}$)[A-Za-z0-9._-]{1,128}$"},
+          "annotations": {
+            "type": "object",
+            "propertyNames": {"pattern": "^[a-z][a-z0-9_]{0,31}$"},
+            "additionalProperties": {"type": "object"}
+          }
+        }
+      }
+    }
+  }
+}

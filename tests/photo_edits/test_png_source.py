@@ -253,3 +253,17 @@ def test_malformed_exif_is_a_clean_refusal(tmp_path: Path, tiff: bytes, cause: t
     with pytest.raises(PhotoEditError, match="not a supported") as caught:
         _load(tmp_path, h.exif_png(tiff))
     assert isinstance(caught.value.__cause__, cause)
+
+
+@pytest.mark.parametrize("kind", [b"IDAT", b"iTXt", b"eXIf", b"IEND"])
+def test_a_bad_crc_on_any_chunk_is_refused(tmp_path: Path, kind: bytes) -> None:
+    chunks = h.split(h.master_png())
+    assert kind in {k for k, _ in chunks}
+    data = h.SIGNATURE + b"".join(h.chunk(k, d, crc=0 if k == kind else None) for k, d in chunks)
+    _refused(tmp_path, data, "not a supported")
+
+
+def test_two_xmp_packets_are_refused(tmp_path: Path) -> None:
+    second = h.itxt_xmp(b"<x><b>SECOND</b></x>", compressed=False)
+    data = h.with_chunks(h.master_png(), after_idat=(second,))
+    _refused(tmp_path, data, "metadata")

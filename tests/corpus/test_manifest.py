@@ -14,7 +14,7 @@ from fastfoto_linux.evaluation.corpus_manifest import (
     parse_corpus_manifest,
 )
 from fastfoto_linux.evaluation.redeye_split import derived_split
-from tests.corpus.helpers import SEED, document, encode, manifest_bytes, raw_item, sha
+from tests.corpus.helpers import SEED, document, encode, manifest_bytes, raw_item, sha, unsplit
 
 
 def _parse(*items: dict):
@@ -22,12 +22,13 @@ def _parse(*items: dict):
 
 
 def test_a_valid_manifest_parses() -> None:
-    manifest = _parse(raw_item("a", group="print-1"), raw_item("b", b"beta", kind="document"))
+    data = manifest_bytes(raw_item("a", group="print-1"), raw_item("b", b"beta", kind="document"))
+    manifest = parse_corpus_manifest(data)
     assert manifest.split_seed == SEED
     assert [i.id for i in manifest.items] == ["item-a", "item-b"]
     assert manifest.items[0].group == "print-1" and manifest.items[1].group is None
     assert manifest.items[1].kind == "document"
-    assert manifest.sha256 == sha(manifest_bytes(raw_item("a", group="print-1"), raw_item("b", b"beta", kind="document")))
+    assert manifest.sha256 == sha(data)
 
 
 @pytest.mark.parametrize("field", ["source", "licence", "consent_scope"])
@@ -64,7 +65,8 @@ def test_unknown_consent_scope_is_refused(value: object) -> None:
 
 
 def test_redistributable_consent_scope_is_accepted() -> None:
-    assert _parse(raw_item(consent_scope="redistributable")).items[0].consent_scope == "redistributable"
+    item = _parse(raw_item(consent_scope="redistributable")).items[0]
+    assert item.consent_scope == "redistributable"
 
 
 @pytest.mark.parametrize(
@@ -93,14 +95,17 @@ def test_duplicate_keys_nan_and_garbage_are_refused() -> None:
     good = manifest_bytes(raw_item()).decode()
     with pytest.raises(CorpusError, match="duplicate"):
         parse_corpus_manifest(good.replace('"kind"', '"kind": "photo", "kind"').encode())
-    for text in (good.replace('"annotations": {}', '"annotations": {"a": {"x": NaN}}'), "{", "[]", ""):
+    nan = good.replace('"annotations": {}', '"annotations": {"a": {"x": NaN}}')
+    for text in (nan, "{", "[]", ""):
         with pytest.raises(CorpusError):
             parse_corpus_manifest(text.encode())
     with pytest.raises(CorpusError):
         _parse(raw_item(annotations={"a": {"x": 1e999}}))
 
 
-@pytest.mark.parametrize("fmt, version", [("other", 1), ("fastfoto-corpus", 2), ("fastfoto-corpus", True)])
+@pytest.mark.parametrize(
+    "fmt, version", [("other", 1), ("fastfoto-corpus", 2), ("fastfoto-corpus", True)]
+)
 def test_format_and_version_are_checked(fmt: str, version: object) -> None:
     doc = document([raw_item()])
     doc["format"], doc["version"] = fmt, version
@@ -201,7 +206,7 @@ def test_the_split_rule_is_the_red_eye_rule_and_deterministic() -> None:
     items = [raw_item(str(n), str(n).encode()) for n in range(60)]
     for item in items:
         assert item["split"] == derived_split(SEED, None, item["sha256"])
-    stripped = [{k: v for k, v in i.items() if k != "split"} for i in items]
+    stripped = [unsplit(i) for i in items]
     first, second = assign_splits(stripped, SEED), assign_splits(stripped, SEED)
     assert first == second == items
     assert all("split" not in i for i in stripped)  # the input is not changed
@@ -210,16 +215,13 @@ def test_the_split_rule_is_the_red_eye_rule_and_deterministic() -> None:
 
 
 def test_a_different_seed_gives_a_different_assignment() -> None:
-    stripped = [{k: v for k, v in raw_item(str(n), str(n).encode()).items() if k != "split"} for n in range(60)]
+    stripped = [unsplit(raw_item(str(n), str(n).encode())) for n in range(60)]
     other = assign_splits(stripped, "f" * 32)
     assert [i["split"] for i in other] != [i["split"] for i in assign_splits(stripped, SEED)]
 
 
 def test_a_group_shares_one_split_whatever_the_hashes() -> None:
-    stripped = [
-        {k: v for k, v in raw_item(str(n), str(n).encode(), group="print-7").items() if k != "split"}
-        for n in range(20)
-    ]
+    stripped = [unsplit(raw_item(str(n), str(n).encode(), group="print-7")) for n in range(20)]
     assert len({i["split"] for i in assign_splits(stripped, SEED)}) == 1
 
 

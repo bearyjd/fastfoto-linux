@@ -88,6 +88,7 @@ chore, perf, ci. PR bodies have a summary, the design, a test plan and a privacy
 - Never put scanner serial numbers, personal paths, names, addresses or e-mail in code, tests, docs
   or PR text. Use placeholders.
 - Stage files by name (`git add path/to/file`), not `git add -A` or `git add .`.
+- Evaluation corpora (see `docs/design/corpus.md`) live outside the checkout, via `FASTFOTO_CORPUS_DIR`; never commit corpus images, their manifests or reports that quote their text or paths.
 - Tests that use private scans are marked `real_scans`, assert structure only (counts, boxes within
   a tolerance, booleans) and never print image content or OCR text.
 

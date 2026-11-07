@@ -83,7 +83,7 @@ def test_list_length_is_capped_at_32() -> None:
 
 def test_depth_is_capped_at_eight() -> None:
     ok: object = 1
-    for _ in range(7):
+    for _ in range(8):
         ok = {"a": ok}
     check_metrics_only(ok)  # eight containers deep
     with pytest.raises(CorpusError, match="deep"):
@@ -93,6 +93,12 @@ def test_depth_is_capped_at_eight() -> None:
 def test_pixel_lists_cannot_ride_along_as_long_lists() -> None:
     with pytest.raises(CorpusError):
         check_metrics_only({"m": list(range(1000))})
+
+
+SENTINELS = (
+    "SENTINELOCR", "Jane", "jane", "Studio", "Example Road", "SENTINELPATH",
+    "private", "SENTINELBYTES", "item-", ".bin",
+)  # fmt: skip
 
 
 def _loaded(tmp_path):
@@ -121,8 +127,7 @@ def test_the_report_holds_counts_and_metrics_but_no_private_strings(tmp_path) ->
         out = serialise_report(build_report(manifest, {"cer": 0.25, "tag": "run1"}))
         digest = manifest.sha256
     text = out.decode()
-    for sentinel in ("SENTINELOCR", "Jane", "jane", "Studio", "Example Road", "SENTINELPATH",
-                     "private", "SENTINELBYTES", "item-", sha(b"SENTINELBYTES-0123"), ".bin"):  # fmt: skip
+    for sentinel in (*SENTINELS, sha(b"SENTINELBYTES-0123")):
         assert sentinel not in text
     report = json.loads(text)
     assert report["manifest_sha256"] == digest

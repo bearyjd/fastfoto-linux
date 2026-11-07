@@ -53,3 +53,7 @@ def write_corpus(root: Path, files: dict[str, bytes]) -> Path:
     manifest = root / "MANIFEST.json"
     manifest.write_bytes(encode(document(items)))
     return manifest
+
+
+def unsplit(item: dict) -> dict:
+    return {k: v for k, v in item.items() if k != "split"}

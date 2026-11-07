@@ -161,3 +161,19 @@ def test_error_messages_never_name_the_path(tmp_path: Path) -> None:
     with pytest.raises(PhotoEditError) as caught:
         _load(tmp_path, h.saved("RGBA"))
     assert str(tmp_path) not in str(caught.value)
+
+
+def test_the_guard_alone_refuses_what_pillow_might_forgive() -> None:
+    good = h.master_png()
+    check_png(good)
+    for bad in (b"", b"GIF89a" + good[6:], good[:6]):
+        with pytest.raises(PhotoEditError, match="not a supported"):
+            check_png(bad)
+    with pytest.raises(PhotoEditError, match="not a supported"):
+        check_png(h.replace_ihdr(good, h.ihdr(0, h.HEIGHT)))
+    with pytest.raises(PhotoEditError, match="not a supported"):
+        check_png(h.replace_ihdr(good, h.ihdr(h.WIDTH, 0)))
+    crc_at = len(h.SIGNATURE) + 8 + 13
+    flipped = good[:crc_at] + bytes([good[crc_at] ^ 1]) + good[crc_at + 1 :]
+    with pytest.raises(PhotoEditError, match="not a supported"):
+        check_png(flipped)

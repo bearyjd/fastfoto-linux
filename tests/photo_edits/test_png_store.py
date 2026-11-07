@@ -57,3 +57,9 @@ def test_a_jpeg_master_still_saves_a_jpeg(tmp_path: Path) -> None:
     source = source_at(tmp_path)
     saved = save_edit(source, _recipe(source), cancel=Event())
     assert saved.image.suffix == ".jpg"
+
+
+def test_a_jpeg_master_skips_numbers_taken_by_a_png_edit(tmp_path: Path) -> None:
+    source = source_at(tmp_path)
+    (tmp_path / "photo_0001_edit-0001.png").write_bytes(b"x")
+    assert save_edit(source, _recipe(source), cancel=Event()).image.name.endswith("0002.jpg")

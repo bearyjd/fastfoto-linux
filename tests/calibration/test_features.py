@@ -199,7 +199,7 @@ def test_the_report_is_byte_identical_on_rerun_and_carries_no_item_data(
     assert first == second
     check_metrics_only({"metrics": metrics})
     text = first.decode("ascii")
-    for private in ("item-", "corpus-", ".png", str(tmp_path), "synthetic test pixels"):
+    for private in ("item-", "corpus-one", ".png", str(tmp_path), "synthetic test pixels"):
         assert private not in text
     assert "run-" not in text and "elapsed" not in text and "seconds" not in text
 

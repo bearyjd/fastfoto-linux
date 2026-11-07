@@ -5,6 +5,9 @@ from pathlib import Path
 
 import pytest
 
+from fastfoto_linux.evaluation.calib_run import resolve_out
+from fastfoto_linux.evaluation.corpus_manifest import load_corpus_manifest
+from fastfoto_linux.evaluation.redeye_manifest import ManifestError
 from tests.calibration.synth import (
     AUTO_DPI,
     Entry,
@@ -197,3 +200,18 @@ def test_a_one_bit_page_is_accepted(tmp_path) -> None:
     corpus = write_corpus(tmp_path / "corpus", entries)
     assert run_cli(LABEL, "--corpus", corpus.parent, "--out", tmp_path / "out") == 0
     assert only_report(tmp_path)["metrics"]["counts"]["errored"] == 0
+
+
+@pytest.mark.parametrize("pin", ["abc", "G" * 64, "F" * 64])
+def test_a_malformed_pin_is_called_malformed_not_mismatched(corpus, tmp_path, capsys, pin) -> None:
+    code = run_cli(
+        LABEL, "--corpus", corpus.parent, "--out", tmp_path / "out", "--expect-manifest-sha256", pin
+    )
+    assert code == 2 and "hexadecimal" in capsys.readouterr().err
+
+
+def test_the_output_location_is_refused_before_any_item_is_read(corpus) -> None:
+    with load_corpus_manifest(corpus) as manifest:
+        for inside in (corpus.parent, corpus.parent / "results" / "deep"):
+            with pytest.raises(ManifestError):
+                resolve_out(LABEL, manifest, inside, {})

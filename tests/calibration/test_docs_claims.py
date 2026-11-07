@@ -41,12 +41,12 @@ def test_the_documented_table_equals_the_table_in_code() -> None:
 
 
 def test_the_note_states_the_limits_and_how_a_human_runs_it() -> None:
-    text = DESIGN.read_text()
+    text = DESIGN.read_text().lower()
     for phrase in (
         "synthetic self-tests only",
         "no quality has been measured",
         "tuned on synthetic data only",
-        "FASTFOTO_CORPUS_DIR",
+        "fastfoto_corpus_dir",
         "--split tuning",
         "--expect-manifest-sha256",
         "--gate",

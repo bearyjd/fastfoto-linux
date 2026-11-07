@@ -267,3 +267,12 @@ def test_cyclic_metrics_are_refused_not_walked_forever(tmp_path) -> None:
     metrics["scores"] = metrics
     with _loaded(tmp_path) as manifest, pytest.raises(CorpusError):
         build_report(manifest, metrics)
+
+
+def test_read_only_mappings_are_accepted_as_metrics(tmp_path) -> None:
+    from types import MappingProxyType
+
+    metrics = MappingProxyType({"cer": 0.25, "by": MappingProxyType({"wer": 0.5})})
+    with _loaded(tmp_path) as manifest:
+        report = build_report(manifest, metrics)
+    assert report["metrics"] == {"cer": 0.25, "by": {"wer": 0.5}}

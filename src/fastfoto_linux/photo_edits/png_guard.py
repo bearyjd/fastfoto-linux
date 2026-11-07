@@ -9,6 +9,10 @@ from fastfoto_linux.photo_edits.model import MAX_SOURCE_PIXELS, PhotoEditError
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 MAX_CHUNKS = 4096
 MAX_METADATA_CHUNK = 65_533
+# The XMP packet itself: a JPEG APP1 spends 29 bytes on its namespace prefix, a PNG iTXt 22 on
+# its header, so this packet fits either container and a saved edit always reopens.
+JPEG_XMP_PREFIX = 29
+MAX_XMP_PACKET = MAX_METADATA_CHUNK - JPEG_XMP_PREFIX
 MAX_CHUNK_LENGTH = 0x7FFFFFFF
 IHDR_LENGTH = 13
 XMP_KEYWORD = b"XML:com.adobe.xmp\x00"

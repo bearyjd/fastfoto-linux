@@ -19,6 +19,7 @@ from fastfoto_linux.photo_edits import (
     save_edit,
 )
 from fastfoto_linux.photo_edits.model import PhotoEditRecipe
+from fastfoto_linux.photo_edits.png_guard import MAX_XMP_PACKET
 from tests.photo_edits import png_helpers as h
 from tests.photo_edits.helpers import source_at
 
@@ -175,3 +176,41 @@ def test_600_dpi_survives_two_generations_exactly(tmp_path: Path) -> None:
     assert (edit.dpi_x, edit.dpi_y) == (600, 600)
     third = save_edit(edit, _recipe(edit), cancel=Event())
     assert load_source(third.image).effective_dpi == 600
+
+
+def _xmp_packet(size: int) -> bytes:
+    head, tail = b'<x:xmpmeta xmlns:x="adobe:ns:meta/">', b"</x:xmpmeta>"
+    return head + b" " * (size - len(head) - len(tail)) + tail
+
+
+def test_the_largest_accepted_xmp_survives_save_and_reopen(tmp_path: Path) -> None:
+    path = tmp_path / "Album_0001.png"
+    packet = _xmp_packet(MAX_XMP_PACKET)
+    path.write_bytes(h.replace_kind(h.master_png(), b"iTXt", h.itxt_xmp(packet, compressed=True)))
+    source = load_source(path)
+    assert source.xmp == packet
+    saved = save_edit(source, _recipe(source), cancel=Event())
+    assert load_source(saved.image).xmp == packet
+
+
+def test_an_xmp_one_byte_past_the_packet_limit_is_refused_on_load(tmp_path: Path) -> None:
+    path = tmp_path / "Album_0001.png"
+    packet = _xmp_packet(MAX_XMP_PACKET + 1)
+    path.write_bytes(h.replace_kind(h.master_png(), b"iTXt", h.itxt_xmp(packet, compressed=True)))
+    with pytest.raises(PhotoEditError, match="metadata"):
+        load_source(path)
+
+
+def test_a_png_save_refuses_xmp_whose_chunk_would_not_reopen(tmp_path: Path) -> None:
+    base = load_source(_master(tmp_path))
+    huge = replace(base, xmp=_xmp_packet(MAX_XMP_PACKET + 1))
+    with pytest.raises(PhotoEditError, match="metadata is too large"):
+        save_edit(huge, _recipe(huge), cancel=Event())
+
+
+@pytest.mark.parametrize("kind", ["png", "jpeg"])
+def test_a_dpi_the_file_format_cannot_store_is_refused_on_save(tmp_path: Path, kind: str) -> None:
+    base = load_source(_master(tmp_path)) if kind == "png" else source_at(tmp_path)
+    huge = replace(base, dpi_x=200_000_000.0, dpi_y=200_000_000.0, effective_dpi=200_000_000.0)
+    with pytest.raises(PhotoEditError, match="resolution"):
+        save_edit(huge, _recipe(huge), cancel=Event())

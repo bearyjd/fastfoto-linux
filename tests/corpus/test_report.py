@@ -251,3 +251,19 @@ def test_serialise_refuses_a_tampered_envelope(tmp_path) -> None:
     for tamper in ({"manifest_sha256": "Jane Doe"}, {"format": "x"}, {"extra": 1}):
         with pytest.raises(CorpusError):
             serialise_report({**report, **tamper})
+
+
+def test_the_report_does_not_alias_the_callers_metrics(tmp_path) -> None:
+    metrics: dict = {"scores": {}}
+    with _loaded(tmp_path) as manifest:
+        report = build_report(manifest, metrics)
+    metrics["scores"]["sentinelpath"] = 1  # added after the echo check ran
+    assert b"sentinelpath" not in serialise_report(report)
+
+
+@pytest.mark.timeout(5)
+def test_cyclic_metrics_are_refused_not_walked_forever(tmp_path) -> None:
+    metrics: dict = {}
+    metrics["scores"] = metrics
+    with _loaded(tmp_path) as manifest, pytest.raises(CorpusError):
+        build_report(manifest, metrics)

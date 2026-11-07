@@ -23,6 +23,7 @@ from tests.documents.test_ocr_languages import (
 )
 
 models = shared.models
+tmp_path = shared.tmp_path  # moved off an untrusted /tmp, like the shared module's
 
 
 def test_private_opener_rejects_redirect_before_following_official_host(

@@ -33,6 +33,7 @@ class _Scan:
     """Mutable only inside one bounded scan; never escapes this module."""
 
     exif_chunks: int = 0
+    xmp_chunks: int = 0
     seen_idat: bool = False
     seen_iend: bool = False
     iccp_chunks: int = 0
@@ -102,8 +103,10 @@ def _check_chunk(kind: bytes, data: bytes, start: int, length: int, scan: _Scan)
         scan.exif_chunks += 1
         if scan.exif_chunks > 1 or scan.seen_idat or length > MAX_METADATA_CHUNK:
             raise PhotoEditError(BAD_METADATA)
-    elif kind == b"iTXt" and data.startswith(XMP_KEYWORD, start) and length > MAX_METADATA_CHUNK:
-        raise PhotoEditError(BAD_METADATA)
+    elif kind == b"iTXt" and data.startswith(XMP_KEYWORD, start):
+        scan.xmp_chunks += 1
+        if scan.xmp_chunks > 1 or length > MAX_METADATA_CHUNK:
+            raise PhotoEditError(BAD_METADATA)
 
 
 def check_png(data: bytes) -> None:
@@ -116,6 +119,7 @@ def check_png(data: bytes) -> None:
         if scan.seen_iend or pos >= len(data):
             break
         kind, start, length = _read_header(data, pos)
+        _check_crc(data, start, length)
         _check_chunk(kind, data, start, length, scan)
         pos = start + length + 4
     else:

@@ -97,3 +97,9 @@ ASCII_XRES = (
     b"MM\x00*\x00\x00\x00\x08\x00\x01\x01\x1a\x00\x02\x00\x00\x00\x01"
     b"\x00\x00\x00\x00\x00\x00\x00\x00"
 )
+
+
+def one_tag_tiff(tag: int, kind: int, count: int = 1, value: bytes = b"\x00" * 4) -> bytes:
+    """Big-endian TIFF with one IFD entry; a mistyped tag crafts malformed EXIF."""
+    entry = tag.to_bytes(2, "big") + kind.to_bytes(2, "big") + count.to_bytes(4, "big") + value
+    return b"MM\x00*\x00\x00\x00\x08\x00\x01" + entry + b"\x00" * 4

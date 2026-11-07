@@ -1,5 +1,6 @@
 """PNG masters: accepted metadata, and every refusal happens before pixels are decoded."""
 
+import struct
 import zlib
 from pathlib import Path
 
@@ -240,5 +241,15 @@ def test_a_small_compressed_xmp_still_loads(tmp_path: Path) -> None:
     assert _load(tmp_path, data).xmp == packet
 
 
-def test_malformed_exif_is_a_clean_refusal(tmp_path: Path) -> None:
-    _refused(tmp_path, h.exif_png(h.ASCII_XRES), "not a supported")
+@pytest.mark.parametrize(
+    "tiff,cause",
+    [
+        pytest.param(h.ASCII_XRES, TypeError, id="ascii-xresolution"),
+        pytest.param(h.one_tag_tiff(256, 2), struct.error, id="ascii-imagewidth"),
+        pytest.param(h.one_tag_tiff(270, 5), AttributeError, id="rational-description"),
+    ],
+)
+def test_malformed_exif_is_a_clean_refusal(tmp_path: Path, tiff: bytes, cause: type) -> None:
+    with pytest.raises(PhotoEditError, match="not a supported") as caught:
+        _load(tmp_path, h.exif_png(tiff))
+    assert isinstance(caught.value.__cause__, cause)

@@ -1,0 +1,39 @@
+{
+  "format": "fastfoto-corpus",
+  "version": 1,
+  "split_seed": "0123456789abcdef0123456789abcdef",
+  "items": [
+    {
+      "id": "photo-0001",
+      "path": "photos/photo-0001.png",
+      "sha256": "fc69e6aadc3645618f2b1b3ecb9ce2f08e69e2df53aa40b30fad1aad35fa0e7a",
+      "kind": "photo",
+      "source": "Example only: no such file exists",
+      "licence": "CC0-1.0",
+      "consent_scope": "redistributable",
+      "annotations": {
+        "deskew": {
+          "angle_deg": 1.5
+        }
+      },
+      "group": "print-0001",
+      "split": "tuning"
+    },
+    {
+      "id": "page-0001",
+      "path": "pages/page-0001.png",
+      "sha256": "fd3723e4e489499550259f9696a33e973797680970490e36c6ccfc06c41e3764",
+      "kind": "document",
+      "source": "Example only: no such file exists",
+      "licence": "private, all rights reserved",
+      "consent_scope": "private-eval",
+      "annotations": {
+        "ocr": {
+          "language": "en",
+          "lines": 3
+        }
+      },
+      "split": "heldout"
+    }
+  ]
+}

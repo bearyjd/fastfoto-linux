@@ -20,7 +20,7 @@ def _requested(explicit: Path | None, env: Mapping[str, str]) -> str:
         or not chosen.startswith("/")
         or any(part in (".", "..") for part in chosen.split("/"))
     ):
-        raise CorpusError("the corpus directory must be an absolute path without '.' or '..'")
+        raise CorpusError("the corpus directory must be an absolute path without '.', '..' or NUL")
     return chosen
 
 

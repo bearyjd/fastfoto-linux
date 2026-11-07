@@ -92,7 +92,7 @@ def test_an_unreadable_pyproject_is_reported_as_unverifiable_not_as_a_checkout(t
 
 
 def test_a_nul_in_the_path_is_a_corpus_error(tmp_path) -> None:
-    with pytest.raises(CorpusError):
+    with pytest.raises(CorpusError, match="NUL"):
         corpus_root(None, {ENV_VAR: str(tmp_path) + "/a\0b"})
 
 

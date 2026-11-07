@@ -231,3 +231,20 @@ def test_read_verified_leaks_no_descriptor(tmp_path) -> None:
 def test_an_unencodable_manifest_path_is_a_corpus_error(tmp_path) -> None:
     with pytest.raises(CorpusError, match="cannot read"):
         load_corpus_manifest(tmp_path / "\ud800" / "MANIFEST.json")
+
+
+def test_the_size_is_charged_before_any_byte_is_read(tmp_path, monkeypatch) -> None:
+    manifest = write_corpus(tmp_path, {"a.bin": b"12345"})
+    monkeypatch.setattr(corpus_verify, "MAX_TOTAL_BYTES", 4)
+    monkeypatch.setattr(corpus_verify, "read_up_to", lambda *a: pytest.fail("read"))
+    with pytest.raises(CorpusError, match="too large"):
+        load_corpus_manifest(manifest)
+
+
+def test_a_file_that_grows_past_the_budget_while_read_is_stopped(tmp_path, monkeypatch) -> None:
+    manifest = write_corpus(tmp_path, {"a.bin": b"12345"})
+    chunks = iter([b"xxxx"] * 100)
+    monkeypatch.setattr(corpus_verify, "MAX_TOTAL_BYTES", 10)
+    monkeypatch.setattr(corpus_verify, "read_up_to", lambda *a: next(chunks, b""))
+    with pytest.raises(CorpusError, match="too large"):
+        load_corpus_manifest(manifest)

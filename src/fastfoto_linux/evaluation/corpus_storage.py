@@ -33,7 +33,7 @@ def corpus_root(explicit: Path | None, env: Mapping[str, str]) -> Path:
     root = Path(_requested(explicit, env))
     try:
         os.close(open_resolved_dir(root))  # no symlink component, and it is a directory
-    except OSError:
+    except (OSError, ValueError):
         raise CorpusError("cannot open the corpus directory (symlinks are refused)") from None
     check_outside_checkout(root)
     return root

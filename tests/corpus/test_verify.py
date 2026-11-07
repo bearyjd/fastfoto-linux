@@ -226,3 +226,8 @@ def test_read_verified_leaks_no_descriptor(tmp_path) -> None:
         with pytest.raises(CorpusError):
             read_verified(loaded, loaded.items[0])
         assert _fds() == before
+
+
+def test_an_unencodable_manifest_path_is_a_corpus_error(tmp_path) -> None:
+    with pytest.raises(CorpusError, match="cannot read"):
+        load_corpus_manifest(tmp_path / "\ud800" / "MANIFEST.json")

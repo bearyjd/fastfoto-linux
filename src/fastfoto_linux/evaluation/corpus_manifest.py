@@ -319,7 +319,7 @@ def load_corpus_manifest(path: Path, verify: bool = True) -> CorpusManifest:
     location = _manifest_location(path)
     try:
         dir_fd = open_resolved_dir(location.parent)
-    except OSError:
+    except (OSError, ValueError):
         raise CorpusError("cannot read the manifest file") from None
     try:
         check_outside_checkout(location.parent)

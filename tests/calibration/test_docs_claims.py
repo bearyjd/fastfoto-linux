@@ -8,7 +8,8 @@ from fastfoto_linux.evaluation.calib_thresholds import THRESHOLDS
 ROOT = Path(__file__).resolve().parents[2]
 DESIGN = ROOT / "docs" / "design" / "calibration-harness.md"
 HEADER = (
-    "| feature | constants | design note | harness | criterion | metric | op | value | automated |"
+    "| feature | constants | design note | harness | criterion | metric | op | value |"
+    " automated | label |"
 )
 
 
@@ -23,15 +24,27 @@ def table_rows() -> list[list[str]]:
     return rows
 
 
+def shown(value: float | str) -> str:
+    return value if isinstance(value, str) else f"{value:g}"
+
+
 def code_rows() -> list[list[str]]:
     rows = []
     for row in THRESHOLDS:
         head = [row.feature, row.family, row.design_doc, row.harness]
         if not row.criteria:
-            rows.append([*head, "-", "-", "-", "-", "-"])
+            rows.append([*head, "-", "-", "-", "-", "-", "-"])
         for c in row.criteria:
             rows.append(
-                [*head, c.key, c.metric, c.op, f"{c.value:g}", "yes" if c.automated else "no"]
+                [
+                    *head,
+                    c.key,
+                    c.metric,
+                    c.op,
+                    shown(c.value),
+                    "yes" if c.automated else "no",
+                    c.label,
+                ]
             )
     return rows
 
@@ -50,6 +63,9 @@ def test_the_note_states_the_limits_and_how_a_human_runs_it() -> None:
         "--split tuning",
         "--expect-manifest-sha256",
         "--gate",
+        "denoise, then sharpen",
+        "min_n = 5",
+        "proposal",
     ):
         assert phrase in text
     assert len(text.splitlines()) <= 300

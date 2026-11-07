@@ -3,20 +3,28 @@
 import json
 from pathlib import Path
 
+import numpy as np
 import pytest
 
+from fastfoto_linux.evaluation import calib_run
 from fastfoto_linux.evaluation.calib_run import resolve_out
 from fastfoto_linux.evaluation.corpus_manifest import load_corpus_manifest
+from fastfoto_linux.evaluation.corpus_types import CorpusError
 from fastfoto_linux.evaluation.redeye_manifest import ManifestError
 from tests.calibration.synth import (
     AUTO_DPI,
+    DETAIL_NOTE,
     Entry,
     bilevel_png,
     colour_png,
+    detail_png,
+    grey_page,
     manifest_sha,
     png,
     reports,
     run_cli,
+    text_png,
+    wb_png,
     write_corpus,
 )
 from tests.documents.auto_helpers import auto_page
@@ -36,7 +44,10 @@ def base_entries() -> list[Entry]:
     return [
         entry("t1", colour_png("text"), "bw", "tuning"),
         entry("h1", colour_png("stamp"), "colour", "heldout"),
-        entry("h2", colour_png("gradient"), "grey", "heldout"),
+        entry("h2", colour_png("red_stroke"), "colour", "heldout"),
+        entry("h3", colour_png("gradient"), "grey", "heldout"),
+        entry("h4", colour_png("reversed"), "grey", "heldout"),
+        entry("h5", colour_png("sepia"), "colour", "heldout"),
     ]
 
 
@@ -99,35 +110,46 @@ def test_the_gate_needs_the_held_out_split_and_a_pin(corpus, tmp_path) -> None:
     assert not out.exists()
 
 
-def test_a_passing_gate_exits_zero_and_records_every_criterion(corpus, tmp_path, capsys) -> None:
+def test_a_passing_gate_says_only_automated_criteria_were_judged(corpus, tmp_path, capsys) -> None:
     assert heldout(corpus, tmp_path, "--gate") == 0
-    assert "GATE PASS" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "GATE PASS" not in out and "only automated criteria" in out
+    assert "not a section 4.9 pass" in out
     metrics = only_report(tmp_path)["metrics"]
     assert metrics["criteria"] == {"colour_loss_zero": "pass", "over_retention": "pass"}
-    assert metrics["counts"]["n"] == 2 and metrics["counts"]["errored"] == 0
+    assert metrics["counts"]["n"] == 5 and metrics["counts"]["errored"] == 0
 
 
 def test_a_failing_criterion_exits_five_but_still_writes_the_report(tmp_path, capsys) -> None:
-    entries = [*base_entries(), entry("h3", colour_png("faint"), "colour", "heldout")]
+    entries = [*base_entries(), entry("h6", colour_png("faint"), "colour", "heldout")]
     corpus = write_corpus(tmp_path / "corpus", entries)  # a grey result for a colour label
     assert heldout(corpus, tmp_path, "--gate") == 5
-    assert "GATE FAIL" in capsys.readouterr().out
+    assert "AUTOMATED GATE FAIL" in capsys.readouterr().out
     assert only_report(tmp_path)["metrics"]["criteria"]["colour_loss_zero"] == "fail"
 
 
 def test_over_retention_above_the_limit_fails_the_gate(tmp_path) -> None:
-    entries = [*base_entries(), entry("h3", colour_png("sepia"), "bw", "heldout")]
-    corpus = write_corpus(tmp_path / "corpus", entries)  # 1 of 3 kept more than needed
+    entries = [
+        entry(
+            e.name,
+            e.data,
+            "bw" if e.name in ("h2", "h5") else e.annotations[LABEL]["label"],
+            e.split,
+        )
+        for e in base_entries()
+    ]  # 2 of 5 kept more than needed
+    corpus = write_corpus(tmp_path / "corpus", entries)
     assert heldout(corpus, tmp_path, "--gate") == 5
     assert only_report(tmp_path)["metrics"]["criteria"]["over_retention"] == "fail"
 
 
 def test_an_errored_held_out_item_fails_the_gate_however_good_the_rest(tmp_path) -> None:
-    entries = [*base_entries(), entry("h3", b"not an image", "bw", "heldout")]
+    tiny = png(np.full((20, 20), 200, np.uint8), dpi=100)  # decodes, but under 10 mm
+    entries = [*base_entries(), entry("h6", tiny, "bw", "heldout")]
     corpus = write_corpus(tmp_path / "corpus", entries)
     assert heldout(corpus, tmp_path, "--gate") == 5
     counts = only_report(tmp_path)["metrics"]["counts"]
-    assert counts["errored"] == 1 and counts["n"] == 3
+    assert counts["errored"] == 1 and counts["n"] == 6
 
 
 def test_a_gate_with_no_annotated_held_out_items_is_insufficient_data(tmp_path) -> None:
@@ -215,3 +237,129 @@ def test_the_output_location_is_refused_before_any_item_is_read(corpus) -> None:
         for inside in (corpus.parent, corpus.parent / "results" / "deep"):
             with pytest.raises(ManifestError):
                 resolve_out(LABEL, manifest, inside, {})
+
+
+def test_skipped_held_out_items_fail_the_gate(tmp_path, capsys) -> None:
+    unannotated = Entry("h9", colour_png("faint"), "document", "heldout", {})
+    corpus = write_corpus(tmp_path / "corpus", [*base_entries(), unannotated])
+    assert heldout(corpus, tmp_path, "--gate") == 5
+    assert "skipped items" in capsys.readouterr().out
+    assert only_report(tmp_path)["metrics"]["counts"]["skipped"] == 1
+
+
+def test_a_gate_run_lists_the_human_criteria_that_are_pending(tmp_path, capsys) -> None:
+    cast = {"wb": {"neutral_boxes": [[60, 20, 40, 20]], "cast": True}}
+    entries = [Entry("t0", wb_png(True, 99), "photo", "tuning", cast)]
+    entries += [Entry(f"h{i}", wb_png(True, i), "photo", "heldout", cast) for i in range(5)]
+    corpus = write_corpus(tmp_path / "corpus", entries)
+    code = run_cli(
+        "wb", "--corpus", corpus.parent, "--out", tmp_path / "out", "--split", "heldout",
+        "--expect-manifest-sha256", manifest_sha(corpus), "--gate",
+    )  # fmt: skip
+    out = capsys.readouterr().out
+    assert code == 0 and "GATE PASS" not in out
+    assert "pending" in out and "ab_preference" in out
+
+
+def gate_run(tmp_path: Path, feature: str, entries: list[Entry], *extra: str) -> tuple[int, dict]:
+    corpus = write_corpus(tmp_path / "corpus", entries)
+    code = run_cli(
+        feature, "--corpus", corpus.parent, "--out", tmp_path / "out", "--split", "heldout",
+        "--expect-manifest-sha256", manifest_sha(corpus), "--gate", *extra,
+    )  # fmt: skip
+    return code, only_report(tmp_path)["metrics"]
+
+
+def test_a_deskew_gate_resolves_to_pass_or_fail_not_insufficient(tmp_path) -> None:
+    pages = [(-40, 11), (25, 12), (60, 13), (-15, 14), (35, 15)]
+
+    def entries(sign: int) -> list[Entry]:
+        held = [
+            Entry(f"h{i}", text_png(t, seed), "document", "heldout",
+                  {"deskew": {"correction_tenths": [-t * sign]}})
+            for i, (t, seed) in enumerate(pages)
+        ]  # fmt: skip
+        return [Entry("t0", text_png(20, 1), "document", "tuning", {}), *held]
+
+    code, metrics = gate_run(tmp_path / "good", "deskew", entries(1))
+    assert code == 0 and set(metrics["criteria"].values()) == {"pass"}
+    code, metrics = gate_run(tmp_path / "bad", "deskew", entries(-1))
+    assert code == 5 and metrics["criteria"]["wrong_direction"] == "fail"
+    assert "insufficient_data" not in metrics["criteria"].values()
+
+
+def test_a_wb_gate_resolves_the_restore_criterion(tmp_path) -> None:
+    cast = {"wb": {"neutral_boxes": [[60, 20, 40, 20]], "cast": True}}
+    entries = [Entry("t0", wb_png(True, 99), "photo", "tuning", cast)]
+    entries += [Entry(f"h{i}", wb_png(True, i), "photo", "heldout", cast) for i in range(5)]
+    code, metrics = gate_run(tmp_path, "wb", entries)
+    assert metrics["criteria"]["restore_de00_improvement"] == "pass" and code == 0
+
+
+def test_a_detail_gate_resolves_every_criterion(tmp_path) -> None:
+    note = {"detail": DETAIL_NOTE}
+    entries = [Entry("t0", detail_png(99), "photo", "tuning", note)]
+    entries += [Entry(f"h{i}", detail_png(i), "photo", "heldout", note) for i in range(5)]
+    code, metrics = gate_run(tmp_path, "detail", entries)
+    statuses = set(metrics["criteria"].values())
+    assert statuses <= {"pass", "fail"}
+    assert code == (0 if statuses == {"pass"} else 5)
+
+
+def test_a_grey_page_and_its_rgb_copy_are_the_same_picture_for_the_leak_check(
+    tmp_path, capsys
+) -> None:
+    grey = grey_page()
+    twin = png(np.stack([grey] * 3, axis=-1), dpi=100)
+    entries = [
+        entry("t1", png(grey, dpi=100), "bw", "tuning"),
+        entry("h1", twin, "bw", "heldout"),
+    ]
+    corpus = write_corpus(tmp_path / "corpus", entries)
+    assert heldout(corpus, tmp_path) == 2
+    err = capsys.readouterr().err
+    assert "item-h1" in err and "pixel hash" in err
+
+
+def test_unannotated_items_are_fingerprinted_too(tmp_path, capsys) -> None:
+    grey = grey_page()
+    entries = [
+        Entry("t1", png(grey, dpi=100), "document", "tuning", {}),
+        entry("h1", png(np.stack([grey] * 3, axis=-1), dpi=100), "bw", "heldout"),
+    ]
+    corpus = write_corpus(tmp_path / "corpus", entries)
+    assert heldout(corpus, tmp_path) == 2
+    assert "item-t1" in capsys.readouterr().err
+
+
+def test_a_held_out_item_that_cannot_be_fingerprinted_refuses_the_run(tmp_path, capsys) -> None:
+    entries = [*base_entries(), entry("h9", b"not an image", "bw", "heldout")]
+    corpus = write_corpus(tmp_path / "corpus", entries)
+    assert heldout(corpus, tmp_path) == 2
+    assert "item-h9" in capsys.readouterr().err
+    assert not reports(tmp_path / "out")
+
+
+def test_a_hash_failure_while_measuring_refuses_the_run_and_is_not_counted(
+    corpus, tmp_path, monkeypatch, capsys
+) -> None:
+    def refuse(manifest, item):
+        raise CorpusError(f"item {item.id!r}: content does not match its sha256")
+
+    monkeypatch.setattr(calib_run, "read_verified", refuse)
+    assert run_cli(LABEL, "--corpus", corpus.parent, "--out", tmp_path / "out") == 2
+    assert "item-t1" in capsys.readouterr().err
+    assert not reports(tmp_path / "out")
+
+
+@pytest.mark.parametrize("error", [OSError("/secret/path"), RuntimeError("/secret/path")])
+def test_output_failures_end_as_a_fixed_message_without_the_path(
+    corpus, tmp_path, monkeypatch, capsys, error
+) -> None:
+    def fail(*_args: object, **_kwargs: object) -> str:
+        raise error
+
+    monkeypatch.setattr(calib_run, "write_outputs", fail)
+    code = run_cli(LABEL, "--corpus", corpus.parent, "--out", tmp_path / "out")
+    err = capsys.readouterr().err
+    assert code != 0 and "secret" not in err and "error" in err

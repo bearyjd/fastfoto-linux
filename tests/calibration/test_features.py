@@ -2,15 +2,19 @@
 
 import json
 from pathlib import Path
+from threading import Event
 
 import numpy as np
 import pytest
 
-from fastfoto_linux.evaluation import calib_detail, calib_wb
-from fastfoto_linux.evaluation.corpus_manifest import parse_corpus_manifest
+from fastfoto_linux.evaluation import calib_detail, calib_pages, calib_wb
+from fastfoto_linux.evaluation.calib_run import run_calibration
+from fastfoto_linux.evaluation.corpus_manifest import load_corpus_manifest, parse_corpus_manifest
 from fastfoto_linux.evaluation.corpus_report import build_report, check_metrics_only
 from fastfoto_linux.evaluation.corpus_types import CorpusError
 from fastfoto_linux.evaluation.redeye_images import decode_image
+from fastfoto_linux.photo_edits.detail import apply_denoise, apply_sharpen
+from fastfoto_linux.photo_edits.model import PhotoDetail
 from tests.calibration.synth import (
     DETAIL_NOTE,
     Entry,
@@ -35,42 +39,38 @@ def run_one(tmp_path: Path, feature: str, entries: list[Entry], *extra: object, 
     return path.read_bytes(), json.loads(path.read_bytes())["metrics"]
 
 
+PAGES = [(-40, 1), (25, 2), (60, 3), (-15, 4), (35, 5)]
+
+
 def deskew_entries(sign: int = 1) -> list[Entry]:
-    pages = [(-40, 1), (25, 2), (60, 3)]
     items = [
         Entry(f"p{i}", text_png(t, seed), "document", "tuning",
               {"deskew": {"correction_tenths": [-t * sign]}})
-        for i, (t, seed) in enumerate(pages)
+        for i, (t, seed) in enumerate(PAGES)
     ]  # fmt: skip
-    items.append(
-        Entry(
-            "blank",
-            blank_png(),
-            "document",
-            "tuning",
-            {"deskew": {"dpi": 150, "correction_tenths": [0]}},
-        )
-    )
+    blank = {"deskew": {"dpi": 150, "correction_tenths": [0]}}
+    items.append(Entry("blank", blank_png(), "document", "tuning", blank))
     items.append(Entry("noannotation", text_png(10, 9), "document", "tuning", {}))
-    items.append(
-        Entry("aphoto", wb_png(False), "photo", "tuning", {"deskew": {"correction_tenths": [0]}})
-    )
+    photo = {"deskew": {"correction_tenths": [0]}}
+    items.append(Entry("aphoto", wb_png(False), "photo", "tuning", photo))
     return items
 
 
 def test_deskew_measures_both_directions_and_abstains_on_a_blank_page(tmp_path) -> None:
     _, metrics = run_one(tmp_path, "deskew", deskew_entries())
-    assert metrics["counts"] == {"n": 4, "skipped": 1, "errored": 0}
+    assert metrics["counts"] == {"n": 6, "skipped": 1, "errored": 0}
     deskew = metrics["deskew"]
-    assert deskew["applied"] == 3 and deskew["abstain"]["k"] == 1
-    assert deskew["wrong_direction"]["k"] == 0 and deskew["wrong_direction"]["n"] == 3
+    assert deskew["applied"] == 5 and deskew["abstain"]["k"] == 1
+    assert deskew["wrong_direction"]["k"] == 0 and deskew["wrong_direction"]["n"] == 5
     assert deskew["mae_deg"] <= 0.3 and deskew["p90_abs_err_deg"] <= 0.5
+    assert metrics["criteria"]["wrong_direction"] == "pass"
 
 
 def test_deskew_with_the_opposite_sign_annotated_is_all_wrong_direction(tmp_path) -> None:
     _, metrics = run_one(tmp_path, "deskew", deskew_entries(sign=-1))
-    assert metrics["deskew"]["wrong_direction"]["k"] == 3
+    assert metrics["deskew"]["wrong_direction"]["k"] == 5
     assert metrics["deskew"]["mae_deg"] > 3
+    assert metrics["criteria"]["wrong_direction"] == "fail"
 
 
 def test_autocolour_counts_losses_and_over_retention(tmp_path) -> None:
@@ -94,43 +94,74 @@ def test_autocolour_counts_losses_and_over_retention(tmp_path) -> None:
 
 
 def test_autocolour_reports_the_zero_loss_upper_bound(tmp_path) -> None:
+    cases = [("a", "stamp", "colour"), ("b", "text", "bw"), ("c", "gradient", "grey"),
+             ("d", "red_stroke", "colour"), ("e", "reversed", "grey")]  # fmt: skip
     entries = [
-        Entry("a", colour_png("stamp"), "document", "tuning", {"autocolour": {"label": "colour"}}),
-        Entry("b", colour_png("text"), "document", "tuning", {"autocolour": {"label": "bw"}}),
+        Entry(n, colour_png(c), "document", "tuning", {"autocolour": {"label": lab}})
+        for n, c, lab in cases
     ]
     _, metrics = run_one(tmp_path, "autocolour", entries)
-    assert metrics["autocolour"]["colour_loss"]["zero_upper_bound"] == pytest.approx(
-        0.7764, abs=1e-4
-    )
+    loss = metrics["autocolour"]["colour_loss"]
+    assert loss["zero_upper_bound"] == pytest.approx(0.4507, abs=1e-4)
+    assert metrics["criteria"]["colour_loss_zero"] == "pass"
 
 
-def wb_entries() -> list[Entry]:
-    neutral = {"wb": {"neutral_boxes": [[60, 20, 40, 20]], "cast": False}}
-    cast = {"wb": {"neutral_boxes": [[60, 20, 40, 20]], "cast": True}}
+def test_below_five_items_the_statistics_are_withheld_and_the_counts_kept(tmp_path) -> None:
+    cases = [("a", "stamp", "colour"), ("b", "text", "bw"), ("c", "gradient", "grey"),
+             ("d", "red_stroke", "colour")]  # fmt: skip
+    entries = [
+        Entry(n, colour_png(c), "document", "tuning", {"autocolour": {"label": lab}})
+        for n, c, lab in cases
+    ]
+    _, metrics = run_one(tmp_path, "autocolour", entries)
+    loss = metrics["autocolour"]["colour_loss"]
+    assert (loss["k"], loss["n"]) == (0, 4)
+    assert loss["p"] is None and loss["zero_upper_bound"] is None
+    assert loss["status"] == "insufficient_data"
+    assert set(metrics["criteria"].values()) == {"insufficient_data"}
+    assert metrics["counts"]["n"] == 4
+
+
+def wb_entries(neutral: int = 1, cast: int = 5) -> list[Entry]:
+    note = {"wb": {"neutral_boxes": [[60, 20, 40, 20]], "cast": False}}
+    cast_note = {"wb": {"neutral_boxes": [[60, 20, 40, 20]], "cast": True}}
     return [
-        Entry("n1", wb_png(False), "photo", "tuning", neutral),
-        Entry("c1", wb_png(True), "photo", "tuning", cast),
+        *(Entry(f"n{i}", wb_png(False, i), "photo", "tuning", note) for i in range(neutral)),
+        *(Entry(f"c{i}", wb_png(True, 10 + i), "photo", "tuning", cast_note) for i in range(cast)),
     ]
 
 
 def test_wb_reports_every_setting_on_all_items_and_on_cast_items(tmp_path) -> None:
     _, metrics = run_one(tmp_path, "wb", wb_entries())
-    settings = metrics["wb"]["settings"]
+    wb = metrics["wb"]
+    settings = wb["settings"]
     assert list(settings) == sorted(["none", "restore", "warm", "cool", "faded", "mono"])
-    assert settings["none"]["all_items"]["n"] == 2 and settings["none"]["cast_items"]["n"] == 1
+    assert settings["none"]["all_items"]["n"] == 6 and settings["none"]["cast_items"]["n"] == 5
     assert settings["none"]["cast_items"]["median_de00"] > 5
     assert settings["mono"] == settings["none"]  # the preset's white balance part is neutral
-    assert isinstance(metrics["wb"]["improvement_vs_none_restore"], float)
+    restored = settings["restore"]["cast_items"]["median_de00"]
+    assert restored < settings["none"]["cast_items"]["median_de00"]
+    assert wb["improvement_vs_none_restore"] > 0
 
 
 def test_wb_presets_move_a_neutral_patch_away_from_neutral(tmp_path) -> None:
-    entries = wb_entries()[:1]
-    _, metrics = run_one(tmp_path, "wb", entries)
+    _, metrics = run_one(tmp_path, "wb", wb_entries(neutral=5, cast=0))
     settings = metrics["wb"]["settings"]
     assert settings["none"]["all_items"]["median_de00"] < 0.5
     assert settings["warm"]["all_items"]["median_de00"] > 2
     assert settings["cool"]["all_items"]["median_de00"] > 2
     assert metrics["wb"]["improvement_vs_none_restore"] is None  # no cast items: no judgement
+
+
+def test_the_wb_cast_subset_is_withheld_below_five_items(tmp_path) -> None:
+    _, metrics = run_one(tmp_path, "wb", wb_entries(neutral=5, cast=2))
+    settings = metrics["wb"]["settings"]
+    assert settings["none"]["all_items"]["median_de00"] is not None
+    cast = settings["none"]["cast_items"]
+    assert cast["n"] == 2 and cast["median_de00"] is None and cast["p90_de00"] is None
+    assert cast["status"] == "insufficient_data"
+    assert metrics["wb"]["improvement_vs_none_restore"] is None
+    assert metrics["criteria"]["restore_de00_improvement"] == "insufficient_data"
 
 
 def test_the_wb_renderings_leave_their_input_untouched() -> None:
@@ -142,27 +173,32 @@ def test_the_wb_renderings_leave_their_input_untouched() -> None:
         assert np.array_equal(first, calib_wb.render(rgb, setting))
 
 
-def test_the_detail_renderings_leave_their_input_untouched() -> None:
+def test_detail_renders_denoise_then_sharpen_on_one_buffer_like_the_product() -> None:
     rgb = decode_image(detail_png())
     before = rgb.copy()
     strengths = calib_detail.Strengths(50, 50, 50)
-    smooth = calib_detail.render_denoise(rgb, strengths)
-    sharp = calib_detail.render_sharpen(rgb, 300, strengths)
+    chained = calib_detail.render(rgb, 300, strengths)
     assert np.array_equal(rgb, before)
-    assert not np.array_equal(smooth, rgb) and not np.array_equal(sharp, rgb)
+    expected = rgb.copy()
+    apply_denoise(expected, PhotoDetail(denoise_luma=50, denoise_chroma=50), Event())
+    apply_sharpen(expected, PhotoDetail(sharpen=50), 300.0, Event())
+    assert np.array_equal(chained, expected)
 
 
-def detail_entries() -> list[Entry]:
-    return [Entry("d1", detail_png(1), "photo", "tuning", {"detail": DETAIL_NOTE}),
-            Entry("d2", detail_png(2), "photo", "tuning", {"detail": DETAIL_NOTE})]  # fmt: skip
+def detail_entries(count: int = 5) -> list[Entry]:
+    return [
+        Entry(f"d{i}", detail_png(i + 1), "photo", "tuning", {"detail": DETAIL_NOTE})
+        for i in range(count)
+    ]
 
 
-def test_detail_denoise_cuts_noise_and_the_strengths_are_reported(tmp_path) -> None:
+def test_detail_cuts_noise_and_sharpening_leaves_a_halo(tmp_path) -> None:
     _, metrics = run_one(tmp_path, "detail", detail_entries())
     detail = metrics["detail"]
     assert detail["strengths"] == {"denoise_luma": 50, "denoise_chroma": 50, "sharpen": 50}
     assert detail["sigma_reduction_pct_median"] > 10
-    assert detail["halo_pct_p90"] >= 0 and isinstance(detail["edge_width_growth_pct_median"], float)
+    assert detail["halo_pct_p90"] > 0
+    assert isinstance(detail["edge_width_growth_pct_median"], float)
 
 
 def test_detail_strengths_can_be_overridden_and_zero_changes_nothing(tmp_path) -> None:
@@ -176,21 +212,37 @@ def test_detail_strengths_can_be_overridden_and_zero_changes_nothing(tmp_path) -
     assert detail["edge_width_growth_pct_median"] == 0.0 and detail["halo_pct_p90"] == 0.0
 
 
-def test_a_box_outside_the_image_is_counted_as_an_errored_item_not_fatal(tmp_path) -> None:
+def test_a_box_outside_the_image_is_counted_as_an_errored_item_not_fatal(tmp_path, capsys) -> None:
     bad = {"detail": {**DETAIL_NOTE, "flat_boxes": [[100, 80, 40, 40]]}}
-    entries = [*detail_entries(), Entry("d3", detail_png(3), "photo", "tuning", bad)]
+    entries = [*detail_entries(), Entry("d9", detail_png(9), "photo", "tuning", bad)]
     _, metrics = run_one(tmp_path, "detail", entries)
-    assert metrics["counts"] == {"n": 3, "skipped": 0, "errored": 1}
+    assert metrics["counts"] == {"n": 6, "skipped": 0, "errored": 1}
+    err = capsys.readouterr().err
+    assert "item-d9: errored (AnnotationError)" in err
 
 
-@pytest.mark.parametrize(
-    ("feature", "make"),
-    [
-        ("deskew", deskew_entries),
-        ("wb", wb_entries),
-        ("detail", detail_entries),
-    ],
-)
+def test_an_item_over_the_pixel_cap_is_errored(tmp_path, monkeypatch, capsys) -> None:
+    monkeypatch.setattr(calib_pages, "MAX_PIXELS", 1000)
+    _, metrics = run_one(tmp_path, "detail", detail_entries(), tag="photo")
+    assert metrics["counts"]["errored"] == 5
+    entries = [
+        Entry("a", colour_png("text"), "document", "tuning", {"autocolour": {"label": "bw"}})
+    ]
+    _, metrics = run_one(tmp_path, "autocolour", entries, tag="doc")
+    assert metrics["counts"]["errored"] == 1
+    assert "errored (ValueError)" in capsys.readouterr().err
+
+
+def test_a_memory_error_is_not_swallowed(tmp_path, monkeypatch) -> None:
+    def boom(*_args: object) -> None:
+        raise MemoryError
+
+    monkeypatch.setattr(calib_detail, "measure", boom)
+    corpus = write_corpus(tmp_path / "corpus", detail_entries(1))
+    with load_corpus_manifest(corpus) as manifest, pytest.raises(MemoryError):
+        run_calibration(manifest, "detail", "tuning")
+
+
 def test_the_report_is_byte_identical_on_rerun_and_carries_no_item_data(
     tmp_path, feature, make
 ) -> None:

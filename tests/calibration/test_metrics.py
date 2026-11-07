@@ -24,6 +24,11 @@ from fastfoto_linux.evaluation.calib_metrics import (
         ((50.0, 3.1571, -77.2803), (50.0, 0.0, -82.7485), 2.8615),
         ((50.0, 2.5, 0.0), (50.0, 0.0, -2.5), 4.3065),
         ((60.2574, -34.0099, 36.2677), (60.4626, -34.1751, 39.4387), 1.2644),
+        ((50.0, 2.5, 0.0), (73.0, 25.0, -18.0), 27.1492),  # hue difference above 180 degrees
+        ((50.0, 2.5, 0.0), (56.0, -27.0, -3.0), 31.9030),
+        ((50.0, 2.49, -0.001), (50.0, -2.49, 0.0011), 7.1792),  # hues straddling the wrap
+        ((50.0, 0.0, 0.0), (50.0, -1.0, 2.0), 2.3669),  # one colour has no chroma
+        ((50.0, -1.0, 2.0), (50.0, 0.0, 0.0), 2.3669),
     ],
 )
 def test_ciede2000_matches_the_published_pairs(one, two, expected) -> None:
@@ -98,3 +103,27 @@ def test_proportion_entry_drops_the_note_and_keeps_the_zero_bound() -> None:
     assert "note" not in zero and zero["zero_upper_bound"] == pytest.approx(0.1391, abs=1e-4)
     assert proportion_entry(1, 4)["p"] == 0.25
     assert proportion_entry(0, 0)["p"] is None
+
+
+def test_luma_and_profiles_are_single_precision() -> None:
+    img = np.zeros((4, 8, 3), np.uint8)
+    assert luma(img).dtype == np.float32
+    assert flat_sigmas(luma(img), ((0, 0, 4, 4),)) == [0.0]
+
+
+def test_an_edge_must_start_low_and_end_high() -> None:
+    width = 40
+    box = (0, 0, width, 6)
+    half = np.tile(
+        np.concatenate(
+            [np.full(5, 150.0), np.full(5, 100.0), np.linspace(100, 200, 10), np.full(20, 200.0)]
+        ),
+        (6, 1),
+    )
+    assert edge_width(half, box, "h") is None  # starts above the low level
+    ridge = np.tile(np.concatenate([np.linspace(20, 220, 20), np.linspace(220, 20, 20)]), (6, 1))
+    assert edge_width(ridge, box, "h") is None  # comes back down: no high plateau
+    ok = np.tile(
+        np.concatenate([np.full(15, 20.0), np.linspace(20, 220, 10), np.full(15, 220.0)]), (6, 1)
+    )
+    assert edge_width(ok, box, "h") is not None

@@ -45,11 +45,23 @@ def bilevel_png() -> bytes:
     return png(to_bilevel(auto_page("text", AUTO_DPI).pixels), dpi=AUTO_DPI, bilevel=True)
 
 
-def wb_png(cast: bool) -> bytes:
-    """A grey ramp, with a warm cast when ``cast``."""
+def wb_png(cast: bool, seed: int = 0) -> bytes:
+    """A grey ramp; with ``cast`` a cool cast with channel black offsets that restore can undo.
+    ``seed`` adds two levels of noise so each file is different."""
     ramp = np.tile(np.linspace(0, 255, 160), (60, 1))
-    gains = (1.0, 0.8, 0.55) if cast else (1.0, 1.0, 1.0)
-    return png(np.stack([ramp * g for g in gains], axis=-1).astype(np.uint8))
+    gains, offsets = ((0.9, 0.95, 1.0), (0, 8, 20)) if cast else ((1.0,) * 3, (0, 0, 0))
+    pixels = np.stack([ramp * g + o for g, o in zip(gains, offsets, strict=True)], axis=-1)
+    pixels = pixels + np.random.default_rng(seed).integers(0, 3, pixels.shape)
+    return png(np.clip(pixels, 0, 255).astype(np.uint8))
+
+
+def grey_page(seed: int = 0) -> np.ndarray:
+    """A grey page with a few dark text-like bars (distinct per seed)."""
+    page = np.full((400, 400), 235, np.uint8)
+    for row in range(5):
+        top = 40 + row * 60 + seed
+        page[top : top + 6, 40:300] = 30
+    return page
 
 
 def detail_png(seed: int = 0) -> bytes:

@@ -1,6 +1,7 @@
 """The metrics-only report: an allowlist shape check, counts, and no private strings."""
 
 import json
+from types import MappingProxyType
 
 import numpy as np
 import pytest
@@ -270,8 +271,6 @@ def test_cyclic_metrics_are_refused_not_walked_forever(tmp_path) -> None:
 
 
 def test_read_only_mappings_are_accepted_as_metrics(tmp_path) -> None:
-    from types import MappingProxyType
-
     metrics = MappingProxyType({"cer": 0.25, "by": MappingProxyType({"wer": 0.5})})
     with _loaded(tmp_path) as manifest:
         report = build_report(manifest, metrics)

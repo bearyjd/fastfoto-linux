@@ -140,9 +140,15 @@ def _counts(values: list[str], options: tuple[str, ...]) -> dict[str, int]:
     return {option: values.count(option) for option in options}
 
 
+def _plain(value: object) -> dict:
+    if isinstance(value, Mapping):
+        return dict(value)
+    raise TypeError("not a JSON value")
+
+
 def _json_copy(metrics: Mapping[str, object]) -> dict:
     try:
-        return json.loads(json.dumps(metrics, allow_nan=False))
+        return json.loads(json.dumps(metrics, allow_nan=False, default=_plain))
     except (TypeError, ValueError, RecursionError):
         raise CorpusError("the metrics are not plain, acyclic JSON values") from None
 

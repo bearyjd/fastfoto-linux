@@ -140,13 +140,23 @@ def _counts(values: list[str], options: tuple[str, ...]) -> dict[str, int]:
     return {option: values.count(option) for option in options}
 
 
+def _json_copy(metrics: Mapping[str, object]) -> dict:
+    try:
+        return json.loads(json.dumps(metrics, allow_nan=False))
+    except (TypeError, ValueError, RecursionError):
+        raise CorpusError("the metrics are not plain, acyclic JSON values") from None
+
+
 def build_report(manifest: CorpusManifest, metrics: Mapping[str, object]) -> dict:
     """Counts by split and kind, the manifest's hash and the caller's metrics: no item data.
 
     Metrics whose keys or strings equal (ignoring case) an id, group, path part, source,
-    licence or annotation text of the manifest are refused.
+    licence or annotation text of the manifest are refused. The metrics are deep-copied first
+    (a cycle or a non-JSON value is refused), so later edits to the caller's object cannot slip
+    past the check.
     """
-    _refuse_echoes(manifest, metrics)
+    copied = _json_copy(metrics)
+    _refuse_echoes(manifest, copied)
     items = manifest.items
     return {
         "format": REPORT_FORMAT,
@@ -157,7 +167,7 @@ def build_report(manifest: CorpusManifest, metrics: Mapping[str, object]) -> dic
             "by_split": _counts([i.split for i in items], SPLITS),
             "by_kind": _counts([i.kind for i in items], KINDS),
         },
-        "metrics": dict(metrics),
+        "metrics": copied,
     }
 
 

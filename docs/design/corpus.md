@@ -66,7 +66,7 @@ verification does not give that guarantee.
 ## Untrusted input
 
 The manifest is untrusted. Its size (8 MB, checked before JSON parsing), item count, text length
-(512; paths 1024), annotation depth (8) and annotation size (10 000 values per item, 200 000 in
+(`source` and `licence` 512, paths 1024; annotation strings only by the 8 MB file cap), annotation depth (8) and annotation size (10 000 values per item, 200 000 in
 all, counted iteratively before anything is built) are capped, control characters are refused in
 free text and paths, ids may not be `.` or `..`, and hostile JSON nesting is a `CorpusError`, not
 a crash. As for red-eye, a concurrent local attacker who races renames is out of scope.

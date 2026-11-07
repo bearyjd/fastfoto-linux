@@ -104,14 +104,15 @@ uv run ffscan eval redeye MANIFEST.json   # red-eye evaluation harness; see docs
 - Export presets: `--preset lossless|high-quality|small` (photos and `ffscan doc`; names are exact).
   `small` shrinks photos to 2048 px and document colour/grey pages to 200 dpi; `lossless` writes
   PNG photos and Flate document pages (very large files: tens of MB per 600 dpi page, held in
-  memory while the PDF is assembled; the photo editor and `ffscan library` do not
-  open PNG masters); `high-quality` is JPEG 95/92 without chroma subsampling. Metadata is kept.
+  memory while the PDF is assembled; the photo editor opens them and saves PNG
+  copies, but `ffscan library` does not open PNG masters); `high-quality` is JPEG 95/92 without
+  chroma subsampling. Metadata is kept.
   `--preset` cannot be combined with `--quality`. Without it the output is unchanged. PDF/A is
   not offered. See `docs/design/export-presets.md`.
 - Export presets in the app: both forms have a **File size** drop-down (`Standard`, `High quality`,
   `Small`, `Lossless`); `Standard` is the old behaviour and is the default, and the choice is
-  remembered. With `Lossless` the photos are PNG files: they show in the results, but **Edit
-  photo** is disabled for them with a short reason. Only the four listed values are accepted.
+  remembered. With `Lossless` the photos are PNG files: they show in the results and **Edit
+  photo** saves new PNG copies (8-bit RGB PNGs only). Only the four listed values are accepted.
 - Exit codes: 0 ok, 1 processing error, 2 usage, 3 scanner not found, shim missing, scanner not
   answering or in use by another program, 4 no documents in the feeder. `-v` logs progress,
   `--debug` adds tracebacks.

@@ -1,5 +1,6 @@
 """PNG masters: accepted metadata, and every refusal happens before pixels are decoded."""
 
+import zlib
 from pathlib import Path
 
 import numpy as np
@@ -8,6 +9,7 @@ from PIL import Image
 
 from fastfoto_linux.photo_edits import PhotoEditError, load_source
 from fastfoto_linux.photo_edits.model import MAX_SOURCE_PIXELS
+from fastfoto_linux.photo_edits.png_guard import check_png
 from tests.photo_edits import png_helpers as h
 
 BIG = 65_534
@@ -61,7 +63,9 @@ def test_jpeg_still_loads_and_png_signature_is_not_trusted_from_the_suffix(tmp_p
         pytest.param(h.saved("P"), id="palette"),
         pytest.param(h.saved("L"), id="grey"),
         pytest.param(h.saved("I;16"), id="grey16"),
-        pytest.param(h.replace_ihdr(h.master_png(), h.ihdr(h.WIDTH, h.HEIGHT, depth=16)), id="rgb16"),
+        pytest.param(
+            h.replace_ihdr(h.master_png(), h.ihdr(h.WIDTH, h.HEIGHT, depth=16)), id="rgb16"
+        ),
     ],
 )
 def test_only_8_bit_rgb_is_accepted(tmp_path: Path, data: bytes) -> None:
@@ -75,7 +79,7 @@ def test_apng_is_refused(tmp_path: Path) -> None:
 
 def test_huge_claimed_size_with_valid_crc_is_refused_without_decoding(tmp_path: Path) -> None:
     header = h.ihdr(30_000, 30_000)
-    assert 30_000 * 30_000 > MAX_SOURCE_PIXELS
+    assert MAX_SOURCE_PIXELS < 30_000 * 30_000
     _refused(tmp_path, h.replace_ihdr(h.master_png(), header), "too many pixels")
 
 
@@ -93,7 +97,11 @@ def test_bad_ihdr_crc_is_refused(tmp_path: Path) -> None:
 def test_ihdr_must_come_first_and_be_13_bytes(tmp_path: Path) -> None:
     chunks = h.split(h.master_png())
     _refused(tmp_path, h.assemble([(b"tEXt", b"a\x00b"), *chunks]), "not a supported")
-    _refused(tmp_path, h.assemble([(b"IHDR", h.ihdr(h.WIDTH, h.HEIGHT) + b"\x00"), *chunks[1:]]), "not a supported")
+    _refused(
+        tmp_path,
+        h.assemble([(b"IHDR", h.ihdr(h.WIDTH, h.HEIGHT) + b"\x00"), *chunks[1:]]),
+        "not a supported",
+    )
 
 
 def test_two_exif_chunks_are_refused(tmp_path: Path) -> None:
@@ -112,11 +120,10 @@ def test_exif_after_idat_is_refused(tmp_path: Path) -> None:
 def test_oversized_exif_is_refused_and_the_limit_is_inclusive(tmp_path: Path) -> None:
     base = h.assemble([c for c in h.split(h.master_png()) if c[0] != b"eXIf"])
     _refused(tmp_path, h.with_chunks(base, before_idat=((b"eXIf", b"\x00" * BIG),)), "metadata")
-    ok = h.with_chunks(base, before_idat=((b"eXIf", b"MM\x00*\x00\x00\x00\x08" + b"\x00" * (BIG - 10)),))
-    try:
-        _load(tmp_path, ok)
-    except PhotoEditError as error:
-        assert "metadata" not in str(error)
+    ok = h.with_chunks(
+        base, before_idat=((b"eXIf", b"MM\x00*\x00\x00\x00\x08" + b"\x00" * (BIG - 10)),)
+    )
+    check_png(ok)
 
 
 def test_oversized_xmp_is_refused(tmp_path: Path) -> None:
@@ -126,8 +133,6 @@ def test_oversized_xmp_is_refused(tmp_path: Path) -> None:
 
 
 def test_oversized_compressed_text_chunk_is_a_clean_refusal(tmp_path: Path) -> None:
-    import zlib
-
     bomb = b"k\x00\x00" + zlib.compress(b"\x00" * 5_000_000)
     data = h.with_chunks(h.master_png(), before_idat=((b"zTXt", bomb),))
     _refused(tmp_path, data, "not a supported")

@@ -9,6 +9,7 @@ from PIL import Image
 from fastfoto_linux.photo_edits import load_source, open_edit, recipe_bytes, save_edit
 from fastfoto_linux.photo_edits.model import PhotoEditRecipe
 from tests.photo_edits import png_helpers as h
+from tests.photo_edits.helpers import source_at
 
 
 def _master(tmp_path: Path) -> Path:
@@ -53,8 +54,6 @@ def test_version_numbers_are_shared_between_jpg_and_png(tmp_path: Path) -> None:
 
 
 def test_a_jpeg_master_still_saves_a_jpeg(tmp_path: Path) -> None:
-    from tests.photo_edits.helpers import source_at
-
     source = source_at(tmp_path)
     saved = save_edit(source, _recipe(source), cancel=Event())
     assert saved.image.suffix == ".jpg"

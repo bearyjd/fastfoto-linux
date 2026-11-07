@@ -16,6 +16,7 @@ from fastfoto_linux.photo_edits.model import (
     PhotoSource,
     finite,
 )
+from fastfoto_linux.photo_edits.png_guard import PNG_SIGNATURE, check_png
 
 FALLBACK_DPI = 300.0
 SWAPPED_ORIENTATIONS = frozenset({5, 6, 7, 8})
@@ -24,6 +25,8 @@ JFIF_UNIT_INCHES = 1
 JFIF_UNIT_CENTIMETERS = 2
 EXIF_UNIT_INCHES = 2
 EXIF_UNIT_CENTIMETERS = 3
+DPI_SNAP = 0.01
+UNSUPPORTED = "the retained source is not a supported JPEG or PNG"
 
 
 def source_bytes(path: Path) -> bytes:
@@ -52,7 +55,22 @@ def _dpi_pair(values: tuple[object, object], scale: float) -> tuple[float, float
     return x, y
 
 
+def _png_dpi(image: Image.Image) -> tuple[float, float] | None:
+    """pHYs in metres reads back as 599.9988 for 600; snap to the integer when that close."""
+    if image.format != "PNG":
+        return None
+    try:
+        x, y = (float(value) for value in image.info["dpi"])
+        snapped = tuple(round(v) if abs(v - round(v)) < DPI_SNAP else v for v in (x, y))
+        return _dpi_pair(snapped, 1.0)
+    except (KeyError, TypeError, ValueError, OverflowError):
+        return None
+
+
 def _dpi(image: Image.Image, notes: list[str]) -> tuple[float, float]:
+    png = _png_dpi(image)
+    if png is not None:
+        return png
     # Pillow's EXIF-only info["dpi"] repeats XResolution on both axes, so read both explicitly.
     exif = image.getexif()
     candidates = (
@@ -94,17 +112,30 @@ def _profile(image: Image.Image, notes: list[str]) -> bytes | None:
     return profile
 
 
+def _xmp(image: Image.Image) -> bytes:
+    if image.format == "PNG":
+        packet = image.info.get("XML:com.adobe.xmp", "")
+        return packet.encode("utf-8") if isinstance(packet, str) else b""
+    return image.info.get("xmp", b"")
+
+
 def _decode(path: Path, data: bytes) -> PhotoSource:
     notes: list[str] = []
+    if data.startswith(PNG_SIGNATURE):
+        check_png(data)
     with warnings.catch_warnings():
         warnings.simplefilter("error", Image.DecompressionBombWarning)
         with Image.open(io.BytesIO(data)) as image:
             if (
-                image.format != "JPEG"
+                image.format not in {"JPEG", "PNG"}
                 or image.mode != "RGB"
                 or image.width * image.height > MAX_SOURCE_PIXELS
             ):
-                raise PhotoEditError("photo review requires a bounded retained original RGB JPEG")
+                raise PhotoEditError(
+                    "photo review requires a bounded retained original RGB JPEG or PNG"
+                )
+            if image.format == "PNG":
+                image.load()  # chunks after IDAT (text, eXIf) are only read once pixels are
             exif = image.getexif()
             orientation = exif.get(274, 1)
             if type(orientation) is not int or orientation not in range(1, 9):
@@ -126,7 +157,8 @@ def _decode(path: Path, data: bytes) -> PhotoSource:
                 pixels=pixels,
                 orientation=orientation,
                 exif=exif.tobytes(),
-                xmp=image.info.get("xmp", b""),
+                xmp=_xmp(image),
+                format=image.format,
                 icc_profile=profile,
                 warnings=tuple(notes),
             )
@@ -140,11 +172,14 @@ def load_source(path: Path, *, expected_sha256: str | None = None) -> PhotoSourc
         raise PhotoEditError("the retained source hash changed")
     try:
         return _decode(path, data)
+    except PhotoEditError:
+        raise
     except (
         UnidentifiedImageError,
         OSError,
         SyntaxError,
+        ValueError,
         Image.DecompressionBombError,
         Image.DecompressionBombWarning,
     ) as error:
-        raise PhotoEditError("the retained source is not a supported JPEG") from error
+        raise PhotoEditError(UNSUPPORTED) from error

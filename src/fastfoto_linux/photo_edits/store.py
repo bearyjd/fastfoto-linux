@@ -5,7 +5,8 @@ import io
 from pathlib import Path
 from threading import Event
 
-from PIL import Image
+import numpy as np
+from PIL import Image, PngImagePlugin
 
 from fastfoto_linux.output.errors import OutputCollisionError
 from fastfoto_linux.output.files import locked_folder, write_new_files
@@ -32,6 +33,30 @@ from fastfoto_linux.photo_edits.results import SavedPhotoEdit
 from fastfoto_linux.photo_edits.source import load_source, source_bytes, verify_source
 
 MAX_VERSIONS = 9999
+XMP_KEY = "XML:com.adobe.xmp"
+PNG_COMPRESS_LEVEL = 6
+
+
+def _save_png(
+    buffer: io.BytesIO,
+    source: PhotoSource,
+    recipe: PhotoEditRecipe,
+    pixels: np.ndarray,
+    dpi: tuple[float, float],
+) -> None:
+    info = PngImagePlugin.PngInfo()
+    xmp = derivative_xmp(source, recipe.geometry)
+    if xmp:
+        info.add_itxt(XMP_KEY, xmp.decode("utf-8"))
+    Image.fromarray(pixels).save(
+        buffer,
+        "PNG",
+        compress_level=PNG_COMPRESS_LEVEL,
+        exif=derivative_exif(source, recipe.geometry),
+        pnginfo=info,
+        icc_profile=source.icc_profile,
+        dpi=dpi,
+    )
 
 
 def _encode(source: PhotoSource, recipe: PhotoEditRecipe, cancel: Event) -> bytes:
@@ -39,6 +64,10 @@ def _encode(source: PhotoSource, recipe: PhotoEditRecipe, cancel: Event) -> byte
     check_cancel(cancel)
     *_, dpi_x, dpi_y = frame(source, recipe.geometry)
     buffer = io.BytesIO()
+    if source.format == "PNG":
+        _save_png(buffer, source, recipe, pixels, (dpi_x, dpi_y))
+        check_cancel(cancel)
+        return buffer.getvalue()
     Image.fromarray(pixels).save(
         buffer,
         "JPEG",
@@ -55,22 +84,30 @@ def _encode(source: PhotoSource, recipe: PhotoEditRecipe, cancel: Event) -> byte
 
 def _targets(source: PhotoSource, version: int) -> tuple[Path, Path]:
     basename = f"{source.path.stem}_edit-{version:04d}"
-    return source.path.with_name(basename + ".jpg"), source.path.with_name(basename + ".json")
+    ext = ".png" if source.format == "PNG" else ".jpg"
+    return source.path.with_name(basename + ext), source.path.with_name(basename + ".json")
+
+
+def _taken(source: PhotoSource, version: int) -> bool:
+    """A number is used when any sibling revision exists, whatever its format."""
+    stem = f"{source.path.stem}_edit-{version:04d}"
+    names = (stem + ext for ext in (".jpg", ".png", ".json"))
+    return any((path := source.path.with_name(n)).exists() or path.is_symlink() for n in names)
 
 
 def save_edit(source: PhotoSource, recipe: PhotoEditRecipe, *, cancel: Event) -> SavedPhotoEdit:
-    """Write a new numbered JPEG and sidecar, with sidecar as the commit marker."""
+    """Write a new numbered copy (the master's format) and sidecar; the sidecar commits it."""
     check_cancel(cancel)
     verify_source(source)
     encoded = _encode(source, recipe, cancel)
     if len(encoded) > MAX_SOURCE_BYTES:
-        raise PhotoEditError("edited JPEG exceeds the supported file size limit")
+        raise PhotoEditError("edited photo exceeds the supported file size limit")
     with locked_folder(source.path.parent):
         check_cancel(cancel)
         verify_source(source)
         for version in range(1, MAX_VERSIONS + 1):
             image, sidecar = _targets(source, version)
-            if image.exists() or image.is_symlink() or sidecar.exists() or sidecar.is_symlink():
+            if _taken(source, version):
                 continue
             payload = recipe_object(recipe)
             payload["output"] = {"name": image.name, "sha256": hashlib.sha256(encoded).hexdigest()}

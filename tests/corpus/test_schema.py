@@ -61,8 +61,9 @@ def test_the_schema_path_pattern_agrees_with_the_loader() -> None:
             cm.check_relpath(bad)
 
 
-def test_the_example_loads_and_its_splits_come_from_assign_splits() -> None:
-    path = CORPUS / "MANIFEST.example.json"
+def test_the_example_loads_and_its_splits_come_from_assign_splits(tmp_path) -> None:
+    path = tmp_path / "MANIFEST.json"  # the repository itself is a checkout: load a copy
+    path.write_bytes((CORPUS / "MANIFEST.example.json").read_bytes())
     with load_corpus_manifest(path, verify=False) as manifest:
         assert len(manifest.items) == 2
     raw = json.loads(path.read_text())

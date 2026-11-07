@@ -4,7 +4,7 @@ import os
 
 import pytest
 
-from fastfoto_linux.evaluation import corpus_manifest
+from fastfoto_linux.evaluation import corpus_manifest, corpus_verify
 from fastfoto_linux.evaluation.corpus_manifest import (
     CorpusError,
     load_corpus_manifest,
@@ -96,13 +96,13 @@ def test_a_missing_manifest_is_a_corpus_error(tmp_path) -> None:
 
 def test_a_file_over_the_size_cap_is_refused(tmp_path, monkeypatch) -> None:
     manifest = write_corpus(tmp_path, {"a.bin": b"alpha"})
-    monkeypatch.setattr(corpus_manifest, "MAX_FILE_BYTES", 4)
+    monkeypatch.setattr(corpus_verify, "MAX_FILE_BYTES", 4)
     with pytest.raises(CorpusError, match="too large"):
         load_corpus_manifest(manifest)
 
 
 def test_large_files_are_hashed_in_chunks(tmp_path, monkeypatch) -> None:
-    monkeypatch.setattr(corpus_manifest, "HASH_CHUNK", 3)
+    monkeypatch.setattr(corpus_verify, "HASH_CHUNK", 3)
     manifest = write_corpus(tmp_path, {"a.bin": b"0123456789"})
     with load_corpus_manifest(manifest) as loaded:
         assert loaded.items[0].sha256 == sha(b"0123456789")
@@ -173,10 +173,10 @@ def test_the_manifest_path_must_be_absolute_and_plain(tmp_path, make) -> None:
 
 def test_the_total_bytes_to_hash_are_budgeted(tmp_path, monkeypatch) -> None:
     manifest = write_corpus(tmp_path, {"a.bin": b"12345", "b.bin": b"67890"})
-    monkeypatch.setattr(corpus_manifest, "MAX_TOTAL_BYTES", 8)
+    monkeypatch.setattr(corpus_verify, "MAX_TOTAL_BYTES", 8)
     with pytest.raises(CorpusError, match="too large"):
         load_corpus_manifest(manifest)
-    monkeypatch.setattr(corpus_manifest, "MAX_TOTAL_BYTES", 10)
+    monkeypatch.setattr(corpus_verify, "MAX_TOTAL_BYTES", 10)
     load_corpus_manifest(manifest).close()
 
 
@@ -206,7 +206,7 @@ def test_read_verified_refuses_changed_unsafe_large_and_foreign_items(
         (tmp_path / "b.bin").symlink_to(tmp_path / "a.bin")
         with pytest.raises(CorpusError, match="unsafe"):
             read_verified(loaded, loaded.items[1])
-        monkeypatch.setattr(corpus_manifest, "MAX_READ_BYTES", 3)
+        monkeypatch.setattr(corpus_verify, "MAX_READ_BYTES", 3)
         with pytest.raises(CorpusError, match="too large"):
             read_verified(loaded, loaded.items[0])
         with pytest.raises(CorpusError, match="not in"):

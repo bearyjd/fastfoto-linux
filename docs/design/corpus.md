@@ -44,28 +44,58 @@ algorithm as red-eye's `split_salt`): 20 % held out, chosen from a hash of the s
 refuses any declared split that differs from the derived one; `assign_splits(items, seed)` returns
 new item dicts with the split filled in, for authoring. The example manifest's splits come from it.
 
-## Verification and untrusted input
+## Loading and verification
 
-`load_corpus_manifest(path, verify=True)` returns a `CorpusManifest` that holds the manifest
-directory's file descriptor (`root_fd`; use `with` or `close()`). `verify_hashes` streams each file
-through that descriptor, one component at a time without following symlinks, so replacing the
-directory path afterwards cannot redirect a read. A symlink, FIFO or other non-regular file, a
-missing file, a file over 4 GiB or a wrong hash is a `CorpusError` naming the item id only (never
-the path or the hash). `verify=False` reads no item file. Descriptors are closed on every path.
-The manifest is untrusted: size, nesting depth and annotation size are capped, and hostile JSON
-nesting is a `CorpusError`, not a crash. As for red-eye, a concurrent local attacker who races
-renames is out of scope.
+`load_corpus_manifest(path, verify=True)` takes an absolute path with no `.` or `..` component.
+The directory is walked from `/` without following any symlink, the manifest is opened
+`O_NOFOLLOW` (a symlinked manifest or directory is refused), and the directory is refused if it is
+or sits inside a fastfoto-linux checkout (an unreadable `pyproject.toml` is reported as "cannot
+verify", not as a checkout). It returns a `CorpusManifest` that holds the directory's file
+descriptor (`root_fd`; use `with` or `close()`). `verify_hashes` streams each file through that
+descriptor, one component at a time without following symlinks, so replacing the directory path
+afterwards cannot redirect a read. A symlink, FIFO or other non-regular file, a missing file, a
+file over 4 GiB, more than 256 GiB in all (charged from `fstat` before reading) or a wrong hash is
+a `CorpusError` naming the item id only (never the path or the hash). `verify=False` reads no
+item file. Descriptors are closed on every path.
+
+Consumers must read item bytes with `read_verified(manifest, item)`: it reads through the same
+pinned directory (at most 1 GiB) and checks the sha256 of the very bytes it returns, so what a
+harness measures is what the manifest vouches for. Opening `item.path` yourself after a
+verification does not give that guarantee.
+
+## Untrusted input
+
+The manifest is untrusted. Its size (8 MB, checked before JSON parsing), item count, text length
+(512; paths 1024), annotation depth (8) and annotation size (10 000 values per item, 200 000 in
+all, counted iteratively before anything is built) are capped, control characters are refused in
+free text and paths, ids may not be `.` or `..`, and hostile JSON nesting is a `CorpusError`, not
+a crash. As for red-eye, a concurrent local attacker who races renames is out of scope.
 
 ## Reports
 
 `build_report` copies only the format, version, the manifest's sha256, item counts by split and by
-kind, and the caller's metrics. It carries no item ids, paths, rights text or annotations.
-`serialise_report` first runs `check_metrics_only` as defence in depth: leaves are integers,
-finite floats, booleans, null or tokens (`[A-Za-z0-9._:+-]{1,64}`, so no whitespace, OCR sentence
-or path); keys are tokens outside a forbidden set (`pixels`, `image`, `crop`, `thumbnail`, `text`,
-`ocr_text`, `path`, `source`, `licence`, `id`, `annotations`, ...); lists have at most 32 items and
-nesting at most 8 levels. Output is `json.dumps(sort_keys=True, indent=2, ensure_ascii=True)` plus
-a newline, so it is byte-deterministic.
+kind (zero counts included) and the caller's metrics. It carries no item ids, paths, rights text
+or annotations. It also refuses metrics that repeat, ignoring case, any id, group, path component
+(with or without suffix), `source`, `licence` or annotation string of the manifest (the top-level
+annotation names are schema words and are exempt).
+
+`serialise_report` runs `check_metrics_only` first. It is an allowlist: leaves are booleans, null,
+integers below 2^53, finite floats, or one of a closed set of status words (the splits, the kinds,
+`pass`, `fail`, `abstain`, `insufficient_data`, `not_applicable`); keys match
+`[a-z][a-z0-9_]{0,47}` and are not in a forbidden set (`pixels`, `image`, `crop`, `thumbnail`,
+`text`, `ocr_text`, `path`, `source`, `licence`, `id`, `annotations`, ... compared without
+underscores); objects have at most 64 keys, lists at most 32 items, nesting at most 8 levels.
+Output is `json.dumps(sort_keys=True, indent=2, ensure_ascii=True)` plus a newline, so it is
+byte-deterministic.
+
+This guard enforces shape plus the manifest cross-check. It is defence in depth, not a proof: a
+number can still encode something. Harness authors use fixed metric keys and never build keys or
+strings from item data.
+
+## Limits
+
+`O_NOCTTY` is not set when opening corpus files (that code is red-eye's `redeye_images`); a
+follow-up. Nothing here has been run on a real corpus.
 
 ## Not done here
 

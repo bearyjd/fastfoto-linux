@@ -203,13 +203,14 @@ def test_counts_include_zero_for_every_option(tmp_path) -> None:
 @pytest.mark.parametrize(
     "metrics",
     [
-        {"jane-doe-0": 1},
-        {"JANE_DOE_0": 1},
-        {"m": "Jane-Doe-0"},
+        {"item-jane-doe-0": 1},
+        {"ITEM-JANE-DOE-0": 1},
+        {"m": "Item-Jane-Doe-0"},
         {"sentinelgroup": 1},
         {"sentinelpath": 1},
         {"m": ["sentinelpath.bin"]},
         {"b": 1},
+        {"lines": 1},
         {"sentinelocr": 1},
         {"m": {"deep": ["SENTINELOCR"]}},
         {"sentinelnote": 1},
@@ -222,18 +223,18 @@ def test_build_report_refuses_metrics_that_echo_the_manifest(tmp_path, metrics: 
         build_report(manifest, metrics)
 
 
-def test_annotation_names_are_not_private(tmp_path) -> None:
+def test_the_top_level_annotation_name_is_not_private(tmp_path) -> None:
     with _loaded(tmp_path) as manifest:
-        assert build_report(manifest, {"ocr": 1, "lines": 2})["metrics"] == {"ocr": 1, "lines": 2}
+        assert build_report(manifest, {"ocr": 1})["metrics"] == {"ocr": 1}
 
 
 def test_serialisation_is_deterministic_sorted_and_ascii(tmp_path) -> None:
     with _loaded(tmp_path) as manifest:
-        one = serialise_report(build_report(manifest, {"b": 1, "a": 2}))
-        two = serialise_report(build_report(manifest, {"a": 2, "b": 1}))
+        one = serialise_report(build_report(manifest, {"zeta": 1, "alpha": 2}))
+        two = serialise_report(build_report(manifest, {"alpha": 2, "zeta": 1}))
     assert one == two
     assert one.endswith(b"}\n") and one.isascii()
-    assert one.index(b'"a"') < one.index(b'"b"')
+    assert one.index(b'"alpha"') < one.index(b'"zeta"')
     assert b"\n  " in one  # indented
 
 

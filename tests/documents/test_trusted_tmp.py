@@ -118,6 +118,7 @@ def test_without_a_trusted_place_it_skips_locally_and_names_the_problem(
 ) -> None:
     untrusted_runtime = tmp_path / "untrusted"
     untrusted_runtime.mkdir()
+    untrusted_runtime = untrusted_runtime.resolve()
     if runtime is None:
         monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
     else:
@@ -137,5 +138,6 @@ def test_without_a_trusted_place_ci_fails_instead_of_skipping(
     monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
     monkeypatch.setenv("CI", "true")
     monkeypatch.setattr(_trusted_tmp, "untrusted_ancestor", probe({tmp_path.resolve()}))
-    with pytest.raises(pytest.fail.Exception, match=r"is foreign.*--basetemp"):
+    with pytest.raises(BaseException, match=r"is foreign.*--basetemp") as outcome:
         next(_trusted_tmp.trusted_tmp_path(tmp_path))
+    assert outcome.type is pytest.fail.Exception  # a skip would hide the problem in CI

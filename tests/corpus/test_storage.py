@@ -1,9 +1,12 @@
 """Where the corpus lives: no default, absolute, no symlinks, outside the checkout."""
 
+import os
+
 import pytest
 
 from fastfoto_linux.evaluation.corpus_manifest import CorpusError
 from fastfoto_linux.evaluation.corpus_storage import ENV_VAR, corpus_root, manifest_path
+from tests.corpus.helpers import fake_checkout
 
 
 @pytest.fixture
@@ -72,3 +75,22 @@ def test_another_project_checkout_is_fine(tmp_path) -> None:
     (repo / ".git").mkdir(parents=True)
     (repo / "pyproject.toml").write_text('[project]\nname = "someone-else"\n')
     assert corpus_root(repo, {}) == repo
+
+
+def test_an_unreadable_pyproject_is_reported_as_unverifiable_not_as_a_checkout(tmp_path) -> None:
+    if os.geteuid() == 0:
+        pytest.skip("root can read a mode 000 file")
+    ancestor = fake_checkout(tmp_path / "anc")
+    (ancestor / "corpus").mkdir()
+    (ancestor / "pyproject.toml").chmod(0)
+    try:
+        with pytest.raises(CorpusError, match="cannot verify") as info:
+            corpus_root(ancestor / "corpus", {})
+    finally:
+        (ancestor / "pyproject.toml").chmod(0o644)
+    assert "outside" not in str(info.value)
+
+
+def test_a_nul_in_the_path_is_a_corpus_error(tmp_path) -> None:
+    with pytest.raises(CorpusError):
+        corpus_root(None, {ENV_VAR: str(tmp_path) + "/a\0b"})

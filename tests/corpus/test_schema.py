@@ -55,7 +55,7 @@ def test_the_schema_path_pattern_agrees_with_the_loader() -> None:
     pattern = re.compile(_item_schema()["properties"]["path"]["pattern"])
     for good in ("a.bin", "sub/dir/a.bin", ".hidden/x"):
         assert pattern.search(good)
-    for bad in ("", "/abs", "../x", "a/../b", "a//b", "./a", "a/.", "a\\b", "a\0b"):
+    for bad in ("", "/abs", "../x", "a/../b", "a//b", "./a", "a/.", "a\\b", "a\0b", "a/", "a\x01b"):
         assert not pattern.search(bad), bad
         with pytest.raises(cm.CorpusError):
             cm.check_relpath(bad)
@@ -74,3 +74,13 @@ def test_the_corpus_directory_holds_no_images() -> None:
     names = [p.name for p in CORPUS.rglob("*") if p.is_file()]
     assert names
     assert {Path(n).suffix for n in names} <= {".json", ".md"}
+
+
+def test_schema_lengths_and_whitespace_rules_match_the_loader() -> None:
+    props = _item_schema()["properties"]
+    assert props["path"]["maxLength"] == cm.MAX_PATH
+    for name in ("source", "licence"):
+        pattern = re.compile(props[name]["pattern"])
+        assert pattern.search("x") and not pattern.search(" ") and not pattern.search("  \t")
+    ident = re.compile(props["id"]["pattern"])
+    assert ident.search("a.b") and not ident.search(".") and not ident.search("..")

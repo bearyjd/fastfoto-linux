@@ -57,3 +57,10 @@ def write_corpus(root: Path, files: dict[str, bytes]) -> Path:
 
 def unsplit(item: dict) -> dict:
     return {k: v for k, v in item.items() if k != "split"}
+
+
+def fake_checkout(path: Path) -> Path:
+    """Make ``path`` look like a fastfoto-linux checkout (a .git entry and our pyproject)."""
+    (path / ".git").mkdir(parents=True)
+    (path / "pyproject.toml").write_text('[project]\nname = "fastfoto-linux"\n')
+    return path

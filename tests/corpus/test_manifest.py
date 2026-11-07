@@ -239,3 +239,61 @@ def test_the_manifest_is_a_context_manager_and_close_is_idempotent(tmp_path) -> 
     manifest.close()
     assert manifest.root_fd is None
     json.loads(manifest_bytes(raw_item()))
+
+
+@pytest.mark.parametrize("bad", [".", ".."])
+def test_dot_ids_and_groups_are_refused(bad: str) -> None:
+    with pytest.raises(CorpusError):
+        _parse(raw_item(id=bad))
+    with pytest.raises(CorpusError):
+        _parse(raw_item(group=bad))
+
+
+@pytest.mark.parametrize("char", ["\x00", "\x01", "\t", "\n", "\x7f", "\x85"])
+def test_control_characters_are_refused_in_every_free_text_field(char: str) -> None:
+    for over in (
+        {"source": f"a{char}b"},
+        {"licence": f"a{char}b"},
+        {"path": f"a{char}b.bin"},
+        {"annotations": {"a": {"x": f"a{char}b"}}},
+        {"annotations": {"a": {f"k{char}": 1}}},
+    ):
+        with pytest.raises(CorpusError):
+            _parse(raw_item(**over))
+
+
+def test_path_length_is_capped_at_1024() -> None:
+    assert _parse(raw_item(path="a" * 1024))
+    with pytest.raises(CorpusError, match="path"):
+        _parse(raw_item(path="a" * 1025))
+
+
+def test_oversized_bytes_are_refused_before_json_is_parsed(monkeypatch) -> None:
+    monkeypatch.setattr(corpus_manifest, "MAX_MANIFEST_BYTES", 50)
+    monkeypatch.setattr(corpus_manifest.json, "loads", lambda *a, **k: pytest.fail("parsed"))
+    with pytest.raises(CorpusError, match="large"):
+        parse_corpus_manifest(b" " * 51)
+
+
+def test_the_node_count_is_taken_before_anything_is_frozen(monkeypatch) -> None:
+    def boom(*args: object) -> None:
+        raise AssertionError("frozen before the budget was checked")
+
+    monkeypatch.setattr(corpus_manifest, "_freeze", boom)
+    big = {"a": {"v": [0] * (MAX_ANNOTATION_NODES + 1)}}
+    with pytest.raises(CorpusError, match="large"):
+        _parse(raw_item(annotations=big))
+
+
+def test_annotation_nodes_have_a_manifest_wide_budget(monkeypatch) -> None:
+    monkeypatch.setattr(corpus_manifest, "MAX_TOTAL_ANNOTATION_NODES", 25)
+    note = {"a": {"v": [0] * 10}}  # 13 nodes
+    assert _parse(raw_item("a", annotations=note))
+    with pytest.raises(CorpusError, match="large"):
+        _parse(raw_item("a", annotations=note), raw_item("b", b"beta", annotations=note))
+
+
+def test_a_literal_1e999_in_annotations_is_refused() -> None:
+    text = manifest_bytes(raw_item(annotations={"a": {"x": 0}})).replace(b'"x": 0', b'"x": 1e999')
+    with pytest.raises(CorpusError, match="finite"):
+        parse_corpus_manifest(text)

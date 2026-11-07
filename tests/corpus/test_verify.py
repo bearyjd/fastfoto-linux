@@ -8,9 +8,18 @@ from fastfoto_linux.evaluation import corpus_manifest
 from fastfoto_linux.evaluation.corpus_manifest import (
     CorpusError,
     load_corpus_manifest,
+    read_verified,
     verify_hashes,
 )
-from tests.corpus.helpers import document, encode, raw_item, sha, write_corpus
+from tests.corpus.helpers import (
+    document,
+    encode,
+    fake_checkout,
+    manifest_bytes,
+    raw_item,
+    sha,
+    write_corpus,
+)
 
 
 def _fds() -> int:
@@ -128,3 +137,92 @@ def test_no_descriptor_leaks_on_success_or_failure(tmp_path) -> None:
     with pytest.raises(CorpusError):
         load_corpus_manifest(tmp_path / "absent" / "MANIFEST.json")
     assert _fds() == before
+
+
+def test_a_symlinked_manifest_is_refused(tmp_path) -> None:
+    (tmp_path / "real.json").write_bytes(manifest_bytes(raw_item()))
+    (tmp_path / "MANIFEST.json").symlink_to(tmp_path / "real.json")
+    with pytest.raises(CorpusError, match="cannot read"):
+        load_corpus_manifest(tmp_path / "MANIFEST.json", verify=False)
+
+
+def test_a_manifest_under_a_symlinked_directory_is_refused(tmp_path) -> None:
+    write_corpus(tmp_path / "real", {"a.bin": b"alpha"})
+    (tmp_path / "link").symlink_to(tmp_path / "real")
+    with pytest.raises(CorpusError, match="cannot read"):
+        load_corpus_manifest(tmp_path / "link" / "MANIFEST.json")
+
+
+def test_a_manifest_inside_a_checkout_is_refused(tmp_path) -> None:
+    repo = fake_checkout(tmp_path / "repo")
+    manifest = write_corpus(repo / "data", {"a.bin": b"alpha"})
+    with pytest.raises(CorpusError, match="outside the fastfoto-linux checkout"):
+        load_corpus_manifest(manifest)
+
+
+@pytest.mark.parametrize("make", [
+    lambda tmp: type(tmp)("MANIFEST.json"),
+    lambda tmp: tmp / ".." / "MANIFEST.json",
+    lambda tmp: type(tmp)(str(tmp) + "/a\0b/MANIFEST.json"),
+    lambda tmp: type(tmp)("/"),
+])  # fmt: skip
+def test_the_manifest_path_must_be_absolute_and_plain(tmp_path, make) -> None:
+    with pytest.raises(CorpusError, match="path"):
+        load_corpus_manifest(make(tmp_path))
+
+
+def test_the_total_bytes_to_hash_are_budgeted(tmp_path, monkeypatch) -> None:
+    manifest = write_corpus(tmp_path, {"a.bin": b"12345", "b.bin": b"67890"})
+    monkeypatch.setattr(corpus_manifest, "MAX_TOTAL_BYTES", 8)
+    with pytest.raises(CorpusError, match="too large"):
+        load_corpus_manifest(manifest)
+    monkeypatch.setattr(corpus_manifest, "MAX_TOTAL_BYTES", 10)
+    load_corpus_manifest(manifest).close()
+
+
+def test_verify_hashes_on_a_closed_manifest_is_refused(tmp_path) -> None:
+    manifest = load_corpus_manifest(write_corpus(tmp_path, {"a.bin": b"alpha"}))
+    manifest.close()
+    with pytest.raises(CorpusError, match="closed"):
+        verify_hashes(manifest)
+    with pytest.raises(CorpusError, match="closed"):
+        read_verified(manifest, manifest.items[0])
+
+
+def test_read_verified_returns_the_bytes_that_match_the_hash(tmp_path) -> None:
+    with load_corpus_manifest(write_corpus(tmp_path, {"a.bin": b"alpha"})) as manifest:
+        assert read_verified(manifest, manifest.items[0]) == b"alpha"
+
+
+def test_read_verified_refuses_changed_unsafe_large_and_foreign_items(
+    tmp_path, monkeypatch
+) -> None:
+    manifest = write_corpus(tmp_path, {"a.bin": b"alpha", "b.bin": b"beta"})
+    with load_corpus_manifest(manifest, verify=False) as loaded:
+        (tmp_path / "a.bin").write_bytes(b"changed")
+        with pytest.raises(CorpusError, match="does not match"):
+            read_verified(loaded, loaded.items[0])
+        (tmp_path / "b.bin").unlink()
+        (tmp_path / "b.bin").symlink_to(tmp_path / "a.bin")
+        with pytest.raises(CorpusError, match="unsafe"):
+            read_verified(loaded, loaded.items[1])
+        monkeypatch.setattr(corpus_manifest, "MAX_READ_BYTES", 3)
+        with pytest.raises(CorpusError, match="too large"):
+            read_verified(loaded, loaded.items[0])
+        with pytest.raises(CorpusError, match="not in"):
+            read_verified(loaded, raw_item_as_item())
+
+
+def raw_item_as_item() -> corpus_manifest.CorpusItem:
+    return corpus_manifest.parse_corpus_manifest(manifest_bytes(raw_item("zz", b"zz"))).items[0]
+
+
+def test_read_verified_leaks_no_descriptor(tmp_path) -> None:
+    manifest = write_corpus(tmp_path, {"a.bin": b"alpha"})
+    with load_corpus_manifest(manifest) as loaded:
+        before = _fds()
+        read_verified(loaded, loaded.items[0])
+        (tmp_path / "a.bin").write_bytes(b"x")
+        with pytest.raises(CorpusError):
+            read_verified(loaded, loaded.items[0])
+        assert _fds() == before

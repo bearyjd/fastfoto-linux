@@ -17,6 +17,10 @@ BAD_FORMAT = "photo edits support only 8-bit RGB PNG originals"
 ANIMATED = "animated PNG originals are not supported"
 TOO_MANY_PIXELS = "the PNG original has too many pixels"
 BAD_METADATA = "the PNG original has duplicate, misplaced or oversized metadata"
+UNKEPT_COLOUR = "the PNG original uses transparency or colour settings the editor cannot keep"
+SRGB_GAMMA = 45455
+GAMMA_LENGTH = 4
+REFUSED_KINDS = frozenset({b"tRNS", b"cHRM", b"cICP", b"mDCv", b"cLLi"})
 TOO_MANY_CHUNKS = "the PNG original has too many chunks"
 
 
@@ -27,6 +31,8 @@ class _Scan:
     exif_chunks: int = 0
     seen_idat: bool = False
     seen_iend: bool = False
+    iccp_chunks: int = 0
+    phys_chunks: int = 0
 
 
 def _read_header(data: bytes, pos: int) -> tuple[bytes, int, int]:
@@ -62,9 +68,28 @@ def _check_ihdr(data: bytes) -> int:
     return start + length + 4
 
 
+def _srgb_gamma(data: bytes, start: int, length: int) -> bool:
+    return length == GAMMA_LENGTH and struct.unpack_from(">I", data, start)[0] == SRGB_GAMMA
+
+
+def _count_once(kind: bytes, scan: _Scan) -> None:
+    if kind == b"iCCP":
+        scan.iccp_chunks += 1
+    else:
+        scan.phys_chunks += 1
+    if scan.iccp_chunks > 1 or scan.phys_chunks > 1:
+        raise PhotoEditError(BAD_METADATA)
+
+
 def _check_chunk(kind: bytes, data: bytes, start: int, length: int, scan: _Scan) -> None:
     if kind == b"acTL":
         raise PhotoEditError(ANIMATED)
+    if kind == b"IHDR":
+        raise PhotoEditError(BAD_PNG)
+    if kind in REFUSED_KINDS or (kind == b"gAMA" and not _srgb_gamma(data, start, length)):
+        raise PhotoEditError(UNKEPT_COLOUR)
+    if kind in (b"iCCP", b"pHYs"):
+        _count_once(kind, scan)
     if kind == b"IDAT":
         scan.seen_idat = True
     elif kind == b"IEND":

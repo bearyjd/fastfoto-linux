@@ -3,6 +3,7 @@
 import hashlib
 import importlib
 import io
+import struct
 import warnings
 from pathlib import Path
 
@@ -16,7 +17,12 @@ from fastfoto_linux.photo_edits.model import (
     PhotoSource,
     finite,
 )
-from fastfoto_linux.photo_edits.png_guard import PNG_SIGNATURE, check_png
+from fastfoto_linux.photo_edits.png_guard import (
+    BAD_METADATA,
+    MAX_METADATA_CHUNK,
+    PNG_SIGNATURE,
+    check_png,
+)
 
 FALLBACK_DPI = 300.0
 SWAPPED_ORIENTATIONS = frozenset({5, 6, 7, 8})
@@ -115,7 +121,10 @@ def _profile(image: Image.Image, notes: list[str]) -> bytes | None:
 def _xmp(image: Image.Image) -> bytes:
     if image.format == "PNG":
         packet = image.info.get("XML:com.adobe.xmp", "")
-        return packet.encode("utf-8") if isinstance(packet, str) else b""
+        raw = packet.encode("utf-8") if isinstance(packet, str) else b""
+        if len(raw) > MAX_METADATA_CHUNK:  # Pillow has already inflated a compressed iTXt
+            raise PhotoEditError(BAD_METADATA)
+        return raw
     return image.info.get("xmp", b"")
 
 
@@ -135,7 +144,7 @@ def _decode(path: Path, data: bytes) -> PhotoSource:
                     "photo review requires a bounded retained original RGB JPEG or PNG"
                 )
             if image.format == "PNG":
-                image.load()  # chunks after IDAT (text, eXIf) are only read once pixels are
+                image.load()  # text chunks after IDAT are only read once pixels are
             exif = image.getexif()
             orientation = exif.get(274, 1)
             if type(orientation) is not int or orientation not in range(1, 9):
@@ -179,6 +188,11 @@ def load_source(path: Path, *, expected_sha256: str | None = None) -> PhotoSourc
         OSError,
         SyntaxError,
         ValueError,
+        TypeError,
+        struct.error,
+        AttributeError,
+        KeyError,
+        IndexError,
         Image.DecompressionBombError,
         Image.DecompressionBombWarning,
     ) as error:

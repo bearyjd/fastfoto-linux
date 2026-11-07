@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import struct
 from dataclasses import replace
 from pathlib import Path
 from threading import Event
@@ -150,9 +151,17 @@ def test_a_jpeg_save_refuses_oversized_metadata_the_same_way(tmp_path: Path) -> 
         save_edit(huge, _recipe(huge), cancel=Event())
 
 
-def test_a_save_with_unwritable_exif_raises_photo_edit_error(tmp_path: Path) -> None:
-    source = replace(load_source(_master(tmp_path)), exif=b"Exif\x00\x00" + h.ASCII_XRES)
-    with pytest.raises(PhotoEditError):
+@pytest.mark.parametrize("error", [TypeError, struct.error, AttributeError, KeyError, IndexError])
+def test_a_save_with_unwritable_exif_raises_photo_edit_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, error: type[Exception]
+) -> None:
+    source = load_source(_master(tmp_path))
+
+    def broken(*_args: object) -> bytes:
+        raise error("bad tag")
+
+    monkeypatch.setattr("fastfoto_linux.photo_edits.store.derivative_exif", broken)
+    with pytest.raises(PhotoEditError, match="cannot be rewritten"):
         save_edit(source, _recipe(source), cancel=Event())
 
 

@@ -626,7 +626,7 @@ Unlike turns and crops, straightening resamples the pixels. Changing the angle c
 a whole slider drag is one Undo step. **Reset straighten** returns to 0.0°. It needs equal horizontal
 and vertical resolution and is disabled otherwise; using it saves a new version-4 recipe.
 
-**Save new copy** writes a numbered `_edit-0001.jpg` and matching JSON recipe beside the
+**Save new copy** writes a numbered `_edit-0001.jpg` (`.png` for a PNG original) and matching JSON recipe beside the
 source, without replacing the original, enhanced copy or back. Keep both new files to reopen
 that edit through **Open saved photo edit**. Leaving with unsaved changes asks before
 discarding them. These edits combine accepted red-eye corrections and manual tone adjustments; they do not

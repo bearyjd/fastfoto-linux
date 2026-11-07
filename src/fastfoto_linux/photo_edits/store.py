@@ -2,6 +2,7 @@
 
 import hashlib
 import io
+import struct
 from pathlib import Path
 from threading import Event
 
@@ -20,6 +21,7 @@ from fastfoto_linux.photo_edits.model import (
     check_cancel,
     sibling_name,
 )
+from fastfoto_linux.photo_edits.png_guard import MAX_METADATA_CHUNK
 from fastfoto_linux.photo_edits.recipe import (
     fields,
     json_bytes,
@@ -35,37 +37,53 @@ from fastfoto_linux.photo_edits.source import load_source, source_bytes, verify_
 MAX_VERSIONS = 9999
 XMP_KEY = "XML:com.adobe.xmp"
 PNG_COMPRESS_LEVEL = 6
+METADATA_TOO_LARGE = "the edited photo metadata is too large to save"
+METADATA_UNWRITABLE = "the original's EXIF metadata cannot be rewritten; Save was cancelled"
+FORMAT_MISMATCH = "saved photo source and output formats do not match"
 
 
 def _save_png(
     buffer: io.BytesIO,
-    source: PhotoSource,
-    recipe: PhotoEditRecipe,
     pixels: np.ndarray,
     dpi: tuple[float, float],
+    metadata: tuple[bytes, bytes],
+    icc_profile: bytes | None,
 ) -> None:
+    exif, xmp = metadata
     info = PngImagePlugin.PngInfo()
-    xmp = derivative_xmp(source, recipe.geometry)
     if xmp:
         info.add_itxt(XMP_KEY, xmp.decode("utf-8"))
     Image.fromarray(pixels).save(
         buffer,
         "PNG",
         compress_level=PNG_COMPRESS_LEVEL,
-        exif=derivative_exif(source, recipe.geometry),
+        exif=exif,
         pnginfo=info,
-        icc_profile=source.icc_profile,
+        icc_profile=icc_profile,
         dpi=dpi,
     )
+
+
+def _metadata(source: PhotoSource, recipe: PhotoEditRecipe) -> tuple[bytes, bytes]:
+    """Derivative EXIF and XMP, refused when unwritable or past what the editor itself accepts."""
+    try:
+        exif = derivative_exif(source, recipe.geometry)
+    except (TypeError, ValueError, AttributeError, KeyError, IndexError, struct.error) as error:
+        raise PhotoEditError(METADATA_UNWRITABLE) from error
+    xmp = derivative_xmp(source, recipe.geometry)
+    if len(exif) > MAX_METADATA_CHUNK or len(xmp) > MAX_METADATA_CHUNK:
+        raise PhotoEditError(METADATA_TOO_LARGE)
+    return exif, xmp
 
 
 def _encode(source: PhotoSource, recipe: PhotoEditRecipe, cancel: Event) -> bytes:
     pixels = render(source, recipe, cancel=cancel)
     check_cancel(cancel)
     *_, dpi_x, dpi_y = frame(source, recipe.geometry)
+    metadata = _metadata(source, recipe)
     buffer = io.BytesIO()
     if source.format == "PNG":
-        _save_png(buffer, source, recipe, pixels, (dpi_x, dpi_y))
+        _save_png(buffer, pixels, (dpi_x, dpi_y), metadata, source.icc_profile)
         check_cancel(cancel)
         return buffer.getvalue()
     Image.fromarray(pixels).save(
@@ -73,8 +91,8 @@ def _encode(source: PhotoSource, recipe: PhotoEditRecipe, cancel: Event) -> byte
         "JPEG",
         quality=recipe.quality,
         subsampling=0,
-        exif=derivative_exif(source, recipe.geometry),
-        xmp=derivative_xmp(source, recipe.geometry),
+        exif=metadata[0],
+        xmp=metadata[1],
         icc_profile=source.icc_profile,
         dpi=(dpi_x, dpi_y),
     )
@@ -153,6 +171,8 @@ def open_edit(sidecar: Path) -> tuple[PhotoSource, PhotoEditRecipe]:
     if image in (source_path, sidecar):
         raise PhotoEditError("saved derivative must be distinct from its source and sidecar")
     source = load_source(source_path, expected_sha256=original.get("sha256"))
+    if image.suffix.lower() != (".png" if source.format == "PNG" else ".jpg"):
+        raise PhotoEditError(FORMAT_MISMATCH)
     recipe = parse_recipe(data, source)
     if hashlib.sha256(source_bytes(image)).hexdigest() != output["sha256"]:
         raise PhotoEditError("saved derivative output hash changed")

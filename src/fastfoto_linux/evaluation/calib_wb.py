@@ -11,23 +11,19 @@ import numpy as np
 
 from fastfoto_linux.enhance.restore import restore_colour
 from fastfoto_linux.evaluation.calib_annotations import WbNote, check_inside
-from fastfoto_linux.evaluation.calib_metrics import neutral_de00
-from fastfoto_linux.evaluation.redeye_images import decode_image
-from fastfoto_linux.evaluation.redeye_split import pixel_digest
+from fastfoto_linux.evaluation.calib_metrics import neutral_de00, sample_status
+from fastfoto_linux.evaluation.calib_pages import decode_photo, photo_digest
 from fastfoto_linux.evaluation.stats import nearest_rank
 from fastfoto_linux.gui.photoeditpresets import preset
 from fastfoto_linux.photo_edits.color import apply_white_balance
 
 FEATURE = "wb"
 KIND = "photo"
+digest = photo_digest
 SETTINGS = ("none", "restore", "warm", "cool", "faded", "mono")
 PRESET_SETTINGS = ("warm", "cool", "faded", "mono")
 RESTORE_DPI = 300.0
 MEDIAN, P90 = 50, 90
-
-
-def digest(data: bytes, note: WbNote) -> str:
-    return pixel_digest(decode_image(data))
 
 
 def render(rgb: np.ndarray, setting: str) -> np.ndarray:
@@ -41,17 +37,19 @@ def render(rgb: np.ndarray, setting: str) -> np.ndarray:
 
 
 def measure(data: bytes, note: WbNote, settings: object = None) -> dict[str, object]:
-    rgb = decode_image(data)
+    rgb = decode_photo(data)
     check_inside(note.neutral_boxes, rgb.shape[1], rgb.shape[0])
     errors = {s: neutral_de00(render(rgb, s), note.neutral_boxes) for s in SETTINGS}
     return {"cast": note.cast, "de": errors}
 
 
 def _summary(values: list[float]) -> dict[str, object]:
+    status = sample_status(len(values))
     return {
         "n": len(values),
-        "median_de00": nearest_rank(values, MEDIAN),
-        "p90_de00": nearest_rank(values, P90),
+        "status": status,
+        "median_de00": nearest_rank(values, MEDIAN) if status is None else None,
+        "p90_de00": nearest_rank(values, P90) if status is None else None,
     }
 
 

@@ -1,9 +1,9 @@
 """``eval detail``: noise reduction and sharpening on annotated flat patches and edges.
 
-Denoise and sharpen are rendered separately from the original: the flat patch sigma and the 10-90
-edge width are read from the denoised image, the halo overshoot from the sharpened one. Per item
-the sigma reduction and the edge-width growth are means over its boxes and the halo is the worst
-of its edges.
+The image is rendered as the product renders it: denoise, then sharpen on the same buffer. The
+flat patch sigma, the 10-90 edge width and the halo overshoot are all read from that chained
+output against the original. Per item the sigma reduction and the edge-width growth are means
+over its boxes and the halo is the worst of its edges.
 """
 
 from dataclasses import dataclass
@@ -18,9 +18,9 @@ from fastfoto_linux.evaluation.calib_metrics import (
     flat_sigmas,
     halo_pct,
     luma,
+    sample_status,
 )
-from fastfoto_linux.evaluation.redeye_images import decode_image
-from fastfoto_linux.evaluation.redeye_split import pixel_digest
+from fastfoto_linux.evaluation.calib_pages import decode_photo, photo_digest
 from fastfoto_linux.evaluation.stats import nearest_rank
 from fastfoto_linux.photo_edits.detail import apply_denoise, apply_sharpen
 from fastfoto_linux.photo_edits.model import PhotoDetail
@@ -47,24 +47,20 @@ class Strengths:
                 raise ValueError("a strength is a whole number from 0 to 100")
 
 
-def digest(data: bytes, note: DetailNote) -> str:
-    return pixel_digest(decode_image(data))
+digest = photo_digest
 
 
-def render_denoise(rgb: np.ndarray, strengths: Strengths) -> np.ndarray:
-    """A new image with noise reduction applied; the input is never changed."""
+def render(rgb: np.ndarray, dpi: int, strengths: Strengths) -> np.ndarray:
+    """A new image: denoise, then sharpen on one buffer, as the product does (the input is
+    never changed)."""
     out = rgb.copy()
     detail = PhotoDetail(
-        denoise_luma=strengths.denoise_luma, denoise_chroma=strengths.denoise_chroma
+        denoise_luma=strengths.denoise_luma,
+        denoise_chroma=strengths.denoise_chroma,
+        sharpen=strengths.sharpen,
     )
     apply_denoise(out, detail, Event())
-    return out
-
-
-def render_sharpen(rgb: np.ndarray, dpi: int, strengths: Strengths) -> np.ndarray:
-    """A new image sharpened for ``dpi``; the input is never changed."""
-    out = rgb.copy()
-    apply_sharpen(out, PhotoDetail(sharpen=strengths.sharpen), float(dpi), Event())
+    apply_sharpen(out, detail, float(dpi), Event())
     return out
 
 
@@ -97,30 +93,34 @@ def _halo(before: np.ndarray, after: np.ndarray, note: DetailNote) -> float:
 
 def measure(data: bytes, note: DetailNote, settings: object = None) -> dict[str, object]:
     strengths = settings if isinstance(settings, Strengths) else Strengths()
-    rgb = decode_image(data)
+    rgb = decode_photo(data)
     boxes = [*note.flat_boxes, *(edge.box for edge in note.edge_boxes)]
     check_inside(boxes, rgb.shape[1], rgb.shape[0])
     grey = luma(rgb)
-    smooth = luma(render_denoise(rgb, strengths))
-    sharp = luma(render_sharpen(rgb, note.dpi, strengths))
+    chained = luma(render(rgb, note.dpi, strengths))
     return {
-        "sigma": _sigma_reduction(grey, smooth, note),
-        "growth": _edge_growth(grey, smooth, note),
-        "halo": _halo(grey, sharp, note),
+        "sigma": _sigma_reduction(grey, chained, note),
+        "growth": _edge_growth(grey, chained, note),
+        "halo": _halo(grey, chained, note),
     }
 
 
 def aggregate(rows: list[dict[str, object]], settings: object = None) -> dict[str, object]:
     strengths = settings if isinstance(settings, Strengths) else Strengths()
     column = {key: [float(r[key]) for r in rows] for key in ("sigma", "growth", "halo")}  # type: ignore[arg-type]
+    status = sample_status(len(rows))
+    withheld = status is not None
     return {
         "n": len(rows),
+        "status": status,
         "strengths": {
             "denoise_luma": strengths.denoise_luma,
             "denoise_chroma": strengths.denoise_chroma,
             "sharpen": strengths.sharpen,
         },
-        "sigma_reduction_pct_median": nearest_rank(column["sigma"], MEDIAN),
-        "edge_width_growth_pct_median": nearest_rank(column["growth"], MEDIAN),
-        "halo_pct_p90": nearest_rank(column["halo"], P90),
+        "sigma_reduction_pct_median": None if withheld else nearest_rank(column["sigma"], MEDIAN),
+        "edge_width_growth_pct_median": None
+        if withheld
+        else nearest_rank(column["growth"], MEDIAN),
+        "halo_pct_p90": None if withheld else nearest_rank(column["halo"], P90),
     }

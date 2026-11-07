@@ -4,11 +4,18 @@ import argparse
 import os
 from pathlib import Path
 
-from fastfoto_linux.cli.errors import EXIT_GATE_FAILED, EXIT_OK, EXIT_USAGE, CliError
+from fastfoto_linux.cli.errors import (
+    EXIT_GATE_FAILED,
+    EXIT_OK,
+    EXIT_PROCESSING_ERROR,
+    EXIT_USAGE,
+    CliError,
+)
 from fastfoto_linux.cli.options import common_parent
 from fastfoto_linux.evaluation.calib_detail import DEFAULT_STRENGTH, Strengths
 from fastfoto_linux.evaluation.calib_run import (
     FEATURES,
+    CalibResult,
     check_pin,
     check_request,
     resolve_out,
@@ -71,14 +78,28 @@ def run(args: argparse.Namespace) -> int:
             run_dir = write_report(manifest, out_dir, result.report)
     except (CorpusError, ManifestError, ValueError) as error:
         raise CliError(str(error), EXIT_USAGE) from error
+    except (OSError, RuntimeError):
+        raise CliError(
+            "cannot read the corpus or write the results", EXIT_PROCESSING_ERROR
+        ) from None
     print(f"results: {run_dir}")
     print(f"{result.errored} item(s) errored")
     if not args.gate:
         return EXIT_OK
-    if not result.failures:
-        print("GATE PASS")
-        return EXIT_OK
-    print("GATE FAIL")
-    for failure in result.failures:
-        print(f"  {failure}")
-    return EXIT_GATE_FAILED
+    return _gate(result)
+
+
+def _gate(result: CalibResult) -> int:
+    """Report the gate. Only the automated criteria are judged, and the line says so."""
+    if result.failures:
+        print("AUTOMATED GATE FAIL")
+        for failure in result.failures:
+            print(f"  {failure}")
+        code = EXIT_GATE_FAILED
+    else:
+        print("automated criteria passed: only automated criteria were judged,")
+        print("which is not a section 4.9 pass")
+        code = EXIT_OK
+    if result.pending:
+        print("pending, judged by people or other commands: " + ", ".join(result.pending))
+    return code

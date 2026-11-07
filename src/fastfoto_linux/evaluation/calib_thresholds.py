@@ -15,18 +15,29 @@ FAIL = "fail"
 INSUFFICIENT = "insufficient_data"
 NOT_APPLICABLE = "not_applicable"
 NO_HARNESS = "none"
-_OPS: dict[str, Callable[[float, float], bool]] = {"<=": operator.le, ">=": operator.ge}
+MIN_N = 5  # a proposal, not a roadmap number: below it a group reports no statistics
+PROPOSAL = "proposal"
+_OPS: dict[str, Callable[[object, object], bool]] = {
+    "<=": operator.le,
+    ">=": operator.ge,
+    "==": operator.eq,
+}
 
 
 @dataclass(frozen=True)
 class Criterion:
-    """``metric`` is a dotted path into the feature's metrics; ``value`` the limit under ``op``."""
+    """``metric`` is a dotted path into the feature's metrics; ``value`` the limit under ``op``.
+    ``n_path`` locates the sample size of the group judged: below ``MIN_N`` the verdict is
+    ``insufficient_data``. ``label`` is ``proposal`` for numbers that are not from the roadmap's
+    measured rows."""
 
     key: str
     metric: str
     op: str
-    value: float
+    value: float | str
     automated: bool = True
+    n_path: str = "n"
+    label: str = "-"
 
 
 @dataclass(frozen=True)
@@ -51,9 +62,9 @@ THRESHOLDS = (
         "documents.md",
         "eval deskew",
         (
-            Criterion("mae_deg", "mae_deg", "<=", 0.3),
-            Criterion("wrong_direction", "wrong_direction.p", "<=", 0.0),
-            Criterion("abstain_rate", "abstain.p", "<=", 0.25),
+            Criterion("mae_deg", "mae_deg", "<=", 0.3, n_path="applied"),
+            Criterion("wrong_direction", "wrong_direction.k", "<=", 0, n_path="wrong_direction.n"),
+            Criterion("abstain_rate", "abstain.p", "<=", 0.25, n_path="abstain.n"),
         ),
     ),
     FeatureRow(
@@ -62,8 +73,8 @@ THRESHOLDS = (
         "documents.md",
         "eval autocolour",
         (
-            Criterion("colour_loss_zero", "colour_loss.p", "<=", 0.0),
-            Criterion("over_retention", "over_retention.p", "<=", 0.30),
+            Criterion("colour_loss_zero", "colour_loss.k", "<=", 0, n_path="colour_loss.n"),
+            Criterion("over_retention", "over_retention.p", "<=", 0.30, n_path="over_retention.n"),
         ),
     ),
     FeatureRow(
@@ -72,7 +83,13 @@ THRESHOLDS = (
         "photo-white-balance.md",
         "eval wb",
         (
-            Criterion("restore_de00_improvement", "improvement_vs_none_restore", ">=", 0.30),
+            Criterion(
+                "restore_de00_improvement",
+                "improvement_vs_none_restore",
+                ">=",
+                0.30,
+                n_path="settings.none.cast_items.n",
+            ),
             Criterion("ab_preference", "ab_preference", ">=", 0.60, automated=False),
         ),
     ),
@@ -87,9 +104,36 @@ THRESHOLDS = (
             Criterion("halo", "halo_pct_p90", "<=", 5.0),
         ),
     ),
-    FeatureRow("small", "export presets", "export-presets.md", NO_HARNESS),
-    FeatureRow("redeye", "enhance/redeye.py", "redeye-evaluation.md", NO_HARNESS),
-    FeatureRow("cleanup", "documents/cleanup.py", "documents.md", NO_HARNESS),
+    FeatureRow(
+        "small",
+        "export presets",
+        "export-presets.md",
+        NO_HARNESS,
+        (
+            Criterion("median_mb_per_6x4", "median_mb_per_6x4", "<=", 1.5, False, label=PROPOSAL),
+            Criterion("ssim", "ssim", ">=", 0.95, False, label=PROPOSAL),
+        ),
+    ),
+    FeatureRow(
+        "redeye",
+        "enhance/redeye.py",
+        "redeye-evaluation.md",
+        "eval redeye",
+        (
+            Criterion("g1_g5", "g1_g5", "==", "pass", False, label=PROPOSAL),
+            Criterion("recall_lb", "recall_lb", ">=", 0.6, False, label=PROPOSAL),
+        ),
+    ),
+    FeatureRow(
+        "cleanup",
+        "documents/cleanup.py",
+        "documents.md",
+        NO_HARNESS,
+        (
+            Criterion("cer_delta_pp", "cer_delta_pp", "<=", 0.5, False, label=PROPOSAL),
+            Criterion("pencil_stamp_losses", "pencil_stamp_losses", "<=", 0, False, label=PROPOSAL),
+        ),
+    ),
 )
 
 
@@ -112,6 +156,9 @@ def _lookup(metrics: Mapping[str, object], path: str) -> object:
 def _verdict(criterion: Criterion, metrics: Mapping[str, object]) -> str:
     if not criterion.automated:
         return NOT_APPLICABLE
+    size = _lookup(metrics, criterion.n_path)
+    if type(size) is not int or size < MIN_N:
+        return INSUFFICIENT
     value = _lookup(metrics, criterion.metric)
     if type(value) not in (int, float):
         return INSUFFICIENT
@@ -119,9 +166,7 @@ def _verdict(criterion: Criterion, metrics: Mapping[str, object]) -> str:
 
 
 def judge(feature: str, metrics: Mapping[str, object]) -> dict[str, str]:
-    """The status of each criterion of ``feature`` for its metrics; a feature that no harness
-    here evaluates is refused (``ValueError``)."""
+    """The status of each criterion of ``feature`` for its metrics (``not_applicable`` for the
+    inert ones); an unknown feature is refused (``ValueError``)."""
     found = row(feature)
-    if found.harness == NO_HARNESS:
-        raise ValueError("this feature is not evaluated by the calibration harness")
     return {criterion.key: _verdict(criterion, metrics) for criterion in found.criteria}

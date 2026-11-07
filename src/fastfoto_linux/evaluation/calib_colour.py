@@ -3,16 +3,12 @@
 from fastfoto_linux.documents.auto_colour import classify_colour
 from fastfoto_linux.evaluation.calib_annotations import ColourNote
 from fastfoto_linux.evaluation.calib_metrics import proportion_entry
-from fastfoto_linux.evaluation.calib_pages import decode_page
-from fastfoto_linux.evaluation.redeye_split import pixel_digest
+from fastfoto_linux.evaluation.calib_pages import decode_page, page_digest
 
 FEATURE = "autocolour"
 KIND = "document"
+digest = page_digest
 RICHNESS = {"bw": 0, "grey": 1, "colour": 2}
-
-
-def digest(data: bytes, note: ColourNote) -> str:
-    return pixel_digest(decode_page(data, note.dpi).pixels)
 
 
 def measure(data: bytes, note: ColourNote, settings: object = None) -> dict[str, object]:

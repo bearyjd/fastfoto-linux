@@ -9,6 +9,7 @@ on any failed or insufficient criterion and on any errored item. Every refusal i
 
 import os
 import re
+import sys
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,7 +17,7 @@ from pathlib import Path
 from fastfoto_linux.evaluation import calib_colour, calib_deskew, calib_detail, calib_wb
 from fastfoto_linux.evaluation.calib_annotations import PARSERS
 from fastfoto_linux.evaluation.calib_metrics import rounded
-from fastfoto_linux.evaluation.calib_thresholds import FAIL, INSUFFICIENT, judge
+from fastfoto_linux.evaluation.calib_thresholds import FAIL, INSUFFICIENT, NOT_APPLICABLE, judge
 from fastfoto_linux.evaluation.corpus_manifest import SHA_PATTERN, SPLITS, read_verified
 from fastfoto_linux.evaluation.corpus_report import build_report, serialise_report
 from fastfoto_linux.evaluation.corpus_types import CorpusError, CorpusItem, CorpusManifest
@@ -42,6 +43,7 @@ class CalibResult:
     report: bytes
     errored: int
     failures: tuple[str, ...]  # why the gate would fail (criterion keys and a fixed phrase)
+    pending: tuple[str, ...] = ()  # criteria no command judges (a human does)
 
 
 def check_request(split: str, expect_sha256: str | None, gate: bool) -> None:
@@ -80,24 +82,25 @@ def _select(manifest: CorpusManifest, feature: str, split: str) -> tuple[Selecte
 
 
 def _fingerprints(manifest: CorpusManifest, feature: str, split: str) -> list[Fingerprint]:
+    """Every item of the feature's kind in ``split``, annotated or not. An item that cannot be
+    fingerprinted refuses the run: leakage could not be ruled out."""
     prints = []
-    for item, note in _select(manifest, feature, split)[0]:
+    for item in manifest.items:
+        if item.kind != FEATURES[feature].KIND or item.split != split:
+            continue
         try:
-            pixels = FEATURES[feature].digest(read_verified(manifest, item), note)
-        except Exception:  # any unreadable file is judged below
-            if split == "tuning":
-                raise CorpusError(
-                    f"tuning item {item.id!r} cannot be read, so held-out leakage cannot be "
-                    "ruled out"
-                ) from None
-            pixels = None  # a held-out file that cannot be read is counted as errored later
+            pixels = FEATURES[feature].digest(read_verified(manifest, item))
+        except Exception:
+            raise CorpusError(
+                f"{split} item {item.id!r} cannot be read, so held-out leakage cannot be ruled out"
+            ) from None
         prints.append(Fingerprint(item.id, item.sha256, pixels, item.group))
     return prints
 
 
 def check_leaks(manifest: CorpusManifest, feature: str) -> None:
     """Refuse a held-out run when a held-out item shares its pixels (or file, id, group) with a
-    tuning item of the same feature."""
+    tuning item of the same kind, annotated or not."""
     total, examples = count_leaks(
         _fingerprints(manifest, feature, "heldout"), _fingerprints(manifest, feature, "tuning")
     )
@@ -106,18 +109,26 @@ def check_leaks(manifest: CorpusManifest, feature: str) -> None:
 
 
 def _measure(manifest: CorpusManifest, feature: str, selected: Selected, settings: object):
+    """Measure each item. A file that fails its hash refuses the run (``CorpusError`` from
+    ``read_verified``); any other failure of one item is counted, and its class name (never its
+    message) is printed. ``MemoryError`` is not swallowed."""
     rows, errored = [], 0
     for item, note in selected:
+        data = read_verified(manifest, item)
         try:
-            rows.append(FEATURES[feature].measure(read_verified(manifest, item), note, settings))
-        except Exception:  # a bad item is counted (and fails the gate), not fatal
+            rows.append(FEATURES[feature].measure(data, note, settings))
+        except MemoryError:
+            raise
+        except Exception as error:  # a bad item is counted (and fails the gate), not fatal
             errored += 1
+            print(f"item {item.id}: errored ({type(error).__name__})", file=sys.stderr)
     return rows, errored
 
 
-def _failures(criteria: Mapping[str, str], errored: int) -> tuple[str, ...]:
+def _failures(criteria: Mapping[str, str], errored: int, skipped: int) -> tuple[str, ...]:
     failed = [key for key, status in criteria.items() if status in _GATE_FAILING]
-    return (*failed, *(["errored items"] if errored else []))
+    extra = [*(["errored items"] if errored else []), *(["skipped items"] if skipped else [])]
+    return (*failed, *extra)
 
 
 def run_calibration(
@@ -143,7 +154,8 @@ def run_calibration(
         "criteria": criteria,
     }
     report = serialise_report(build_report(manifest, metrics))
-    return CalibResult(report, errored, _failures(criteria, errored))
+    pending = tuple(key for key, status in criteria.items() if status == NOT_APPLICABLE)
+    return CalibResult(report, errored, _failures(criteria, errored, skipped), pending)
 
 
 def resolve_out(

@@ -20,9 +20,11 @@ ffscan eval detail    ... [--denoise-luma N] [--denoise-chroma N] [--sharpen N] 
 - Default split is `tuning`. `--split heldout` is refused (exit 2) without
   `--expect-manifest-sha256`. A pin that does not match the manifest's sha256 is refused (exit 2)
   for either split. `--gate` needs `--split heldout` and the pin.
-- A held-out run fingerprints (file sha256, decoded-pixel sha256, group) the feature's annotated
-  items of both splits and refuses (exit 2) on any overlap. A tuning item that cannot be read
-  also refuses it, because leakage could not be ruled out.
+- A held-out run fingerprints (file sha256, decoded-pixel sha256, group) every item of the
+  feature's kind in both splits, annotated or not, and refuses (exit 2) on any overlap. Pixels
+  are compared as RGB (grey stacked, 1-bit as 0/255), so a grey page and its RGB copy collide.
+  An item of either split that cannot be read or decoded refuses the run, because leakage could
+  not be ruled out.
 - Only items of the feature's kind (documents or photos) that carry the feature's annotation are
   measured; the others of that kind are counted as `skipped`.
 - An item that cannot be decoded, whose boxes lie outside its image, or whose algorithm fails is
@@ -33,9 +35,16 @@ ffscan eval detail    ... [--denoise-luma N] [--denoise-chroma N] [--sharpen N] 
   refused inside the corpus directory or a checkout. It is metrics only (`corpus_report`
   allowlist), floats are rounded to 4 places, it holds no timing, and a rerun on the same corpus
   is byte-identical. Errors name item ids, never paths or hashes.
-- Exit codes: 0 ok (or gate passed), 2 refusal or usage, 5 gate failed. With `--gate`, every
-  automated criterion must be `pass`; `fail`, `insufficient_data` (a number is missing, e.g. no
-  applied pages) and any errored item fail it. Criteria that need a human are `not_applicable`.
+- Exit codes: 0 ok (or automated criteria passed), 1 a read or write failure (a fixed message,
+  no path), 2 refusal or usage, 5 gate failed. With `--gate`, every automated criterion must be
+  `pass`; `fail`, `insufficient_data` (a number is missing or the group is under `MIN_N`), any
+  errored item and any skipped item (no annotation) fail it. Only automated criteria are
+  judged: the run says so, never prints a bare "GATE PASS", and lists the pending criteria that
+  people judge (`not_applicable`, e.g. the wb A/B preference).
+- A file whose sha256 no longer matches refuses the run (exit 2). Other per-item failures are
+  counted as `errored` and the class name of the exception (never its message) goes to stderr.
+  A `MemoryError` is not swallowed. Items over 25 million pixels (`calib_pages.MAX_PIXELS`) are
+  errored, or, in a held-out run, refuse it because they cannot be fingerprinted.
 
 ## Annotations (`annotations.<feature>` of an item)
 
@@ -70,32 +79,43 @@ object named after the feature, and `criteria` (the verdicts below).
   automatic white balance); the others are the white balance part of the editor presets (`mono`
   has none). `improvement_vs_none_restore` is `(none - restore) / none` of the cast median.
 - `detail`: `strengths` evaluated; `sigma_reduction_pct_median` (luma standard deviation of the
-  flat boxes after denoising), `edge_width_growth_pct_median` (10-90 edge width after
-  denoising), `halo_pct_p90` (overshoot of the sharpened edge past its plateaus, percent of the
-  edge height; worst edge of an item). Denoise and sharpen are rendered separately from the
-  original.
+  flat boxes), `edge_width_growth_pct_median` (10-90 edge width), `halo_pct_p90` (overshoot of the sharpened edge past its plateaus, percent of the
+  edge height; worst edge of an item), all read from one output against the original. The
+  image is rendered as the product does: denoise, then sharpen, on the same buffer.
 - Proportions carry `k`, `n`, `p`, a Wilson interval (`lo`, `hi`) and `zero_upper_bound`.
 
 ## Thresholds (roadmap section 4.9, as data in `evaluation/calib_thresholds.py`)
 
 The wb human A/B preference (at least 60%, n >= 20) is not automated. The `small` preset,
-red-eye and cleanup rows are listed so the table is complete: no command here evaluates them.
+red-eye and cleanup rows are inert, non-automated proposals (label `proposal`): the numbers are
+not measured, and none of the four commands here judges them (red-eye has its own
+`ffscan eval redeye` gate).
 
-| feature | constants | design note | harness | criterion | metric | op | value | automated |
-|---|---|---|---|---|---|---|---|---|
-| deskew | documents/deskew_tables.py | documents.md | eval deskew | mae_deg | mae_deg | <= | 0.3 | yes |
-| deskew | documents/deskew_tables.py | documents.md | eval deskew | wrong_direction | wrong_direction.p | <= | 0 | yes |
-| deskew | documents/deskew_tables.py | documents.md | eval deskew | abstain_rate | abstain.p | <= | 0.25 | yes |
-| autocolour | documents/auto_colour.py | documents.md | eval autocolour | colour_loss_zero | colour_loss.p | <= | 0 | yes |
-| autocolour | documents/auto_colour.py | documents.md | eval autocolour | over_retention | over_retention.p | <= | 0.3 | yes |
-| wb | enhance/restore.py | photo-white-balance.md | eval wb | restore_de00_improvement | improvement_vs_none_restore | >= | 0.3 | yes |
-| wb | enhance/restore.py | photo-white-balance.md | eval wb | ab_preference | ab_preference | >= | 0.6 | no |
-| detail | photo_edits/detail.py | photo-detail.md | eval detail | sigma_reduction | sigma_reduction_pct_median | >= | 25 | yes |
-| detail | photo_edits/detail.py | photo-detail.md | eval detail | edge_width_growth | edge_width_growth_pct_median | <= | 10 | yes |
-| detail | photo_edits/detail.py | photo-detail.md | eval detail | halo | halo_pct_p90 | <= | 5 | yes |
-| small | export presets | export-presets.md | none | - | - | - | - | - |
-| redeye | enhance/redeye.py | redeye-evaluation.md | none | - | - | - | - | - |
-| cleanup | documents/cleanup.py | documents.md | none | - | - | - | - | - |
+`MIN_N = 5` (a proposal, in `calib_thresholds.py`): a group with fewer items reports `status`
+`insufficient_data`, keeps its counts (`k`, `n`) and has null rates, intervals, medians, p90s,
+means and improvements (so a tiny group cannot reveal one item). Every automated criterion
+whose group is smaller is `insufficient_data` and fails the gate. The wb `cast_items` group is
+judged on its own count. Zero-event criteria (`wrong_direction`, `colour_loss`) are judged on
+the count `k == 0`, not on the rounded rate.
+
+| feature | constants | design note | harness | criterion | metric | op | value | automated | label |
+|---|---|---|---|---|---|---|---|---|---|
+| deskew | documents/deskew_tables.py | documents.md | eval deskew | mae_deg | mae_deg | <= | 0.3 | yes | - |
+| deskew | documents/deskew_tables.py | documents.md | eval deskew | wrong_direction | wrong_direction.k | <= | 0 | yes | - |
+| deskew | documents/deskew_tables.py | documents.md | eval deskew | abstain_rate | abstain.p | <= | 0.25 | yes | - |
+| autocolour | documents/auto_colour.py | documents.md | eval autocolour | colour_loss_zero | colour_loss.k | <= | 0 | yes | - |
+| autocolour | documents/auto_colour.py | documents.md | eval autocolour | over_retention | over_retention.p | <= | 0.3 | yes | - |
+| wb | enhance/restore.py | photo-white-balance.md | eval wb | restore_de00_improvement | improvement_vs_none_restore | >= | 0.3 | yes | - |
+| wb | enhance/restore.py | photo-white-balance.md | eval wb | ab_preference | ab_preference | >= | 0.6 | no | - |
+| detail | photo_edits/detail.py | photo-detail.md | eval detail | sigma_reduction | sigma_reduction_pct_median | >= | 25 | yes | - |
+| detail | photo_edits/detail.py | photo-detail.md | eval detail | edge_width_growth | edge_width_growth_pct_median | <= | 10 | yes | - |
+| detail | photo_edits/detail.py | photo-detail.md | eval detail | halo | halo_pct_p90 | <= | 5 | yes | - |
+| small | export presets | export-presets.md | none | median_mb_per_6x4 | median_mb_per_6x4 | <= | 1.5 | no | proposal |
+| small | export presets | export-presets.md | none | ssim | ssim | >= | 0.95 | no | proposal |
+| redeye | enhance/redeye.py | redeye-evaluation.md | eval redeye | g1_g5 | g1_g5 | == | pass | no | proposal |
+| redeye | enhance/redeye.py | redeye-evaluation.md | eval redeye | recall_lb | recall_lb | >= | 0.6 | no | proposal |
+| cleanup | documents/cleanup.py | documents.md | none | cer_delta_pp | cer_delta_pp | <= | 0.5 | no | proposal |
+| cleanup | documents/cleanup.py | documents.md | none | pencil_stamp_losses | pencil_stamp_losses | <= | 0 | no | proposal |
 
 Readings: deskew mean absolute error at most 0.3 degrees on applied pages, no wrong-direction
 page, at most 25% abstains; autocolour no colour loss (the report gives the 95% upper bound) and

@@ -21,8 +21,11 @@ from fastfoto_linux.documents.loader import (
     require_size,
 )
 from fastfoto_linux.documents.modes import ColourMode
-from fastfoto_linux.evaluation.redeye_images import MAX_SOURCE_PIXELS
+from fastfoto_linux.evaluation.redeye_images import decode_image
+from fastfoto_linux.evaluation.redeye_split import pixel_digest
 
+GREY_NDIM = 2
+MAX_PIXELS = 25_000_000  # per item (width x height); a larger one is errored, not decoded
 _KINDS = {"RGB": ColourMode.COLOUR, "L": ColourMode.GREY, "1": ColourMode.BW}
 
 
@@ -39,6 +42,37 @@ def _dpi(image: Image.Image, fallback: int | None) -> int:
     return dpi
 
 
+def check_pixels(count: int) -> None:
+    """Refuse (``ValueError``) an image of more than ``MAX_PIXELS`` pixels, before decoding it."""
+    if count > MAX_PIXELS:
+        raise ValueError("the image is over the calibration pixel cap")
+
+
+def decode_photo(data: bytes) -> np.ndarray:
+    """A photo as RGB uint8, within the calibration pixel cap."""
+    return decode_image(data, charge=check_pixels)
+
+
+def photo_digest(data: bytes) -> str:
+    return pixel_digest(decode_photo(data))
+
+
+def page_digest(data: bytes) -> str:
+    """The pixel hash of a document page as RGB (grey stacked, 1-bit as 0/255), so the same
+    picture saved as grey and as RGB collides. No resolution or size rule applies."""
+    with Image.open(io.BytesIO(data), formats=[PNG_FORMAT]) as image:
+        if image.mode not in _KINDS or getattr(image, "is_animated", False):
+            raise ValueError("the page is not an RGB, grey or 1-bit single-frame PNG")
+        check_pixels(image.width * image.height)
+        image.load()
+        pixels, mode = np.array(image), image.mode
+    if mode == "1":
+        pixels = np.where(pixels, WHITE, 0).astype(np.uint8)
+    if pixels.ndim == GREY_NDIM:
+        pixels = np.stack([pixels] * 3, axis=-1)
+    return pixel_digest(pixels)
+
+
 def decode_page(data: bytes, fallback_dpi: int | None) -> LoadedPage:
     """The page in ``data``; ``fallback_dpi`` (from an annotation) only when the PNG has none.
     Raises ``ValueError`` (or a Pillow error) for anything the document tools would refuse."""
@@ -48,8 +82,7 @@ def decode_page(data: bytes, fallback_dpi: int | None) -> LoadedPage:
             kind = _KINDS.get(image.mode)
             if kind is None or getattr(image, "is_animated", False):
                 raise ValueError("the page is not an RGB, grey or 1-bit single-frame PNG")
-            if image.width * image.height > MAX_SOURCE_PIXELS:
-                raise ValueError("the page is too large")
+            check_pixels(image.width * image.height)
             dpi = _dpi(image, fallback_dpi)
             require_size(image.width, image.height, dpi)
             image.load()

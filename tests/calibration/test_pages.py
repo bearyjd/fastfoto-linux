@@ -43,8 +43,8 @@ def test_pages_the_document_tools_would_refuse_are_refused(data: bytes) -> None:
 
 
 def test_a_page_over_the_pixel_cap_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(calib_pages, "MAX_SOURCE_PIXELS", 100)
-    with pytest.raises(ValueError, match="too large"):
+    monkeypatch.setattr(calib_pages, "MAX_PIXELS", 100)
+    with pytest.raises(ValueError, match="pixel cap"):
         calib_pages.decode_page(colour_png("text"), None)
 
 

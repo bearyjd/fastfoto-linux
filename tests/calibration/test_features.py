@@ -243,6 +243,14 @@ def test_a_memory_error_is_not_swallowed(tmp_path, monkeypatch) -> None:
         run_calibration(manifest, "detail", "tuning")
 
 
+@pytest.mark.parametrize(
+    ("feature", "make"),
+    [
+        ("deskew", deskew_entries),
+        ("wb", wb_entries),
+        ("detail", detail_entries),
+    ],
+)
 def test_the_report_is_byte_identical_on_rerun_and_carries_no_item_data(
     tmp_path, feature, make
 ) -> None:
@@ -276,3 +284,16 @@ def test_check_metrics_only_refuses_a_metric_named_like_an_annotation_value() ->
     manifest = parse_corpus_manifest(encode(document([item])))
     with pytest.raises(CorpusError):
         build_report(manifest, {"colour": 1})
+
+
+def test_deskew_and_detail_withhold_their_statistics_below_five_items(tmp_path) -> None:
+    _, metrics = run_one(tmp_path, "deskew", deskew_entries()[:4], tag="deskew")
+    deskew = metrics["deskew"]
+    assert deskew["applied"] == 4 and deskew["status"] == "insufficient_data"
+    assert deskew["mae_deg"] is None and deskew["p90_abs_err_deg"] is None
+    assert set(metrics["criteria"].values()) == {"insufficient_data"}
+    _, metrics = run_one(tmp_path, "detail", detail_entries(4), tag="detail")
+    detail = metrics["detail"]
+    assert detail["status"] == "insufficient_data" and detail["n"] == 4
+    assert detail["sigma_reduction_pct_median"] is None and detail["halo_pct_p90"] is None
+    assert detail["edge_width_growth_pct_median"] is None

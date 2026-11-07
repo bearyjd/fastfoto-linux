@@ -26,7 +26,8 @@ from fastfoto_linux.evaluation.calib_metrics import (
         ((60.2574, -34.0099, 36.2677), (60.4626, -34.1751, 39.4387), 1.2644),
         ((50.0, 2.5, 0.0), (73.0, 25.0, -18.0), 27.1492),  # hue difference above 180 degrees
         ((50.0, 2.5, 0.0), (56.0, -27.0, -3.0), 31.9030),
-        ((50.0, 2.49, -0.001), (50.0, -2.49, 0.0011), 7.1792),  # hues straddling the wrap
+        ((50.0, 2.49, -0.001), (50.0, -2.49, 0.0009), 7.1792),
+        ((50.0, 2.49, -0.001), (50.0, -2.49, 0.0011), 7.2195),  # hues straddling the wrap
         ((50.0, 0.0, 0.0), (50.0, -1.0, 2.0), 2.3669),  # one colour has no chroma
         ((50.0, -1.0, 2.0), (50.0, 0.0, 0.0), 2.3669),
     ],
@@ -101,7 +102,9 @@ def test_rounding_is_four_places_through_nested_values() -> None:
 def test_proportion_entry_drops_the_note_and_keeps_the_zero_bound() -> None:
     zero = proportion_entry(0, 20)
     assert "note" not in zero and zero["zero_upper_bound"] == pytest.approx(0.1391, abs=1e-4)
-    assert proportion_entry(1, 4)["p"] == 0.25
+    assert proportion_entry(1, 5)["p"] == 0.2
+    few = proportion_entry(1, 4)
+    assert (few["k"], few["n"], few["p"], few["status"]) == (1, 4, None, "insufficient_data")
     assert proportion_entry(0, 0)["p"] is None
 
 

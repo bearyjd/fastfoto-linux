@@ -11,6 +11,7 @@ import cv2
 import numpy as np
 
 from fastfoto_linux.evaluation.calib_annotations import Box
+from fastfoto_linux.evaluation.calib_thresholds import INSUFFICIENT, MIN_N
 from fastfoto_linux.evaluation.stats import proportion
 from fastfoto_linux.photo_edits.detail import GRAY_WEIGHTS
 
@@ -90,9 +91,9 @@ def neutral_de00(rgb: np.ndarray, boxes: Sequence[Box]) -> float:
 
 
 def luma(rgb: np.ndarray) -> np.ndarray:
-    """Rec. 709 luma of an RGB image on the 0 to 255 scale, as float64."""
-    weights = np.array(GRAY_WEIGHTS, dtype=np.float64)
-    return rgb.astype(np.float64) @ weights
+    """Rec. 709 luma of an RGB image on the 0 to 255 scale, as float32."""
+    weights = np.array(GRAY_WEIGHTS, dtype=np.float32)
+    return rgb.astype(np.float32) @ weights
 
 
 def flat_sigmas(grey: np.ndarray, boxes: Sequence[Box]) -> list[float]:
@@ -102,7 +103,7 @@ def flat_sigmas(grey: np.ndarray, boxes: Sequence[Box]) -> list[float]:
 
 def _profile(grey: np.ndarray, box: Box, axis: str) -> np.ndarray:
     """The mean level along the axis the edge is crossed on ("h": along x, "v": along y)."""
-    return _crop(grey, box).mean(axis=0 if axis == "h" else 1)
+    return _crop(grey, box).mean(axis=0 if axis == "h" else 1, dtype=np.float32)
 
 
 def _crossing(profile: np.ndarray, level: float, first: int) -> float | None:
@@ -111,7 +112,7 @@ def _crossing(profile: np.ndarray, level: float, first: int) -> float | None:
         return None
     index = first + int(hits[0])
     if index == 0:
-        return 0.0
+        return None  # already at the level on the first sample: no rise to measure
     below = float(profile[index - 1])
     return index - 1 + (level - below) / (float(profile[index]) - below)
 
@@ -124,10 +125,14 @@ def edge_width(grey: np.ndarray, box: Box, axis: str) -> float | None:
         return None
     if profile[0] > profile[-1]:
         profile = profile[::-1]
-    start = _crossing(profile, low + LOW_FRACTION * (high - low), 0)
+    low_level = low + LOW_FRACTION * (high - low)
+    high_level = low + HIGH_FRACTION * (high - low)
+    if profile[0] >= low_level or profile[-1] < high_level:
+        return None  # not a rise from a low plateau to a high one
+    start = _crossing(profile, low_level, 0)
     if start is None:
         return None
-    end = _crossing(profile, low + HIGH_FRACTION * (high - low), int(start))
+    end = _crossing(profile, high_level, int(start))
     return None if end is None else end - start
 
 
@@ -165,7 +170,17 @@ def rounded(value: object) -> object:
     return value
 
 
+def sample_status(n: int) -> str | None:
+    """``insufficient_data`` for a group of fewer than ``MIN_N``: its statistics are withheld."""
+    return INSUFFICIENT if n < MIN_N else None
+
+
 def proportion_entry(k: int, n: int) -> dict[str, object]:
-    """``stats.proportion`` without its free-text note (a report holds no free text)."""
+    """``stats.proportion`` without its free-text note (a report holds no free text). Below
+    ``MIN_N`` the counts stay but the rate, interval and bound are null."""
     full = proportion(k, n)
-    return {key: full[key] for key in _PROPORTION_KEYS}
+    entry = {key: full[key] for key in _PROPORTION_KEYS}
+    status = sample_status(n)
+    if status is not None:
+        entry.update(p=None, lo=None, hi=None, zero_upper_bound=None)
+    return {**entry, "status": status}

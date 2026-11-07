@@ -21,7 +21,7 @@ from fastfoto_linux.photo_edits.model import (
     check_cancel,
     sibling_name,
 )
-from fastfoto_linux.photo_edits.png_guard import MAX_METADATA_CHUNK
+from fastfoto_linux.photo_edits.png_guard import MAX_METADATA_CHUNK, MAX_XMP_PACKET
 from fastfoto_linux.photo_edits.recipe import (
     fields,
     json_bytes,
@@ -39,6 +39,8 @@ XMP_KEY = "XML:com.adobe.xmp"
 PNG_COMPRESS_LEVEL = 6
 METADATA_TOO_LARGE = "the edited photo metadata is too large to save"
 METADATA_UNWRITABLE = "the original's EXIF metadata cannot be rewritten; Save was cancelled"
+DPI_UNSTORABLE = "the original's resolution cannot be stored in the edited copy"
+MAX_SAVE_DPI = 65_535  # JFIF density is 16 bits; PNG pHYs holds far more
 FORMAT_MISMATCH = "saved photo source and output formats do not match"
 
 
@@ -71,7 +73,7 @@ def _metadata(source: PhotoSource, recipe: PhotoEditRecipe) -> tuple[bytes, byte
     except (TypeError, ValueError, AttributeError, KeyError, IndexError, struct.error) as error:
         raise PhotoEditError(METADATA_UNWRITABLE) from error
     xmp = derivative_xmp(source, recipe.geometry)
-    if len(exif) > MAX_METADATA_CHUNK or len(xmp) > MAX_METADATA_CHUNK:
+    if len(exif) > MAX_METADATA_CHUNK or len(xmp) > MAX_XMP_PACKET:
         raise PhotoEditError(METADATA_TOO_LARGE)
     return exif, xmp
 
@@ -80,6 +82,8 @@ def _encode(source: PhotoSource, recipe: PhotoEditRecipe, cancel: Event) -> byte
     pixels = render(source, recipe, cancel=cancel)
     check_cancel(cancel)
     *_, dpi_x, dpi_y = frame(source, recipe.geometry)
+    if max(dpi_x, dpi_y) > MAX_SAVE_DPI:
+        raise PhotoEditError(DPI_UNSTORABLE)
     metadata = _metadata(source, recipe)
     buffer = io.BytesIO()
     if source.format == "PNG":

@@ -19,7 +19,7 @@ from fastfoto_linux.photo_edits.model import (
 )
 from fastfoto_linux.photo_edits.png_guard import (
     BAD_METADATA,
-    MAX_METADATA_CHUNK,
+    MAX_XMP_PACKET,
     PNG_SIGNATURE,
     check_png,
 )
@@ -122,7 +122,7 @@ def _xmp(image: Image.Image) -> bytes:
     if image.format == "PNG":
         packet = image.info.get("XML:com.adobe.xmp", "")
         raw = packet.encode("utf-8") if isinstance(packet, str) else b""
-        if len(raw) > MAX_METADATA_CHUNK:  # Pillow has already inflated a compressed iTXt
+        if len(raw) > MAX_XMP_PACKET:  # Pillow has already inflated a compressed iTXt
             raise PhotoEditError(BAD_METADATA)
         return raw
     return image.info.get("xmp", b"")

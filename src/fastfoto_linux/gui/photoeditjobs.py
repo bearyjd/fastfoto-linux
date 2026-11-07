@@ -110,7 +110,7 @@ class PhotoEditJobs:
     def _recipe(self, request: PhotoEditRequest, cancel: Event) -> PhotoEditRecipe:
         if request.operation in {"open", "reopen"}:
             if request.path is None:
-                raise ValueError("choose an original JPEG or saved edit sidecar")
+                raise ValueError("choose an original JPEG or PNG, or a saved edit sidecar")
             if request.operation == "reopen":
                 _source, recipe = self._tools.reopen(request.path)
                 return recipe

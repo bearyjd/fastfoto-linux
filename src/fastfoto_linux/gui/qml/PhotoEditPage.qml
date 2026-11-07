@@ -343,7 +343,7 @@ Kirigami.Page {
         QQC2.Label {
             Layout.fillWidth: true
             visible: editor.savedEditUrl !== ""
-            text: qsTr("Saved a new JPEG and its replay recipe. Previous copies are kept.")
+            text: qsTr("Saved a new copy and its replay recipe. Previous copies are kept.")
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
         }

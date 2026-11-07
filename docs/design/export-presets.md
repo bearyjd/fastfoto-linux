@@ -50,8 +50,10 @@ write re-read the raw pages (`on_page` fires); slower, but correct (`EncodedPage
 
 ## Known limits and open items
 
-- The photo editor and `ffscan library` do not open PNG masters (`photo_edits/source.py` refuses
-  non-JPEG; `library/walk.py` lists JPEG suffixes only). Out of scope.
+- The photo editor opens PNG masters (8-bit RGB only) and saves `<stem>_edit-NNNN.png`; the
+  PNG is pre-parsed by `photo_edits/png_guard.py` (size, bit depth, APNG, eXIf/XMP placement and
+  size, chunk count) before Pillow decodes it, and anything else is refused. `ffscan library` does
+  not open PNG masters yet (`library/walk.py` lists JPEG suffixes only). Out of scope.
 - Numbers: a photo's number is shared across `.jpg` and `.png` (a number is taken if any name
   of the family exists in either format).
 - A lossless PNG of a 1200 DPI photo can be about 100 MB. The writer has no output size cap.
@@ -80,7 +82,7 @@ field stays Standard. Old prefs without the key load as Standard.
 
 - The Photos name preview shows `.png` for Lossless.
 - The results grid lists and shows `.png` photos (Qt reads PNG; names use the stem).
-- **Edit photo** is disabled for a `.png` original (`photoeditside.eligibility`) with the fixed
-  reason shown in the cell. Opening a saved edit whose source is a PNG still hits the editor's
-  existing JPEG-only refusal.
+- **Edit photo** is enabled for a retained `.png` original like a JPEG one; a PNG the editor
+  cannot take (16-bit, RGBA, palette, animated, oversized metadata) is refused when opened, with a
+  fixed message.
 - The Documents form passes the preset to `DocumentSettings`; it is write-time only, as in the CLI.

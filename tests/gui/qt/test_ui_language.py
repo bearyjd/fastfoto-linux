@@ -15,7 +15,7 @@ from PySide6.QtCore import QObject, QPointF
 from PySide6.QtGui import QAccessible
 
 from fastfoto_linux.gui.qt import translation
-from tests.gui.qt import test_qml
+from tests.gui.qt import test_qml, test_qml_documents
 from tests.gui.qt.qt_helpers import child, settle
 from tests.gui.qt.test_power_settings import open_settings
 from tests.gui.qt.test_qml_accessibility import unnamed
@@ -24,6 +24,7 @@ from tests.gui.qt.test_qml_narrow import fits, narrow
 pytestmark = pytest.mark.usefixtures("kirigami")
 QML_DIR = Path(__file__).resolve().parents[3] / "src" / "fastfoto_linux" / "gui" / "qml"
 open_window = test_qml.open_window
+make_doc_bridge = test_qml_documents.make_doc_bridge
 
 
 @pytest.fixture(autouse=True)
@@ -250,3 +251,98 @@ def test_german_accessible_names_follow_the_translation(make_bridge: Any, open_w
         assert unnamed(window) == []
     finally:
         QAccessible.setActive(False)
+
+
+def test_the_language_shown_is_the_one_that_loaded_not_the_one_saved(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """gui.json says German but the catalog cannot be loaded: the window is English, and says so."""
+    from fastfoto_linux.gui import prefs
+    from fastfoto_linux.gui.form import ScanForm
+    from fastfoto_linux.gui.qt.bridge import Bridge
+    from fastfoto_linux.scanner import ScanTarget
+    from tests.cli.fakes import DEVICE
+
+    config = tmp_path / "config"
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(config))
+    prefs.save_ui_language("de", prefs.prefs_path())
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    assert not translation.activate(prefs.load_ui_language(), directory=empty)
+    bridge = Bridge(
+        remember=True,
+        form=ScanForm(output_folder=str(tmp_path)),
+        discover=lambda: ScanTarget(device=DEVICE),
+    )
+    try:
+        assert bridge.uiLanguage == "en"
+        assert not bridge.uiLanguageRestart
+        assert not bridge.uiLanguagePartial
+        bridge.setUiLanguage("de")  # the user picks German again in this session
+        assert bridge.uiLanguageRestart
+    finally:
+        bridge.shutdown()
+
+
+def test_the_language_shown_is_german_when_german_loaded(make_bridge: Any) -> None:
+    assert translation.activate("de")
+    bridge = make_bridge()
+    assert bridge.uiLanguage == "de"
+    assert not bridge.uiLanguageRestart
+    assert bridge.uiLanguagePartial
+
+
+def test_a_numbered_progress_message_keeps_its_english_format_under_german(
+    make_bridge: Any, out: Any
+) -> None:
+    """'Scanning page N' has a number in it, so it is not translated; it must not be broken."""
+    from tests.gui.helpers import ScriptedSession
+    from tests.gui.qt.qt_helpers import wait_until
+
+    assert translation.activate("de")
+    bridge = make_bridge(session=ScriptedSession(out, hold=True))
+    bridge.checkScanner()
+    wait_until(lambda: bridge.canScan, "ready")
+    bridge.startScan()
+    wait_until(lambda: bridge.canCancel, "the scan to be cancellable")
+    assert re.fullmatch(r"Scanning page \d+", bridge.progressText)
+    bridge.cancel()
+    wait_until(lambda: bridge.state == "cancelled", "the cancel to finish")
+
+
+DOCUMENT_CONTROLS = tuple(
+    sorted(
+        set(re.findall(r'objectName: "(\w+)"', (QML_DIR / "DocumentFormPanel.qml").read_text()))
+        | set(re.findall(r'objectName: "(\w+)"', (QML_DIR / "OcrLanguagePicker.qml").read_text()))
+        | {"modeSwitch", "documentsModeButton", "photosModeButton"}
+    )
+)
+
+
+def test_german_does_not_move_a_single_control_of_the_documents_form(
+    make_doc_bridge: Any, open_window: Any
+) -> None:
+    """The Documents form and its OCR-language picker (collapsed and open) keep their places."""
+    from tests.gui.qt.qt_helpers import click
+
+    def measured() -> tuple[dict, dict]:
+        window, _ = open_window(make_doc_bridge())
+        narrow(window)
+        settle()
+        collapsed = geometry(window, DOCUMENT_CONTROLS)
+        click(child(window, "docLanguageToggle"))
+        settle()
+        return collapsed, geometry(window, DOCUMENT_CONTROLS)
+
+    measured()  # the first window loads icons; later ones are alike
+    english = measured()
+    assert len(english[0]) >= 15
+    assert "docLanguageToggle" in english[0]
+    assert translation.activate("de")
+    german = measured()
+    # the mode switch is translated and may be wider; everything else must stay where it was
+    for before, after in zip(english, german, strict=True):
+        for name in before:
+            if name.endswith("ModeButton") or name == "modeSwitch":
+                continue
+            assert after[name] == before[name], name

@@ -1,6 +1,9 @@
 """The interface language: which codes exist, the marker, the shipped catalog files."""
 
 import re
+import shutil
+import subprocess
+import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -146,3 +149,64 @@ def test_a_translated_python_message_is_not_longer_than_the_english_one() -> Non
     for context, source, translation, kind in messages():
         if context == i18n.MESSAGES_CONTEXT and kind is None:
             assert len(translation) <= len(source) + 4, source
+
+
+QML_DIR = Path(__file__).resolve().parents[2] / "src" / "fastfoto_linux" / "gui" / "qml"
+TEXT_TYPES = r"(?<![\w.])(QQC2\.Label|Kirigami\.Heading|Kirigami\.SelectableLabel|Text)\s*\{"
+PINNED_QT = "6.10.3"  # the Qt the committed .qm was compiled with
+
+
+def own_properties(source: str, start: int) -> str:
+    """The text of the block that opens just before ``start``, without its nested blocks."""
+    depth, end = 1, start
+    while depth and end < len(source):
+        depth += (source[end] == "{") - (source[end] == "}")
+        end += 1
+    block = source[start : end - 1]
+    while (flat := re.sub(r"\{[^{}]*\}", "", block)) != block:
+        block = flat
+    return block
+
+
+def test_every_label_and_heading_in_the_qml_shows_plain_text() -> None:
+    """A translation is text, whatever it contains: no label may read it as rich text."""
+    missing = []
+    for qml in sorted(QML_DIR.glob("*.qml")):
+        source = qml.read_text()
+        for match in re.finditer(TEXT_TYPES, source):
+            if "textFormat" not in own_properties(source, match.end()):
+                missing.append(f"{qml.name}:{source[: match.start()].count(chr(10)) + 1}")
+    # PhotoEditCanvas.qml draws marker glyphs, not translated text
+    assert [name for name in missing if not name.startswith("PhotoEditCanvas.qml")] == []
+
+
+def lrelease() -> str | None:
+    return shutil.which("lrelease-qt6") or shutil.which("lrelease")
+
+
+def lrelease_matches_the_pinned_qt() -> bool:
+    tool = lrelease()
+    if tool is None:
+        return False
+    done = subprocess.run([tool, "-version"], capture_output=True, text=True, check=False)
+    return PINNED_QT in done.stdout + done.stderr
+
+
+@pytest.mark.skipif(lrelease() is None, reason="Qt's lrelease (qt6-linguist) is not installed")
+def test_the_compiled_catalog_is_what_lrelease_makes_of_the_source_file() -> None:
+    """Only where lrelease exists (the required jobs have none; the pin test covers them)."""
+    if not lrelease_matches_the_pinned_qt():
+        pytest.skip(f"the committed .qm was compiled with Qt {PINNED_QT}; this lrelease differs")
+    with tempfile.TemporaryDirectory() as work:
+        target = Path(work) / "out.qm"
+        source = str(i18n.source_path("de"))
+        subprocess.run(
+            [lrelease(), "-nounfinished", "-silent", source, "-qm", str(target)], check=True
+        )
+        assert target.read_bytes() == i18n.catalog_path("de").read_bytes()
+
+
+def test_two_german_messages_read_as_the_state_they_describe() -> None:
+    by_source = {source: translation for _, source, translation, _ in messages()}
+    assert by_source["Cancelling…"] == "Abbruch läuft …"
+    assert "Neu prüfen" in by_source["Press Check again to look for the scanner."]

@@ -15,6 +15,7 @@ from PySide6.QtCore import QCoreApplication
 
 from fastfoto_linux.gui import i18n
 from fastfoto_linux.gui.qt import translation
+from tests.gui import qm_helpers
 
 pytestmark = pytest.mark.usefixtures("qapp")
 GERMAN = "Scanner gefunden."
@@ -181,3 +182,72 @@ def test_a_code_that_climbs_out_of_the_folder_never_reaches_a_good_catalog(tmp_p
     # fastfoto_<code>.qm with this code is fastfoto_x/../fastfoto_de.qm, the good file
     assert not translation.activate("x/../fastfoto_de", directory=tmp_path)
     assert translation.active_code() == "en"
+
+
+@pytest.mark.parametrize("target", ["/etc/hostname", "../fastfoto_de", "other"])
+def test_a_catalog_that_names_a_dependency_is_refused_not_followed(
+    tmp_path: Path, target: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    (tmp_path / "fastfoto_de.qm").write_bytes(qm_helpers.with_dependency(target))
+    assert not translation.activate("de", directory=tmp_path)
+    assert translation.active_code() == "en"
+    assert translation.translate_message("Scanner found.") == "Scanner found."
+    assert str(tmp_path) not in caplog.text
+    assert target not in caplog.text
+
+
+def test_a_catalog_with_markup_added_after_compiling_is_refused() -> None:
+    """The .ts checks cannot see a .qm edited by hand: the loader reads the .qm itself."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as work:
+        (Path(work) / "fastfoto_de.qm").write_bytes(qm_helpers.with_translation("Fotos", "<b>xx"))
+        assert not translation.activate("de", directory=Path(work))
+    assert translation.active_code() == "en"
+
+
+def test_a_symlinked_folder_above_the_catalog_is_refused(tmp_path: Path) -> None:
+    real = tmp_path / "real"
+    real.mkdir()
+    (real / "fastfoto_de.qm").write_bytes(qm_helpers.shipped())
+    (tmp_path / "link").symlink_to(real)
+    assert translation.activate("de", directory=real)
+    translation.deactivate()
+    assert not translation.activate("de", directory=tmp_path / "link")
+    assert not translation.activate("de", directory=tmp_path / "link" / ".." / "real")
+    assert translation.active_code() == "en"
+
+
+def test_the_catalog_is_read_through_the_descriptor_it_was_checked_on(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A file swapped in after the check is never loaded: the bytes read are the bytes loaded."""
+    (tmp_path / "fastfoto_de.qm").write_bytes(qm_helpers.shipped())
+    opened: list[int] = []
+    real_open = translation.os.open
+
+    def spy(path: Any, flags: int, *args: Any, **kwargs: Any) -> int:
+        opened.append(flags)
+        return real_open(path, flags, *args, **kwargs)
+
+    monkeypatch.setattr(translation.os, "open", spy)
+    assert translation.activate("de", directory=tmp_path)
+    assert opened
+    assert opened[-1] & translation.os.O_NOFOLLOW
+    assert opened[-1] & translation.os.O_CLOEXEC
+
+
+def test_unfinished_and_absent_messages_have_no_translation_at_run_time() -> None:
+    assert translation.activate("de")
+    root = ET.parse(i18n.source_path("de")).getroot()
+    unfinished = 0
+    for context in root.iter("context"):
+        for message in context.iter("message"):
+            node = message.find("translation")
+            if node is not None and node.get("type") == "unfinished":
+                unfinished += 1
+                source = message.findtext("source")
+                # a source can be finished in another context; ask in this one
+                got = QCoreApplication.translate(context.findtext("name"), source)
+                assert got == source, (context.findtext("name"), source)
+    assert unfinished > 100

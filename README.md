@@ -45,6 +45,7 @@ uv run ffscan scan --out ~/Scans --net scanner.local --backs always --keep-raw
 uv run ffscan process page-*.png --out ~/Scans --album "Family Trips"
 uv run ffscan process page-*.png --out ~/Scans --preset small   # smaller files; see below
 uv run ffscan eval redeye MANIFEST.json   # red-eye evaluation harness; see docs/design/redeye-evaluation.md
+uv run ffscan eval deskew --corpus DIR    # also autocolour, wb, detail; see docs/design/calibration-harness.md
 ```
 
 - `devices` only reads sysfs; it never talks to the scanner. Over USB the scanner needs the gap

@@ -29,7 +29,7 @@ FEATURE = "detail"
 KIND = "photo"
 DEFAULT_STRENGTH = 50
 MAX_STRENGTH = 100
-MIN_SIGMA = 1e-6
+MIN_SIGMA = 0.5  # grey levels: a flatter patch has no measurable noise to reduce
 MEDIAN, P90 = 50, 90
 
 

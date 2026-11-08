@@ -145,8 +145,9 @@ def run_calibration(
     if split == "heldout":
         check_leaks(manifest, feature)
     rows, errored = _measure(manifest, feature, selected, settings)
-    measured = rounded(FEATURES[feature].aggregate(rows, settings))
-    criteria = judge(feature, measured)  # type: ignore[arg-type]
+    exact = FEATURES[feature].aggregate(rows, settings)
+    criteria = judge(feature, exact)  # judged at full precision; only the report is rounded
+    measured = rounded(exact)
     metrics = {
         "split": split,
         "counts": {"n": len(selected), "skipped": skipped, "errored": errored},

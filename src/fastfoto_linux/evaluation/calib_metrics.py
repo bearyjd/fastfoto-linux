@@ -98,7 +98,7 @@ def luma(rgb: np.ndarray) -> np.ndarray:
 
 def flat_sigmas(grey: np.ndarray, boxes: Sequence[Box]) -> list[float]:
     """The standard deviation of ``grey`` inside each box."""
-    return [float(np.std(_crop(grey, box))) for box in boxes]
+    return [float(np.std(_crop(grey, box), dtype=np.float64)) for box in boxes]
 
 
 def _profile(grey: np.ndarray, box: Box, axis: str) -> np.ndarray:

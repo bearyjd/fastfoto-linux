@@ -81,7 +81,9 @@ object named after the feature, and `criteria` (the verdicts below).
 - `detail`: `strengths` evaluated; `sigma_reduction_pct_median` (luma standard deviation of the
   flat boxes), `edge_width_growth_pct_median` (10-90 edge width), `halo_pct_p90` (overshoot of the sharpened edge past its plateaus, percent of the
   edge height; worst edge of an item), all read from one output against the original. The
-  image is rendered as the product does: denoise, then sharpen, on the same buffer.
+  image is rendered as the product does: denoise, then sharpen, on the same buffer. A flat box
+  whose original standard deviation is below `MIN_SIGMA` (0.5 grey levels) has no measurable
+  noise and is not counted; an item with no such box is errored.
 - Proportions carry `k`, `n`, `p`, a Wilson interval (`lo`, `hi`) and `zero_upper_bound`.
 
 ## Thresholds (roadmap section 4.9, as data in `evaluation/calib_thresholds.py`)
@@ -96,7 +98,8 @@ not measured, and none of the four commands here judges them (red-eye has its ow
 means and improvements (so a tiny group cannot reveal one item). Every automated criterion
 whose group is smaller is `insufficient_data` and fails the gate. The wb `cast_items` group is
 judged on its own count. Zero-event criteria (`wrong_direction`, `colour_loss`) are judged on
-the count `k == 0`, not on the rounded rate.
+the count `k == 0`, not on the rounded rate. Every criterion is judged on the unrounded
+metrics; only the copy written to `report.json` is rounded.
 
 | feature | constants | design note | harness | criterion | metric | op | value | automated | label |
 |---|---|---|---|---|---|---|---|---|---|

@@ -6,7 +6,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from fastfoto_linux.evaluation import calib_run
+from fastfoto_linux.evaluation import calib_colour, calib_run
 from fastfoto_linux.evaluation.calib_run import resolve_out
 from fastfoto_linux.evaluation.corpus_manifest import load_corpus_manifest
 from fastfoto_linux.evaluation.corpus_types import CorpusError
@@ -366,10 +366,9 @@ def test_output_failures_end_as_a_fixed_message_without_the_path(
 
 
 def test_criteria_are_judged_before_the_report_rounds(tmp_path, monkeypatch) -> None:
-    """601 of 2003 over-retained is 0.30005 > 0.30: rounding to 4 dp must not turn it into a pass."""
-    from fastfoto_linux.evaluation import calib_colour
+    """601 of 2003 over-retained is 0.30005 > 0.30: rounding must not turn it into a pass."""
 
-    def aggregate(rows, settings):  # noqa: ARG001
+    def aggregate(rows, settings):
         return {
             "colour_loss": {"k": 0, "n": 2003, "p": 0.0},
             "over_retention": {"k": 601, "n": 2003, "p": 601 / 2003},

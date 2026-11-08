@@ -12,7 +12,7 @@ by you except that the install script stops if `HOME` is unset; everything else 
 | `FF680W_NO_PRECHECK` | no | `1` skips the check that a USB scanner answers before each scan. | unset (check runs) |
 | `FF680W_FORCE_UNSTICK` | no | `1` sends the padding that frees a stuck scanner even without a note about an unclean end. Last resort. | unset |
 | `XDG_STATE_HOME` | no | Base folder for the `scanner-unclean` note (`$XDG_STATE_HOME/fastfoto-linux`). Ignored if not absolute. | `~/.local/state` |
-| `XDG_CONFIG_HOME` | no | Base folder for the desktop app's settings (`fastfoto-linux/gui.json`). Ignored if not absolute. The file is read only if it is a regular file (not a link or a pipe) of at most 1 MiB; otherwise the defaults are used. | `~/.config` |
+| `XDG_CONFIG_HOME` | no | Base folder for the desktop app's settings (`fastfoto-linux/gui.json`). Ignored if not absolute. The file (or a link to a regular file) is read only if it is a regular file of at most 1 MiB, not a pipe or a device; otherwise the defaults are used. | `~/.config` |
 | `HOME` | no | Home folder, used for the defaults above; the app falls back to the account's home folder without it. | set by the login |
 | `PATH` | no | Searched for `scanimage`, Tesseract and `brew`; OCR also adds the Flatpak's own folder, the interpreter's folder and Homebrew's. | the system's |
 | `TESSDATA_PREFIX` | no | Not read by the app's code. The Flatpak manifest sets it to `/app/share/tessdata`, and it reaches Tesseract through the inherited environment. | set by the Flatpak only |

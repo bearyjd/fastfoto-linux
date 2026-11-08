@@ -74,14 +74,14 @@ def prefs_path(env: Mapping[str, str] = os.environ) -> Path:
 def _read_bytes(path: Path) -> bytes | None:
     """The settings file's bytes, None (logged without the path) when it is missing or unusable.
 
-    Only a regular file is read, and not through a link: a pipe would block the start of the app
-    and a link could point anywhere. At most ``MAX_PREFS_BYTES`` are read.
+    Only a regular file is read (a link to one is fine: dotfile managers make them): a pipe or a
+    device is refused after the open, on the opened file. At most ``MAX_PREFS_BYTES`` are read.
     """
     try:
-        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+        descriptor = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)
     except FileNotFoundError:
         return None
-    except OSError as error:  # a link (ELOOP), a permission, a folder that cannot be read
+    except OSError as error:  # a permission, a folder that cannot be read, a loop of links
         logger.warning("ignoring the settings file: it cannot be opened (%s)", error.strerror)
         return None
     try:

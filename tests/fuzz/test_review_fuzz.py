@@ -126,12 +126,19 @@ def test_page_count_bounds() -> None:
         decode_review(BASES[0], ["p"] * (MAX_PAGES + 1))
 
 
-def test_an_out_of_range_reference_is_refused_not_clamped() -> None:
+def test_inconsistent_references_are_refused_not_repaired() -> None:
     data = json.loads(BASES[0])
-    for field, bad in (("order", [1, 2, 9]), ("splits", [0]), ("edits", {"9": {}})):
+    own_partner = json.loads(BASES[0])
+    own_partner["pages"][0]["partner"] = 1
+    cases = [
+        {**data, "order": [1, 2, 9]},  # outside the range
+        {**data, "order": [1, 1, 2]},  # not a permutation
+        {**data, "splits": [0]},
+        {**data, "splits": [1, 1]},
+        {**data, "edits": {"9": {}}},
+        {**data, "part_names": {"9": "x"}},
+        own_partner,  # a page that is its own partner
+    ]
+    for case in cases:
         with pytest.raises(ReviewFormatError):
-            decode_review(json.dumps(replace_key(data, field, bad)).encode(), NAMES)
-
-
-def replace_key(data: dict[str, Any], key: str, value: Any) -> dict[str, Any]:
-    return {**data, key: value}
+            decode_review(json.dumps(case).encode(), NAMES)

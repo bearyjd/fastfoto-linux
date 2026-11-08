@@ -23,6 +23,7 @@ from tests.documents.test_ocr_languages import (
 )
 
 models = shared.models
+tmp_path = shared.tmp_path  # moved off an untrusted /tmp, like the shared module's
 
 
 def test_private_opener_rejects_redirect_before_following_official_host(
@@ -159,6 +160,34 @@ def test_foreign_ancestor_is_trusted_only_on_a_readonly_mount(
         assert ocr_languages._trusted_base(tmp_path / "data") == tmp_path / "data"
     else:
         with pytest.raises(OSError, match=r"(safe|trusted)"):
+            ocr_languages._trusted_base(tmp_path / "data")
+
+
+@pytest.mark.parametrize("sticky", [False, True])
+def test_shared_root_owned_ancestor_is_trusted_only_with_the_sticky_bit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, sticky: bool
+) -> None:
+    """Like a normal /tmp: CI's own temp folder relies on this, dev containers may not."""
+    original_stat, original_statvfs = Path.stat, os.statvfs
+
+    def directory_info(path: Path, **kwargs: object) -> os.stat_result:
+        info = original_stat(path, **kwargs)
+        if path != tmp_path:
+            return info
+        fields = list(info)
+        fields[4] = 0
+        fields[0] = stat.S_IFDIR | (0o1777 if sticky else 0o777)
+        return os.stat_result(fields)
+
+    def mount_info(path: Path) -> os.statvfs_result | SimpleNamespace:
+        return SimpleNamespace(f_flag=0) if path == tmp_path else original_statvfs(path)
+
+    monkeypatch.setattr(Path, "stat", directory_info)
+    monkeypatch.setattr(os, "statvfs", mount_info)
+    if sticky:
+        assert ocr_languages._trusted_base(tmp_path / "data") == tmp_path / "data"
+    else:
+        with pytest.raises(OSError, match="needs a safe, trusted data directory"):
             ocr_languages._trusted_base(tmp_path / "data")
 
 

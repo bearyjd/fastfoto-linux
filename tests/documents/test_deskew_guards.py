@@ -127,15 +127,15 @@ def test_a_mark_only_eleven_levels_below_the_paper_is_the_documented_limit() -> 
     assert estimate_skew(loaded(pixels, dpi=600)).status is SkewStatus.ESTIMATED
 
 
-def _scanned(pixels: np.ndarray, sigma: float, seed: int) -> np.ndarray:
-    """Scanner-like noise, a smooth paper texture and a mild vignette."""
+def _scanned(pixels: np.ndarray, sigma: float, seed: int, vignette: float = 0.08) -> np.ndarray:
+    """Scanner-like noise, a smooth paper texture and (by default) a mild vignette."""
     rng = np.random.default_rng(seed)
     height, width = pixels.shape
     y, x = np.mgrid[0:height, 0:width]
     radius = np.hypot((y - height / 2) / (height / 2), (x - width / 2) / (width / 2)) / 1.414
     texture = cv2.GaussianBlur(rng.normal(0, 1, (height, width)).astype(np.float32), (0, 0), 1.5)
     noisy = (
-        pixels * (1 - 0.08 * radius**2) + rng.normal(0, sigma, pixels.shape) + sigma * 0.6 * texture
+        pixels * (1 - vignette * radius**2) + rng.normal(0, sigma, pixels.shape) + sigma * 0.6 * texture
     )
     return np.clip(noisy, 0, 255).astype(np.uint8)
 
@@ -146,3 +146,21 @@ def test_noisy_paper_with_ordinary_margins_is_not_taken_for_content(sigma, tilt)
     page = skewed(text_page(np.random.default_rng(tilt + 200), margin_mm=15), tilt)
     found = estimate_skew(loaded(_scanned(page, sigma, tilt + 300)))
     assert found.status is SkewStatus.ESTIMATED
+
+
+@pytest.mark.parametrize("sigma", [5, 6, 7])
+@pytest.mark.parametrize("tilt", [3, -3, 27, 96, -96])
+def test_evenly_lit_noisy_paper_is_not_taken_for_content(sigma, tilt) -> None:
+    page = skewed(text_page(np.random.default_rng(tilt + 200), margin_mm=15), tilt)
+    found = estimate_skew(loaded(_scanned(page, sigma, tilt + 300, vignette=0.0)))
+    assert found.status is SkewStatus.ESTIMATED
+
+
+@pytest.mark.parametrize("where", list(FRAME_EDGE_DIGITS))
+def test_a_dark_mark_still_stops_the_turn_on_evenly_lit_noisy_paper(where: str) -> None:
+    page = skewed(text_page(np.random.default_rng(3), dpi=600), 80)
+    pixels = _scanned(page, 6, 11, vignette=0.0)
+    left, top = FRAME_EDGE_DIGITS[where]
+    assert estimate_skew(loaded(pixels, dpi=600)).status is SkewStatus.ESTIMATED
+    pixels[top : top + DIGIT[1], left : left + DIGIT[0]] = 20
+    assert estimate_skew(loaded(pixels, dpi=600)).status is SkewStatus.WOULD_CLIP

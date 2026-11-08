@@ -194,7 +194,7 @@ def test_a_packet_over_the_limit_counts_without_being_scanned() -> None:
 
 
 def test_the_orientation_at_the_very_end_of_the_largest_packet_is_still_found() -> None:
-    tail = b" q:Orientation="
+    tail = b'<a q:Orientation="1"/>'
     assert names_any_orientation(b" " * (MAX_XMP_BYTES - len(tail)) + tail)
 
 

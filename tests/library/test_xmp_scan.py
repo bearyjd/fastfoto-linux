@@ -72,8 +72,12 @@ ENCODINGS = {
     "declaration not at the start": b'<!-- -->\n<?xml version="1.0" encoding="UTF-7"?>' + doc(b""),
     "declaration with a malformed encoding": b'<?xml version="1.0" encoding=UTF-7?>' + doc(b""),
     "unterminated declaration": b'<?xml version="1.0" encoding="UTF-8"' + doc(b""),
-    "ebcdic": doc(b"", b'tiff:Orientation="1"').decode().encode("cp037"),
-    "ebcdic without any orientation": doc(b"").decode().encode("cp037"),
+    "ebcdic": (
+        '<?xml version="1.0" encoding="cp037"?>' + doc(b"", b'tiff:Orientation="1"').decode()
+    ).encode("cp037"),
+    "ebcdic without any orientation": (
+        '<?xml version="1.0" encoding="cp037"?>' + doc(b"").decode()
+    ).encode("cp037"),
 }
 UTF8_PACKETS = {
     "no declaration": doc(b""),
@@ -303,7 +307,19 @@ def hostile() -> dict[str, bytes]:
         "values with angle brackets": b'<a b="' + b"<a b='1' " * (MAX_XMP_BYTES // 10),
         "attributes with colons": b"<a " + b"x:y:z=''" * (MAX_XMP_BYTES // 9),
     }
+    room = MAX_XMP_BYTES - len(word)
+    well_formed = {
+        "well-formed tags": b"<a/>" * (room // 4),
+        "well-formed attributes": b'<a b="1" c="2"/>' * (room // 16),
+        "one tag, many attributes": b"<a " + b'b="1" ' * ((room - 5) // 6) + b"/>",
+        "one tag, many prefixed attributes": b"<a " + b'x:y:z="" ' * ((room - 5) // 9) + b"/>",
+        "well-formed comments": b"<!---->" * (room // 7),
+        "names that almost say it": b"<a:orientations/>" * (room // 17),
+        "attributes that almost say it": b"<a " + b'xorientation="1" ' * ((room - 5) // 18) + b"/>",
+        "one long colon name": b"<" + b"a:" * ((room - 5) // 2) + b"b/>",
+    }
     return {
+        **{name: data[: MAX_XMP_BYTES - len(word)] + word for name, data in well_formed.items()},
         **{name: data[:MAX_XMP_BYTES] for name, data in shapes.items()},
         **{
             f"{name} and the word": (data[: MAX_XMP_BYTES - len(word)] + word)

@@ -88,8 +88,9 @@ def test_an_orientation_split_across_extended_xmp_chunks_is_found(
 
 
 def test_chunks_of_different_packets_are_not_joined(tmp_path: Path) -> None:
+    # Two packets of their own, each starting at offset 0: joined by mistake they would overlap.
     other_guid = b"F" * len(GUID)
-    first, second = b"<d t:Orie", b"ntation/>"  # whole packets of their own, not one name
+    first, second = b"<a/>", b"<b/>"
     foreign = segment(
         APP1,
         EXTENSION_HEADER + other_guid + struct.pack(">II", len(second), 0) + second,

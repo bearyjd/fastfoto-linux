@@ -26,7 +26,7 @@ from fastfoto_linux.library.exif_errors import (
 )
 from fastfoto_linux.library.tags import MAX_TAG, MIN_TAG, ORIENTATION_TAG
 from fastfoto_linux.library.tiff import inspect_tiff, new_block, with_orientation
-from fastfoto_linux.library.xmp_scan import names_any_orientation
+from fastfoto_linux.library.xmp_scan import MAX_XMP_BYTES, names_any_orientation
 
 SOI = b"\xff\xd8"
 MARKER_PREFIX = 0xFF
@@ -151,10 +151,12 @@ def _extended_packets(data: bytes, segments: list[_Segment]) -> list[bytes | Non
     A chunk is the extension signature, the packet's GUID, its total length, the chunk's offset
     and then the packet's own bytes; only those bytes are joined, so a name cut in two by a chunk
     boundary is whole again. A packet whose chunks do not tile it exactly (a gap, an overlap, a
-    length that differs from the declared one) is ``None``: a viewer may lay the chunks out
-    otherwise than in order, so no reading of it can be trusted.
+    length that differs from the declared one) is ``None``, and so is one that declares, or
+    gathers, more than ``MAX_XMP_BYTES``: it is not joined at all. A viewer may lay the chunks
+    out otherwise than in order, so no reading of such a packet can be trusted.
     """
     packets: dict[bytes, list[tuple[int, int, bytes]]] = {}
+    gathered: dict[bytes, int] = {}
     for segment in segments:
         if segment.marker != MARKER_APP1:
             continue
@@ -166,12 +168,19 @@ def _extended_packets(data: bytes, segments: list[_Segment]) -> list[bytes | Non
         body_at = offset_at + XMP_OFFSET_FIELD_SIZE
         if body_at > segment.end:
             continue  # too short to hold the fields: it holds none of the packet
+        guid = data[guid_at:length_at]
         (total,) = struct.unpack_from(">I", data, length_at)
         (offset,) = struct.unpack_from(">I", data, offset_at)
-        packets.setdefault(data[guid_at:length_at], []).append(
-            (offset, total, data[body_at : segment.end])
-        )
-    return [_tiled(sorted(parts)) for parts in packets.values()]
+        size = gathered.get(guid, 0) + segment.end - body_at
+        gathered[guid] = MAX_XMP_BYTES + 1 if total > MAX_XMP_BYTES else size
+        if gathered[guid] <= MAX_XMP_BYTES:
+            packets.setdefault(guid, []).append((offset, total, data[body_at : segment.end]))
+        else:
+            packets[guid] = []  # too large: kept as nothing, so it is not joined
+    return [
+        _tiled(sorted(parts)) if gathered[guid] <= MAX_XMP_BYTES else None
+        for guid, parts in packets.items()
+    ]
 
 
 def _tiled(parts: list[tuple[int, int, bytes]]) -> bytes | None:

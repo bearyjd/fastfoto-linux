@@ -135,7 +135,9 @@ def _scanned(pixels: np.ndarray, sigma: float, seed: int, vignette: float = 0.08
     radius = np.hypot((y - height / 2) / (height / 2), (x - width / 2) / (width / 2)) / 1.414
     texture = cv2.GaussianBlur(rng.normal(0, 1, (height, width)).astype(np.float32), (0, 0), 1.5)
     noisy = (
-        pixels * (1 - vignette * radius**2) + rng.normal(0, sigma, pixels.shape) + sigma * 0.6 * texture
+        pixels * (1 - vignette * radius**2)
+        + rng.normal(0, sigma, pixels.shape)
+        + sigma * 0.6 * texture
     )
     return np.clip(noisy, 0, 255).astype(np.uint8)
 
@@ -162,5 +164,7 @@ def test_a_dark_mark_still_stops_the_turn_on_evenly_lit_noisy_paper(where: str) 
     pixels = _scanned(page, 6, 11, vignette=0.0)
     left, top = FRAME_EDGE_DIGITS[where]
     assert estimate_skew(loaded(pixels, dpi=600)).status is SkewStatus.ESTIMATED
-    pixels[top : top + DIGIT[1], left : left + DIGIT[0]] = 170  # 70 levels darker than the paper, a dozen sigma
+    pixels[top : top + DIGIT[1], left : left + DIGIT[0]] = (
+        170  # 70 levels under the paper, a dozen sigma
+    )
     assert estimate_skew(loaded(pixels, dpi=600)).status is SkewStatus.WOULD_CLIP

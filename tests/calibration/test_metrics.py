@@ -130,3 +130,17 @@ def test_an_edge_must_start_low_and_end_high() -> None:
         np.concatenate([np.full(15, 20.0), np.linspace(20, 220, 10), np.full(15, 220.0)]), (6, 1)
     )
     assert edge_width(ok, box, "h") is not None
+
+
+def test_a_uniform_patch_has_exactly_zero_sigma() -> None:
+    from fastfoto_linux.evaluation.calib_metrics import flat_sigmas, luma
+
+    rgb = np.empty((7, 7, 3), dtype=np.uint8)
+    rgb[...] = (100, 110, 120)
+    assert flat_sigmas(luma(rgb), [(0, 0, 7, 7)]) == [0.0]
+
+
+def test_a_noise_free_patch_is_not_a_noise_reduction() -> None:
+    from fastfoto_linux.evaluation.calib_detail import MIN_SIGMA
+
+    assert MIN_SIGMA >= 0.5  # below half a grey level a patch has no measurable noise

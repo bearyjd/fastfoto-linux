@@ -363,3 +363,21 @@ def test_output_failures_end_as_a_fixed_message_without_the_path(
     code = run_cli(LABEL, "--corpus", corpus.parent, "--out", tmp_path / "out")
     err = capsys.readouterr().err
     assert code != 0 and "secret" not in err and "error" in err
+
+
+def test_criteria_are_judged_before_the_report_rounds(tmp_path, monkeypatch) -> None:
+    """601 of 2003 over-retained is 0.30005 > 0.30: rounding to 4 dp must not turn it into a pass."""
+    from fastfoto_linux.evaluation import calib_colour
+
+    def aggregate(rows, settings):  # noqa: ARG001
+        return {
+            "colour_loss": {"k": 0, "n": 2003, "p": 0.0},
+            "over_retention": {"k": 601, "n": 2003, "p": 601 / 2003},
+        }
+
+    monkeypatch.setattr(calib_colour, "aggregate", aggregate)
+    pages = [Entry(f"h{i}", text_png(10 * i, i), "document", "heldout",
+                   {"autocolour": {"label": "bw"}}) for i in range(1, 6)]  # fmt: skip
+    code, metrics = gate_run(tmp_path, "autocolour", [*pages])
+    assert metrics["criteria"]["over_retention"] == "fail"
+    assert code == 5

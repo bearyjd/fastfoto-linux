@@ -97,17 +97,35 @@ def test_flipped_bytes_of_a_valid_recipe_never_crash(
     _check(bytes(raw), source)
 
 
-@given(depth=st.integers(min_value=50, max_value=3000))
+# The C JSON scanner raises RecursionError somewhere past 10 000 levels (3.13); 400 000 levels
+# are still under every size cap here (2 MB, 8 MB, 1 MiB).
+@given(depth=st.sampled_from([1_000, 20_000, 400_000]))
 def test_deep_nesting_is_refused_not_a_recursion_crash(depth: int, source: PhotoSource) -> None:
     with pytest.raises(PhotoEditError):
         parse_recipe(b"[" * depth + b"]" * depth, source)
 
 
-def test_size_cap_is_enforced_before_parsing(source: PhotoSource) -> None:
-    with pytest.raises(PhotoEditError):
-        parse_recipe(b" " * (MAX_RECIPE_BYTES + 1), source)
-    with pytest.raises(PhotoEditError):
+def test_size_cap_is_enforced_before_parsing(
+    source: PhotoSource, valid_payloads: list[dict[str, Any]]
+) -> None:
+    valid = json.dumps(valid_payloads[-1], sort_keys=True, separators=(",", ":")).encode()
+    assert recipe_bytes(parse_recipe(valid, source)) == valid
+    with pytest.raises(PhotoEditError, match="byte limit"):
+        parse_recipe(valid + b" " * (MAX_RECIPE_BYTES + 1 - len(valid)), source)
+    with pytest.raises(PhotoEditError, match="byte limit"):
         parse_recipe(b"", source)
+
+
+@given(data=st.data())
+def test_a_repeated_field_is_refused_wherever_it_is_spliced_in(
+    data: st.DataObject, source: PhotoSource, valid_payloads: list[dict[str, Any]]
+) -> None:
+    payload = data.draw(st.sampled_from(valid_payloads))
+    key = data.draw(st.sampled_from(sorted(payload)))
+    text = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    repeated = "{" + json.dumps(key) + ":" + json.dumps(data.draw(json_values)) + "," + text[1:]
+    with pytest.raises(PhotoEditError):
+        parse_recipe(repeated.encode(), source)
 
 
 def test_leak_marker_is_actually_reachable(

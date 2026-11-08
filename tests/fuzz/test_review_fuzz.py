@@ -52,6 +52,8 @@ def _assert_in_range(stored: StoredReview, count: int) -> None:
     assert [page.number for page in draft.pages] == list(pages)
     assert [page.name for page in draft.pages] == NAMES
     assert all(page.partner is None or page.partner in pages for page in draft.pages)
+    assert all(page.partner != page.number for page in draft.pages)
+    assert not draft.order or sorted(draft.order) == list(pages)  # a permutation, or unset
     assert set(draft.edits) <= set(pages)
     assert set(draft.order) <= set(pages)
     assert draft.splits <= set(pages)
@@ -104,7 +106,9 @@ def test_flipped_bytes_of_a_valid_sidecar_never_crash(data: st.DataObject) -> No
     _check(bytes(raw))
 
 
-@given(depth=st.integers(min_value=50, max_value=3000))
+# The C JSON scanner raises RecursionError somewhere past 10 000 levels (3.13); 400 000 levels
+# are still under every size cap here (2 MB, 8 MB, 1 MiB).
+@given(depth=st.sampled_from([1_000, 20_000, 400_000]))
 def test_deep_nesting_is_refused(depth: int) -> None:
     with pytest.raises(ReviewFormatError):
         decode_review(b"[" * depth + b"]" * depth, NAMES)

@@ -81,7 +81,9 @@ def test_mutated_settings_load_with_defaults_for_the_bad_parts(
     _load_all(path)
 
 
-@given(depth=st.integers(min_value=50, max_value=3000))
+# The C JSON scanner raises RecursionError somewhere past 10 000 levels (3.13); 400 000 levels
+# are still under every size cap here (2 MB, 8 MB, 1 MiB).
+@given(depth=st.sampled_from([1_000, 20_000, 400_000]))
 def test_deep_nesting_gives_defaults(depth: int, path: Path) -> None:
     path.write_bytes(b"[" * depth + b"]" * depth)
     assert prefs.load_form(path) == ScanForm()

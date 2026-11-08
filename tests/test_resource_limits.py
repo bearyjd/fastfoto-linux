@@ -77,6 +77,21 @@ def test_png_chunk_count_is_capped() -> None:
         check_png(h.assemble(chunks))
 
 
+def test_a_stream_of_thousands_of_chunks_is_refused() -> None:
+    chunks = [(b"IHDR", h.ihdr(8, 6)), *[(b"tEXt", b"k\x00v")] * 5000]
+    with pytest.raises(PhotoEditError, match="too many chunks"):
+        check_png(h.assemble(chunks))
+
+
+def test_jpeg_just_past_the_pixel_cap_is_refused_by_the_cap_not_by_pillow(tmp_path: Path) -> None:
+    """Pillow's own guard only fires at 89 478 485 pixels; the editor's cap is 89 000 000."""
+    assert MAX_SOURCE_PIXELS < Image.MAX_IMAGE_PIXELS
+    path = tmp_path / "photo_0001.jpg"
+    path.write_bytes(with_size(plain_jpeg(), 8910, 10_000))  # 89.1 Mpx
+    with pytest.raises(PhotoEditError, match="bounded retained original"):
+        load_source(path)
+
+
 def test_jpeg_pixel_bomb_is_refused_by_load_source_and_the_library(tmp_path: Path) -> None:
     bomb = with_size(plain_jpeg(), 65535, 65535)
     assert pixel_count(bomb) > MAX_IMAGE_PIXELS

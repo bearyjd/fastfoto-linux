@@ -1,21 +1,20 @@
-"""The estimate is never bolder than the one before the noise change, except by noise alone.
+"""Pins of the deskew estimate's safety margin: pages that try to make it accept a cut.
 
-OLD holds the verdicts of the estimate as it was before the noise measurement changed
-(computed once on that code and kept as literals) for the pages of deskew_adversarial:
-light blocks and bands at the frame edge, ruled lines, a textured photo corner, marks and blocks on
-noisy paper. Where it said anything but estimated (the turn would cut content, or it was
-unsure) the estimate now must not say estimated, except the two cases of NOISE_ONLY: a flat
-block 35 levels under the paper on paper with noise of 6 and 10 levels (about six and 3.5 sigma),
-which the noise-aware floor deliberately reads as paper.
+The verdicts are those of the estimate as of this change (computed once and kept as literals):
+light blocks and bands at the frame edge, ruled lines, a textured photo corner, marks and
+blocks on noisy paper, a small footer mark on paper with noise of 4 levels, and evenly lit paper
+with noise of 6 levels, whose false ``would_clip`` is the documented fail-safe limit. A change
+that makes the estimate bolder (a lower floor) flips a pinned ``would_clip`` to ``estimated``; one
+that cures the false abstention must still keep every other pin.
 """
 
 import pytest
 
-from fastfoto_linux.documents.deskew import SkewStatus, estimate_skew
+from fastfoto_linux.documents.deskew import estimate_skew
 from tests.documents.deskew_adversarial import CASES
 from tests.documents.deskew_fixtures import loaded
 
-OLD = {
+PINNED = {
     "block60_140": "would_clip",
     "block60_180": "would_clip",
     "block60_205": "would_clip",
@@ -52,25 +51,20 @@ OLD = {
     "vigblock3_150": "would_clip",
     "vigblock3_195": "would_clip",
     "vigblock3_205": "estimated",
+    "footer4_215": "would_clip",
+    "evenly_lit6": "would_clip",
     "noisyblock6_150": "would_clip",
     "noisyblock6_205": "would_clip",
     "noisyblock10_150": "would_clip",
     "noisyblock10_205": "would_clip",
 }
-NOISE_ONLY = {"noisyblock6_205", "noisyblock10_205"}
 
 
-def test_the_recorded_cases_are_the_cases() -> None:
-    assert OLD.keys() == CASES.keys()
+def test_the_pinned_cases_are_the_cases() -> None:
+    assert PINNED.keys() == CASES.keys()
 
 
 @pytest.mark.parametrize("name", sorted(CASES))
-def test_the_estimate_is_never_bolder_than_before(name: str) -> None:
+def test_the_verdict_is_the_pinned_one(name: str) -> None:
     pixels, dpi = CASES[name]()
-    status = estimate_skew(loaded(pixels, dpi=dpi)).status
-    if name in NOISE_ONLY:
-        assert status is SkewStatus.ESTIMATED
-    elif OLD[name] != SkewStatus.ESTIMATED.value:
-        assert status is not SkewStatus.ESTIMATED
-    else:
-        assert status is SkewStatus.ESTIMATED
+    assert estimate_skew(loaded(pixels, dpi=dpi)).status.value == PINNED[name]

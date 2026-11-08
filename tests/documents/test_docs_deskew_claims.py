@@ -61,8 +61,6 @@ def test_the_constants_quoted_are_the_code_s() -> None:
         t.OUTER_MAX_TENTHS: "45 degrees",
         t.CONTENT_MIN_DELTA: "12 levels",
         t.CONTENT_NOISE_K: "8 noise spreads",
-        t.NOISE_K: "10 local noise spreads",
-        t.NOISE_WINDOW: "31 work cells",
         t.MIN_TENTHS: "0.3",
     }
     for value, words in quoted.items():
@@ -71,7 +69,6 @@ def test_the_constants_quoted_are_the_code_s() -> None:
     assert (t.SEPARATION_TENTHS, t.SEPARATION_PCT, t.MAX_POINTS) == (20, 92, 250_000)
     assert (t.MAX_TENTHS, t.MIN_TENTHS, t.OUTER_STEP, t.OUTER_MAX_TENTHS) == (100, 3, 5, 450)
     assert (t.CONTENT_MIN_DELTA, t.CONTENT_NOISE_K, t.REFINED_PEAKS) == (12, 8, 3)
-    assert (t.NOISE_K, t.NOISE_WINDOW) == (10, 31)
     assert DESKEW_VERSION == 6
 
 

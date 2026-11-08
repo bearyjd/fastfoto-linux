@@ -78,6 +78,28 @@ def noisy_block(sigma: int, level: int) -> Build:
     return build
 
 
+def noisy_footer_mark(sigma: int, level: int) -> Build:
+    """A 9 x 12 px mark near the foot of a noisy page (a small footer digit, 25 levels under the
+    paper at ``level`` 215)."""
+
+    def build() -> tuple[np.ndarray, int]:
+        pixels = _noisy(_page(), sigma)
+        pixels[2338:2350, 697:706] = level
+        return pixels, 300
+
+    return build
+
+
+def evenly_lit(sigma: int) -> Build:
+    """Noise and no vignette: the documented false abstention (see docs/design/documents.md)."""
+
+    def build() -> tuple[np.ndarray, int]:
+        pixels = skewed(text_page(np.random.default_rng(27 + 200), margin_mm=15), 27)
+        return _noisy(pixels, sigma, seed=327), 300
+
+    return build
+
+
 def vignetted_mark(sigma: int, level: int) -> Build:
     """A page with a mild vignette (corners 8 percent darker) and a mark at its top left corner."""
 
@@ -100,5 +122,7 @@ CASES: dict[str, Build] = {
     **{f"texture{s}": textured_corner(s) for s in (100, 300)},
     **{f"mark{sg}_{v}": noisy_mark(sg, v) for sg in (6, 10) for v in (190, 150)},
     **{f"vigblock{sg}_{v}": vignetted_mark(sg, v) for sg in (0, 3) for v in (150, 195, 205)},
+    "footer4_215": noisy_footer_mark(4, 215),
+    "evenly_lit6": evenly_lit(6),
     **{f"noisyblock{sg}_{v}": noisy_block(sg, v) for sg in (6, 10) for v in (150, 205)},
 }

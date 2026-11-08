@@ -71,28 +71,17 @@ def _work_grid(page: LoadedPage) -> tuple[np.ndarray, np.ndarray]:
     return small, np.minimum.reduceat(by_row, np.arange(cols) * step, axis=1)
 
 
-def _paper_floor(darkest: np.ndarray) -> float:
+def _paper_floor(darkest: np.ndarray) -> int:
     """The level at or below which a work cell holds content. The darkest pixel of a cell of
     clean paper is the paper's level; with noise it is lower, by a spread that grows with the
     cell. The typical cell is paper, so the median is the paper's darkest level, and the spread
-    of the cells above the median (ink only makes cells darker) measures the noise and any
-    vignette. Content is ``CONTENT_NOISE_K`` of those spreads, and at least ``CONTENT_MIN_DELTA``
-    levels, below the median.
-
-    The noise alone is measured again without the vignette: how far the cells above their
-    ``NOISE_WINDOW`` neighbours' median are above it (a window too small to hold a block of
-    content, whose own level it would take for the paper's, is never used for the level, only for
-    this). Where the vignette has inflated the first spread it changes nothing; on an evenly lit
-    noisy scan, where the first spread is too small, it takes over with ``NOISE_K`` spreads."""
+    of the cells above the median (ink only makes cells darker) measures the noise. Content is
+    ``CONTENT_NOISE_K`` of those spreads, and at least ``CONTENT_MIN_DELTA`` levels, below the
+    median."""
     median = int(np.median(darkest))
     above = darkest[darkest >= median].astype(np.int64) - median
     spread = int(np.median(above)) if above.size else 0
-    local = cv2.medianBlur(darkest, tables.NOISE_WINDOW).astype(np.int64)
-    over = darkest.astype(np.int64) - local
-    noise = float(np.median(over[over >= 0]))
-    return median - max(
-        tables.CONTENT_MIN_DELTA, tables.CONTENT_NOISE_K * spread, tables.NOISE_K * noise
-    )
+    return median - max(tables.CONTENT_MIN_DELTA, tables.CONTENT_NOISE_K * spread)
 
 
 def _centred(mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:

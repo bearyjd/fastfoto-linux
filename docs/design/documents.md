@@ -994,25 +994,31 @@ document level for this run only, a page's own level still wins, and `--fresh` d
   0.1 s on a generated A4 page at 300 dpi on a busy machine. The clip check turns the four corners of the first and last content cell of every row,
   in exact integer arithmetic (no flooring, no allowance: the content lies inside its cells, so it
   cannot leave the frame unless a corner does). Content is the darkest full-resolution pixel of a work cell at or below a floor: the median of those
-  darkest pixels (the paper's level) minus the largest of 12 levels, 8 noise spreads and 10 local noise spreads. The spread
-  is the median distance of the cells above that median from it (ink only darkens cells,
-  so the paper side measures the noise: on clean paper it is 0, and on a noisy scan a cell's
-  darkest pixel sits about two sigma below the paper and the spread grows with sigma; a vignette inflates it too). The local noise spread is the
-  same measure against the median of the 31 work cells around each cell (a window of about 31 mm: it removes a vignette but is
-  never used for the paper's level, so a large light block cannot become its own paper). It takes over only on evenly lit noisy scans, where the first
-  spread is too small. So a grey
-  mark 12 levels darker than clean paper, a one pixel stroke, a hairline or a small footer digit counts. Measured on the generated text pages (15 mm margins, tilts of 0.3 to 9.6 degrees, 12 pages at 300 dpi and 4 at 600 dpi
-  for each noise level, with paper texture): noise sigma 4, 5, 6, 7, 8, 10 and 12, with a mild vignette and without one (evenly lit), gave 0 false
-  `would_clip`; with 8 local spreads instead of 10 there were 5 of 224, all at 600 dpi and evenly lit (sigma 5 to 10), and the earlier estimate gave 4 of 5 at sigma 6, 300 dpi (the vignette had inflated
-  its spread and hidden it). Against the estimate before this change, 34 generated pages that try to make it
-  wrongly accept a cut (light blocks of 60 to 400 px at levels 140 to 225, bands of 40 to 300 px, ruled lines, a textured photo corner, marks and blocks on
-  noisy paper) give the same verdict, except a flat block 35 levels under the paper on paper with noise of
-  sigma 6 or 10, which is now read as paper (floor 30 to 50 levels under the paper there, where it was 16 to 40): a mark that faint on a noisy scan can be cut. Re-running `--deskew` can therefore give a different verdict on a noisy scan than before; only the angle is stored, so nothing else changes. These are synthetic pages: the constants are not calibrated on real scans. The
+  darkest pixels (the paper's level) minus the larger of 12 levels and 8 noise spreads, where the
+  spread is the median distance of the cells above that median from it (ink only darkens cells,
+  so the paper side measures the noise: on clean paper it is 0, on a noisy scan a cell's
+  darkest pixel sits about two sigma below the paper and the spread grows with sigma). So a grey
+  mark 12 levels darker than clean paper, a one pixel stroke, a hairline or a small footer digit counts. Measured on the generated text pages (15 mm margins, tilts of 0.3 to 9.6 degrees, 24 pages for
+  each noise level, with paper texture and a mild vignette): noise sigma 0, 2, 4 and 6 gave 24 of
+  24 `estimated` each, against 24 of 24 for the earlier fixed margin of 40 levels; a spread
+  factor of 6 gave 15 of 24 false `would_clip` at sigma 6, and 4 gave 24 of 24 at sigma 4. The
   cost is that a cell is taken whole, so a mark
   within one work cell (about 1 mm) of the frame edge may make a page `would_clip` (safe), as
   can a single dark speck there. The residual limit: a mark closer to the paper than the margin
-  (under 12 levels, or under 8 noise spreads, or under 10 local noise spreads on a noisy scan) is not content and can still be cut by the turn. A narrow second peak that is not among the three highest outer samples can still be missed;
+  (under 12 levels, or under 8 noise spreads on a noisy scan) is not content and can still be cut by the turn. A narrow second peak that is not among the three highest outer samples can still be missed;
   the limit is accepted.
+  Known false abstention (accepted, fails safe, the page is left as scanned): on evenly lit noisy
+  scans (no vignette) the noise spread measured from the cell medians can be only about 2 levels,
+  so ordinary noise pixels near the frame edge cross the floor and the page is `would_clip`. Measured
+  on the generated pages (12 tilts, 15 mm margins, 300 dpi, no vignette): noise sigma 6 abstained
+  on 9 of 12 and sigma 3, 4, 5, 7, 8, 10 and 12 on none (the result is not monotone in sigma: the
+  spread is a whole number of levels); with the mild vignette none abstained, because it inflates the spread.
+  Loosening the floor to cure this was tried (noise measured on the background cells) and was
+  rejected: it let a 9 x 12 px footer mark 25 levels under the paper pass at sigma 4 (the turn
+  cuts 21 of its 108 pixel centres). `tests/documents/test_deskew_adversarial.py` pins 42 such
+  pages; a future improvement must keep every pin except `evenly_lit6`. Typical scans (sigma 1 to
+  3) are unaffected. Re-running `--deskew` after such a change could give different verdicts; only
+  the angle is stored.
 - **When it abstains.** The first reason that applies is the status, and the page is left as
   scanned:
 

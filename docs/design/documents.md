@@ -1015,7 +1015,13 @@ document level for this run only, a page's own level still wins, and `--fresh` d
   spread is a whole number of levels); with the mild vignette none abstained, because it inflates the spread.
   Loosening the floor to cure this was tried (noise measured on the background cells) and was
   rejected: it let a 9 x 12 px footer mark 25 levels under the paper pass at sigma 4 (the turn
-  cuts 21 of its 108 pixel centres). `tests/documents/test_deskew_adversarial.py` pins 42 such
+  cuts 21 of its 108 pixel centres).
+  How far under the paper a mark must be before the floor takes it for content, on one generated
+  evenly lit page at 300 dpi (kept estimate, then the rejected change): sigma 2, 16 and 16 levels
+  (8.0 sigma); sigma 4, 23 (5.8 sigma) and 27 (6.8); sigma 6, 26 (4.3) and 40 (6.7); sigma 10, 48
+  (4.8) and 66 (6.6). So the kept floor is the tighter one at every noise level, by 4 to 18
+  levels; the rejected one needed marks about 7 sigma deep. One synthetic page per level: not a
+  calibration on real scans. `tests/documents/test_deskew_adversarial.py` pins 42 such
   pages; a future improvement must keep every pin except `evenly_lit6`. Typical scans (sigma 1 to
   3) are unaffected. Re-running `--deskew` after such a change could give different verdicts; only
   the angle is stored.

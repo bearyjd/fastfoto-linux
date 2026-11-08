@@ -163,3 +163,21 @@ def test_a_translation_is_text_not_a_format_string() -> None:
     assert translation.activate("de")
     sample = "Scanner %1 {0} {name} %n"
     assert translation.translate_message(sample) == sample
+
+
+def test_a_link_to_a_good_catalog_is_not_followed(tmp_path: Path) -> None:
+    real = i18n.catalog_path("de")
+    assert real is not None
+    (tmp_path / "fastfoto_de.qm").symlink_to(real)
+    assert not translation.activate("de", directory=tmp_path)
+    assert translation.active_code() == "en"
+
+
+def test_a_code_that_climbs_out_of_the_folder_never_reaches_a_good_catalog(tmp_path: Path) -> None:
+    real = i18n.catalog_path("de")
+    assert real is not None
+    (tmp_path / "fastfoto_de.qm").write_bytes(real.read_bytes())
+    (tmp_path / "fastfoto_x").mkdir()
+    # fastfoto_<code>.qm with this code is fastfoto_x/../fastfoto_de.qm, the good file
+    assert not translation.activate("x/../fastfoto_de", directory=tmp_path)
+    assert translation.active_code() == "en"

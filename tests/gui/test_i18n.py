@@ -72,7 +72,7 @@ def test_the_german_catalog_ships_with_the_package() -> None:
     assert path.is_file()
     assert path.name == "fastfoto_de.qm"
     assert path.parent == i18n.catalog_dir()
-    assert path.parent.parts[-3:] == ("fastfoto_linux", "gui", "i18n")
+    assert path.parent.parts[-3:] == ("fastfoto_linux", "gui", "translations")
 
 
 def test_the_german_source_file_is_next_to_the_compiled_one() -> None:
@@ -135,3 +135,14 @@ def test_the_catalog_directory_is_not_the_working_directory(
     monkeypatch.chdir(tmp_path)
     assert i18n.catalog_dir().is_absolute()
     assert tmp_path not in i18n.catalog_dir().parents
+
+
+def test_a_translated_python_message_is_not_longer_than_the_english_one() -> None:
+    """These messages sit in the bar under the scan form, which has room for the English length.
+
+    A longer one wraps and makes the bar taller, which squeezes the form above it (a longer label
+    once displaced a form control that way).
+    """
+    for context, source, translation, kind in messages():
+        if context == i18n.MESSAGES_CONTEXT and kind is None:
+            assert len(translation) <= len(source) + 4, source

@@ -578,6 +578,11 @@ as a "Not processed" page with the reason). **Cancel** stops the scan; the pages
 so far are kept and **Process them now** turns them into photos later. Closing the window during
 a scan asks to cancel first, and the settings you used are remembered for next time.
 
+The window is in English. Scanner settings has an **Interface language** choice with a pilot German
+translation that is **partial** (a few dozen messages; the rest stays English) and not reviewed by a
+native speaker. It is separate from the OCR language of the Documents form. See
+`docs/translating.md`.
+
 For a processed photo with its retained original, **Edit photo** opens a separate editor.
 Select a suggested eye and **Accept** or **Reject** it; suggestions start unaccepted. Use
 **Add eye: click or draw ellipse** for a missed eye, adjust **Strength**, and compare

@@ -68,6 +68,7 @@ jobs:
             grep -q "fastfoto_linux/gui/qml/$(basename "$qml")" "$RUNNER_TEMP/wheel-files.txt"
           done
           python3 -m zipfile -e "$RUNNER_TEMP"/wheel/*.whl "$RUNNER_TEMP/unpacked"
+          grep -q 'fastfoto_linux/gui/translations/fastfoto_de\.qm' "$RUNNER_TEMP/wheel-files.txt"
           grep -q 'fastfoto = fastfoto_linux.gui.qt.app:main' "$RUNNER_TEMP"/unpacked/*.dist-info/entry_points.txt
           ! grep -qi '^Requires-Dist:.*pyside' "$RUNNER_TEMP"/unpacked/*.dist-info/METADATA
 
@@ -111,6 +112,33 @@ jobs:
           pytest tests/gui/qt tests/gui/test_packaging.py tests/gui/test_install_script.py \
             tests/gui/test_app_guard.py --cov --cov-config=tools/ci/coveragerc-gui-qt \
             --cov-report=term-missing --cov-fail-under=80
+
+  # The translation catalogs (tools/i18n.sh, docs/translating.md): the messages in the QML and the
+  # Python still match gui/translations/*.ts. INFORMATIONAL, on purpose: the job is not in the
+  # branch protection, and the step has continue-on-error, so this job is always green and a pull
+  # request that adds a message without running `tools/i18n.sh update` is told so in the log (and
+  # in an annotation) instead of being blocked. Several branches touch the QML at the same time,
+  # and lupdate's output can differ a little between Qt versions, so a hard failure here would
+  # stop unrelated pull requests. It is installed apart from gui (fedora), a required job, so that
+  # a mirror problem with qt6-linguist cannot break that one. Same image as gui (fedora).
+  i18n:
+    name: translations (informational)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    container: fedora:44@sha256:43b29f65a41eb9c35e1cd5323e3bdf3b655c2357a9f4f1ff2f9c2798e5045d80
+    steps:
+      - name: Install Qt's linguist tools
+        run: dnf install -y --setopt=install_weak_deps=False qt6-linguist diffutils
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: The .ts files are up to date (informational)
+        continue-on-error: true
+        run: |
+          if ! tools/i18n.sh check; then
+            echo "::warning::gui/translations/*.ts is out of date: run tools/i18n.sh update and commit it"
+            exit 1
+          fi
 
   # The Flatpak bundle of the desktop app (packaging/flatpak), then a smoke test of the OCR that it
   # brings (Tesseract with English and orientation data, and OCRmyPDF), run in its own sandbox. The

@@ -16,6 +16,7 @@ Kirigami.ScrollablePage {
         Kirigami.Heading {
             text: qsTr("USB power settings")
             level: 2
+            textFormat: Text.PlainText
         }
         QQC2.Label {
             text: bridge.power.targetLabel
@@ -128,6 +129,38 @@ Kirigami.ScrollablePage {
                 Accessible.name: qsTr("Back to scan")
                 onClicked: page.closeRequested()
             }
+        }
+        Kirigami.Heading {
+            text: qsTr("Interface language")
+            level: 2
+            textFormat: Text.PlainText
+        }
+        QQC2.ComboBox {
+            objectName: "uiLanguageBox"
+            Layout.fillWidth: true
+            Layout.maximumWidth: Kirigami.Units.gridUnit * 16
+            model: bridge.uiLanguageChoices
+            textRole: "label"
+            valueRole: "value"
+            currentIndex: bridge.uiLanguageChoices.findIndex(choice => choice.value === bridge.uiLanguage)
+            Accessible.name: qsTr("Interface language")
+            onActivated: bridge.setUiLanguage(currentValue)
+        }
+        QQC2.Label {
+            objectName: "uiLanguagePartialNote"
+            Layout.fillWidth: true
+            visible: bridge.uiLanguagePartial
+            text: qsTr("This translation is partial: text that is not translated stays in English.")
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+        }
+        QQC2.Label {
+            objectName: "uiLanguageRestartNote"
+            Layout.fillWidth: true
+            visible: bridge.uiLanguageRestart
+            text: qsTr("Restart FastFoto Linux to apply the language.")
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
         }
         Item { Layout.fillHeight: true }
     }

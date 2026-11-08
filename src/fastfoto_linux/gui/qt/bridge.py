@@ -22,21 +22,25 @@ from fastfoto_linux.gui.form import (
     absolute_folder,
     validate_filesystem,
 )
+from fastfoto_linux.gui.i18n import UI_LANGUAGES, ui_language_code
 from fastfoto_linux.gui.photoeditjobs import PhotoEditTools, new_cache_dir
 from fastfoto_linux.gui.power import PowerResult, PowerTools
 from fastfoto_linux.gui.prefs import (
     load_document_form,
     load_form,
     load_mode,
+    load_ui_language,
     save_document_form,
     save_form,
     save_mode,
+    save_ui_language,
 )
 from fastfoto_linux.gui.qt.documents_view import DocumentsView
 from fastfoto_linux.gui.qt.photo_edit_view import PhotoEditView
 from fastfoto_linux.gui.qt.photos_model import PhotosModel, file_url
 from fastfoto_linux.gui.qt.power_view import PowerView
 from fastfoto_linux.gui.qt.review_view import ReviewView
+from fastfoto_linux.gui.qt.translation import active_code, translate_message
 from fastfoto_linux.gui.report import photos_heading
 from fastfoto_linux.gui.state import ActionBlockedError, Mode
 from fastfoto_linux.gui.worker import DiscoverFn, ProcessFn, SessionFn, Worker
@@ -125,6 +129,8 @@ class Bridge(QObject):
         photo_edits: PhotoEditTools | None = None,
     ) -> None:
         super().__init__()
+        self._remember = remember
+        self._ui_language = load_ui_language() if remember else active_code()
         self._photos = PhotosModel(self)
         tools = documents or DocumentTools()
         photo_cache_dir = new_cache_dir()
@@ -284,7 +290,7 @@ class Bridge(QObject):
 
     @Property(str, notify=changed)
     def scannerText(self) -> str:
-        return self.controller.scanner_text
+        return translate_message(self.controller.scanner_text)
 
     @Property(bool, notify=changed)
     def scannerOk(self) -> bool:
@@ -292,7 +298,7 @@ class Bridge(QObject):
 
     @Property(str, notify=changed)
     def progressText(self) -> str:
-        return self.controller.progress_text
+        return translate_message(self.controller.progress_text)
 
     @Property(str, notify=changed)
     def mode(self) -> str:
@@ -334,7 +340,7 @@ class Bridge(QObject):
 
     @Property("QVariantMap", notify=changed)
     def errors(self) -> dict[str, str]:
-        return self.controller.errors
+        return {name: translate_message(text) for name, text in self.controller.errors.items()}
 
     @Property(str, notify=changed)
     def destination(self) -> str:
@@ -363,7 +369,7 @@ class Bridge(QObject):
     @Property(str, notify=changed)
     def whyNotScan(self) -> str:
         """Why the Scan button is disabled, in words; empty when it is enabled."""
-        return self.controller.scan_blocker
+        return translate_message(self.controller.scan_blocker)
 
     @Property(str, notify=changed)
     def processKeptText(self) -> str:
@@ -430,6 +436,25 @@ class Bridge(QObject):
     def backChoices(self) -> list[str]:
         return list(BACK_CHOICES)
 
+    @Property(str, notify=changed)
+    def uiLanguage(self) -> str:
+        """The interface language chosen (applied from the next start)."""
+        return self._ui_language
+
+    @Property(bool, notify=changed)
+    def uiLanguageRestart(self) -> bool:
+        """True when the chosen language is not the one this run started with."""
+        return self._ui_language != active_code()
+
+    @Property(bool, notify=changed)
+    def uiLanguagePartial(self) -> bool:
+        """True when the chosen language leaves part of the text in English."""
+        return any(item.partial for item in UI_LANGUAGES if item.code == self._ui_language)
+
+    @Property("QVariantList", constant=True)
+    def uiLanguageChoices(self) -> list[dict[str, str]]:
+        return [{"value": item.code, "label": item.label} for item in UI_LANGUAGES]
+
     # -- what QML does ----------------------------------------------------------------------
 
     @Slot(str, "QVariant")
@@ -448,6 +473,20 @@ class Bridge(QObject):
         if self.controller.busy or self._languages.busy:
             raise ActionBlockedError("Wait for the current job before changing document settings.")
         self.controller.set_document_field(name, value)
+
+    @Slot(str)
+    def setUiLanguage(self, code: str) -> None:
+        """Choose the interface language; it is remembered and applied from the next start."""
+        if ui_language_code(code) != code:
+            logger.warning("ignoring an unknown interface language")
+            return
+        self._ui_language = code
+        if self._remember:
+            try:
+                save_ui_language(code)
+            except OSError as error:
+                logger.warning("could not remember the interface language: %s", error)
+        self._on_change()
 
     @Slot()
     @_guarded(None)

@@ -26,6 +26,7 @@ from fastfoto_linux.gui.form import (
     ScanForm,
     absolute_folder,
 )
+from fastfoto_linux.gui.i18n import DEFAULT_LANGUAGE, UI_LANGUAGES, ui_language_code
 from fastfoto_linux.gui.state import Mode
 from fastfoto_linux.scanner import SUPPORTED_DPI
 from fastfoto_linux.session import DOCUMENT_DPI
@@ -39,6 +40,7 @@ NOT_REMEMBERED = ("date", "notes")  # they belong to one batch, not to the next
 REMEMBERED = tuple(name for name in FIELD_NAMES if name not in NOT_REMEMBERED)
 DOCUMENTS_KEY = "documents"  # the Documents form lives under this key, the Photos one is flat
 MODE_KEY = "mode"
+UI_LANGUAGE_KEY = "ui_language"  # the interface language; not the OCR languages of the forms
 OLD_FEED_KEY = (
     "feed"  # what the loading direction was stored as, with the names the wrong way round
 )
@@ -169,6 +171,16 @@ def load_mode(path: Path | None = None) -> Mode:
     return Mode.PHOTOS
 
 
+def load_ui_language(path: Path | None = None) -> str:
+    """The interface language code; English for anything missing, unknown or unreadable."""
+    path = prefs_path() if path is None else path
+    data = _read_object(path)
+    value = None if data is None else data.get(UI_LANGUAGE_KEY)
+    if value is not None and ui_language_code(value) != value:
+        logger.warning("ignoring %s in the settings file: not a usable value", UI_LANGUAGE_KEY)
+    return ui_language_code(value) if value is not None else DEFAULT_LANGUAGE
+
+
 def _usable(
     name: str,
     data: Mapping[str, Any],
@@ -215,6 +227,17 @@ def save_document_form(form: DocumentForm, path: Path | None = None) -> None:
 def save_mode(mode: Mode, path: Path | None = None) -> None:
     """Write the mode atomically, keeping the rest of the file (see ``save_form``)."""
     _update(prefs_path() if path is None else path, {MODE_KEY: Mode(mode).value})
+
+
+def save_ui_language(code: str, path: Path | None = None) -> None:
+    """Write the interface language atomically, keeping the rest of the file (see ``save_form``).
+
+    Raises ValueError for a code that is not one of the interface languages.
+    """
+    if ui_language_code(code) != code:
+        valid = ", ".join(language.code for language in UI_LANGUAGES)
+        raise ValueError(f"unknown interface language {code!r}; use one of {valid}")
+    _update(prefs_path() if path is None else path, {UI_LANGUAGE_KEY: code})
 
 
 def _existing(path: Path) -> dict[str, Any]:

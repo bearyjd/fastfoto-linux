@@ -37,7 +37,9 @@ def finished_messages() -> list[tuple[str, str, str]]:
         for message in context.iter("message"):
             node = message.find("translation")
             if node is not None and node.get("type") is None and node.text:
-                found.append((context.findtext("name") or "", message.findtext("source"), node.text))
+                found.append(
+                    (context.findtext("name") or "", message.findtext("source"), node.text)
+                )
     return found
 
 
@@ -95,8 +97,8 @@ def test_a_catalog_in_the_working_directory_is_never_loaded(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     (tmp_path / "fastfoto_de.qm").write_bytes(b"decoy")
-    (tmp_path / "i18n").mkdir()
-    (tmp_path / "i18n" / "fastfoto_de.qm").write_bytes(b"decoy")
+    (tmp_path / "translations").mkdir()
+    (tmp_path / "translations" / "fastfoto_de.qm").write_bytes(b"decoy")
     monkeypatch.chdir(tmp_path)
     assert translation.activate("de")  # the packaged one, which is a real catalog
     assert translation.translate_message("Scanner found.") == GERMAN

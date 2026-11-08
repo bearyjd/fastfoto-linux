@@ -10,6 +10,7 @@ import atexit
 import shutil
 import tempfile
 from datetime import timedelta
+from pathlib import Path
 
 from hypothesis import HealthCheck, settings
 from hypothesis.configuration import set_hypothesis_home_dir
@@ -17,6 +18,18 @@ from hypothesis.configuration import set_hypothesis_home_dir
 PROFILE = "fastfoto"
 MAX_EXAMPLES = 60
 DEADLINE = timedelta(seconds=5)  # an example that takes longer is a time-bound bug
+
+REPO = Path(__file__).resolve().parents[2]
+
+
+def snapshot_checkout_cache() -> dict[str, int]:
+    """Every path under the checkout's ``.hypothesis`` with its mtime; empty when it is absent."""
+    root = REPO / ".hypothesis"
+    return {str(p): p.stat().st_mtime_ns for p in [root, *root.rglob("*")] if p.exists()}
+
+
+# What an earlier local run left there is not this run's doing: compare against this.
+CHECKOUT_CACHE_AT_START = snapshot_checkout_cache()
 
 # Hypothesis keeps its caches (unicode tables, constants) in a home directory, by default
 # ``.hypothesis/`` in the current directory, which is the checkout. Keep them in a temporary one.

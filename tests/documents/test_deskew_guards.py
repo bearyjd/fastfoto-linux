@@ -162,5 +162,5 @@ def test_a_dark_mark_still_stops_the_turn_on_evenly_lit_noisy_paper(where: str) 
     pixels = _scanned(page, 6, 11, vignette=0.0)
     left, top = FRAME_EDGE_DIGITS[where]
     assert estimate_skew(loaded(pixels, dpi=600)).status is SkewStatus.ESTIMATED
-    pixels[top : top + DIGIT[1], left : left + DIGIT[0]] = 20
+    pixels[top : top + DIGIT[1], left : left + DIGIT[0]] = 170  # 70 levels darker than the paper, a dozen sigma
     assert estimate_skew(loaded(pixels, dpi=600)).status is SkewStatus.WOULD_CLIP

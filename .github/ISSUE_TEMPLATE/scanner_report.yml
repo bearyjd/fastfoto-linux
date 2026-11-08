@@ -1,6 +1,5 @@
 name: Scanner report
 description: A problem talking to the scanner (discovery, USB stalls, feeder, Wi-Fi).
-labels: [scanner]
 body:
   - type: markdown
     attributes:

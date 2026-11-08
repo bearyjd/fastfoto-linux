@@ -1,6 +1,5 @@
 name: Bug report
 description: Something in fastfoto-linux does not work as documented.
-labels: [bug]
 body:
   - type: markdown
     attributes:

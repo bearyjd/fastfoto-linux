@@ -7,7 +7,9 @@ version may change behaviour).
 
 No release has been tagged yet. `pyproject.toml` says `0.0.1`, but there is no `v0.0.1` tag, so
 everything below is **Unreleased**. The back-fill covers merged pull requests #41 to #88, plus
-#94 and #95 which merged afterwards; work before #41 (the scanner transport, photo pipeline,
+#94 and #95, which merged on 2026-11-07; the cutoff is commit `7d24b43` (#95). Pull requests merged
+after it (#97 and later) are added by their authors under `[Unreleased]` as they merge, as
+described in `docs/release-process.md`. Work before #41 (the scanner transport, photo pipeline,
 first Documents mode, desktop app and Flatpak) is in the git history. Entries repeat the pull
 request titles; a pull request number is not a claim about quality. Constants such as Auto colour
 and deskew thresholds, and the white balance and tint gain scale and preset values, are not yet

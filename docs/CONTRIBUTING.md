@@ -44,7 +44,7 @@ uv export --locked --no-dev --no-emit-project --hashes --no-header --no-annotate
 uv export --locked --no-dev --no-emit-project --extra ocr --hashes --no-header --no-annotate --quiet > packaging/requirements-ocr.txt
 ```
 
-## CI: five required checks
+## CI: five checks
 
 <!-- AUTO-GENERATED: from .github/workflows/ci.yml -->
 | Check | What it does |

@@ -1,6 +1,5 @@
 name: Tested-by report
 description: Tell us what worked and what did not on your scanner, even if nothing went wrong.
-labels: [tested-by]
 body:
   - type: markdown
     attributes:

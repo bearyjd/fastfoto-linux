@@ -21,6 +21,8 @@ never of a contributor or an automated agent.
   marked as pre-release on GitHub.
 - The tag is on a commit of `main`, and `pyproject.toml` `version` on that commit equals the tag
   without the `v` (a beta `v0.1.0-beta.1` is `0.1.0b1` in `pyproject.toml`, the PEP 440 spelling).
+  The metainfo `<release version="...">` uses the same `pyproject.toml` spelling (`0.1.0b1`), and
+  the Flathub manifest `tag:` uses the tag itself (`v0.1.0-beta.1`).
 - Tags are never moved. A bad release gets a new patch version.
 - The Flathub manifest pins `tag:` and `commit:` to the tag (see `docs/flathub-submission.md`).
 
@@ -34,9 +36,11 @@ never of a contributor or an automated agent.
    left out.
 2. At release time, rename `[Unreleased]` to `[X.Y.Z] - YYYY-MM-DD` (the real date), start a new
    empty `[Unreleased]` above it, and add the compare link at the bottom of the file.
-3. Check the entries against the merged pull requests since the previous tag:
-   `gh pr list --state merged --search "merged:>YYYY-MM-DD" --json number,title`. Do not state
-   anything the pull request does not.
+3. Check the entries against the merged pull requests since the previous tag, using a complete
+   list (`gh pr list` stops at 30 results unless told otherwise):
+   `gh pr list --state merged --limit 1000 --json number,title,mergedAt --search "merged:>YYYY-MM-DD"`
+   (or `gh api --paginate`). If the list has as many entries as the limit, raise the limit. Do
+   not state anything the pull request does not.
 4. Gate: the release is not tagged while a merged user-visible pull request has no entry. This is
    a manual check; CI does not enforce it.
 
@@ -44,7 +48,7 @@ never of a contributor or an automated agent.
 
 Work through these on the exact commit that will be tagged.
 
-1. The 5 required CI jobs (`lint`, `test (3.13)`, `test (3.14)`, `gui (fedora)`, `flatpak`) are
+1. The 5 CI jobs (`lint`, `test (3.13)`, `test (3.14)`, `gui (fedora)`, `flatpak`) are
    green on that commit.
 2. Hardware-in-the-loop run by the maintainer on that commit: a real scanner, over USB and over
    Wi-Fi. CI never touches the scanner.
@@ -54,13 +58,17 @@ Work through these on the exact commit that will be tagged.
    good.
 4. `CHANGELOG.md` entry dated with the real date, the metainfo `<release>` with the same date,
    and `pyproject.toml` `version` bumped.
-5. PII scan of the diff since the last tag. The pattern list is in `.omc/STATE.md` (scanner
-   serial numbers, private network addresses, e-mail addresses and personal paths). Zero hits.
+5. PII scan of the diff since the last tag: `tools/ci/pii_scan_diff.sh PREVIOUS_TAG`. It checks
+   private network addresses and personal paths. Patterns that name private values (scanner
+   serial numbers, e-mail addresses, host names) are not kept in this public repository: the
+   maintainer lists them, one regular expression per line, in a file outside the checkout and runs
+   `FASTFOTO_PII_EXTRA_FILE=/path/to/file tools/ci/pii_scan_diff.sh PREVIOUS_TAG`. Zero hits.
 6. The Flatpak bundle from CI installs on a clean Fedora and a clean Ubuntu VM and reaches the
    scanner list (time it; the goal is ten minutes).
 7. The known limits section of the README, and the list below, are updated.
-8. Tag and publish the release. **Needs the maintainer's explicit approval.** Then update the
-   Flathub manifest `tag:` and `commit:`.
+8. Tag and publish the release. **Needs the maintainer's explicit approval.** Moving the
+   Flathub manifest `tag:` and `commit:` (a pull request or a submission to Flathub) also needs
+   the maintainer's explicit approval.
 
 ## Known limits (keep this honest)
 
@@ -78,3 +86,9 @@ Work through these on the exact commit that will be tagged.
   submission is prepared but waits on a release tag (`docs/flathub-submission.md`).
 - CI has no Tesseract, so OCR is tested with OCR switched off; in CI OCR runs only in the
   Flatpak smoke test.
+
+## Labels
+
+The issue forms in `.github/ISSUE_TEMPLATE/` set no labels, because labels that do not exist are
+skipped silently and creating them is a repository setting. Maintainers may add labels such as
+`bug`, `scanner` and `tested-by` and apply them while triaging.

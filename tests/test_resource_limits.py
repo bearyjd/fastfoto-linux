@@ -66,10 +66,13 @@ def test_png_master_pixel_bomb_is_refused_before_decoding() -> None:
 
 
 def test_png_master_at_the_pixel_cap_passes_the_guard_and_one_past_does_not() -> None:
-    side = int(MAX_SOURCE_PIXELS**0.5)
-    check_png(_bomb_png(side, side, colour=2))
+    assert MAX_SOURCE_PIXELS == 8900 * 10_000
+    check_png(_bomb_png(8900, 10_000, colour=2))  # exactly the cap
+    check_png(_bomb_png(MAX_SOURCE_PIXELS, 1, colour=2))
     with pytest.raises(PhotoEditError, match="too many pixels"):
-        check_png(_bomb_png(side + 1, side + 1, colour=2))
+        check_png(_bomb_png(MAX_SOURCE_PIXELS + 1, 1, colour=2))  # exactly one pixel past it
+    with pytest.raises(PhotoEditError, match="too many pixels"):
+        check_png(_bomb_png(8901, 10_000, colour=2))
 
 
 def test_png_chunk_count_is_capped() -> None:

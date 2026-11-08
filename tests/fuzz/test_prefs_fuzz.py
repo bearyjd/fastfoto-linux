@@ -106,3 +106,13 @@ def test_a_file_past_the_size_cap_is_not_read(path: Path) -> None:
     assert prefs.load_mode(path) is Mode.PHOTOS
     assert prefs.load_form(path) == ScanForm()
     assert prefs.load_document_form(path) == DocumentForm()
+
+
+def test_a_file_of_exactly_the_size_cap_is_read_and_one_byte_more_is_not(path: Path) -> None:
+    _saved_base(path)
+    small = path.read_bytes()
+    path.write_bytes(small + b" " * (prefs.MAX_PREFS_BYTES - len(small)))
+    assert path.stat().st_size == prefs.MAX_PREFS_BYTES
+    assert prefs.load_mode(path) is Mode.DOCUMENTS
+    path.write_bytes(path.read_bytes() + b" ")
+    assert prefs.load_mode(path) is Mode.PHOTOS

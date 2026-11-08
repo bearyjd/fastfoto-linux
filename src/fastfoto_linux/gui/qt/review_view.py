@@ -35,6 +35,7 @@ logger = logging.getLogger(__name__)
 AUTOSAVE_MS = 500
 CROP_CENTRE = 500  # permille: the middle of the page
 NO_CLEANUP_TEXT = " — without paper cleanup"
+DOCUMENT_FILE_ERROR = "The page or its saved edit could not be read or written."
 
 
 class ReviewView(QObject):
@@ -247,13 +248,21 @@ class ReviewView(QObject):
                 suffix = NO_CLEANUP_TEXT
         return suffix + (" — actual pixels" if self._side.preview_crop is not None else "")
 
+    def _show_error(self, text: str) -> None:
+        self._controller._banner = Banner("error", text)
+        self._controller._changed()
+
     def _call(self, action: Callable[..., Any], *args: object) -> Any:
         try:
             answer = action(*args)
+        except OSError as error:
+            # The OS text can hold a path, so it goes to the log, never to the banner.
+            logger.warning("document review action failed: %s", error)
+            self._show_error(DOCUMENT_FILE_ERROR)
+            answer = None
         except Exception as error:
             logger.warning("document review action failed: %s", error)
-            self._controller._banner = Banner("error", str(error))
-            self._controller._changed()
+            self._show_error(str(error))
             answer = None
         self.refresh()
         return answer

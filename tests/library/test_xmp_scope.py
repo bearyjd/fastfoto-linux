@@ -39,7 +39,7 @@ def tiff_ns(prefix: bytes) -> bytes:
     return b"xmlns:" + prefix + b'="' + TIFF + b'"'
 
 
-# Packets that mention an Orientation without having one in the tiff namespace.
+# Packets that mention an Orientation without having one as an element or attribute.
 NOT_TIFF = {
     "caption attribute": packet(
         tiff_ns(b"tiff") + b" " + DC + b' tiff:Make="TestCam" dc:description="Portrait Orientation"'
@@ -47,19 +47,13 @@ NOT_TIFF = {
     "caption element": packet(
         tiff_ns(b"tiff") + b" " + DC, b"<dc:description>Portrait Orientation</dc:description>"
     ),
-    "another namespace": packet(
-        tiff_ns(b"tiff") + b" " + EX + b' tiff:Make="TestCam" ex:Orientation="portrait"'
-    ),
-    "another namespace, prefix that ends like the tiff one": packet(
-        tiff_ns(b"x") + b" " + EX + b' x:Make="TestCam" ex:Orientation="portrait"'
-    ),
-    "another namespace, element": packet(
-        tiff_ns(b"t") + b" " + EX, b"<ex:Orientation>portrait</ex:Orientation>"
-    ),
 }
 
-# Packets with an Orientation in the tiff namespace, whatever the prefix or the quotes.
+# Packets with an Orientation, whatever the prefix, the namespace or the quotes (the namespace
+# is not looked at: a spelling the byte scan cannot resolve would be a way past it).
 TIFF_ORIENTATION = {
+    "another namespace": packet(EX + b' ex:Orientation="portrait"'),
+    "another namespace, element": packet(EX, b"<ex:Orientation>portrait</ex:Orientation>"),
     "tiff attribute": packet(tiff_ns(b"tiff") + b' tiff:Orientation="6"'),
     "tiff element": packet(tiff_ns(b"tiff"), b"<tiff:Orientation>6</tiff:Orientation>"),
     "custom attribute": packet(tiff_ns(b"t") + b' t:Orientation="6"'),
@@ -85,7 +79,7 @@ def extended(chunk: bytes, offset: int, total: int) -> bytes:
 
 
 @pytest.mark.parametrize("xmp", NOT_TIFF.values(), ids=NOT_TIFF.keys())
-def test_an_orientation_that_is_not_in_the_tiff_namespace_does_not_stop_the_turn(
+def test_a_word_that_is_not_an_orientation_element_or_attribute_does_not_stop_the_turn(
     tmp_path: Path, xmp: bytes
 ) -> None:
     for data in (
@@ -96,7 +90,7 @@ def test_an_orientation_that_is_not_in_the_tiff_namespace_does_not_stop_the_turn
 
 
 @pytest.mark.parametrize("xmp", TIFF_ORIENTATION.values(), ids=TIFF_ORIENTATION.keys())
-def test_an_orientation_in_the_tiff_namespace_stops_the_turn(tmp_path: Path, xmp: bytes) -> None:
+def test_an_orientation_element_or_attribute_stops_the_turn(tmp_path: Path, xmp: bytes) -> None:
     assert decided(tmp_path, with_xmp(sideways(90), xmp)) == (Action.SKIP, REASON)
 
 

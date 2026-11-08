@@ -45,6 +45,13 @@ def test_the_micro_helper_rounds_half_up_like_javascript():
     assert micro(-0.25) == -0.25
 
 
+def test_the_micro_helper_is_not_javascript_where_adding_a_half_rounds_itself():
+    # Math.round(4503599627370497) is 4503599627370497 in JS (checked in node); floor(x + 0.5)
+    # lands on the next integer because x + 0.5 is a tie that rounds to even.
+    assert micro(4503599627.370497) == 4503599627.370498
+    assert math.floor(0.49999999999999994 + 0.5) == 1  # JS Math.round gives 0 here
+
+
 def js_round(value):
     return math.floor(value * 1e6 + 0.5) / 1e6
 

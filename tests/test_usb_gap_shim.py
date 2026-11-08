@@ -32,6 +32,7 @@ pytestmark = [
 GAP_ENV = "FF680W_USB_GAP_US"
 DEFAULT_GAP_MS = 2.0
 DEFAULT_GAP_SLACK_MS = 150
+MIN_MEAN_OPEN_WINDOWS = 5.0
 NS_PER_MS = 1_000_000
 # Legitimate runs take well under 2 s; a shim that sleeps for ever must fail, not hang the suite.
 RUN_TIMEOUT_S = 6
@@ -317,6 +318,19 @@ def thread_spans_ms(by_handle: dict[str, list[Call]]) -> list[int]:
     return [round(ms_between(own[0], own[-1])) for own in by_handle.values()]
 
 
+def mean_open_windows(by_handle: dict[str, list[Call]]) -> float:
+    """How many IN->OUT windows (one per pair, over all handles) were open at once on average."""
+    own_calls = [c for own in by_handle.values() for c in own]
+    total = sum(
+        ms_between(i, o)
+        for own in by_handle.values()
+        for i, o in zip(own[0::2], own[1::2], strict=True)
+    )
+    return total / ms_between(
+        min(own_calls, key=lambda c: c.t_ns), max(own_calls, key=lambda c: c.t_ns)
+    )
+
+
 def test_handles_are_serviced_concurrently_and_independently(harness: Harness) -> None:
     """8 threads, one handle each: every OUT keeps its own gap and no thread blocks another."""
     threads, pairs = 8, 200
@@ -330,17 +344,28 @@ def test_handles_are_serviced_concurrently_and_independently(harness: Harness) -
         assert [c.is_in for c in own] == [True, False] * pairs, handle
         for i, o in zip(own[0::2], own[1::2], strict=True):
             assert ms_between(i, o) >= DEFAULT_GAP_MS, f"{handle}: OUT only {ms_between(i, o)} ms"
-    span_ms = (max(c.t_ns for c in calls) - min(c.t_ns for c in calls)) / NS_PER_MS
-    # Sanity bound: each thread needs about pairs * 2 ms = 400 ms. The bound is what tells a shim
-    # that serialises the handles (a lock held across the sleep: 8 x 400 ms = 3200 ms) from one
-    # that does not, so it stays. It is a wall-clock bound, though, and a loaded runner stretches
-    # it: measured here, 430-490 ms idle, up to 1918 ms with 40 busy loops on 2 CPUs (a single
-    # call then waited 930 ms to be scheduled), never below the gap. On a failure the message
-    # carries the data that CI logs have not had so far.
-    assert span_ms < 2000, (
-        f"{threads} threads took {span_ms:.0f} ms (alone: ~{pairs * DEFAULT_GAP_MS:.0f} ms); "
+    # The property is structural, so it does not depend on how fast the machine is: a shim that
+    # serialises the handles (one lock across a whole call, sleep included) keeps fewer windows
+    # open on average, and may let one thread finish before the next one begins; a shim that
+    # does not has nearly all eight windows open together. A loaded runner stretches times,
+    # not this order.
+    starts = {handle: own[0].t_ns for handle, own in by_handle.items()}
+    ends = {handle: own[-1].t_ns for handle, own in by_handle.items()}
+    detail = (
         f"slowest IN->OUT gap {max_gap_ms(by_handle):.1f} ms, per-thread spans (ms) "
         f"{thread_spans_ms(by_handle)}"
+    )
+    assert max(starts.values()) < min(ends.values()), f"the threads did not overlap; {detail}"
+    # Eight threads, each waiting out its gap almost all the time: about 7 windows are open
+    # (6 with the CPUs oversubscribed 20 times). One lock across the sleep gives about 4.
+    assert mean_open_windows(by_handle) >= MIN_MEAN_OPEN_WINDOWS, (
+        f"handles were serialised; {detail}"
+    )
+    # A loose backstop only (10x the idle span of ~450 ms, 3200 ms when serialised by a sleeping
+    # lock): measured up to 1918 ms with 40 busy loops on 2 CPUs.
+    span_ms = (max(c.t_ns for c in calls) - min(c.t_ns for c in calls)) / NS_PER_MS
+    assert span_ms < 10 * pairs * DEFAULT_GAP_MS * 1.125, (
+        f"{threads} threads took {span_ms:.0f} ms; {detail}"
     )
 
 

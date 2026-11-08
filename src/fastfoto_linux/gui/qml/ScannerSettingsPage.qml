@@ -16,6 +16,7 @@ Kirigami.ScrollablePage {
         Kirigami.Heading {
             text: qsTr("USB power settings")
             level: 2
+            textFormat: Text.PlainText
         }
         QQC2.Label {
             text: bridge.power.targetLabel
@@ -33,7 +34,7 @@ Kirigami.ScrollablePage {
             text: bridge.power.message
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
-            color: bridge.power.reconnectRequired ? Kirigami.Theme.negativeTextColor : Kirigami.Theme.textColor
+            color: bridge.power.reconnectRequired ? Qt.tint(Kirigami.Theme.negativeTextColor, Qt.alpha(Kirigami.Theme.textColor, 0.3)) : Kirigami.Theme.textColor
             Accessible.role: Accessible.StaticText
         }
         RowLayout {
@@ -47,6 +48,7 @@ Kirigami.ScrollablePage {
             }
             QQC2.BusyIndicator {
                 running: bridge.power.busy
+                Accessible.name: qsTr("Working")
                 visible: running
             }
         }
@@ -64,7 +66,7 @@ Kirigami.ScrollablePage {
                 Kirigami.FormData.label: qsTr("Sleep delay:")
                 QQC2.Label {
                     text: qsTr("Current on scanner")
-                    color: Kirigami.Theme.disabledTextColor
+                    color: Qt.alpha(Kirigami.Theme.textColor, 0.75)
                     textFormat: Text.PlainText
                 }
                 QQC2.Label {
@@ -87,7 +89,7 @@ Kirigami.ScrollablePage {
                 Kirigami.FormData.label: qsTr("Power off delay (AC):")
                 QQC2.Label {
                     text: qsTr("Current on scanner")
-                    color: Kirigami.Theme.disabledTextColor
+                    color: Qt.alpha(Kirigami.Theme.textColor, 0.75)
                     textFormat: Text.PlainText
                 }
                 QQC2.Label {
@@ -127,6 +129,38 @@ Kirigami.ScrollablePage {
                 Accessible.name: qsTr("Back to scan")
                 onClicked: page.closeRequested()
             }
+        }
+        Kirigami.Heading {
+            text: qsTr("Interface language")
+            level: 2
+            textFormat: Text.PlainText
+        }
+        QQC2.ComboBox {
+            objectName: "uiLanguageBox"
+            Layout.fillWidth: true
+            Layout.maximumWidth: Kirigami.Units.gridUnit * 16
+            model: bridge.uiLanguageChoices
+            textRole: "label"
+            valueRole: "value"
+            currentIndex: bridge.uiLanguageChoices.findIndex(choice => choice.value === bridge.uiLanguage)
+            Accessible.name: qsTr("Interface language")
+            onActivated: bridge.setUiLanguage(currentValue)
+        }
+        QQC2.Label {
+            objectName: "uiLanguagePartialNote"
+            Layout.fillWidth: true
+            visible: bridge.uiLanguagePartial
+            text: qsTr("This translation is partial: text that is not translated stays in English.")
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
+        }
+        QQC2.Label {
+            objectName: "uiLanguageRestartNote"
+            Layout.fillWidth: true
+            visible: bridge.uiLanguageRestart
+            text: qsTr("Restart FastFoto Linux to apply the language.")
+            textFormat: Text.PlainText
+            wrapMode: Text.WordWrap
         }
         Item { Layout.fillHeight: true }
     }

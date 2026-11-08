@@ -1,0 +1,8 @@
+# Build tools for the docs site (mkdocs.yml); used by the `docs` CI job only. Not a runtime
+# dependency of the app, and not part of uv.lock.
+# Locked with --exclude-newer 2026-10-31: no package newer than that date (a week before the lock),
+# so a release has had time to be noticed before CI runs it. Regenerate the hashed file with:
+#   uv pip compile packaging/requirements-docs.in --generate-hashes --python-version 3.13 \
+#     --exclude-newer 2026-10-31T00:00:00Z --no-header --no-annotate -o packaging/requirements-docs.txt
+mkdocs>=1.6,<2
+mkdocs-material>=9.6,<10

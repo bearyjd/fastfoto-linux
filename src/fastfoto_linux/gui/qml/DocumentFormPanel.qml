@@ -57,7 +57,7 @@ QQC2.ScrollView {
             text: panel.error("output_folder")
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
-            color: Kirigami.Theme.negativeTextColor
+            color: Qt.tint(Kirigami.Theme.negativeTextColor, Qt.alpha(Kirigami.Theme.textColor, 0.3))
         }
 
         QQC2.TextField {
@@ -79,7 +79,7 @@ QQC2.ScrollView {
             text: panel.error("name")
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
-            color: Kirigami.Theme.negativeTextColor
+            color: Qt.tint(Kirigami.Theme.negativeTextColor, Qt.alpha(Kirigami.Theme.textColor, 0.3))
         }
 
         QQC2.Label {
@@ -91,7 +91,7 @@ QQC2.ScrollView {
             text: qsTr("Saved as %1").arg(bridge.destination)
             textFormat: Text.PlainText
             elide: Text.ElideMiddle
-            color: Kirigami.Theme.disabledTextColor
+            color: Qt.alpha(Kirigami.Theme.textColor, 0.75)
             font: Kirigami.Theme.smallFont
         }
 
@@ -175,7 +175,7 @@ QQC2.ScrollView {
             text: qsTr("Off by default. Light and Strong lighten paper tone of grey and colour pages; black-and-white pages are not changed by paper cleanup. Check it in the preview.")
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
-            color: Kirigami.Theme.disabledTextColor
+            color: Qt.alpha(Kirigami.Theme.textColor, 0.75)
         }
 
         QQC2.ComboBox {
@@ -246,7 +246,7 @@ QQC2.ScrollView {
             text: qsTr("Remove specks deletes tiny isolated dots from black-and-white pages; dots near text are kept.")
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
-            color: Kirigami.Theme.disabledTextColor
+            color: Qt.alpha(Kirigami.Theme.textColor, 0.75)
         }
 
         QQC2.CheckBox {
@@ -276,7 +276,7 @@ QQC2.ScrollView {
             text: qsTr("Measures each new scan's page tilt (0.3 to 10 degrees) and straightens it; you can undo it per page in the review. Pages opened again are never measured.")
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
-            color: Kirigami.Theme.disabledTextColor
+            color: Qt.alpha(Kirigami.Theme.textColor, 0.75)
         }
 
         QQC2.ComboBox {
@@ -376,7 +376,7 @@ QQC2.ScrollView {
             text: bridge.documents.ocrHint
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
-            color: Kirigami.Theme.disabledTextColor
+            color: Qt.alpha(Kirigami.Theme.textColor, 0.75)
             font: Kirigami.Theme.smallFont
         }
 
@@ -393,7 +393,7 @@ QQC2.ScrollView {
             text: panel.error("langs")
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
-            color: Kirigami.Theme.negativeTextColor
+            color: Qt.tint(Kirigami.Theme.negativeTextColor, Qt.alpha(Kirigami.Theme.textColor, 0.3))
         }
     }
 

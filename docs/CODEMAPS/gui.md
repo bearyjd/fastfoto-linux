@@ -17,6 +17,7 @@ Three layers; only `qt/` imports PySide6 (excluded from the main coverage run, t
 ## Qt bridge (gui/qt/)
 - `app.py:main` (engine, Kirigami check, signal handling, error dialog); `bridge.py:Bridge(QObject)` exposes controller to QML
 - `photos_model.py`, `documents_model.py:DocumentsModel`, `documents_view.py:DocumentsView`
+- `translation.py`: loads the packaged `.qm` of the chosen interface language (allowlist, size limit, English on any failure); `translate_message` for Python text. Plain-Python side: `gui/i18n.py` (languages, `QT_TRANSLATE_NOOP`), catalogs in `gui/translations/`, workflow in `docs/translating.md`
 - `messages.py`: Qt message filter (`install_message_filter`, `filtering_handler`, `is_known_noise`) drops known harmless Qt warnings, passes the rest through
 
 ## QML (gui/qml/)

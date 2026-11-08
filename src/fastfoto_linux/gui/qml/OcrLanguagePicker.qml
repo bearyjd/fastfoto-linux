@@ -126,7 +126,7 @@ ColumnLayout {
                     textFormat: Text.PlainText
                     wrapMode: Text.WordWrap
                     font: Kirigami.Theme.smallFont
-                    color: Kirigami.Theme.disabledTextColor
+                    color: Qt.alpha(Kirigami.Theme.textColor, 0.75)
                 }
             }
         }
@@ -183,6 +183,7 @@ ColumnLayout {
 
         QQC2.ProgressBar {
             objectName: "docLanguageProgressBar"
+            Accessible.name: qsTr("Language download progress")
             Layout.fillWidth: true
             from: 0
             to: 1
@@ -208,7 +209,7 @@ ColumnLayout {
         textFormat: Text.PlainText
         wrapMode: Text.WordWrap
         visible: text !== ""
-        color: Kirigami.Theme.negativeTextColor
+        color: Qt.tint(Kirigami.Theme.negativeTextColor, Qt.alpha(Kirigami.Theme.textColor, 0.3))
     }
 
     QQC2.Label {
@@ -221,7 +222,7 @@ ColumnLayout {
         wrapMode: Text.WordWrap
         visible: bridge.documents.searchableChecked && !bridge.documents.languages.ready
                  && !bridge.documents.languages.busy
-        color: Kirigami.Theme.disabledTextColor
+        color: Qt.alpha(Kirigami.Theme.textColor, 0.75)
         font: Kirigami.Theme.smallFont
     }
 }

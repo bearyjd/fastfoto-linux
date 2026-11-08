@@ -1,0 +1,56 @@
+site_name: fastfoto-linux
+site_description: Open-source Linux app for the Epson FastFoto FF-680W photo scanner. Not affiliated with Seiko Epson.
+docs_dir: docs
+strict: true
+
+theme:
+  # No Google Fonts: the system fonts are used, so a visitor's browser contacts no third party.
+  font: false
+  name: material
+  features:
+    - navigation.sections
+    - content.code.copy
+
+# No repo_url (Material would fetch repository statistics from GitHub in the visitor's browser),
+# no analytics, no extra scripts or styles, no "Made with Material" link.
+extra:
+  generator: false
+
+markdown_extensions:
+  - admonition
+  - tables
+  - toc:
+      permalink: true
+
+# Pages of the site. The rest of docs/ (design notes, research, code maps, roadmaps) stays in the
+# repository and is left out of the build.
+nav:
+  - Home: index.md
+  - Install: install.md
+  - Your first scan: first-scan.md
+  - Runbook: RUNBOOK.md
+  - Scanner settings: SCANNER_SETTINGS.md
+  - Scanner capabilities: SCANNER_CAPABILITIES.md
+  - Known limits: known-limits.md
+  - Comparison: comparison.md
+
+# Do not exclude assets/: the pattern also matches the theme's own assets/ folder and the site
+# would be built without its styles and scripts.
+exclude_docs: |
+  CODEMAPS/
+  research/
+  roadmaps/
+  design/
+  raw/
+  .raw/
+  CONTRIBUTING.md
+  ENV.md
+  release-process.md
+  flathub-submission.md
+  *.pdf
+  *.lock
+
+validation:
+  omitted_files: info
+  absolute_links: warn
+  unrecognized_links: warn

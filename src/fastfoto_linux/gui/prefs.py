@@ -81,7 +81,7 @@ def _read_object(path: Path) -> dict[str, Any] | None:
         data = json.loads(raw.decode("utf-8"))
     except FileNotFoundError:
         return None
-    except (OSError, ValueError) as error:
+    except (OSError, ValueError, RecursionError) as error:  # deep nesting is a RecursionError
         logger.warning("ignoring the settings file %s: %s", path, error)
         return None
     if not isinstance(data, dict):

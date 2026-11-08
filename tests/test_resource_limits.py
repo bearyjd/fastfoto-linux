@@ -7,6 +7,7 @@ picture), so a missing cap shows as a failure or a memory ceiling, not as a minu
 import subprocess
 import sys
 import textwrap
+import zlib
 from pathlib import Path
 
 import numpy as np
@@ -135,19 +136,36 @@ def test_oversized_review_sidecar_is_refused_before_it_is_read(tmp_path: Path) -
     assert read_review(tmp_path, [page]) is None  # logged and ignored: the pages are analysed again
 
 
-def test_bombs_cost_bounded_memory() -> None:
-    """Refusing a header that claims 4 Gpx (and 1 Tpx) adds almost nothing to the process."""
-    setup = """
-        from fastfoto_linux.photo_edits.png_guard import check_png
-        from fastfoto_linux.photo_edits import PhotoEditError
-        from tests.test_resource_limits import _bomb_png
+def _just_over_cap_png(path: Path) -> None:
+    """An 8-bit RGB PNG of 89.1 Mpx, all black: about 260 KB on disk, 267 MB if it were decoded.
+
+    The rows are compressed one at a time, so writing it needs almost no memory.
     """
-    attack = """
-        for side in (1 << 16, 1 << 20):
-            try:
-                check_png(_bomb_png(side, side, colour=2))
-            except PhotoEditError:
-                pass
+    width, height = 9000, 9900
+    assert width * height > MAX_SOURCE_PIXELS
+    packer = zlib.compressobj(1)
+    row = bytes(1 + 3 * width)  # filter byte 0, then black
+    stream = b"".join(packer.compress(row) for _ in range(height)) + packer.flush()
+    path.write_bytes(
+        h.assemble([(b"IHDR", h.ihdr(width, height, 8, 2)), (b"IDAT", stream), (b"IEND", b"")])
+    )
+
+
+def test_a_png_over_the_pixel_cap_is_refused_without_decoding_it(tmp_path: Path) -> None:
+    """The refusal costs almost no memory; decoding the picture would cost 270 MB and more."""
+    path = tmp_path / "photo_0001.png"
+    _just_over_cap_png(path)
+    setup = """
+        from pathlib import Path
+        from fastfoto_linux.photo_edits import PhotoEditError, load_source
+    """
+    attack = f"""
+        try:
+            load_source(Path({str(path)!r}))
+        except PhotoEditError:
+            pass
+        else:
+            raise SystemExit("the bomb was accepted")
     """
     baseline = _run_peak_rss_mib(setup)
     attacked = _run_peak_rss_mib(setup + attack)

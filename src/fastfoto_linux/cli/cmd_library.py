@@ -57,8 +57,8 @@ def _add_check(commands: "argparse._SubParsersAction[argparse.ArgumentParser]") 
         "check",
         parents=[common_parent()],
         help="decide which photos are sideways and write a plan",
-        description="Walk SRC, decide each JPEG's orientation from the faces in it and write the "
-        "plan as a CSV file. Nothing else is written.",
+        description="Walk SRC, decide each JPEG's or PNG's orientation from the faces in it and "
+        "write the plan as a CSV file. Nothing else is written.",
     )
     parser.add_argument("src", type=Path, metavar="SRC", help="the library folder (read only)")
     parser.add_argument(
@@ -111,7 +111,9 @@ def run_check(args: argparse.Namespace) -> int:
     library = Library(os.stat(src), walk.folders, walk.unlisted_folders)
     with _as_usage_errors(), open_plan_target(args.plan, library) as target:
         # the plan's folder stays open from here to the write, however long the scan takes
-        logger.info("found %d JPEG files; deciding with %d worker(s)", len(walk.jpegs), args.jobs)
+        logger.info(
+            "found %d JPEG and PNG files; deciding with %d worker(s)", len(walk.jpegs), args.jobs
+        )
         rows = decide_files(src, walk.jpegs, args.jobs)
         write_plan(target, rows)
     print(format_check(summarize_check(walk, rows), args.plan))

@@ -47,3 +47,28 @@ class ImageTooLargeError(JpegExifError):
     """The JPEG header claims more pixels than this tool decodes."""
 
     reason = "too-large"
+
+
+class NotAPngError(JpegExifError):
+    """The bytes are not a well-formed, bounded PNG stream."""
+
+    reason = "unreadable"
+
+
+class UnsupportedPngError(JpegExifError):
+    """A PNG this tool will not edit: animated, with a chunk it cannot vouch for, or with an
+    Exif copy in a text chunk that a viewer might prefer to the real one."""
+
+    reason = "unsupported-png"
+
+
+class UnsupportedFormatError(JpegExifError):
+    """The file is neither a JPEG nor a PNG, whatever its name says."""
+
+    reason = "unsupported-format"
+
+
+class FormatMismatchError(JpegExifError):
+    """The file's bytes are of one image format and its name says another."""
+
+    reason = "wrong-format"

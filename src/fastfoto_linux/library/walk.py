@@ -1,23 +1,24 @@
-"""Find the JPEG files of a library; nothing is read except directory listings."""
+"""Find the JPEG and PNG files of a library; nothing is read except directory listings."""
 
 import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from fastfoto_linux.library.image_format import IMAGE_SUFFIXES
 from fastfoto_linux.library.safety import FolderId, folder_id
 
 logger = logging.getLogger(__name__)
 
-JPEG_SUFFIXES = frozenset({".jpg", ".jpeg"})
 HIDDEN_PREFIX = "."
 METADATA_FOLDERS = frozenset({"@eaDir"})  # Synology's thumbnail folders
 
 
 @dataclass(frozen=True)
 class WalkResult:
-    """``jpegs`` are paths relative to the walked folder (POSIX, sorted); ``skipped_folders``
-    counts the hidden and metadata folders that were not entered for their JPEGs.
+    """``jpegs`` are the JPEG and PNG paths (the name is older than the PNG support), relative to
+    the walked folder (POSIX, sorted); ``skipped_folders`` counts the hidden and metadata folders
+    that were not entered for their photos.
 
     ``folders`` holds the identity (device and inode) of the walked folder and of every folder
     below it, the skipped ones and their subfolders included: all of them are the library.
@@ -57,9 +58,9 @@ def _entry_id(entry: os.DirEntry[str]) -> FolderId | None:
 
 
 def walk_library(src: Path) -> WalkResult:
-    """Every JPEG below ``src`` (symlinks are never followed, other formats are only counted).
+    """Every JPEG and PNG below ``src`` (symlinks are never followed; other formats are counted).
 
-    Hidden folders (``.name``) and ``@eaDir`` folders are not searched for JPEGs; they are counted
+    Hidden folders (``.name``) and ``@eaDir`` folders are not searched for photos; they are counted
     instead, and still walked for the identities of the folders in them.
     """
     jpegs: list[str] = []
@@ -83,7 +84,7 @@ def walk_library(src: Path) -> WalkResult:
                     folders.add(identity)
                 pending.append((Path(entry.path), not hidden))
             elif counted and entry.is_file(follow_symlinks=False):
-                if Path(entry.name).suffix.lower() in JPEG_SUFFIXES:
+                if Path(entry.name).suffix.lower() in IMAGE_SUFFIXES:
                     jpegs.append(Path(entry.path).relative_to(src).as_posix())
                 else:
                     other_formats += 1

@@ -22,11 +22,19 @@ def test_jpegs_are_found_case_insensitively_sorted_and_relative(tmp_path: Path) 
 
 
 def test_other_formats_are_counted_not_listed(tmp_path: Path) -> None:
-    for name in ("a.jpg", "b.png", "c.tif", "sub/d.txt", "e.jpg.bak", "noext"):
+    for name in ("a.jpg", "b.gif", "c.tif", "sub/d.txt", "e.jpg.bak", "noext", "f.png.bak"):
         touch(tmp_path, name)
     result = walk_library(tmp_path)
     assert result.jpegs == ("a.jpg",)
-    assert result.other_formats == 5
+    assert result.other_formats == 6
+
+
+def test_pngs_are_listed_with_the_jpegs_in_any_case(tmp_path: Path) -> None:
+    for name in ("a.jpg", "b.png", "sub/C.PNG", "sub/d.Png"):
+        touch(tmp_path, name)
+    result = walk_library(tmp_path)
+    assert result.jpegs == ("a.jpg", "b.png", "sub/C.PNG", "sub/d.Png")
+    assert result.other_formats == 0
 
 
 def test_symlinks_are_never_followed(tmp_path: Path) -> None:

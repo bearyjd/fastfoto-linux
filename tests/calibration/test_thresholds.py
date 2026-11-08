@@ -130,3 +130,20 @@ def test_an_unknown_feature_is_refused() -> None:
         row("nothing")
     with pytest.raises(ValueError, match="feature"):
         judge("nothing", {})
+
+
+def test_a_mean_exactly_at_the_limit_passes_despite_float_error() -> None:
+    errors = [0.4, 0.2, 0.4, 0.4, 0.2, 0.2, 0.4, 0.2]
+    mae = sum(errors) / len(errors)  # 0.30000000000000004
+    metrics = {
+        "applied": 8,
+        "mae_deg": mae,
+        "wrong_direction": {"k": 0, "n": 8, "p": 0.0},
+        "abstain": {"k": 0, "n": 8, "p": 0.0},
+    }
+    assert judge("deskew", metrics)["mae_deg"] == "pass"
+
+
+def test_a_value_clearly_past_the_limit_still_fails() -> None:
+    metrics = {"over_retention": {"k": 601, "n": 2003, "p": 601 / 2003}}
+    assert judge("autocolour", metrics)["over_retention"] == "fail"

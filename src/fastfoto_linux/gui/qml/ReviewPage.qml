@@ -219,7 +219,7 @@ Kirigami.ScrollablePage {
                 visible: !!page.selectedItem.cropped
                 textFormat: Text.PlainText
                 wrapMode: Text.WordWrap
-                color: Kirigami.Theme.disabledTextColor
+                color: Qt.alpha(Kirigami.Theme.textColor, 0.75)
             }
 
             Repeater {

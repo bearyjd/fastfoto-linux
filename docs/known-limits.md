@@ -16,6 +16,8 @@ trust the software with irreplaceable originals. Keep your prints.
 
 - **One scanner model**, the Epson FastFoto FF-680W, tested on one unit. Other models are not
   supported; reports are welcome.
+- Scanner functions the app does not implement are listed in the
+  [capability inventory](SCANNER_CAPABILITIES.md).
 - The USB workaround is a local shim, not a fix in SANE. A patch for SANE's `epsonds` backend is
   being prepared; nothing has been submitted upstream or accepted.
 - Observations about the scanner (auto power-off after about an hour, for example) come from testing
@@ -31,14 +33,20 @@ trust the software with irreplaceable originals. Keep your prints.
 
 - **Red-eye** is experimental and off by default, and its suggestions start unaccepted in the editor.
 - **Deskew** may abstain on difficult pages (sideways pages, very noisy scans) and is calibrated on
-  synthetic pages only.
+  synthetic pages only; see the
+  [photo geometry design note](https://github.com/bearyjd/fastfoto-linux/blob/main/docs/design/photo-geometry.md)
+  and the
+  [document design note](https://github.com/bearyjd/fastfoto-linux/blob/main/docs/design/documents.md).
 - **Straighten** in the photo editor resamples pixels and needs equal horizontal and vertical
   resolution.
 - **Detail** (noise reduction, sharpening) is computed at full resolution and can take seconds on a
   600 dpi scan. Strong settings remove real texture or add halos.
 - **PDF/A is not offered.** No PDF/A code or flag exists.
-- **Export presets:** the `lossless` preset writes very large files. The `small` preset does not
-  sharpen again after it shrinks the picture.
+- **Export presets:** the `lossless` preset writes very large files, and the writer has no output
+  size cap (about 100 MB for a 1200 dpi photo). The `small` preset does not sharpen again after it
+  shrinks the picture, and its sharpening amount is UNCALIBRATED (synthetic edge-width proxy only).
+- **PNG masters:** the photo editor opens only 8-bit RGB PNG files and skips other PNGs, including
+  animated ones.
 - **Edit recipes** newer than your app version are rejected by older versions; the JPEG itself stays
   a normal image.
 - Not planned: cloud upload, album management, face identity, other scanner models, Windows or macOS

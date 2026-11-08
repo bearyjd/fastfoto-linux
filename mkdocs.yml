@@ -1,14 +1,20 @@
 site_name: fastfoto-linux
 site_description: Open-source Linux app for the Epson FastFoto FF-680W photo scanner. Not affiliated with Seiko Epson.
-repo_url: https://github.com/bearyjd/fastfoto-linux
 docs_dir: docs
 strict: true
 
 theme:
+  # No Google Fonts: the system fonts are used, so a visitor's browser contacts no third party.
+  font: false
   name: material
   features:
     - navigation.sections
     - content.code.copy
+
+# No repo_url (Material would fetch repository statistics from GitHub in the visitor's browser),
+# no analytics, no extra scripts or styles, no "Made with Material" link.
+extra:
+  generator: false
 
 markdown_extensions:
   - admonition

@@ -47,8 +47,9 @@ flatpak --user install fastfoto-linux.flatpak
 flatpak run io.github.bearyjd.FastFotoLinux
 ```
 
-What the sandbox may do: use all USB device nodes (`--device=all`, because libusb and SANE open
-`/dev/bus/usb/...` themselves), use the network (for Wi-Fi scanners), read and write your Pictures
+What the sandbox may do: use every device node of the host (`--device=all`, which includes the GPU
+and not only the scanner; it is needed because libusb and SANE open `/dev/bus/usb/...` themselves
+and do not use the USB portal), use the network (for Wi-Fi scanners), read and write your Pictures
 folder, and show windows on Wayland or X11. Other output folders are granted through the desktop
 portal. Settings are kept in `~/.var/app/io.github.bearyjd.FastFotoLinux/`.
 

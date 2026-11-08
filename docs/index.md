@@ -29,7 +29,7 @@ and reverse each edit. It also turns paper into searchable PDFs.
 - **Editing:** edits are saved as small versioned recipes next to the picture and replayed from the
   retained source; nothing is applied destructively.
 - **Documents:** a review-first flow from feeder to PDF, with optional OCR that runs on your machine.
-- **Local only:** nothing is uploaded. OCR language models are downloaded only when you ask.
+- **Offline by default:** nothing is uploaded. OCR language models are downloaded only when you ask.
 
 The USB part rests on a workaround for a firmware quirk: the FF-680W ignores a command that follows
 the end of its previous reply too closely, and a gap of at least 0.5 ms avoids the stall. The

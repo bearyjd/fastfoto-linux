@@ -44,9 +44,10 @@ Use `--preset small` for smaller files, or `--preset lossless` for PNG photos (v
 ffscan doc scan --help
 ```
 
-The document flow is review-first: you check each page before the PDF is written. OCR is optional
-and needs Tesseract (the Flatpak has it built in). See the README section "Documents to PDF" for
-every option.
+`ffscan doc scan` processes the pages and writes the PDF directly, including automatic steps such as
+dropping blank pages; there is no review before it writes. The review-first flow, where you check
+each page before the PDF is written, is in the desktop app. OCR is optional and needs Tesseract (the
+Flatpak has it built in). See the README section "Documents to PDF" for every option.
 
 ## Exit codes
 

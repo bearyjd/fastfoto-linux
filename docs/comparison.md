@@ -16,7 +16,7 @@ we have not confirmed it and you should check yourself before relying on it.
 
 It targets one scanner, the Epson FastFoto FF-680W, and one workflow: scan a shoebox of prints
 with the backs paired to the fronts, turn pictures upright, keep every edit reversible, and also turn
-paper into searchable PDFs. It runs fully offline. Its automatic features are tuned on synthetic data
+paper into searchable PDFs. It is offline by default (OCR language models are downloaded only when you ask). Its automatic features are tuned on synthetic data
 only (see [Known limits](known-limits.md)), so it makes no claim to produce better pictures or more
 accurate OCR than anything else.
 
@@ -28,7 +28,7 @@ accurate OCR than anything else.
 | SANE `epsonds` backend | A 2026 blog says SANE lists the FF-680W as "Complete". Whether it works without a workaround on your USB host is a separate question. | unverified: single blog, not checked against the SANE device list |
 | Epson Scan 2 for Linux | Epson publishes it for Linux. Whether it supports the FF-680W, and whether it hits the same USB stall, is not confirmed. | unverified |
 | VueScan | Paid, closed-source. Its vendor page claims FF-680W support on Linux. | vendor claim |
-| Epson FastFoto (Windows and macOS) | The vendor's own application for this scanner; not available for Linux. | checked: Windows and macOS only is our understanding; verify on Epson's site |
+| Epson FastFoto (Windows and macOS) | The vendor's own application for this scanner. Our understanding is that it is not available for Linux; check Epson's site. | unverified |
 
 Sources, all from a bounded scan on 2026-11-07:
 

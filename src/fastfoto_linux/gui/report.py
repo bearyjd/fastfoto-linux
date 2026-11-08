@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from pathlib import Path
 
+from fastfoto_linux.gui.i18n import QT_TRANSLATE_NOOP
 from fastfoto_linux.gui.state import State
 from fastfoto_linux.pipeline.issues import SheetIssue, failed_sheet_line
 from fastfoto_linux.pipeline.process import ProcessResult
@@ -28,12 +29,16 @@ _RAW_REASONS = {
 }
 
 
-CHECKING_SCANNER_TEXT = "Checking the scanner…"
-NOT_CHECKED = "The scanner has not been checked yet."
-CHECKING_TEXT = "Looking for the scanner…"
-FOUND_TEXT = "Scanner found."
-NO_SCANNER_HINT = "Press Check again to look for the scanner."
-LOST_TEXT = "The scanner is not available; the message above says why."
+# Marked for translation; the text is looked up where it reaches the window (gui/qt/translation.py).
+CHECKING_SCANNER_TEXT = QT_TRANSLATE_NOOP("messages", "Checking the scanner…")
+NOT_CHECKED = QT_TRANSLATE_NOOP("messages", "The scanner has not been checked yet.")
+CHECKING_TEXT = QT_TRANSLATE_NOOP("messages", "Looking for the scanner…")
+FOUND_TEXT = QT_TRANSLATE_NOOP("messages", "Scanner found.")
+NO_SCANNER_HINT = QT_TRANSLATE_NOOP("messages", "Press Check again to look for the scanner.")
+CANCELLING_TEXT = QT_TRANSLATE_NOOP("messages", "Cancelling…")
+LOST_TEXT = QT_TRANSLATE_NOOP(
+    "messages", "The scanner is not available; the message above says why."
+)
 
 
 @dataclass(frozen=True)
@@ -71,10 +76,10 @@ def progress_text(state: State, pages: int, photos: int, *, checking: bool = Fal
     """
     scanning = CHECKING_SCANNER_TEXT if checking else f"Scanning page {pages + 1}"
     return {
-        State.CHECKING: "Looking for the scanner…",
+        State.CHECKING: CHECKING_TEXT,
         State.SCANNING: scanning,
         State.PROCESSING: f"Processing photo {photos + 1}",
-        State.CANCELLING: "Cancelling…",
+        State.CANCELLING: CANCELLING_TEXT,
     }.get(state, "")
 
 

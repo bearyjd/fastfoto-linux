@@ -163,6 +163,7 @@ Kirigami.Page {
                         objectName: "photoRedEyeHeading"
                         text: qsTr("Red-eye correction")
                         level: 3
+                        textFormat: Text.PlainText
                     }
                     QQC2.Label {
                         objectName: "photoNoSuggestions"

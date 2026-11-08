@@ -42,6 +42,12 @@ calibrated on real scans, and no entry here is an image-quality or OCR-quality c
 - Opt-in document deskew, backend, CLI and sidecar v6 (#79); deskew in the desktop app with a form
   box, per-page Straighten and Undo (#80).
 
+**Desktop app**
+- Translation groundwork: Python messages marked for translation, `.ts` extraction
+  (`tools/i18n.sh`), an informational CI check, an interface-language setting in Scanner settings
+  and a **partial** German pilot (a few dozen messages, not reviewed by a native speaker).
+  English text is unchanged. See `docs/translating.md`.
+
 **Evaluation tooling** (no data is shipped and nothing has been measured)
 - `ffscan eval redeye`, a red-eye evaluation harness (#70). Red-eye stays experimental and off by
   default.

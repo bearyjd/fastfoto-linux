@@ -9,6 +9,7 @@ from fastfoto_linux.cli.options import DEFAULT_DPI, FEED_FACE_DOWN, FEED_FACE_UP
 from fastfoto_linux.enhance.orient import auto_orient
 from fastfoto_linux.enhance.redeye import remove_red_eye
 from fastfoto_linux.enhance.restore import restore_colour
+from fastfoto_linux.gui.i18n import QT_TRANSLATE_NOOP
 from fastfoto_linux.output import DateRange, PhotoDate
 from fastfoto_linux.output.errors import InvalidAlbumError, InvalidDateError
 from fastfoto_linux.output.metadata import MAX_NOTES_CHARS
@@ -23,6 +24,10 @@ FEED_CHOICES = (FEED_FACE_UP, FEED_FACE_DOWN)
 BACK_CHOICES = tuple(policy.value for policy in BackPolicy)
 NUMBER_PATTERN = "####"  # the real number is only known when the photo is written
 PRESET_CHOICES_WITH_STANDARD = ("", *PRESET_CHOICES)  # "" is Standard: no preset
+FOLDER_REQUIRED = QT_TRANSLATE_NOOP("messages", "Choose the folder the photos are saved in.")
+FULL_PATH_REQUIRED = QT_TRANSLATE_NOOP(
+    "messages", "Use a full path (one that starts with / or ~/), not a relative one."
+)
 PRESET_ERROR = "Choose Standard, High quality, Small or Lossless."
 
 
@@ -79,13 +84,13 @@ def absolute_folder(text: str) -> str:
 
 def _check_folder_text(form: ScanForm) -> str | None:
     if not form.output_folder.strip():
-        return "Choose the folder the photos are saved in."
+        return FOLDER_REQUIRED
     if _expand(form.output_folder) is None:
         user = form.output_folder.strip().split("/")[0].removeprefix("~")
         whose = f"of {user!r}" if user else "of this user"
         return f"Cannot find the home folder {whose}; use a full path instead."
     if not _folder(form).is_absolute():
-        return "Use a full path (one that starts with / or ~/), not a relative one."
+        return FULL_PATH_REQUIRED
     return None
 
 

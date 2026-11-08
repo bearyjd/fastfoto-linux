@@ -44,7 +44,7 @@ uv export --locked --no-dev --no-emit-project --hashes --no-header --no-annotate
 uv export --locked --no-dev --no-emit-project --extra ocr --hashes --no-header --no-annotate --quiet > packaging/requirements-ocr.txt
 ```
 
-## CI: five required checks
+## CI: five checks
 
 <!-- AUTO-GENERATED: from .github/workflows/ci.yml -->
 | Check | What it does |
@@ -71,7 +71,18 @@ One pull request per step, opened with `gh`:
 5. Squash merge.
 
 Commit messages are `<type>: <description>` with type one of feat, fix, refactor, docs, test,
-chore, perf, ci. PR bodies have a summary, the design, a test plan and a privacy note.
+chore, perf, ci. PR bodies have a summary, the design, a test plan and a privacy note;
+`.github/pull_request_template.md` provides that outline.
+
+A change that users can see also adds a line under `## [Unreleased]` in `CHANGELOG.md`, in the
+right area (Added, Changed or Fixed). How releases are cut: `docs/release-process.md`.
+
+## Reporting problems
+
+Issue forms live in `.github/ISSUE_TEMPLATE/`: a bug report, a scanner report and a tested-by
+report. All three say the same thing as the privacy section below: never attach family scans,
+documents, OCR text or captures, and replace scanner serial numbers, network addresses and
+personal paths with placeholders before posting. When you answer an issue, apply the same rule.
 
 ## Code rules
 
@@ -101,6 +112,16 @@ chore, perf, ci. PR bodies have a summary, the design, a test plan and a privacy
 - CI runs the suite with pytest-xdist (`-n auto`), so tests must be safe to run in parallel: write
   only inside the `tmp_path` fixture, never to a shared or fixed path, and do not rely on test
   order or on state left in `os.environ` (use `monkeypatch`).
+- The OCR language tests (`tests/documents/test_ocr_language*.py`) need no Tesseract and no
+  language data: they fake both. They do need a temp folder the OCR model cache trusts, one whose
+  parent folders belong to root or to you and are not writable by others unless they have the
+  sticky bit (read-only mounts are fine).
+  Rootless containers (toolbox, distrobox, podman) show the host's root-owned `/tmp` as owned by
+  uid 65534 (`nobody`), which the cache rightly refuses. The tests then move themselves to a
+  private folder in `$XDG_RUNTIME_DIR`. If that is unset or untrusted too, they are skipped
+  locally with the reason (and fail under `CI`): rerun them with
+  `--basetemp=<a folder under your home that only you can write to>`. Do not remove the cache's
+  ownership check to make them pass.
 - Several tests in `tests/documents/test_docs_*_claims.py` check statements in `README.md` and
   `docs/design/documents.md`. If you edit those files, run the full suite.
 

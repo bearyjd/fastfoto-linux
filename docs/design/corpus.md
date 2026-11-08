@@ -99,5 +99,5 @@ follow-up. Nothing here has been run on a real corpus.
 
 ## Not done here
 
-Collecting or approving a corpus, per-feature annotation schemas, a CLI and the calibration
-harnesses are separate, later work packages.
+Collecting or approving a corpus is a separate, later work package. The per-feature annotation
+schemas, CLI and calibration harnesses are in [calibration-harness.md](calibration-harness.md).

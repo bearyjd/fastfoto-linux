@@ -1,0 +1,63 @@
+name: Tested-by report
+description: Tell us what worked and what did not on your scanner, even if nothing went wrong.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Reports like this are how we learn how many scanner units and setups the project has actually
+        been run on. A "nothing worked" report is as useful as a "all fine" one.
+
+        **Do not attach scans, documents, OCR text or captures.** Say what happened in words.
+        Do not include your scanner's serial number; if you must refer to the unit, write
+        `unit A`, `unit B`.
+  - type: input
+    id: version
+    attributes:
+      label: fastfoto-linux version, tag or commit
+    validations:
+      required: true
+  - type: input
+    id: scanner
+    attributes:
+      label: Scanner model and how long you have had it
+      placeholder: FF-680W, no serial number please
+    validations:
+      required: true
+  - type: dropdown
+    id: connection
+    attributes:
+      label: Connection
+      options: [USB, Wi-Fi, Both]
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: Distribution, desktop and install method (Flatpak, native, uv)
+    validations:
+      required: true
+  - type: checkboxes
+    id: tried
+    attributes:
+      label: What you tried
+      options:
+        - label: Scanner found in the app or by `ffscan`
+        - label: Photo scan (feeder)
+        - label: Photo front/back pairing
+        - label: Document scan to PDF
+        - label: Searchable text (OCR)
+        - label: Review and edit before saving
+  - type: textarea
+    id: result
+    attributes:
+      label: What worked, what did not, and anything surprising
+      description: Counts and plain descriptions only, such as "20 prints, 19 cropped correctly, 1 split in two".
+    validations:
+      required: true
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy check
+      options:
+        - label: This report contains no scans, document text, serial numbers, network addresses or personal paths.
+          required: true

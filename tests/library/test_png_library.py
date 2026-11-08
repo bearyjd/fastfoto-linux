@@ -145,6 +145,12 @@ def test_ancillary_chunks_never_reach_the_decoder(tmp_path: Path, detector: Face
     assert row.action is Action.ROTATE
 
 
+def test_a_16_bit_grey_png_keeps_its_tones_for_the_detector() -> None:
+    buffer = io.BytesIO()
+    Image.fromarray(load_astronaut()[..., 0].astype(np.uint16) * 257).save(buffer, "PNG")
+    assert load_working_image(buffer.getvalue(), None).std() > 30  # a plain clip would be white
+
+
 def test_a_big_png_is_brought_down_to_the_working_size() -> None:
     big = np.zeros((1800, 2600, 3), np.uint8)
     big[::7] = 200

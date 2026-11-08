@@ -155,3 +155,10 @@ def test_a_result_that_cannot_be_confirmed_is_never_returned(monkeypatch) -> Non
 def test_a_non_png_is_refused() -> None:
     with pytest.raises(NotAPngError):
         Layout.of(b"\xff\xd8 not a png")
+
+
+def test_a_result_pillow_reads_differently_is_never_returned(monkeypatch) -> None:
+    unedited = make_png(PORTRAIT, exif=exif_bytes(1))
+    monkeypatch.setattr(png_exif, "decoder_copy", lambda *args, **kwargs: unedited)
+    with pytest.raises(JpegExifError):
+        set_orientation(make_png(PORTRAIT), 6)

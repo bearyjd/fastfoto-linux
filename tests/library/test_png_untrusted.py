@@ -61,6 +61,12 @@ def interrupted_idats(png: bytes) -> list[tuple[bytes, bytes]]:
     return [*chunks[: at + 1], (b"tEXt", b"a\x00b"), *chunks[at + 1 :]]
 
 
+def image_data_first(png: bytes) -> list[tuple[bytes, bytes]]:
+    chunks = split(png)
+    at = kinds(png).index(b"IDAT")
+    return [chunks[at], *chunks[:at], *chunks[at + 1 :]]
+
+
 def without(png: bytes, kind: bytes) -> bytes:
     return assemble([c for c in split(png) if c[0] != kind])
 
@@ -95,6 +101,8 @@ MALFORMED = {
     "depth-16-palette": rebuilt(BASE, ihdr(8, 6, depth=16, colour=3)),
     "bad-interlace": rebuilt(BASE, ihdr(8, 6, interlace=2)),
     "bad-compression-method": rebuilt(BASE, ihdr(8, 6)[:10] + b"\x01\x00\x00"),
+    "second-palette": with_before_idat(PALETTE, palette_chunk(PALETTE)),
+    "idat-before-ihdr": assemble(image_data_first(BASE)),
     "chunk-type-not-letters": with_before_idat(BASE, (b"a1cd", b"")),
     "chunk-length-past-the-end": BASE[:8] + struct.pack(">I", 2**31 - 1) + BASE[12:],
     "iend-with-data": assemble([*split(BASE)[:-1], (b"IEND", b"x")]),
@@ -217,6 +225,26 @@ def test_xmp_without_a_tiff_orientation_does_not_block_the_edit(
 def test_a_compressed_xmp_packet_that_unpacks_too_large_is_refused_not_expanded() -> None:
     bomb = zlib.compress(b" " * (png_exif.MAX_XMP_BYTES + 1) + ORIENTATION_XMP)
     png = with_before_idat(BASE, (b"iTXt", b"XML:com.adobe.xmp\x00\x01\x00\x00\x00" + bomb))
+    with pytest.raises(XmpOrientationError):
+        set_orientation(png, 6)
+
+
+def test_a_compressed_xmp_packet_cut_short_is_refused() -> None:
+    cut = zlib.compress(PLAIN_XMP)[:-6]  # what is left does not name an orientation
+    png = with_before_idat(BASE, (b"iTXt", b"XML:com.adobe.xmp\x00\x01\x00\x00\x00" + cut))
+    with pytest.raises(XmpOrientationError):
+        set_orientation(png, 6)
+
+
+def test_an_uncompressed_xmp_packet_over_the_limit_is_refused() -> None:
+    big = PLAIN_XMP + b" " * png_exif.MAX_XMP_BYTES
+    with pytest.raises(XmpOrientationError):
+        set_orientation(with_before_idat(BASE, xmp_packet(big, "tEXt")), 6)
+
+
+@pytest.mark.parametrize("head", [b"\x02\x00\x00\x00", b"\x01\x01\x00\x00", b"\x00\x01\x00\x00"])
+def test_an_xmp_itxt_chunk_with_an_unknown_compression_is_refused(head: bytes) -> None:
+    png = with_before_idat(BASE, (b"iTXt", b"XML:com.adobe.xmp\x00" + head + zlib.compress(PLAIN_XMP)))
     with pytest.raises(XmpOrientationError):
         set_orientation(png, 6)
 

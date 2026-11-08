@@ -78,11 +78,27 @@ def noisy_block(sigma: int, level: int) -> Build:
     return build
 
 
+def vignetted_mark(sigma: int, level: int) -> Build:
+    """A page with a mild vignette (corners 8 percent darker) and a mark at its top left corner."""
+
+    def build() -> tuple[np.ndarray, int]:
+        pixels = _page().astype(np.float64)
+        height, width = pixels.shape
+        y, x = np.mgrid[0:height, 0:width]
+        radius = np.hypot((y - height / 2) / (height / 2), (x - width / 2) / (width / 2)) / 1.414
+        pixels = _noisy(pixels * (1 - 0.08 * radius**2), sigma)
+        pixels[:300, :300] = level
+        return pixels, 300
+
+    return build
+
+
 CASES: dict[str, Build] = {
     **{f"block{s}_{v}": corner_block(s, v) for s in (60, 200, 400) for v in (140, 180, 205, 225)},
     **{f"band{r}_{v}": top_band(r, v) for r in (40, 150, 300) for v in (190, 205, 225)},
     **{f"line_{v}": ruled_line(v) for v in (150, 200, 225)},
     **{f"texture{s}": textured_corner(s) for s in (100, 300)},
     **{f"mark{sg}_{v}": noisy_mark(sg, v) for sg in (6, 10) for v in (190, 150)},
+    **{f"vigblock{sg}_{v}": vignetted_mark(sg, v) for sg in (0, 3) for v in (150, 195, 205)},
     **{f"noisyblock{sg}_{v}": noisy_block(sg, v) for sg in (6, 10) for v in (150, 205)},
 }

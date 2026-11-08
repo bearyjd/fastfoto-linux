@@ -71,18 +71,28 @@ def _work_grid(page: LoadedPage) -> tuple[np.ndarray, np.ndarray]:
     return small, np.minimum.reduceat(by_row, np.arange(cols) * step, axis=1)
 
 
-def _paper_floor(small: np.ndarray, darkest: np.ndarray) -> np.ndarray:
-    """For every work cell, the level at or below which it holds content. The darkest pixel of a
-    cell of clean paper is the paper's level; with noise it is lower. How far lower is measured on
-    the background itself: the median over the cells of how far the cell's darkest pixel is below
-    the cell's mean (the typical cell is paper, and a vignette moves the mean and the darkest
-    pixel together, so it does not count). That depth is 0 on clean paper and grows with the
-    noise. The paper's level is the median darkest pixel of the ``PAPER_WINDOW`` cells around
-    (the typical cell is paper, and the level follows a vignette). Content is ``CONTENT_NOISE_K``
-    depths, and at least ``CONTENT_MIN_DELTA`` levels, below it."""
-    depth = int(np.median(small.astype(np.int64) - darkest))
-    paper = cv2.medianBlur(darkest, tables.PAPER_WINDOW).astype(np.int64)
-    return paper - max(tables.CONTENT_MIN_DELTA, tables.CONTENT_NOISE_K * depth)
+def _paper_floor(darkest: np.ndarray) -> float:
+    """The level at or below which a work cell holds content. The darkest pixel of a cell of
+    clean paper is the paper's level; with noise it is lower, by a spread that grows with the
+    cell. The typical cell is paper, so the median is the paper's darkest level, and the spread
+    of the cells above the median (ink only makes cells darker) measures the noise and any
+    vignette. Content is ``CONTENT_NOISE_K`` of those spreads, and at least ``CONTENT_MIN_DELTA``
+    levels, below the median.
+
+    The noise alone is measured again without the vignette: how far the cells above their
+    ``NOISE_WINDOW`` neighbours' median are above it (a window too small to hold a block of
+    content, whose own level it would take for the paper's, is never used for the level, only for
+    this). Where the vignette has inflated the first spread it changes nothing; on an evenly lit
+    noisy scan, where the first spread is too small, it takes over with ``NOISE_K`` spreads."""
+    median = int(np.median(darkest))
+    above = darkest[darkest >= median].astype(np.int64) - median
+    spread = int(np.median(above)) if above.size else 0
+    local = cv2.medianBlur(darkest, tables.NOISE_WINDOW).astype(np.int64)
+    over = darkest.astype(np.int64) - local
+    noise = float(np.median(over[over >= 0]))
+    return median - max(
+        tables.CONTENT_MIN_DELTA, tables.CONTENT_NOISE_K * spread, tables.NOISE_K * noise
+    )
 
 
 def _centred(mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -192,7 +202,7 @@ def estimate_skew(page: LoadedPage, *, cancel: threading.Event | None = None) ->
         return SkewEstimate(SkewStatus.EDGE)
     peak = scores[estimate]
     far = max(s for a, s in scores.items() if abs(a - estimate) >= tables.SEPARATION_TENTHS)
-    content = ink | (darkest <= _paper_floor(small, darkest))
+    content = ink | (darkest <= _paper_floor(darkest))
     step = max(1, min(page.dpi // tables.WORK_DPI, height, width))
     corners = _extremes(content, step, (height, width))
     return _verdict(corners, (height, width), estimate, (far, peak))

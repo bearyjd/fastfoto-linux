@@ -19,9 +19,18 @@ false alarm only skips a file. A packet counts when it:
   ``Orientation=portrait`` is no orientation. A tag need not be separated from the previous
   attribute by whitespace.
 
-A comment, CDATA section or processing instruction is not markup to a parser, but one holding
-something that looks like a tag named ``Orientation`` (``<tiff:Orientation>``, ``<a
-tiff:Orientation="1">``) also counts: a lenient reader might not skip it.
+A comment, CDATA section, processing instruction or quoted attribute value is not markup to a
+parser, but one holding something that looks like a tag named ``Orientation``
+(``<tiff:Orientation>``, ``<a tiff:Orientation="1">``) also counts: a lenient reader might not
+skip it, and a strict parser rejects a literal ``<`` in a value anyway. Other text in them, a
+bare ``<`` included, is ignored.
+
+Known fail-closed over-refusals (a false alarm only skips a file, and these are very rare):
+
+* A packet with NUL bytes is skipped, even NUL-padded UTF-8 (the NULs cannot be told from UTF-16).
+* An XML declaration is looked for anywhere, CDATA included, so a valid caption such as
+  ``<dc:description><![CDATA[Camera Orientation: <?xml version="1.0"?>]]></dc:description>``
+  is refused.
 """
 
 import re

@@ -365,3 +365,15 @@ def test_extended_xmp_that_declares_more_than_the_cap_is_never_joined(
     monkeypatch.setattr(jpeg_exif, "_tiled", joined)
     data = insert_after_jfif(sideways(90), extended(b"<a/>", 0, MAX_XMP_BYTES + 1))
     assert jpeg_skipped(tmp_path, data)
+
+
+def test_known_fail_closed_limitation_a_declaration_inside_cdata_is_refused() -> None:
+    # Valid XMP, refused all the same: the scan looks for a misplaced XML declaration anywhere.
+    caption = doc(
+        b'<dc:description><![CDATA[Camera Orientation: <?xml version="1.0"?>]]></dc:description>'
+    )
+    assert names_any_orientation(caption)
+
+
+def test_known_fail_closed_limitation_a_nul_padded_packet_is_refused() -> None:
+    assert names_any_orientation(doc(b"") + b"\x00" * 16)

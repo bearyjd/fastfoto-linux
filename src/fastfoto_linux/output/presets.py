@@ -10,6 +10,9 @@ from types import MappingProxyType
 
 CHROMA_444 = 0  # Pillow's subsampling values
 CHROMA_420 = 2
+# UNCALIBRATED: sharpen strength (the photo editor's 0-100 control) applied after the small
+# preset's downscale. A synthetic edge-width proxy only; real-corpus calibration is a follow-up.
+SMALL_SHARPEN = 30
 PRESET_MESSAGE = "preset must be lossless, high-quality or small"
 
 
@@ -24,12 +27,16 @@ PRESET_CHOICES = tuple(preset.value for preset in ExportPreset)
 
 @dataclass(frozen=True)
 class PhotoExport:
-    """How the scan and process writer encodes a photo; ``quality`` None means PNG."""
+    """How the scan and process writer encodes a photo; ``quality`` None means PNG.
+
+    ``sharpen`` (0-100, 0 off) is applied only after a resize actually happened.
+    """
 
     ext: str
     quality: int | None
     subsampling: int | None
     max_edge: int | None
+    sharpen: int = 0
 
 
 @dataclass(frozen=True)
@@ -45,7 +52,7 @@ PHOTO_EXPORTS = MappingProxyType(
     {
         ExportPreset.LOSSLESS: PhotoExport(".png", None, None, None),
         ExportPreset.HIGH_QUALITY: PhotoExport(".jpg", 95, CHROMA_444, None),
-        ExportPreset.SMALL: PhotoExport(".jpg", 80, CHROMA_420, 2048),
+        ExportPreset.SMALL: PhotoExport(".jpg", 80, CHROMA_420, 2048, SMALL_SHARPEN),
     }
 )
 

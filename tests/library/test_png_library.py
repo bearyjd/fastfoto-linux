@@ -148,7 +148,9 @@ def test_ancillary_chunks_never_reach_the_decoder(tmp_path: Path, detector: Face
 def test_a_16_bit_grey_png_keeps_its_tones_for_the_detector() -> None:
     buffer = io.BytesIO()
     Image.fromarray(load_astronaut()[..., 0].astype(np.uint16) * 257).save(buffer, "PNG")
-    assert load_working_image(buffer.getvalue(), None).std() > 30  # a plain clip would be white
+    assert (
+        load_working_image(buffer.getvalue(), None).std() > 55
+    )  # clipped to 8 bits it is near-white (std 37)
 
 
 def test_a_big_png_is_brought_down_to_the_working_size() -> None:

@@ -244,7 +244,9 @@ def test_an_uncompressed_xmp_packet_over_the_limit_is_refused() -> None:
 
 @pytest.mark.parametrize("head", [b"\x02\x00\x00\x00", b"\x01\x01\x00\x00", b"\x00\x01\x00\x00"])
 def test_an_xmp_itxt_chunk_with_an_unknown_compression_is_refused(head: bytes) -> None:
-    png = with_before_idat(BASE, (b"iTXt", b"XML:com.adobe.xmp\x00" + head + zlib.compress(PLAIN_XMP)))
+    png = with_before_idat(
+        BASE, (b"iTXt", b"XML:com.adobe.xmp\x00" + head + zlib.compress(PLAIN_XMP))
+    )
     with pytest.raises(XmpOrientationError):
         set_orientation(png, 6)
 

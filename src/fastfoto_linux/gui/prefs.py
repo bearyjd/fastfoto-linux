@@ -4,6 +4,7 @@ import contextlib
 import json
 import logging
 import os
+import stat
 import tempfile
 from collections.abc import Mapping
 from dataclasses import fields
@@ -70,18 +71,44 @@ def prefs_path(env: Mapping[str, str] = os.environ) -> Path:
     return Path(env.get("HOME") or Path.home()) / ".config" / PREFS_DIR / PREFS_FILE
 
 
-def _read_object(path: Path) -> dict[str, Any] | None:
-    """The settings file as a JSON object; None (logged unless it is simply missing) if not."""
+def _read_bytes(path: Path) -> bytes | None:
+    """The settings file's bytes, None (logged without the path) when it is missing or unusable.
+
+    Only a regular file is read, and not through a link: a pipe would block the start of the app
+    and a link could point anywhere. At most ``MAX_PREFS_BYTES`` are read.
+    """
     try:
-        with path.open("rb") as stream:
-            raw = stream.read(MAX_PREFS_BYTES + 1)
-        if len(raw) > MAX_PREFS_BYTES:
-            logger.warning("ignoring the settings file %s: it is bigger than the limit", path)
-            return None
-        data = json.loads(raw.decode("utf-8"))
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
     except FileNotFoundError:
         return None
-    except (OSError, ValueError, RecursionError) as error:  # deep nesting is a RecursionError
+    except OSError as error:  # a link (ELOOP), a permission, a folder that cannot be read
+        logger.warning("ignoring the settings file: it cannot be opened (%s)", error.strerror)
+        return None
+    try:
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            logger.warning("ignoring the settings file: it is not a regular file")
+            return None
+        with os.fdopen(descriptor, "rb", closefd=False) as stream:
+            raw = stream.read(MAX_PREFS_BYTES + 1)
+    except OSError as error:
+        logger.warning("ignoring the settings file: it cannot be read (%s)", error.strerror)
+        return None
+    finally:
+        os.close(descriptor)
+    if len(raw) > MAX_PREFS_BYTES:
+        logger.warning("ignoring the settings file: it is bigger than the limit")
+        return None
+    return raw
+
+
+def _read_object(path: Path) -> dict[str, Any] | None:
+    """The settings file as a JSON object; None (logged unless it is simply missing) if not."""
+    raw = _read_bytes(path)
+    if raw is None:
+        return None
+    try:
+        data = json.loads(raw.decode("utf-8"))
+    except (ValueError, RecursionError) as error:  # deep nesting is a RecursionError
         logger.warning("ignoring the settings file %s: %s", path, error)
         return None
     if not isinstance(data, dict):

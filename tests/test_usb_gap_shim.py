@@ -305,6 +305,18 @@ def test_busy_handle_keeps_its_timestamp_when_the_table_overflows(harness: Harne
     assert ms_between(last_in_h0, out_h0) >= gap_ms, "H0 lost its last-IN time to the 17th handle"
 
 
+def max_gap_ms(by_handle: dict[str, list[Call]]) -> float:
+    return max(
+        ms_between(i, o)
+        for own in by_handle.values()
+        for i, o in zip(own[0::2], own[1::2], strict=True)
+    )
+
+
+def thread_spans_ms(by_handle: dict[str, list[Call]]) -> list[int]:
+    return [round(ms_between(own[0], own[-1])) for own in by_handle.values()]
+
+
 def test_handles_are_serviced_concurrently_and_independently(harness: Harness) -> None:
     """8 threads, one handle each: every OUT keeps its own gap and no thread blocks another."""
     threads, pairs = 8, 200
@@ -319,8 +331,17 @@ def test_handles_are_serviced_concurrently_and_independently(harness: Harness) -
         for i, o in zip(own[0::2], own[1::2], strict=True):
             assert ms_between(i, o) >= DEFAULT_GAP_MS, f"{handle}: OUT only {ms_between(i, o)} ms"
     span_ms = (max(c.t_ns for c in calls) - min(c.t_ns for c in calls)) / NS_PER_MS
-    # Sanity bound: each thread needs about pairs * 2 ms = 400 ms.
-    assert span_ms < 2000, f"{threads} threads took {span_ms:.0f} ms"
+    # Sanity bound: each thread needs about pairs * 2 ms = 400 ms. The bound is what tells a shim
+    # that serialises the handles (a lock held across the sleep: 8 x 400 ms = 3200 ms) from one
+    # that does not, so it stays. It is a wall-clock bound, though, and a loaded runner stretches
+    # it: measured here, 430-490 ms idle, up to 1918 ms with 40 busy loops on 2 CPUs (a single
+    # call then waited 930 ms to be scheduled), never below the gap. On a failure the message
+    # carries the data that CI logs have not had so far.
+    assert span_ms < 2000, (
+        f"{threads} threads took {span_ms:.0f} ms (alone: ~{pairs * DEFAULT_GAP_MS:.0f} ms); "
+        f"slowest IN->OUT gap {max_gap_ms(by_handle):.1f} ms, per-thread spans (ms) "
+        f"{thread_spans_ms(by_handle)}"
+    )
 
 
 def test_an_out_waiting_for_its_gap_does_not_block_other_handles(harness: Harness) -> None:

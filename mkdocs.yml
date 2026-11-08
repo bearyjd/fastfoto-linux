@@ -34,12 +34,13 @@ nav:
   - Known limits: known-limits.md
   - Comparison: comparison.md
 
+# Do not exclude assets/: the pattern also matches the theme's own assets/ folder and the site
+# would be built without its styles and scripts.
 exclude_docs: |
   CODEMAPS/
   research/
   roadmaps/
   design/
-  assets/
   raw/
   .raw/
   CONTRIBUTING.md

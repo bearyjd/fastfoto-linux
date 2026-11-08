@@ -4,11 +4,15 @@ Pick one. Both install for your user only; neither needs `sudo` for the app itse
 
 ## Native install (Fedora and other distributions with PySide6 and Kirigami)
 
-The app needs the distribution's Qt, so install PySide6 and Kirigami first. On Fedora:
+Two things must come from your distribution first.
 
-```sh
-sudo dnf install python3-pyside6 kf6-kirigami
-```
+- **SANE**, with the `epsonds` backend and the `scanimage` command (the `sane-backends` packages
+  of your distribution). The app drives the scanner through `scanimage`.
+- **Qt**: PySide6 and Kirigami. On Fedora:
+
+  ```sh
+  sudo dnf install python3-pyside6 kf6-kirigami
+  ```
 
 From a checkout of the repository:
 

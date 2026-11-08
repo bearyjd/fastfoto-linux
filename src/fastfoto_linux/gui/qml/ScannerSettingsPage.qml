@@ -33,7 +33,7 @@ Kirigami.ScrollablePage {
             text: bridge.power.message
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
-            color: bridge.power.reconnectRequired ? Kirigami.Theme.negativeTextColor : Kirigami.Theme.textColor
+            color: bridge.power.reconnectRequired ? Qt.tint(Kirigami.Theme.negativeTextColor, Qt.alpha(Kirigami.Theme.textColor, 0.3)) : Kirigami.Theme.textColor
             Accessible.role: Accessible.StaticText
         }
         RowLayout {
@@ -47,6 +47,7 @@ Kirigami.ScrollablePage {
             }
             QQC2.BusyIndicator {
                 running: bridge.power.busy
+                Accessible.name: qsTr("Working")
                 visible: running
             }
         }
@@ -64,7 +65,7 @@ Kirigami.ScrollablePage {
                 Kirigami.FormData.label: qsTr("Sleep delay:")
                 QQC2.Label {
                     text: qsTr("Current on scanner")
-                    color: Kirigami.Theme.disabledTextColor
+                    color: Qt.alpha(Kirigami.Theme.textColor, 0.75)
                     textFormat: Text.PlainText
                 }
                 QQC2.Label {
@@ -87,7 +88,7 @@ Kirigami.ScrollablePage {
                 Kirigami.FormData.label: qsTr("Power off delay (AC):")
                 QQC2.Label {
                     text: qsTr("Current on scanner")
-                    color: Kirigami.Theme.disabledTextColor
+                    color: Qt.alpha(Kirigami.Theme.textColor, 0.75)
                     textFormat: Text.PlainText
                 }
                 QQC2.Label {

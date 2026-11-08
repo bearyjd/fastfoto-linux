@@ -82,8 +82,18 @@ ColumnLayout {
             spacing: Kirigami.Units.smallSpacing
             activeFocusOnTab: true
             keyNavigationEnabled: true
+            highlightFollowsCurrentItem: true
             Accessible.name: qsTr("Scanned documents")
             Accessible.role: Accessible.List
+
+            // Shows where the keyboard is, only while the list has the focus.
+            highlight: Rectangle {
+                visible: list.activeFocus
+                color: "transparent"
+                border.width: 2
+                border.color: Kirigami.Theme.textColor
+                radius: Kirigami.Units.smallSpacing
+            }
 
             QQC2.ScrollBar.vertical: QQC2.ScrollBar {}
 
@@ -153,7 +163,7 @@ ColumnLayout {
                             text: row.searchableText
                             textFormat: Text.PlainText
                             wrapMode: Text.WordWrap
-                            color: row.ocrWarning ? Kirigami.Theme.neutralTextColor : Kirigami.Theme.textColor
+                            color: row.ocrWarning ? Qt.tint(Kirigami.Theme.neutralTextColor, Qt.alpha(Kirigami.Theme.textColor, 0.6)) : Kirigami.Theme.textColor
                         }
 
                         QQC2.Label {
@@ -162,7 +172,7 @@ ColumnLayout {
                             text: row.folder
                             textFormat: Text.PlainText
                             elide: Text.ElideMiddle
-                            color: Kirigami.Theme.disabledTextColor
+                            color: Qt.alpha(Kirigami.Theme.textColor, 0.75)
                             font: Kirigami.Theme.smallFont
                         }
                     }

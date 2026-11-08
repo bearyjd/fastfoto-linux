@@ -169,6 +169,32 @@ Item {
                 border.width: modelData.id === canvas.selectedId ? 2 / canvas.viewZoom : 1 / canvas.viewZoom
                 border.color: modelData.id === canvas.selectedId ? "#ffffff" : (modelData.accepted ? "#75d69c" : "#ffcd70")
                 visible: canvas.showEyes && canvas.sourceWidth > 0 && canvas.sourceHeight > 0
+
+                // Accepted or rejected is also said by a symbol, not only by the colour. It sits
+                // above the marker, or below it where the canvas (which clips) has no room above,
+                // and is kept inside the canvas sideways. Its size is the system font's.
+                Text {
+                    objectName: "photoEyeMarkerGlyph"
+                    readonly property point place: {
+                        picture.scale; picture.x; picture.y;
+                        canvas.viewZoom; canvas.panX; canvas.panY; canvas.width; canvas.height;
+                        parent.x; parent.y; parent.width; parent.height; width; height;
+                        const top = parent.mapToItem(canvas, 0, 0);
+                        const bottom = parent.mapToItem(canvas, 0, parent.height);
+                        const left = Math.max(0, Math.min(top.x, canvas.width - width));
+                        const upper = top.y - height >= 0 ? top.y - height
+                            : Math.min(bottom.y, canvas.height - height);
+                        return parent.mapFromItem(canvas, left, upper);
+                    }
+                    x: place.x
+                    y: place.y
+                    transformOrigin: Item.TopLeft
+                    scale: 1 / canvas.viewZoom
+                    text: modelData.accepted ? "\u2713" : "\u2715"
+                    color: parent.border.color
+                    font.bold: true
+                    Accessible.ignored: true
+                }
             }
         }
 

@@ -319,8 +319,12 @@ def test_handles_are_serviced_concurrently_and_independently(harness: Harness) -
         for i, o in zip(own[0::2], own[1::2], strict=True):
             assert ms_between(i, o) >= DEFAULT_GAP_MS, f"{handle}: OUT only {ms_between(i, o)} ms"
     span_ms = (max(c.t_ns for c in calls) - min(c.t_ns for c in calls)) / NS_PER_MS
-    # Sanity bound: each thread needs about pairs * 2 ms = 400 ms.
-    assert span_ms < 2000, f"{threads} threads took {span_ms:.0f} ms"
+    # Sanity bound: each thread needs about pairs * 2 ms = 400 ms. This is a wall-clock bound: a
+    # loaded machine stretches it (430-490 ms idle, up to 1918 ms with 40 busy loops on 2 CPUs).
+    per_thread = [round(ms_between(own[0], own[-1])) for own in by_handle.values()]
+    assert span_ms < 2000, (
+        f"{threads} threads took {span_ms:.0f} ms; per-thread spans (ms) {per_thread}"
+    )
 
 
 def test_an_out_waiting_for_its_gap_does_not_block_other_handles(harness: Harness) -> None:

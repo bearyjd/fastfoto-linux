@@ -67,7 +67,7 @@ Kirigami.Page {
             text: editor.warning
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
-            color: Kirigami.Theme.neutralTextColor
+            color: Qt.tint(Kirigami.Theme.neutralTextColor, Qt.alpha(Kirigami.Theme.textColor, 0.6))
         }
         QQC2.Label {
             objectName: "photoEditError"
@@ -76,7 +76,7 @@ Kirigami.Page {
             text: editor.error
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
-            color: Kirigami.Theme.negativeTextColor
+            color: Qt.tint(Kirigami.Theme.negativeTextColor, Qt.alpha(Kirigami.Theme.textColor, 0.3))
         }
         RowLayout {
             Layout.fillWidth: true
@@ -310,7 +310,7 @@ Kirigami.Page {
                 enabled: editor.canReset
                 onClicked: editor.reset()
             }
-            QQC2.BusyIndicator { running: editor.busy; visible: running }
+            QQC2.BusyIndicator { running: editor.busy; visible: running; Accessible.name: qsTr("Working") }
             Item { Layout.fillWidth: true }
             QQC2.Button {
                 objectName: "photoOpenSaved"

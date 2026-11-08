@@ -55,7 +55,7 @@ QQC2.ScrollView {
             text: panel.error("output_folder")
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
-            color: Kirigami.Theme.negativeTextColor
+            color: Qt.tint(Kirigami.Theme.negativeTextColor, Qt.alpha(Kirigami.Theme.textColor, 0.3))
         }
 
         QQC2.TextField {
@@ -78,7 +78,7 @@ QQC2.ScrollView {
             text: panel.error("album")
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
-            color: Kirigami.Theme.negativeTextColor
+            color: Qt.tint(Kirigami.Theme.negativeTextColor, Qt.alpha(Kirigami.Theme.textColor, 0.3))
         }
 
         QQC2.Label {
@@ -90,7 +90,7 @@ QQC2.ScrollView {
             text: qsTr("Saved as %1").arg(bridge.destination)
             textFormat: Text.PlainText
             elide: Text.ElideMiddle
-            color: Kirigami.Theme.disabledTextColor
+            color: Qt.alpha(Kirigami.Theme.textColor, 0.75)
             font: Kirigami.Theme.smallFont
         }
 
@@ -113,7 +113,7 @@ QQC2.ScrollView {
             text: panel.error("date")
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
-            color: Kirigami.Theme.negativeTextColor
+            color: Qt.tint(Kirigami.Theme.negativeTextColor, Qt.alpha(Kirigami.Theme.textColor, 0.3))
         }
 
         QQC2.TextField {
@@ -313,7 +313,7 @@ QQC2.ScrollView {
             text: qsTr("Experimental: about 1 fix in 6 is visibly wrong, so it is off by default.")
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
-            color: Kirigami.Theme.disabledTextColor
+            color: Qt.alpha(Kirigami.Theme.textColor, 0.75)
             font: Kirigami.Theme.smallFont
         }
 

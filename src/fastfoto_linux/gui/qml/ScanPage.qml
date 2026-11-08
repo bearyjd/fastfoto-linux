@@ -40,6 +40,8 @@ Kirigami.Page {
 
             Kirigami.InlineMessage {
                 objectName: "errorBanner"
+                Accessible.name: qsTr("Error")
+                Accessible.description: bridge.bannerKind === "error" ? bridge.bannerText : ""
                 Layout.fillWidth: true
                 type: Kirigami.MessageType.Error
                 visible: bridge.bannerKind === "error"
@@ -49,6 +51,7 @@ Kirigami.Page {
 
             Kirigami.InlineMessage {
                 objectName: "keptBanner"
+                Accessible.name: qsTr("Pages kept")
                 Layout.fillWidth: true
                 type: Kirigami.MessageType.Information
                 visible: bridge.canProcessKept
@@ -78,12 +81,14 @@ Kirigami.Page {
                     text: qsTr("into %1").arg(bridge.processKeptFolder)
                     textFormat: Text.PlainText
                     elide: Text.ElideMiddle
-                    color: Kirigami.Theme.disabledTextColor
+                    color: Qt.alpha(Kirigami.Theme.textColor, 0.75)
                 }
             }
 
             Kirigami.InlineMessage {
                 objectName: "resultBanner"
+                Accessible.name: qsTr("Result")
+                Accessible.description: visible ? bridge.bannerText : ""
                 Layout.fillWidth: true
                 type: page.messageType(bridge.bannerKind)
                 visible: bridge.bannerText !== "" && bridge.bannerKind !== "error" && !bridge.canProcessKept
@@ -126,7 +131,7 @@ Kirigami.Page {
                     text: qsTr("Load photos face up, top edge first")
                     textFormat: Text.PlainText
                     wrapMode: Text.WordWrap
-                    color: Kirigami.Theme.disabledTextColor
+                    color: Qt.alpha(Kirigami.Theme.textColor, 0.75)
                     font: Kirigami.Theme.smallFont
                 }
 
@@ -138,7 +143,7 @@ Kirigami.Page {
                     text: qsTr("Load pages face down, top edge first")
                     textFormat: Text.PlainText
                     wrapMode: Text.WordWrap
-                    color: Kirigami.Theme.disabledTextColor
+                    color: Qt.alpha(Kirigami.Theme.textColor, 0.75)
                     font: Kirigami.Theme.smallFont
                 }
             }
@@ -170,6 +175,7 @@ Kirigami.Page {
 
             Kirigami.Chip {
                 objectName: "scannerChip"
+                Accessible.description: bridge.scannerText
                 text: bridge.state === "checking" ? qsTr("Looking for the scanner…") : (bridge.scannerOk ? qsTr("Scanner found") : qsTr("No scanner"))
                 icon.name: bridge.scannerOk ? "emblem-ok-symbolic" : "dialog-warning-symbolic"
                 closable: false
@@ -194,7 +200,7 @@ Kirigami.Page {
                 textFormat: Text.PlainText
                 wrapMode: Text.WordWrap
                 maximumLineCount: 8 // the end of a message says what to do: never cut it
-                color: Kirigami.Theme.disabledTextColor
+                color: Qt.alpha(Kirigami.Theme.textColor, 0.75)
             }
 
             QQC2.Label {
@@ -214,6 +220,8 @@ Kirigami.Page {
             }
 
             QQC2.BusyIndicator {
+                objectName: "busyIndicator"
+                Accessible.name: qsTr("Working")
                 running: bridge.busy
                 visible: bridge.busy
                 implicitHeight: Kirigami.Units.iconSizes.medium
@@ -230,7 +238,7 @@ Kirigami.Page {
                 maximumLineCount: 2
                 elide: Text.ElideRight
                 horizontalAlignment: Text.AlignRight
-                color: Kirigami.Theme.disabledTextColor
+                color: Qt.alpha(Kirigami.Theme.textColor, 0.75)
             }
 
             QQC2.Button {
@@ -249,6 +257,7 @@ Kirigami.Page {
                 highlighted: true
                 enabled: bridge.canScan
                 Accessible.name: qsTr("Scan")
+                Accessible.description: bridge.whyNotScan
                 onClicked: bridge.startScan()
             }
         }

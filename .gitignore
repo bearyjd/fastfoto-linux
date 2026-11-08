@@ -40,3 +40,6 @@ htmlcov/
 
 # Public-domain NASA test portrait (see tests/fixtures/README.md)
 !tests/fixtures/astronaut.jpg
+
+# Hypothesis caches (the fuzz tests keep theirs in a temporary folder)
+.hypothesis/

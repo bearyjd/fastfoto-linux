@@ -19,7 +19,6 @@ whose XMP or text chunks hold an orientation of their own are refused.
 """
 
 import io
-import re
 import struct
 import zlib
 from dataclasses import dataclass
@@ -39,6 +38,7 @@ from fastfoto_linux.library.exif_errors import (
 )
 from fastfoto_linux.library.tags import MAX_TAG, MIN_TAG, ORIENTATION_TAG
 from fastfoto_linux.library.tiff import inspect_tiff, new_block, with_orientation
+from fastfoto_linux.library.xmp_scan import MAX_XMP_BYTES, names_any_orientation
 
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 LENGTH_SIZE = 4
@@ -56,7 +56,6 @@ PALETTE_ENTRY_SIZE = 3
 MAX_CHUNKS = 4096  # chunks other than image data; a real photo has a few dozen at most
 MAX_TOTAL_CHUNKS = 131_072  # image data comes in chunks of 8 KiB and up; this bounds the scan
 MAX_EXIF_CHUNK = 65_533  # what a JPEG Exif segment holds, and what the photo editor accepts
-MAX_XMP_BYTES = 4 * 1024 * 1024  # an XMP packet is checked for an orientation up to this size
 MAX_KEYWORD = 79  # PNG keywords are 1-79 bytes
 CRITICAL_BIT = 0x20  # clear in the first letter of a critical chunk's type
 IHDR, PLTE, IDAT, IEND = b"IHDR", b"PLTE", b"IDAT", b"IEND"
@@ -75,13 +74,6 @@ COLOUR_TYPES = MappingProxyType(
         4: (2, (8, 16)),
         6: (4, (8, 16)),
     }
-)
-# Any ``Orientation`` element or attribute, under any prefix or none: element ``<p:Orientation``,
-# attribute `` p:Orientation=``. The namespace is deliberately not looked at: it can be spelled
-# with character references, entities or any prefix, and a false alarm only skips a file.
-_XML_NAME = rb"[\w.\x80-\xff-]+"
-_ANY_ORIENTATION = re.compile(
-    rb"<(?:" + _XML_NAME + rb":)?Orientation(?=[\s/>])|\s(?:" + _XML_NAME + rb":)?Orientation\s*="
 )
 ITXT_COMPRESSED = 1
 ZLIB_METHOD = 0
@@ -305,14 +297,6 @@ def _keyword(data: bytes, chunk: _Chunk) -> tuple[bytes, int] | None:
     return None if nul < 0 else (data[chunk.data_start : nul], nul + 1)
 
 
-def _names_any_orientation(packet: bytes) -> bool:
-    """Whether the XMP ``packet`` might name an Orientation, however it spells the namespace.
-
-    A packet with NUL bytes is UTF-16 (or damaged) and cannot be scanned as bytes: it counts.
-    """
-    return b"\x00" in packet or _ANY_ORIENTATION.search(packet) is not None
-
-
 def _refuse_competing_orientations(data: bytes, layout: Layout) -> None:
     """Refuse a PNG whose XMP, or a text copy of Exif, has an orientation of its own: after the
     edit that and the eXIf one would disagree, and a viewer may obey the wrong one."""
@@ -325,7 +309,7 @@ def _refuse_competing_orientations(data: bytes, layout: Layout) -> None:
             raise UnsupportedPngError("the PNG holds a text copy of its Exif data")
         if keyword == XMP_KEYWORD:
             packet = _xmp_text(data, chunk, text_at)
-            if _names_any_orientation(packet):
+            if names_any_orientation(packet):
                 raise XmpOrientationError("the XMP data has an Orientation of its own")
 
 

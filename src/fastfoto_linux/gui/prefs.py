@@ -33,6 +33,7 @@ logger = logging.getLogger(__name__)
 
 PREFS_DIR = "fastfoto-linux"
 PREFS_FILE = "gui.json"
+MAX_PREFS_BYTES = 1 << 20  # the file holds a few dozen short values; a larger one is not ours
 NOT_REMEMBERED = ("date", "notes")  # they belong to one batch, not to the next
 REMEMBERED = tuple(name for name in FIELD_NAMES if name not in NOT_REMEMBERED)
 DOCUMENTS_KEY = "documents"  # the Documents form lives under this key, the Photos one is flat
@@ -72,7 +73,12 @@ def prefs_path(env: Mapping[str, str] = os.environ) -> Path:
 def _read_object(path: Path) -> dict[str, Any] | None:
     """The settings file as a JSON object; None (logged unless it is simply missing) if not."""
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
+        with path.open("rb") as stream:
+            raw = stream.read(MAX_PREFS_BYTES + 1)
+        if len(raw) > MAX_PREFS_BYTES:
+            logger.warning("ignoring the settings file %s: it is bigger than the limit", path)
+            return None
+        data = json.loads(raw.decode("utf-8"))
     except FileNotFoundError:
         return None
     except (OSError, ValueError) as error:
@@ -186,11 +192,7 @@ def save_mode(mode: Mode, path: Path | None = None) -> None:
 
 def _existing(path: Path) -> dict[str, Any]:
     """What the file holds now, or nothing when it is missing or unusable (a save replaces it)."""
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return {}
-    return data if isinstance(data, dict) else {}
+    return _read_object(path) or {}
 
 
 def _update(path: Path, changes: Mapping[str, Any]) -> None:

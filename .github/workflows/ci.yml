@@ -72,6 +72,34 @@ jobs:
           grep -q 'fastfoto = fastfoto_linux.gui.qt.app:main' "$RUNNER_TEMP"/unpacked/*.dist-info/entry_points.txt
           ! grep -qi '^Requires-Dist:.*pyside' "$RUNNER_TEMP"/unpacked/*.dist-info/METADATA
 
+  # The docs site (mkdocs.yml renders docs/). Build only: nothing is published and GitHub Pages is
+  # not enabled. NOT a required check (it is not in the branch protection), so a docs failure
+  # cannot block a merge. The tools come from packaging/requirements-docs.txt, pinned by hash.
+  docs:
+    name: docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - name: Install the pinned docs tools (hashes required, wheels only)
+        run: |
+          uv venv --python 3.13 "$RUNNER_TEMP/docs-venv"
+          VIRTUAL_ENV="$RUNNER_TEMP/docs-venv" uv pip install --require-hashes --no-build \
+            -r packaging/requirements-docs.txt
+      - name: Build the site, failing on any warning
+        env:
+          # Material for MkDocs reaches end of life on 2027-05-05 and prints a banner about it.
+          # TODO: revisit the docs toolchain (Zensical, its successor) before that date.
+          NO_MKDOCS_2_WARNING: "1"
+        run: "$RUNNER_TEMP/docs-venv/bin/mkdocs build --strict --site-dir \"$RUNNER_TEMP/site\""
+      - name: The built site loads nothing from another host
+        run: python3 tools/ci/docs_site_offline.py "$RUNNER_TEMP/site"
+
   # The desktop app needs the distribution's PySide6 and Kirigami (the PyPI PySide6 wheel bundles
   # its own Qt and cannot load the system Kirigami plugin), so it is tested in a Fedora container.
   # A required check: it is listed in the branch protection.

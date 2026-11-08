@@ -28,6 +28,7 @@ from tests.photo_edits import png_helpers as h
 from tests.photo_edits.helpers import source_at
 
 REPO = Path(__file__).resolve().parent.parent
+SUBPROCESS_TIMEOUT_S = 20  # two runs stay far under the 60 s test limit
 GROWTH_CEILING_MIB = 50  # a header-only bomb claims gigabytes; the refusal must not allocate them
 
 
@@ -43,21 +44,27 @@ def _bomb_png(width: int, height: int, colour: int = 0, depth: int = 8) -> bytes
 
 
 def _run_peak_rss_mib(code: str) -> float:
-    """Peak RSS in MiB of a fresh interpreter that runs ``code`` (measured by getrusage)."""
+    """Peak RSS in MiB of a fresh interpreter that runs ``code``.
+
+    It is read inside the child, from VmHWM in /proc/self/status. ``ru_maxrss`` is not used: a
+    forked child starts with its parent's peak, so a parent that once used more memory would hide
+    what the child allocates.
+    """
     script = (
-        "import resource\n"
-        + textwrap.dedent(code)
-        + "\nprint(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)\n"
+        textwrap.dedent(code)
+        + "\nfor line in open('/proc/self/status'):\n"
+        + "    if line.startswith('VmHWM:'):\n"
+        + "        print(int(line.split()[1]))\n"
     )
     result = subprocess.run(
         [sys.executable, "-c", script],
         capture_output=True,
         text=True,
         check=True,
-        timeout=45,
+        timeout=SUBPROCESS_TIMEOUT_S,
         cwd=REPO,
     )
-    return int(result.stdout.split()[-1]) / 1024  # Linux reports KiB
+    return int(result.stdout.split()[-1]) / 1024  # kB
 
 
 def test_png_master_pixel_bomb_is_refused_before_decoding() -> None:

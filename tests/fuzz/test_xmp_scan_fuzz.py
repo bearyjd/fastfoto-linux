@@ -133,6 +133,13 @@ def test_long_attribute_runs_are_scanned_quickly(count: int, whitespace: bytes) 
     _scan(doc(b"", attributes + b"tiff:Orientation"))
 
 
+@given(count=st.integers(1, 300), whitespace=st.sampled_from([b" ", b"\t\n"]))
+def test_an_orientation_after_a_long_attribute_run_is_found(count: int, whitespace: bytes) -> None:
+    attributes = b"".join(b"k%d" % i + b"=" + b'"v"' + whitespace for i in range(count))
+    assert not _scan(doc(b"", attributes))
+    assert _scan(doc(b"", attributes + b'tiff:Orientation="6"'))
+
+
 @given(size=st.sampled_from([MAX_XMP_BYTES + 1, MAX_XMP_BYTES + 4096, MAX_XMP_BYTES * 2]))
 def test_an_oversized_packet_counts_without_being_scanned(size: int) -> None:
     assert _scan(b" " * size)

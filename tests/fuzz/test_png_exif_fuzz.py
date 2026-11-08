@@ -143,8 +143,10 @@ def test_xmp_with_an_orientation_is_refused_and_clean_xmp_is_kept(carrier: str) 
     refused = h.with_before_idat(BASE, h.xmp_packet(ORIENTED_XMP, carrier))
     with pytest.raises(XmpOrientationError):
         png_exif.set_orientation(refused, 3)
-    kept = h.with_before_idat(BASE, h.xmp_packet(CLEAN_XMP, carrier))
-    assert png_exif.read_orientation(png_exif.set_orientation(kept, 3)) == 3
+    chunk = h.xmp_packet(CLEAN_XMP, carrier)
+    edited = png_exif.set_orientation(h.with_before_idat(BASE, chunk), 3)
+    assert png_exif.read_orientation(edited) == 3
+    assert chunk in h.split(edited)  # the clean XMP chunk survives byte for byte
 
 
 @given(

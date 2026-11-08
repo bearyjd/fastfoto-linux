@@ -14,15 +14,15 @@ from concurrent.futures.process import BrokenProcessPool
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any
 
 import numpy as np
 from PIL import Image
 
 from fastfoto_linux.enhance.faces import FaceDetector
 from fastfoto_linux.enhance.orient import WORKING_LONG_SIDE_PX, decide_orientation
-from fastfoto_linux.library import fdio, image_format, stopping
+from fastfoto_linux.library import fdio, image_format, png_exif, stopping
 from fastfoto_linux.library.exif_errors import ImageTooLargeError, JpegExifError
+from fastfoto_linux.library.jpeg_exif import Layout as JpegLayout
 from fastfoto_linux.library.plan import Action, PlanRow
 from fastfoto_linux.library.tags import (
     CLOCKWISE_BY_TAG,
@@ -46,7 +46,7 @@ REASON_WORKER_CRASHED = "worker-crashed"
 REASON_WORKER_ERROR = "worker-error"
 # The frame header's pixel count is checked against this before anything is decoded. Pillow's own
 # limit (about 89 Mpx, an error at twice that) is left alone and applies on top.
-MAX_IMAGE_PIXELS = 89_000_000
+MAX_IMAGE_PIXELS = png_exif.MAX_IMAGE_PIXELS
 BACK_SUFFIX = "_b"
 # decide_orientation works at a fixed pixel size and ignores the dpi it is asked to validate.
 DETECTION_DPI = 600
@@ -115,7 +115,9 @@ def _working_rgb(image: Image.Image) -> Image.Image:
     return rgb if factor == 1 else rgb.reduce(factor)
 
 
-def load_working_image(data: bytes, tag: int | None, layout: Any = None) -> np.ndarray:
+def load_working_image(
+    data: bytes, tag: int | None, layout: JpegLayout | png_exif.Layout | None = None
+) -> np.ndarray:
     """The photo as displayed (``tag`` applied), RGB uint8, at about the detector size.
 
     Pillow is given ``decoder_copy`` of the file, without the segments or chunks it does not
@@ -142,9 +144,7 @@ def _decide_data(
     relative: str, data: bytes, info: tuple[int, int], detector: FaceDetector | None
 ) -> PlanRow:
     codec = image_format.codec_for(relative, data)
-    layout = codec.Layout.of(
-        data
-    )  # the file's segments are read once, however many steps need them
+    layout = codec.Layout.of(data)  # read once, however many steps need the file's structure
     stored = codec.read_orientation(data, layout)
     old_tag = TAG_UPRIGHT if stored is None else stored
     handled = old_tag in CLOCKWISE_BY_TAG

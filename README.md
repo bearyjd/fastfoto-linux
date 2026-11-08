@@ -553,7 +553,9 @@ uv run ffscan library fix ~/Documents/library-plan.csv \
   checksum, at most 4096 chunks besides the image data, one `eXIf` before the image data of at
   most 65,533 bytes), and Pillow only sees a copy with the critical chunks, so text, ICC and XMP
   chunks are never decoded. Skipped as well: animated PNGs (`unsupported-png`), PNGs with a text
-  copy of Exif (`Raw profile type exif`), and files whose bytes are not of the format their
+  copy of Exif (`Raw profile type exif`), an `eXIf` chunk placed after the image data (the PNG
+  3rd edition allows it; this tool only accepts it before, `exif-malformed`), any XMP that names
+  an `Orientation` under any prefix (`xmp-orientation`), and files whose bytes are not of the format their
   suffix says (`wrong-format`). The photo editor's own saves carry an XMP `tiff:Orientation`, so
   they are skipped for the reason in the next item.
 - A photo is skipped, with the reason shown in the summary, when it cannot be changed safely:

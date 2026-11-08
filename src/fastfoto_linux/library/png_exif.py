@@ -19,6 +19,7 @@ whose XMP or text chunks hold an orientation of their own are refused.
 """
 
 import io
+import re
 import struct
 import zlib
 from dataclasses import dataclass
@@ -29,13 +30,13 @@ from PIL import Image
 from fastfoto_linux.library.exif_errors import (
     ExifMalformedError,
     ExifTooLargeError,
+    ImageTooLargeError,
     JpegExifError,
     NotAPngError,
     TooManySegmentsError,
     UnsupportedPngError,
     XmpOrientationError,
 )
-from fastfoto_linux.library.jpeg_exif import _names_orientation
 from fastfoto_linux.library.tags import MAX_TAG, MIN_TAG, ORIENTATION_TAG
 from fastfoto_linux.library.tiff import inspect_tiff, new_block, with_orientation
 
@@ -48,6 +49,10 @@ CHUNK_OVERHEAD = HEADER_SIZE + CRC_SIZE
 MAX_CHUNK_LENGTH = 0x7FFFFFFF  # the PNG limit: lengths are 31 bits
 MAX_DIMENSION = 0x7FFFFFFF
 IHDR_LENGTH = 13
+# The frame size checked before anything is decoded; Pillow's own limit applies on top.
+MAX_IMAGE_PIXELS = 89_000_000
+MAX_PALETTE_BYTES = 768  # 256 entries of three bytes
+PALETTE_ENTRY_SIZE = 3
 MAX_CHUNKS = 4096  # chunks other than image data; a real photo has a few dozen at most
 MAX_TOTAL_CHUNKS = 131_072  # image data comes in chunks of 8 KiB and up; this bounds the scan
 MAX_EXIF_CHUNK = 65_533  # what a JPEG Exif segment holds, and what the photo editor accepts
@@ -70,6 +75,13 @@ COLOUR_TYPES = MappingProxyType(
         4: (2, (8, 16)),
         6: (4, (8, 16)),
     }
+)
+# Any ``Orientation`` element or attribute, under any prefix or none: element ``<p:Orientation``,
+# attribute `` p:Orientation=``. The namespace is deliberately not looked at: it can be spelled
+# with character references, entities or any prefix, and a false alarm only skips a file.
+_XML_NAME = rb"[\w.\x80-\xff-]+"
+_ANY_ORIENTATION = re.compile(
+    rb"<(?:" + _XML_NAME + rb":)?Orientation(?=[\s/>])|\s(?:" + _XML_NAME + rb":)?Orientation\s*="
 )
 ITXT_COMPRESSED = 1
 ZLIB_METHOD = 0
@@ -153,6 +165,10 @@ def _admit(chunk: _Chunk, chunks: list[_Chunk], idat_seen: bool) -> None:
         raise UnsupportedPngError("the PNG has a critical chunk of an unknown kind")
     if chunk.kind == PLTE and (idat_seen or any(c.kind == PLTE for c in chunks)):
         raise NotAPngError("the PNG has a misplaced or repeated palette")
+    if chunk.kind == PLTE and not (
+        0 < chunk.length <= MAX_PALETTE_BYTES and chunk.length % PALETTE_ENTRY_SIZE == 0
+    ):
+        raise NotAPngError("the PNG has a palette of an invalid size")
     if chunk.kind == IEND and chunk.length:
         raise NotAPngError("the PNG has an end chunk with data in it")
     if chunk.kind == EXIF:
@@ -289,6 +305,14 @@ def _keyword(data: bytes, chunk: _Chunk) -> tuple[bytes, int] | None:
     return None if nul < 0 else (data[chunk.data_start : nul], nul + 1)
 
 
+def _names_any_orientation(packet: bytes) -> bool:
+    """Whether the XMP ``packet`` might name an Orientation, however it spells the namespace.
+
+    A packet with NUL bytes is UTF-16 (or damaged) and cannot be scanned as bytes: it counts.
+    """
+    return b"\x00" in packet or _ANY_ORIENTATION.search(packet) is not None
+
+
 def _refuse_competing_orientations(data: bytes, layout: Layout) -> None:
     """Refuse a PNG whose XMP, or a text copy of Exif, has an orientation of its own: after the
     edit that and the eXIf one would disagree, and a viewer may obey the wrong one."""
@@ -301,7 +325,7 @@ def _refuse_competing_orientations(data: bytes, layout: Layout) -> None:
             raise UnsupportedPngError("the PNG holds a text copy of its Exif data")
         if keyword == XMP_KEYWORD:
             packet = _xmp_text(data, chunk, text_at)
-            if _names_orientation(packet, 0, len(packet)):
+            if _names_any_orientation(packet):
                 raise XmpOrientationError("the XMP data has an Orientation of its own")
 
 
@@ -339,6 +363,8 @@ def _verified(result: bytes, tag: int) -> bytes:
         raise JpegExifError(
             f"the edited PNG could not be re-read ({type(error).__name__})"
         ) from error
+    if pixel_count(result, layout) > MAX_IMAGE_PIXELS:
+        raise ImageTooLargeError("the PNG header claims more pixels than are handled")
     try:
         with Image.open(io.BytesIO(decoder_copy(result, layout))) as image:
             pillow_tag = image.getexif().get(ORIENTATION_TAG)

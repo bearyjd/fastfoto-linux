@@ -62,6 +62,12 @@ class UnsupportedPngError(JpegExifError):
     reason = "unsupported-png"
 
 
+class UnsupportedFormatError(JpegExifError):
+    """The file is neither a JPEG nor a PNG, whatever its name says."""
+
+    reason = "unsupported-format"
+
+
 class FormatMismatchError(JpegExifError):
     """The file's bytes are of one image format and its name says another."""
 

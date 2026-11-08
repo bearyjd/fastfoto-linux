@@ -6,7 +6,6 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from fastfoto_linux.library.png_exif import read_orientation
 from PIL import Image
 
 from fastfoto_linux.cli import main
@@ -16,6 +15,7 @@ from fastfoto_linux.library import decide as decide_module
 from fastfoto_linux.library.apply import STATUS_FAILED, STATUS_STALE, STATUS_WRITTEN, apply_plan
 from fastfoto_linux.library.decide import decide_file, decide_files, load_working_image
 from fastfoto_linux.library.plan import Action
+from fastfoto_linux.library.png_exif import read_orientation
 from tests.face_images import load_astronaut
 from tests.library.jpeg_helpers import (
     make_jpeg,
@@ -92,7 +92,7 @@ def test_other_png_colour_types_are_analysed_not_crashed_on(
 def test_a_16_bit_png_is_analysed(tmp_path: Path, detector: FaceDetector) -> None:
     buffer = io.BytesIO()
     gray = (load_astronaut()[..., 0].astype(np.uint16)) * 257
-    Image.fromarray(gray, "I;16").save(buffer, "PNG")
+    Image.fromarray(gray).save(buffer, "PNG")
     row = decided(tmp_path, detector, buffer.getvalue())
     assert row.reason != "unreadable"
 

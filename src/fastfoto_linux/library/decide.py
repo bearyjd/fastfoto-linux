@@ -1,4 +1,4 @@
-"""Decide, for each JPEG, whether its stored orientation needs a further quarter turn."""
+"""Decide, for each JPEG or PNG, whether its stored orientation needs a further quarter turn."""
 
 import contextlib
 import hashlib
@@ -14,21 +14,15 @@ from concurrent.futures.process import BrokenProcessPool
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
+from typing import Any
 
 import numpy as np
 from PIL import Image
 
 from fastfoto_linux.enhance.faces import FaceDetector
 from fastfoto_linux.enhance.orient import WORKING_LONG_SIDE_PX, decide_orientation
-from fastfoto_linux.library import fdio, stopping
+from fastfoto_linux.library import fdio, image_format, stopping
 from fastfoto_linux.library.exif_errors import ImageTooLargeError, JpegExifError
-from fastfoto_linux.library.jpeg_exif import (
-    Layout,
-    decoder_copy,
-    pixel_count,
-    read_orientation,
-    set_orientation,
-)
 from fastfoto_linux.library.plan import Action, PlanRow
 from fastfoto_linux.library.tags import (
     CLOCKWISE_BY_TAG,
@@ -106,23 +100,36 @@ def _draft_size(size: tuple[int, int]) -> tuple[int, int] | None:
     return math.ceil(size[0] * scale), math.ceil(size[1] * scale)
 
 
-def load_working_image(data: bytes, tag: int | None, layout: Layout | None = None) -> np.ndarray:
-    """The photo as displayed (``tag`` applied), RGB uint8, decoded at about the detector size.
+def _working_rgb(image: Image.Image) -> Image.Image:
+    """``image`` as RGB at about the detector size (a JPEG is decoded at that size to begin with;
+    a PNG has no such mode, so it is decoded whole and then reduced)."""
+    if image.format == "JPEG":
+        requested = _draft_size(image.size)
+        if requested is not None:
+            image.draft("RGB", requested)
+        return image.convert("RGB")
+    if image.mode.startswith("I;16"):  # 16-bit grey has no direct conversion to RGB
+        image = Image.fromarray((np.asarray(image) >> 8).astype(np.uint8))
+    rgb = image.convert("RGB")
+    factor = max(1, max(rgb.size) // WORKING_LONG_SIDE_PX)
+    return rgb if factor == 1 else rgb.reduce(factor)
 
-    Pillow is given ``decoder_copy`` of the file, without the segments it does not need.
-    ``layout`` is ``Layout.of(data)`` when the caller has it already.
+
+def load_working_image(data: bytes, tag: int | None, layout: Any = None) -> np.ndarray:
+    """The photo as displayed (``tag`` applied), RGB uint8, at about the detector size.
+
+    Pillow is given ``decoder_copy`` of the file, without the segments or chunks it does not
+    need. ``layout`` is the ``Layout.of(data)`` of the file's format when the caller has it.
     """
-    layout = Layout.of(data) if layout is None else layout
-    if pixel_count(data, layout) > MAX_IMAGE_PIXELS:
-        raise ImageTooLargeError("the JPEG header claims more pixels than are decoded")
+    codec = image_format.codec_of(data)
+    layout = codec.Layout.of(data) if layout is None else layout
+    if codec.pixel_count(data, layout) > MAX_IMAGE_PIXELS:
+        raise ImageTooLargeError("the image header claims more pixels than are decoded")
     with warnings.catch_warnings():
         # Pillow only warns between one and two times the pixel limit; treat that as an error too.
         warnings.simplefilter("error", Image.DecompressionBombWarning)
-        with Image.open(io.BytesIO(decoder_copy(data, layout))) as image:
-            requested = _draft_size(image.size)
-            if requested is not None:
-                image.draft("RGB", requested)
-            rgb = image.convert("RGB")
+        with Image.open(io.BytesIO(codec.decoder_copy(data, layout))) as image:
+            rgb = _working_rgb(image)
     turn = CLOCKWISE_BY_TAG.get(tag or TAG_UPRIGHT, 0)
     return np.array(rgb if turn == 0 else rgb.transpose(_PILLOW_TURN[turn]))
 
@@ -134,8 +141,11 @@ def _is_back(relative: str) -> bool:
 def _decide_data(
     relative: str, data: bytes, info: tuple[int, int], detector: FaceDetector | None
 ) -> PlanRow:
-    layout = Layout.of(data)  # the file's segments are read once, however many steps need them
-    stored = read_orientation(data, layout)
+    codec = image_format.codec_for(relative, data)
+    layout = codec.Layout.of(
+        data
+    )  # the file's segments are read once, however many steps need them
+    stored = codec.read_orientation(data, layout)
     old_tag = TAG_UPRIGHT if stored is None else stored
     handled = old_tag in CLOCKWISE_BY_TAG
     back = _is_back(relative)
@@ -153,7 +163,7 @@ def _decide_data(
     if decision.rotation == 0:
         return _row(relative, Action.KEEP, REASON_UPRIGHT, info, old_tag=old_tag, score=score)
     new_tag = compose_tag(old_tag, decision.rotation)
-    set_orientation(data, new_tag, layout)  # a dry run: is the file one that can be written?
+    codec.set_orientation(data, new_tag, layout)  # a dry run: is the file one that can be written?
     return _row(
         relative,
         Action.ROTATE,

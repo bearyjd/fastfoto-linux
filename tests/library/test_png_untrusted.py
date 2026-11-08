@@ -5,7 +5,6 @@ import struct
 import zlib
 
 import pytest
-from fastfoto_linux.library.png_exif import Layout, decoder_copy, read_orientation, set_orientation
 from PIL import Image
 
 from fastfoto_linux.library import png_exif
@@ -18,6 +17,7 @@ from fastfoto_linux.library.exif_errors import (
     UnsupportedPngError,
     XmpOrientationError,
 )
+from fastfoto_linux.library.png_exif import Layout, decoder_copy, read_orientation, set_orientation
 from tests.face_images import load_astronaut
 from tests.library.jpeg_helpers import exif_bytes
 from tests.library.png_helpers import (
@@ -143,7 +143,7 @@ def test_a_long_run_of_image_data_chunks_is_fine() -> None:
     chunks = split(BASE)
     at = kinds(BASE).index(b"IDAT")
     data = chunks[at][1]
-    pieces = [(b"IDAT", data[i : i + 16]) for i in range(0, len(data), 16)]
+    pieces = [(b"IDAT", data[i : i + 8]) for i in range(0, len(data), 8)]
     png = assemble([*chunks[:at], *pieces, *chunks[at + 1 :]])
     assert len(pieces) > png_exif.MAX_CHUNKS
     assert read_orientation(png) == 1
@@ -171,7 +171,8 @@ def test_an_oversized_exif_chunk_is_refused() -> None:
 
 
 def test_an_edit_that_would_make_the_exif_chunk_too_large_is_refused() -> None:
-    near = exif_bytes(None, ImageDescription="x" * 65_400)[6:]
+    base = len(exif_bytes(None, ImageDescription=""))
+    near = exif_bytes(None, ImageDescription="x" * (png_exif.MAX_EXIF_CHUNK - base))[6:]
     png = with_before_idat(make_png(pixels()), (b"eXIf", near))
     assert len(near) <= png_exif.MAX_EXIF_CHUNK
     with pytest.raises(ExifTooLargeError):
@@ -261,7 +262,7 @@ def test_the_decoder_copy_has_only_the_chunks_decoding_needs() -> None:
     )
     copy = decoder_copy(png)
     assert set(kinds(copy)) == {b"IHDR", b"eXIf", b"IDAT", b"IEND"}
-    assert len(copy) < len(png) // 4
+    assert bomb not in copy
     with Image.open(io.BytesIO(copy)) as image:
         image.load()
 

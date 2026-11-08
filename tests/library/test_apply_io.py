@@ -8,8 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from fastfoto_linux.library import apply as apply_module
-from fastfoto_linux.library import fdio, safety
+from fastfoto_linux.library import fdio, jpeg_exif, safety
 from fastfoto_linux.library.apply import (
     REASON_UNSAFE_DESTINATION,
     STATUS_DONE,
@@ -59,14 +58,14 @@ def test_a_folder_swapped_for_a_link_into_the_library_after_validation_is_refuse
 ) -> None:
     (lib / "elsewhere").mkdir()
     (dest / "2001").mkdir()
-    real_edit = apply_module.set_orientation
+    real_edit = jpeg_exif.set_orientation
 
     def swap_then_edit(data: bytes, tag: int, *rest: object) -> bytes:
         (dest / "2001").rmdir()
         (dest / "2001").symlink_to(lib / "elsewhere", target_is_directory=True)
         return real_edit(data, tag, *rest)
 
-    monkeypatch.setattr(apply_module, "set_orientation", swap_then_edit)
+    monkeypatch.setattr(jpeg_exif, "set_orientation", swap_then_edit)
     before = tree_snapshot(lib)
     result = apply_plan([rotate_row(lib, FIRST, 90, 1, 6)], lib, dest)
     assert outcome(result, FIRST) == (STATUS_FAILED, REASON_UNSAFE_DESTINATION)

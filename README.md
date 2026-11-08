@@ -105,7 +105,7 @@ uv run ffscan eval redeye MANIFEST.json   # red-eye evaluation harness; see docs
   `small` shrinks photos to 2048 px and document colour/grey pages to 200 dpi; `lossless` writes
   PNG photos and Flate document pages (very large files: tens of MB per 600 dpi page, held in
   memory while the PDF is assembled; the photo editor opens them and saves PNG
-  copies, but `ffscan library` does not open PNG masters); `high-quality` is JPEG 95/92 without
+  copies, and `ffscan library` fixes their orientation); `high-quality` is JPEG 95/92 without
   chroma subsampling. Metadata is kept.
   `--preset` cannot be combined with `--quality`. Without it the output is unchanged. PDF/A is
   not offered. See `docs/design/export-presets.md`.
@@ -507,10 +507,10 @@ uv run ffscan doc process ~/Documents/Scans/.raw/20261013T230000Z --out ~/Docume
 
 Scans made by other software (or by earlier runs) are often stored sideways or upside-down. Two
 commands find them and fix them *without re-encoding a single pixel*: only the EXIF Orientation
-tag changes, every other byte of the JPEG stays as it was. Your library is only ever read.
+tag changes, every other byte of the JPEG or PNG stays as it was. Your library is only ever read.
 
 ```sh
-# 1. Look: decide each JPEG's orientation from its faces and write a plan you can read.
+# 1. Look: decide each JPEG's or PNG's orientation from its faces and write a plan you can read.
 uv run ffscan library check ~/Pictures/MyLibrary --plan ~/Documents/library-plan.csv
 
 # 2. Write corrected copies into a separate, empty folder (never into the library).
@@ -519,10 +519,10 @@ uv run ffscan library fix ~/Documents/library-plan.csv \
 ```
 
 - `check` walks the folder (symlinks are not followed; hidden folders and `@eaDir` are skipped;
-  `.jpg`/`.jpeg` in any case), prints how
+  `.jpg`/`.jpeg`/`.png` in any case), prints how
   many files it would rotate by 90, 180 and 270 degrees, how many look upright already, how many
   it cannot decide (no faces, or faces that disagree) and why others were skipped. The plan is a
-  CSV with one row per JPEG (`path` relative to the library, `action`, `rotate_cw`, the old and
+  CSV with one row per JPEG or PNG (`path` relative to the library, `action`, `rotate_cw`, the old and
   new tag, a score, the reason and what `fix` needs to detect a changed file). Edit it freely:
   change a `rotate` row to `keep` to leave that photo alone. `--jobs N` sets the worker
   processes.
@@ -547,6 +547,15 @@ uv run ffscan library fix ~/Documents/library-plan.csv \
   counted in the summary and left for you to delete. The plan and manifest are plain CSV: if you
   open them in a spreadsheet, a file name that starts with `=`, `+`, `-` or `@` may be taken as a
   formula.
+- PNGs (any colour type; the lossless export preset writes them) get their orientation in the
+  PNG `eXIf` chunk: an existing chunk is patched, a missing one is inserted before the image
+  data, and no other chunk is touched. The whole file is checked first (every chunk length and
+  checksum, at most 4096 chunks besides the image data, one `eXIf` before the image data of at
+  most 65,533 bytes), and Pillow only sees a copy with the critical chunks, so text, ICC and XMP
+  chunks are never decoded. Skipped as well: animated PNGs (`unsupported-png`), PNGs with a text
+  copy of Exif (`Raw profile type exif`), and files whose bytes are not of the format their
+  suffix says (`wrong-format`). The photo editor's own saves carry an XMP `tiff:Orientation`, so
+  they are skipped for the reason in the next item.
 - A photo is skipped, with the reason shown in the summary, when it cannot be changed safely:
   malformed Exif, more than one Orientation entry in it, an Exif block too large to grow, more
   than 1024 markers before the image data, or an XMP packet (Extended XMP included) with its own

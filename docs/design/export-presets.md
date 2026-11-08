@@ -52,8 +52,10 @@ write re-read the raw pages (`on_page` fires); slower, but correct (`EncodedPage
 
 - The photo editor opens PNG masters (8-bit RGB only) and saves `<stem>_edit-NNNN.png`; the
   PNG is pre-parsed by `photo_edits/png_guard.py` (size, bit depth, APNG, eXIf/XMP placement and
-  size, chunk count) before Pillow decodes it, and anything else is refused. `ffscan library` does
-  not open PNG masters yet (`library/walk.py` lists JPEG suffixes only). Out of scope.
+  size, chunk count) before Pillow decodes it, and anything else is refused. `ffscan library`
+  also handles PNG masters (`library/png_exif.py`): it patches or inserts the single `eXIf`
+  chunk and has its own, wider structure check, because it re-encodes nothing (any colour type
+  and bit depth is read; animated PNGs and a competing XMP/text orientation are skipped).
 - Numbers: a photo's number is shared across `.jpg` and `.png` (a number is taken if any name
   of the family exists in either format).
 - A lossless PNG of a 1200 DPI photo can be about 100 MB. The writer has no output size cap.

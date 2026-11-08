@@ -3,7 +3,6 @@
 import io
 
 import pytest
-from fastfoto_linux.library.png_exif import Layout, pixel_count, read_orientation, set_orientation
 from PIL import Image
 
 from fastfoto_linux.library import png_exif
@@ -12,6 +11,7 @@ from fastfoto_linux.library.exif_errors import (
     JpegExifError,
     NotAPngError,
 )
+from fastfoto_linux.library.png_exif import Layout, pixel_count, read_orientation, set_orientation
 from fastfoto_linux.photo_edits.png_guard import check_png
 from tests.face_images import load_astronaut
 from tests.library.jpeg_helpers import ORIENTATION, exif_bytes
@@ -64,7 +64,7 @@ def test_pixel_count_is_the_header_size_in_rgb_equivalents() -> None:
     assert pixel_count(make_png(pixels())) == 8 * 6
     rgba = make_png(pixels(), mode="RGBA")
     assert pixel_count(rgba) == 64
-    assert pixel_count(make_png(pixels(), mode="L")) == 16
+    assert pixel_count(make_png(pixels(), mode="L")) == 48
 
 
 # --- writing: an existing tag ---------------------------------------------------------------

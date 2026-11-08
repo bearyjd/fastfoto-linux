@@ -8,6 +8,7 @@ ICC profile is dropped with a visible note instead of a crash.
 
 import xml.etree.ElementTree as ET
 from collections.abc import Iterator
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -16,6 +17,7 @@ from hypothesis import strategies as st
 from PIL import Image
 
 from fastfoto_linux.library.tiff import new_block
+from fastfoto_linux.output.metadata import PhotoMetadata, build_xmp
 from fastfoto_linux.photo_edits import PhotoEditError, PhotoSource, load_source
 from fastfoto_linux.photo_edits.metadata import (
     EXIF_NS,
@@ -43,6 +45,7 @@ from tests.fuzz.json_strategies import LEAK_MARKER
 from tests.photo_edits import png_helpers as h
 
 JPEG = plain_jpeg()
+NOW = datetime(2026, 1, 2, 3, 4, 5)
 PNG = h.master_png()
 PNG_CHUNKS = h.split(PNG)
 KINDS = [b"IHDR", b"IDAT", b"IEND", b"eXIf", b"iTXt", b"iCCP", b"pHYs", b"gAMA", b"acTL", b"tRNS"]
@@ -80,6 +83,7 @@ def _check_derivatives(source: PhotoSource) -> None:
         packet = derivative_xmp(source)
     except PhotoEditError:
         return
+    assert bool(packet) == bool(source.xmp), "an XMP packet is kept, and none is invented"
     _assert_xmp_is_normalised(packet, source)
 
 
@@ -119,6 +123,25 @@ def test_xmp_geometry_fields_are_rewritten_upright(folder: Path) -> None:
     assert source is not None
     out = derivative_xmp(source)
     assert b">6<" not in out and b"72/1" not in out
+    _assert_xmp_is_normalised(out, source)
+
+
+def test_album_and_notes_survive_into_the_derivative_xmp(folder: Path) -> None:
+    packet = build_xmp(
+        PhotoMetadata(
+            scanned_at=NOW, written_at=NOW, album="Holiday 1975", notes="Nan & Pop <left>"
+        )
+    )
+    data = with_segments(JPEG, segment(APP1, XMP_HEADER + packet))
+    source = _load(folder, "photo_0013.jpg", data)
+    assert source is not None
+    out = derivative_xmp(source)
+    assert out
+    root = ET.fromstring(out)
+    assert root.tag.endswith("}xmpmeta")
+    text = " ".join(root.itertext()) + " ".join(v for e in root.iter() for v in e.attrib.values())
+    assert "Holiday 1975" in text
+    assert "Nan & Pop <left>" in text
     _assert_xmp_is_normalised(out, source)
 
 

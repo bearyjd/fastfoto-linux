@@ -6,6 +6,7 @@ EXIF and XMP that keep the upright orientation and the DPI, or a ``PhotoEditErro
 ICC profile is dropped with a visible note instead of a crash.
 """
 
+import xml.etree.ElementTree as ET
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -14,10 +15,18 @@ from hypothesis import given
 from hypothesis import strategies as st
 from PIL import Image
 
+from fastfoto_linux.library.tiff import new_block
 from fastfoto_linux.photo_edits import PhotoEditError, PhotoSource, load_source
-from fastfoto_linux.photo_edits.metadata import derivative_exif, derivative_xmp
+from fastfoto_linux.photo_edits.metadata import (
+    EXIF_NS,
+    NEUTRAL_GEOMETRY,
+    TIFF_NS,
+    derivative_exif,
+    derivative_xmp,
+    frame,
+)
 from fastfoto_linux.photo_edits.model import MAX_SOURCE_PIXELS
-from fastfoto_linux.photo_edits.png_guard import PNG_SIGNATURE, check_png
+from fastfoto_linux.photo_edits.png_guard import MAX_XMP_PACKET, PNG_SIGNATURE, check_png
 from tests.fuzz.jpeg_builders import (
     APP1,
     APP2,
@@ -68,9 +77,49 @@ def _check_derivatives(source: PhotoSource) -> None:
         assert exif[274] == 1
         assert exif[282] == pytest.approx(source.dpi_x)
         assert exif[283] == pytest.approx(source.dpi_y)
-        derivative_xmp(source)
+        packet = derivative_xmp(source)
     except PhotoEditError:
-        pass
+        return
+    _assert_xmp_is_normalised(packet, source)
+
+
+def _assert_xmp_is_normalised(packet: bytes, source: PhotoSource) -> None:
+    """The packet is well-formed and every geometry field it carries is upright and exact."""
+    if not packet:
+        return
+    assert len(packet) <= MAX_XMP_PACKET
+    root = ET.fromstring(packet)
+    width, height, dpi_x, dpi_y = frame(source, NEUTRAL_GEOMETRY)
+    expected = {
+        f"{{{TIFF_NS}}}Orientation": "1",
+        f"{{{TIFF_NS}}}ResolutionUnit": "2",
+        f"{{{TIFF_NS}}}ImageWidth": str(width),
+        f"{{{TIFF_NS}}}ImageLength": str(height),
+        f"{{{EXIF_NS}}}PixelXDimension": str(width),
+        f"{{{EXIF_NS}}}PixelYDimension": str(height),
+    }
+    resolutions = {f"{{{TIFF_NS}}}XResolution": dpi_x, f"{{{TIFF_NS}}}YResolution": dpi_y}
+    for element in root.iter():
+        for name, value in [*element.attrib.items(), (element.tag, element.text)]:
+            if name in expected:
+                assert value == expected[name], name
+            elif name in resolutions:
+                numerator, denominator = (value or "").split("/")
+                assert int(numerator) / int(denominator) == pytest.approx(resolutions[name])
+
+
+def test_xmp_geometry_fields_are_rewritten_upright(folder: Path) -> None:
+    packet = (
+        b"<x:xmpmeta xmlns:x='adobe:ns:meta/' xmlns:tiff='http://ns.adobe.com/tiff/1.0/'>"
+        b"<tiff:Orientation>6</tiff:Orientation><tiff:XResolution>72/1</tiff:XResolution>"
+        b"</x:xmpmeta>"
+    )
+    data = with_segments(JPEG, segment(APP1, XMP_HEADER + packet))
+    source = _load(folder, "photo_0011.jpg", data)
+    assert source is not None
+    out = derivative_xmp(source)
+    assert b">6<" not in out and b"72/1" not in out
+    _assert_xmp_is_normalised(out, source)
 
 
 def _check_png(data: bytes) -> None:
@@ -176,8 +225,9 @@ def test_jpeg_masters_with_hostile_exif_xmp_and_icc(
 @given(icc=st.binary(min_size=1, max_size=300))
 def test_malformed_icc_is_dropped_with_a_note(icc: bytes, folder: Path) -> None:
     source = _load(folder, "photo_0007.jpg", with_segments(JPEG, segment(APP2, ICC_HEADER + icc)))
-    if source is not None and source.icc_profile is None:
-        assert any("color profile" in note for note in source.warnings)
+    assert source is not None, "a bad profile costs the profile, not the photo"
+    noted = any("color profile" in note for note in source.warnings)
+    assert noted == (source.icc_profile is None)  # kept, or dropped with a visible note
 
 
 def test_a_garbage_icc_profile_is_dropped_with_a_note(folder: Path) -> None:
@@ -206,12 +256,16 @@ def test_hostile_xmp_packets_are_refused_or_normalised(xmp: bytes, folder: Path)
         _check_derivatives(source)
 
 
-@given(width=st.integers(1, 65535), height=st.integers(1, 65535))
-def test_jpeg_pixel_bombs_are_refused_from_the_header(
-    width: int, height: int, folder: Path
-) -> None:
-    source = _load(folder, "photo_0009.jpg", with_size(JPEG, width, height))
-    if width * height > MAX_SOURCE_PIXELS:
-        assert source is None
-    elif source is not None:
-        assert source.width * source.height <= MAX_SOURCE_PIXELS
+@given(size=st.sampled_from([(65535, 65535), (8910, 10_000), (30_000, 30_000), (65535, 1400)]))
+def test_jpeg_pixel_bombs_are_refused_from_the_header(size: tuple[int, int], folder: Path) -> None:
+    width, height = size
+    assert width * height > MAX_SOURCE_PIXELS
+    assert _load(folder, "photo_0009.jpg", with_size(JPEG, width, height)) is None
+
+
+def test_valid_exif_orientation_and_xmp_load(folder: Path) -> None:
+    data = with_segments(JPEG, segment(APP1, EXIF_HEADER + new_block(6)))
+    source = _load(folder, "photo_0012.jpg", data)
+    assert source is not None
+    assert source.orientation == 6
+    _check_derivatives(source)

@@ -71,6 +71,10 @@ ENCODINGS = {
     + doc(b""),
     "declaration not at the start": b'<!-- -->\n<?xml version="1.0" encoding="UTF-7"?>' + doc(b""),
     "declaration with a malformed encoding": b'<?xml version="1.0" encoding=UTF-7?>' + doc(b""),
+    "second declaration": b'<?xml version="1.0"?>'
+    + doc(b"")
+    + b'<?xml version="1.0" encoding="UTF-7"?>',
+    "misplaced upper case declaration": doc(b"") + b'<?XML version="1.0" encoding="UTF-7"?>',
     "unterminated declaration": b'<?xml version="1.0" encoding="UTF-8"' + doc(b""),
     "ebcdic": (
         '<?xml version="1.0" encoding="cp037"?>' + doc(b"", b'tiff:Orientation="1"').decode()

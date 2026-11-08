@@ -49,9 +49,7 @@ _WELL_FORMED = re.compile(rb"[^<]*+(?:" + _CONSTRUCT + rb"[^<]*+)*+", re.DOTALL)
 # A name whose local part (after the last colon, if any) is Orientation.
 _ORIENTATION = rb"(?:[\w.\x80-\xff:-]*:)?orientation(?![\w.\x80-\xff:-])"
 _ORIENTATION_ELEMENT = rb"</?" + _ORIENTATION
-_ORIENTATION_ATTRIBUTE = (
-    rb"<" + _NAME + rb"(?:" + _ATTRIBUTE + rb")*?\s*+" + _ORIENTATION + rb"\s*+="
-)
+_ORIENTATION_ATTRIBUTE = rb"<" + _NAME + rb"(?:" + _ATTRIBUTE + rb")*?\s*+" + _ORIENTATION
 _ORIENTATION_TAG = re.compile(
     _ORIENTATION_ELEMENT + rb"|" + _ORIENTATION_ATTRIBUTE, re.IGNORECASE | re.DOTALL
 )

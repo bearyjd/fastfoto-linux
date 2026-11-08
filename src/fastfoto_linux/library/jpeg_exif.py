@@ -173,10 +173,7 @@ def _extended_packets(data: bytes, segments: list[_Segment]) -> list[bytes | Non
         (offset,) = struct.unpack_from(">I", data, offset_at)
         size = gathered.get(guid, 0) + segment.end - body_at
         gathered[guid] = MAX_XMP_BYTES + 1 if total > MAX_XMP_BYTES else size
-        if gathered[guid] <= MAX_XMP_BYTES:
-            packets.setdefault(guid, []).append((offset, total, data[body_at : segment.end]))
-        else:
-            packets[guid] = []  # too large: kept as nothing, so it is not joined
+        packets.setdefault(guid, []).append((offset, total, data[body_at : segment.end]))
     return [
         _tiled(sorted(parts)) if gathered[guid] <= MAX_XMP_BYTES else None
         for guid, parts in packets.items()

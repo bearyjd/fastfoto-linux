@@ -71,7 +71,18 @@ One pull request per step, opened with `gh`:
 5. Squash merge.
 
 Commit messages are `<type>: <description>` with type one of feat, fix, refactor, docs, test,
-chore, perf, ci. PR bodies have a summary, the design, a test plan and a privacy note.
+chore, perf, ci. PR bodies have a summary, the design, a test plan and a privacy note;
+`.github/pull_request_template.md` provides that outline.
+
+A change that users can see also adds a line under `## [Unreleased]` in `CHANGELOG.md`, in the
+right area (Added, Changed or Fixed). How releases are cut: `docs/release-process.md`.
+
+## Reporting problems
+
+Issue forms live in `.github/ISSUE_TEMPLATE/`: a bug report, a scanner report and a tested-by
+report. All three say the same thing as the privacy section below: never attach family scans,
+documents, OCR text or captures, and replace scanner serial numbers, network addresses and
+personal paths with placeholders before posting. When you answer an issue, apply the same rule.
 
 ## Code rules
 

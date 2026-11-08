@@ -32,9 +32,6 @@ pytestmark = [
 GAP_ENV = "FF680W_USB_GAP_US"
 DEFAULT_GAP_MS = 2.0
 DEFAULT_GAP_SLACK_MS = 150
-MIN_MEAN_OPEN_WINDOWS = 5.0
-OVERLAP_ATTEMPTS = 5
-SPAN_BACKSTOP_MS = 6000
 NS_PER_MS = 1_000_000
 # Legitimate runs take well under 2 s; a shim that sleeps for ever must fail, not hang the suite.
 RUN_TIMEOUT_S = 6
@@ -308,38 +305,12 @@ def test_busy_handle_keeps_its_timestamp_when_the_table_overflows(harness: Harne
     assert ms_between(last_in_h0, out_h0) >= gap_ms, "H0 lost its last-IN time to the 17th handle"
 
 
-def max_gap_ms(by_handle: dict[str, list[Call]]) -> float:
-    return max(
-        ms_between(i, o)
-        for own in by_handle.values()
-        for i, o in zip(own[0::2], own[1::2], strict=True)
-    )
-
-
-def thread_spans_ms(by_handle: dict[str, list[Call]]) -> list[int]:
-    return [round(ms_between(own[0], own[-1])) for own in by_handle.values()]
-
-
-def mean_open_windows(by_handle: dict[str, list[Call]]) -> float:
-    """How many IN->OUT windows (one per pair, over all handles) were open at once on average."""
-    own_calls = [c for own in by_handle.values() for c in own]
-    total = sum(
-        ms_between(i, o)
-        for own in by_handle.values()
-        for i, o in zip(own[0::2], own[1::2], strict=True)
-    )
-    return total / ms_between(
-        min(own_calls, key=lambda c: c.t_ns), max(own_calls, key=lambda c: c.t_ns)
-    )
-
-
-def _threaded_run(
-    harness: Harness, threads: int, pairs: int
-) -> tuple[list[Call], dict[str, list[Call]]]:
-    """One run of ``threads`` handles; what must hold on every run is checked here."""
+def test_handles_are_serviced_concurrently_and_independently(harness: Harness) -> None:
+    """8 threads, one handle each: every OUT keeps its own gap and no thread blocks another."""
+    threads, pairs = 8, 200
     calls = harness.run([f"threads:{threads}:{pairs}"])
     assert len(calls) == threads * pairs * 2
-    by_handle: dict[str, list[Call]] = defaultdict(list)
+    by_handle = defaultdict(list)
     for call in sorted(calls, key=lambda c: c.t_ns):
         by_handle[call.handle].append(call)
     assert len(by_handle) == threads
@@ -347,32 +318,12 @@ def _threaded_run(
         assert [c.is_in for c in own] == [True, False] * pairs, handle
         for i, o in zip(own[0::2], own[1::2], strict=True):
             assert ms_between(i, o) >= DEFAULT_GAP_MS, f"{handle}: OUT only {ms_between(i, o)} ms"
-    return calls, by_handle
-
-
-def test_handles_are_serviced_concurrently_and_independently(harness: Harness) -> None:
-    """8 threads, one handle each: every OUT keeps its own gap and no thread blocks another."""
-    threads, pairs = 8, 200
-    # Every run must keep the gap and the order (checked in _threaded_run). Overlap is the
-    # direction a busy machine can only hide, never fake, so the best of a few runs counts: a
-    # shim that serialises the handles (one lock across a whole call, sleep included) keeps about
-    # 4 IN->OUT windows open on average in every run, one that does not about 7 (6 with the CPUs
-    # oversubscribed 20 times).
-    best, details = 0.0, []
-    for _ in range(OVERLAP_ATTEMPTS):
-        calls, by_handle = _threaded_run(harness, threads, pairs)
-        best = max(best, mean_open_windows(by_handle))
-        span_ms = (max(c.t_ns for c in calls) - min(c.t_ns for c in calls)) / NS_PER_MS
-        details.append(
-            f"mean open {mean_open_windows(by_handle):.1f}, span {span_ms:.0f} ms, slowest IN->OUT "
-            f"{max_gap_ms(by_handle):.1f} ms, thread spans {thread_spans_ms(by_handle)}"
-        )
-        # A very loose backstop (idle: ~450 ms; 3200 ms or more if serialised by a sleeping lock).
-        assert span_ms < SPAN_BACKSTOP_MS, f"{threads} threads took {span_ms:.0f} ms"
-        if best >= MIN_MEAN_OPEN_WINDOWS:
-            break
-    assert best >= MIN_MEAN_OPEN_WINDOWS, "handles were serialised in every run: " + "; ".join(
-        details
+    span_ms = (max(c.t_ns for c in calls) - min(c.t_ns for c in calls)) / NS_PER_MS
+    # Sanity bound: each thread needs about pairs * 2 ms = 400 ms. This is a wall-clock bound: a
+    # loaded machine stretches it (430-490 ms idle, up to 1918 ms with 40 busy loops on 2 CPUs).
+    per_thread = [round(ms_between(own[0], own[-1])) for own in by_handle.values()]
+    assert span_ms < 2000, (
+        f"{threads} threads took {span_ms:.0f} ms; per-thread spans (ms) {per_thread}"
     )
 
 

@@ -99,7 +99,7 @@ Item {
                             text: qsTr("Not processed")
                             textFormat: Text.PlainText
                             font.bold: true
-                            color: Kirigami.Theme.negativeTextColor
+                            color: Kirigami.Theme.textColor
                         }
 
                         QQC2.Label {
@@ -142,7 +142,7 @@ Item {
                         Layout.alignment: Qt.AlignHCenter
                         text: qsTr("back")
                         textFormat: Text.PlainText
-                        color: Kirigami.Theme.disabledTextColor
+                        color: Qt.alpha(Kirigami.Theme.textColor, 0.75)
                         font: Kirigami.Theme.smallFont
                     }
                 }

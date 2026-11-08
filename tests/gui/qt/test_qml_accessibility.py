@@ -15,9 +15,9 @@ from tests.gui.qt import require_qt
 require_qt()
 
 from PIL import Image
-from PySide6.QtCore import QMetaObject, QUrl
+from PySide6.QtCore import QMetaObject, QObject, QUrl
 from PySide6.QtGui import QAccessible
-from PySide6.QtQml import QQmlComponent, QQmlEngine
+from PySide6.QtQml import QJSValue, QQmlComponent, QQmlEngine, QQmlExpression, qmlContext
 
 from tests.gui.qt import test_qml
 from tests.gui.qt.qt_helpers import child, settle
@@ -64,20 +64,38 @@ def accessibility_on() -> Iterator[None]:
     QAccessible.setActive(False)
 
 
-def walk(item: Any) -> Iterator[Any]:
-    yield item
-    for kid in item.childItems():
-        yield from walk(kid)
+COLLECT_NAMES = """(function collect(item, names) {
+    for (let i = 0; i < item.children.length; i++) {
+        const kid = item.children[i];
+        if (kid.objectName !== "") names.push(kid.objectName);
+        collect(kid, names);
+    }
+    return names;
+})"""
+
+
+def evaluate(item: Any, source: str) -> Any:
+    """Run a JavaScript expression in the QML context of ``item``."""
+    expression = QQmlExpression(qmlContext(item), item, source)
+    value, failed = expression.evaluate()
+    assert not failed and not expression.hasError(), expression.error().toString()
+    return value.toVariant() if isinstance(value, QJSValue) else value
 
 
 def named_objects(window: Any) -> dict[str, tuple[Any, Any]]:
-    """Every app-authored (objectName'd) item with an accessible interface, visible or not."""
+    """Every app-authored (objectName'd) item with an accessible interface, visible or not.
+
+    The names are collected in QML: walking the tree with ``childItems()`` would make PySide
+    wrap the anonymous ``QQuickItem_QML_<n>`` types, and its type cache aborts the process on
+    a name reused by an earlier test's engine.
+    """
+    names = evaluate(window.contentItem(), f"{COLLECT_NAMES}(this, [])")
     found: dict[str, tuple[Any, Any]] = {}
-    for item in walk(window.contentItem()):
-        name = item.objectName()
-        iface = QAccessible.queryAccessibleInterface(item) if name else None
+    for name in dict.fromkeys(names):
+        item = window.findChild(QObject, name)  # list delegates are not QObject children
+        iface = QAccessible.queryAccessibleInterface(item) if item is not None else None
         if iface is not None:
-            found.setdefault(name, (item, iface))
+            found[name] = (item, iface)
     return found
 
 
@@ -219,6 +237,7 @@ def test_tab_goes_through_the_photo_form_in_reading_order_to_the_results(
 
 def test_tab_goes_through_the_review_page_from_the_pages_to_save(review_window: Any) -> None:  # noqa: F811
     window = review_window[0]
+    assert "reviewGrid" in focus_chain(child(window, "reviewBackButton")), "Tab reaches the pages"
     chain = focus_chain(child(window, "reviewGrid"))
     assert_in_order(chain, ["reviewBackButton", "reviewSaveButton"])
 
@@ -245,7 +264,8 @@ def test_every_enabled_visible_control_can_be_reached_with_tab(
     assert missing == []
 
 
-def eye_markers(accepted_flags: tuple[bool, ...], out: Path) -> tuple[Any, Any, list[Any]]:
+def eye_marker_glyphs(accepted_flags: tuple[bool, ...], out: Path) -> list[str]:
+    """The status symbol of each eye marker drawn by the real canvas, in order."""
     image = out / "marker-preview.png"
     Image.new("RGB", (200, 100), (90, 90, 90)).save(image)
     engine = QQmlEngine()
@@ -267,46 +287,45 @@ def eye_markers(accepted_flags: tuple[bool, ...], out: Path) -> tuple[Any, Any, 
         )
     )
     assert canvas is not None
-    settle()
-    markers = [i for i in walk(canvas) if i.objectName() == "photoEyeMarker"]
-    return engine, canvas, markers
-
-
-def test_an_eye_marker_says_accepted_or_rejected_by_a_symbol_not_only_by_colour(
-    out: Path,
-) -> None:
-    engine, canvas, markers = eye_markers((True, False), out)
     try:
-        glyphs = []
-        for marker in markers:
-            found = [i for i in walk(marker) if i.objectName() == "photoEyeMarkerGlyph"]
-            assert len(found) == 1, "each marker carries one status symbol"
-            glyphs.append(found[0].property("text"))
-        assert len(glyphs) == 2 and glyphs[0] != glyphs[1] and all(glyphs)
+        settle()
+        return list(evaluate(canvas, f"{GLYPHS}(this, [])"))
     finally:
         canvas.deleteLater()
         engine.deleteLater()
         settle()
 
 
+GLYPHS = """(function glyphs(item, found) {
+    for (let i = 0; i < item.children.length; i++) {
+        const kid = item.children[i];
+        if (kid.objectName === "photoEyeMarkerGlyph") found.push(kid.text);
+        glyphs(kid, found);
+    }
+    return found;
+})"""
+
+
+def test_an_eye_marker_says_accepted_or_rejected_by_a_symbol_not_only_by_colour(
+    out: Path,
+) -> None:
+    glyphs = eye_marker_glyphs((True, False), out)
+    assert len(glyphs) == 2 and glyphs[0] != glyphs[1] and all(glyphs)
+
+
 def test_qt_tint_is_the_per_channel_blend_the_contrast_test_computes(
     make_bridge: Any, open_window: Any
 ) -> None:
     """The contrast test mirrors ``Qt.tint`` in Python; check it on the real one."""
-    from PySide6.QtQml import QQmlExpression, qmlContext
-
     from tests.gui.test_accessibility_contrast import tint
 
     window, _ = open_window(make_bridge())
     settle()
     button = child(window, "scanButton")
-    expression = QQmlExpression(
-        qmlContext(button),
+    value = evaluate(
         button,
         "Qt.tint(Qt.rgba(218/255, 68/255, 83/255, 1),"
         " Qt.alpha(Qt.rgba(35/255, 38/255, 41/255, 1), 0.3))",
     )
-    value, failed = expression.evaluate()
-    assert not failed and not expression.hasError(), expression.error().toString()
     got = (value.red(), value.green(), value.blue())
     assert got == pytest.approx(tint((218, 68, 83), (35, 38, 41), 0.3), abs=1.01)

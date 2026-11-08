@@ -169,6 +169,20 @@ Item {
                 border.width: modelData.id === canvas.selectedId ? 2 / canvas.viewZoom : 1 / canvas.viewZoom
                 border.color: modelData.id === canvas.selectedId ? "#ffffff" : (modelData.accepted ? "#75d69c" : "#ffcd70")
                 visible: canvas.showEyes && canvas.sourceWidth > 0 && canvas.sourceHeight > 0
+
+                // Accepted or rejected is also said by a symbol, not only by the colour.
+                Text {
+                    objectName: "photoEyeMarkerGlyph"
+                    x: 0
+                    y: -height
+                    transformOrigin: Item.BottomLeft
+                    scale: 1 / canvas.viewZoom
+                    text: modelData.accepted ? "\u2713" : "\u2715"
+                    color: parent.border.color
+                    font.bold: true
+                    font.pixelSize: 12
+                    Accessible.ignored: true
+                }
             }
         }
 

@@ -116,7 +116,7 @@ def used_text_colours(scheme: dict[str, Rgb], background: str) -> dict[str, Rgb]
     base = scheme[background]
     colours: dict[str, Rgb] = {"textColor": scheme["text"]}
     for name, number, expression in qml_colour_lines():
-        for match in HINT.finditer(expression):
+        for match in HINT.finditer(MIXED.sub("", expression)):
             alpha = float(match.group(1))
             colours[f"{name}:{number} hint"] = blend(scheme["text"], base, alpha)
         for match in MIXED.finditer(expression):
@@ -177,5 +177,6 @@ def test_the_keyboard_position_in_a_list_is_outlined_not_only_tinted(file_name: 
     match = re.search(r"highlight:\s*Rectangle\s*\{(.*?)\n\s{12}\}", text, re.DOTALL)
     assert match, f"{file_name} marks the current item"
     block = match.group(1)
-    assert "border.width" in block
+    width = re.search(r"border\.width:\s*(\d+)", block)
+    assert width and int(width.group(1)) >= 2
     assert "border.color: Kirigami.Theme.textColor" in block

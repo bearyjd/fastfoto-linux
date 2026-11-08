@@ -119,7 +119,7 @@ QQC2.Dialog {
                 visible: dialog.cropMode && dialog.cropRejected
                 text: qsTr("The crop must be at least 5 mm on each side.")
                 textFormat: Text.PlainText
-                color: Kirigami.Theme.negativeTextColor
+                color: Qt.tint(Kirigami.Theme.negativeTextColor, Qt.alpha(Kirigami.Theme.textColor, 0.3))
                 wrapMode: Text.WordWrap
             }
         }

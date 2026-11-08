@@ -26,12 +26,14 @@ Item {
     signal previewRequested()
     Accessible.name: qsTr("Page %1, %2").arg(number).arg(included ? qsTr("kept") : qsTr("removed"))
     Accessible.role: Accessible.ListItem
+    Accessible.selectable: true
+    Accessible.selected: cell.selected
 
     Rectangle {
         anchors.fill: parent
         anchors.margins: 4
         color: cell.selected ? Kirigami.Theme.alternateBackgroundColor : Kirigami.Theme.backgroundColor
-        border.color: cell.selected ? Kirigami.Theme.highlightColor : Kirigami.Theme.disabledTextColor
+        border.color: cell.selected ? Kirigami.Theme.textColor : Kirigami.Theme.disabledTextColor
         border.width: cell.selected ? 2 : 1
         radius: 4
     }
@@ -50,7 +52,7 @@ Item {
             text: qsTr("Source preview")
             textFormat: Text.PlainText
             font: Kirigami.Theme.smallFont
-            color: Kirigami.Theme.disabledTextColor
+            color: Qt.alpha(Kirigami.Theme.textColor, 0.75)
         }
         Item {
             Layout.fillWidth: true
@@ -103,7 +105,7 @@ Item {
             text: cell.included ? (cell.flags.length ? cell.flagText : qsTr("Keep")) : (cell.dropped ? qsTr("Blank, click Keep to restore") : qsTr("Removed"))
             textFormat: Text.PlainText
             elide: Text.ElideRight
-            color: cell.flags.length ? Kirigami.Theme.neutralTextColor : Kirigami.Theme.textColor
+            color: cell.flags.length ? Qt.tint(Kirigami.Theme.neutralTextColor, Qt.alpha(Kirigami.Theme.textColor, 0.6)) : Kirigami.Theme.textColor
             QQC2.ToolTip.visible: flagHover.hovered && cell.flags.length > 0
             QQC2.ToolTip.text: cell.flagText
             HoverHandler { id: flagHover }

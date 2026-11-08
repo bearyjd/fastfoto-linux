@@ -8,6 +8,7 @@ offered choices; a file past the size cap is not read at all.
 import json
 import logging
 from collections.abc import Iterator
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -90,11 +91,50 @@ def test_deep_nesting_gives_defaults(depth: int, path: Path) -> None:
     assert prefs.load_mode(path) is Mode.PHOTOS
 
 
-def test_saved_settings_round_trip(path: Path) -> None:
-    _saved_base(path)
-    assert prefs.load_form(path) == prefs.load_form(path)
-    assert prefs.load_mode(path) is Mode.DOCUMENTS
-    prefs.save_form(prefs.load_form(path), path)
+def _other(current: str, choices: Any) -> str:
+    return next(choice for choice in sorted(choices) if choice != current)
+
+
+def _non_default_forms() -> tuple[ScanForm, DocumentForm]:
+    defaults, document_defaults = ScanForm(), DocumentForm()
+    form = ScanForm(
+        output_folder="/srv/scans",
+        album="Holiday",
+        loaded=_other(defaults.loaded, prefs._CHOICES["loaded"]),
+        backs=_other(defaults.backs, prefs._CHOICES["backs"]),
+        restore=not defaults.restore,
+        orient=not defaults.orient,
+        redeye=not defaults.redeye,
+        dpi=next(d for d in sorted(prefs._CHOICES["dpi"]) if d != defaults.dpi),
+        keep_original=not defaults.keep_original,
+        preset=_other(defaults.preset, prefs._CHOICES["preset"]),
+    )
+    documents = DocumentForm(
+        name="Tax papers",
+        colour=_other(document_defaults.colour, prefs._DOCUMENT_CHOICES["colour"]),
+        dpi=next(d for d in sorted(prefs._DOCUMENT_CHOICES["dpi"]) if d != document_defaults.dpi),
+        both_sides=not document_defaults.both_sides,
+        keep_blank=not document_defaults.keep_blank,
+        searchable=not document_defaults.searchable,
+        langs="deu",
+        cleanup=_other(document_defaults.cleanup, prefs._DOCUMENT_CHOICES["cleanup"]),
+        despeckle=not document_defaults.despeckle,
+        deskew=not document_defaults.deskew,
+        preset=_other(document_defaults.preset, prefs._DOCUMENT_CHOICES["preset"]),
+    )
+    return form, documents
+
+
+def test_non_default_settings_come_back_exactly_from_a_fresh_load(path: Path) -> None:
+    form, documents = _non_default_forms()
+    assert form != ScanForm() and documents != DocumentForm()
+    path.unlink(missing_ok=True)
+    prefs.save_form(form, path)
+    prefs.save_document_form(documents, path)
+    prefs.save_mode(Mode.DOCUMENTS, path)
+    expected = replace(form, date="", notes="")  # a batch's date and notes are not remembered
+    assert prefs.load_form(path) == expected
+    assert prefs.load_document_form(path) == documents
     assert prefs.load_mode(path) is Mode.DOCUMENTS
 
 

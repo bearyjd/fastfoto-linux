@@ -15,28 +15,60 @@ PLACEHOLDER = re.compile(r"%L?(?:\d+|n)")
 CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
 
-def messages() -> list[tuple[str, str, tuple[str, ...], str | None]]:
-    """(context, source, every form of the translation, type) of each message of the German .ts.
+def resolved(element: ET.Element | None) -> str:
+    """The text an element stands for in a .ts file, as Qt's reader resolves it.
+
+    The text before a child, each ``<byte value="x1b"/>`` (hex with an ``x``, or decimal) as the
+    character it names, and the text after each child (its tail). Reading only ``element.text``
+    would miss everything behind a ``<byte>``.
+    """
+    if element is None:
+        return ""
+    parts = [element.text or ""]
+    for child in element:
+        if child.tag == "byte":
+            value = child.get("value", "")
+            code = int(value[1:], 16) if value.startswith("x") else int(value)
+            parts.append(chr(code))
+        parts.append(child.tail or "")
+    return "".join(parts)
+
+
+def parse_messages(root: ET.Element) -> list[tuple[str, str, tuple[str, ...], str | None]]:
+    """(context, source, every resolved form of the translation, type) of each message.
 
     A message with plural forms has one text per ``<numerusform>``; any other has one text.
     """
-    root = ET.parse(i18n.source_path("de")).getroot()
     found = []
     for context in root.iter("context"):
         for message in context.iter("message"):
             translation = message.find("translation")
             assert translation is not None
             forms = translation.findall("numerusform")
-            texts = tuple(form.text or "" for form in forms) or (translation.text or "",)
+            texts = tuple(resolved(form) for form in forms) or (resolved(translation),)
             found.append(
                 (
                     context.findtext("name") or "",
-                    message.findtext("source") or "",
+                    resolved(message.find("source")),
                     texts,
                     translation.get("type"),
                 )
             )
     return found
+
+
+def messages() -> list[tuple[str, str, tuple[str, ...], str | None]]:
+    """The messages of the German .ts."""
+    return parse_messages(ET.parse(i18n.source_path("de")).getroot())
+
+
+def snippet(source: str, *forms: str) -> list[tuple[str, str, tuple[str, ...], str | None]]:
+    body = "".join(f"<numerusform>{form}</numerusform>" for form in forms)
+    xml = (
+        "<TS><context><name>c</name><message><source>"
+        f"{source}</source><translation>{body}</translation></message></context></TS>"
+    )
+    return parse_messages(ET.fromstring(xml))
 
 
 def problems(source: str, forms: tuple[str, ...]) -> list[str]:
@@ -131,6 +163,27 @@ def test_unfinished_suggestions_are_free_of_markup_too() -> None:
             assert "markup" not in found and "control character" not in found, source
 
 
+def test_text_behind_a_byte_element_is_part_of_the_translation() -> None:
+    [(_, _, forms, _)] = snippet("%n page(s)", "%n Seite", '%n Seiten<byte value="x1b"/>')
+    assert forms == ("%n Seite", "%n Seiten\x1b")
+    [(_, _, forms, _)] = snippet("Page", 'a<byte value="x3c"/>b<byte value="38"/>c')
+    assert forms == ("a<b&c",)  # x3c is '<', decimal 38 is '&'; the tails are kept
+
+
+def test_faults_hidden_in_byte_elements_and_their_tails_are_found() -> None:
+    def found(source: str, *forms: str) -> list[str]:
+        [(_, _, resolved_forms, _)] = snippet(source, *forms)
+        return problems(source, resolved_forms)
+
+    assert "control character" in found("%n page(s)", "%n Seite", '%n Seiten<byte value="x1b"/>')
+    assert "markup" in found("Page", 'Seite<byte value="x3c"/>b>')
+    assert "markup" in found("Page", 'Seite<byte value="38"/>')
+    assert "placeholders" in found("%n page(s)", "%n Seite", 'Seiten<byte value="x25"/>')
+    assert "placeholders" in found("%n page(s)", '%n Seite<byte value="x25"/>n')  # extra %n
+    assert "placeholders" in found("%n page(s)", 'Seite<byte value="x20"/>Seiten')  # none
+    assert found("Page", 'Seite<byte value="x20"/>eins') == []
+
+
 def test_the_rules_catch_each_kind_of_fault_in_any_plural_form() -> None:
     assert problems("Done.", ("Fertig.",)) == []
     assert problems("%n page(s)", ("%n Seite", "%n Seiten")) == []
@@ -192,13 +245,41 @@ def own_properties(source: str, start: int) -> str:
     return block
 
 
+TEXT_FORMAT = re.compile(r"\btextFormat\s*:\s*([^\n;}]+)")
+
+
+def text_formats(source: str) -> list[str]:
+    """The value of every ``textFormat`` binding in a QML source."""
+    code = re.sub(r"//[^\n]*", "", source)  # a comment may talk about textFormat
+    return [value.strip() for value in TEXT_FORMAT.findall(code)]
+
+
+def test_the_text_format_reader_sees_the_value_not_only_the_name() -> None:
+    assert text_formats("a { textFormat: Text.PlainText }") == ["Text.PlainText"]
+    assert text_formats("a {\n  textFormat: Text.RichText\n}") == ["Text.RichText"]
+    assert text_formats("textFormat: Text.StyledText; x: 1") == ["Text.StyledText"]
+    assert text_formats("// textFormat: Text.RichText\nx: 1") == []
+    assert text_formats("textFormat : cond ? Text.PlainText : Text.RichText") != ["Text.PlainText"]
+
+
+def test_every_text_format_in_the_qml_is_plain_text() -> None:
+    """Rich, styled and markdown text would read markup out of a translation."""
+    wrong = []
+    for qml in sorted(QML_DIR.glob("*.qml")):
+        for value in text_formats(qml.read_text()):
+            if value != "Text.PlainText":
+                wrong.append(f"{qml.name}: {value}")
+    assert wrong == []
+
+
 def test_every_label_and_heading_in_the_qml_shows_plain_text() -> None:
     """A translation is text, whatever it contains: no label may read it as rich text."""
     missing = []
     for qml in sorted(QML_DIR.glob("*.qml")):
         source = qml.read_text()
         for match in re.finditer(TEXT_TYPES, source):
-            if "textFormat" not in own_properties(source, match.end()):
+            block = own_properties(source, match.end())
+            if text_formats(block) != ["Text.PlainText"]:
                 missing.append(f"{qml.name}:{source[: match.start()].count(chr(10)) + 1}")
     # PhotoEditCanvas.qml draws marker glyphs, not translated text
     assert [name for name in missing if not name.startswith("PhotoEditCanvas.qml")] == []

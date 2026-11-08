@@ -98,7 +98,7 @@ def known_limits() -> str:
         "no output size cap",
         "about 100 mb",
         "small",
-        "uncalibrated",
+        "sharpening amount is uncalibrated",
         "scanner_capabilities.md",
         "design/photo-geometry.md",
     ],

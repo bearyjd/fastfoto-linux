@@ -96,7 +96,7 @@ class PhotoEditView(QObject):
 
     @Property(str, notify=changed)
     def sourceLabel(self) -> str:
-        return "Retained cropped, upright original JPEG. Photo edits save a new copy."
+        return "Retained cropped, upright original. Photo edits save a new copy."
 
     @Property(str, notify=changed)
     def warning(self) -> str:

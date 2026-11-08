@@ -130,8 +130,11 @@ class PhotoSource:
     xmp: bytes = field(default=b"", repr=False)
     icc_profile: bytes | None = field(default=None, repr=False)
     warnings: tuple[str, ...] = ()
+    format: str = "JPEG"
 
     def __post_init__(self) -> None:
+        if self.format not in {"JPEG", "PNG"}:
+            raise PhotoEditError("source format must be JPEG or PNG")
         if not isinstance(self.path, Path) or not self.path.is_absolute():
             raise PhotoEditError("source path must be absolute")
         sibling_name(self.path.name)

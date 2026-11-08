@@ -173,5 +173,5 @@ def test_png_masters_are_listed_with_png_urls_and_load_in_qt(
         assert shown.endswith(".png")
         assert not QImage(QUrl(shown).toLocalFile()).isNull()
     assert model.data(index, role(model, "title")) == "Trip_0001"
-    assert model.data(index, role(model, "canReviewRedEyes")) is False
-    assert "PNG" in model.data(index, role(model, "reviewRedEyesReason"))
+    assert model.data(index, role(model, "canReviewRedEyes")) is True
+    assert model.data(index, role(model, "reviewRedEyesReason")) == ""

@@ -93,23 +93,29 @@ def test_trusted_tmp_path_is_used_as_is(tmp_path: Path, monkeypatch: pytest.Monk
     assert list(_trusted_tmp.trusted_tmp_path(tmp_path)) == [tmp_path]
 
 
+@pytest.mark.parametrize("locked_mode", [0o500, 0o200, 0o000])
 def test_untrusted_tmp_path_moves_to_the_runtime_dir_and_is_removed(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, locked_mode: int
 ) -> None:
     runtime = tmp_path / "runtime"
-    runtime.mkdir()
+    runtime.mkdir(mode=0o711)
+    link = tmp_path / "runtime-link"
+    link.symlink_to(runtime)  # production compares resolved paths, so the stand-in must be one
     work = tmp_path / "work"
-    monkeypatch.setenv("XDG_RUNTIME_DIR", str(runtime))
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(link))
     monkeypatch.setattr(_trusted_tmp, "untrusted_ancestor", probe({work.resolve()}))
     fixture = _trusted_tmp.trusted_tmp_path(work)
     moved = next(fixture)
-    assert moved.parent == runtime and moved.is_dir()
+    assert moved.parent == runtime.resolve() and moved == moved.resolve() and moved.is_dir()
     locked = moved / "locked"
-    (locked / "inner").mkdir(parents=True)
-    locked.chmod(0o500)  # a test that left a folder it cannot delete from
+    (locked / "inner" / "deeper").mkdir(parents=True)
+    (locked / "inner" / "file").write_bytes(b"x")
+    (locked / "inner").chmod(locked_mode)  # a test that left a folder it cannot delete from
+    locked.chmod(locked_mode)
     with pytest.raises(StopIteration):
         next(fixture)
     assert list(runtime.iterdir()) == []
+    assert stat.S_IMODE(runtime.stat().st_mode) == 0o711  # the runtime dir itself is untouched
 
 
 @pytest.mark.parametrize("runtime", [None, "relative/run", "untrusted"])

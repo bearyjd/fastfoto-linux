@@ -168,7 +168,7 @@ def test_shared_root_owned_ancestor_is_trusted_only_with_the_sticky_bit(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, sticky: bool
 ) -> None:
     """Like a normal /tmp: CI's own temp folder relies on this, dev containers may not."""
-    original_stat = Path.stat
+    original_stat, original_statvfs = Path.stat, os.statvfs
 
     def directory_info(path: Path, **kwargs: object) -> os.stat_result:
         info = original_stat(path, **kwargs)
@@ -179,12 +179,15 @@ def test_shared_root_owned_ancestor_is_trusted_only_with_the_sticky_bit(
         fields[0] = stat.S_IFDIR | (0o1777 if sticky else 0o777)
         return os.stat_result(fields)
 
+    def mount_info(path: Path) -> os.statvfs_result | SimpleNamespace:
+        return SimpleNamespace(f_flag=0) if path == tmp_path else original_statvfs(path)
+
     monkeypatch.setattr(Path, "stat", directory_info)
-    monkeypatch.setattr(os, "statvfs", lambda path: SimpleNamespace(f_flag=0))
+    monkeypatch.setattr(os, "statvfs", mount_info)
     if sticky:
         assert ocr_languages._trusted_base(tmp_path / "data") == tmp_path / "data"
     else:
-        with pytest.raises(OSError, match=r"(safe|trusted)"):
+        with pytest.raises(OSError, match="needs a safe, trusted data directory"):
             ocr_languages._trusted_base(tmp_path / "data")
 
 

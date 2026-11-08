@@ -24,24 +24,11 @@ from tests.face_images import load_astronaut
 from tests.library.jpeg_helpers import APP1, exif_bytes, segment, write_file
 from tests.library.png_helpers import make_png, with_before_idat, xmp_packet
 from tests.library.untrusted_helpers import insert_after_jfif, sideways, with_xmp
+from tests.library.xmp_helpers import doc
 
 PNG = make_png(load_astronaut(), exif=exif_bytes(1))
 EXTENSION_HEADER = b"http://ns.adobe.com/xmp/extension/\x00"
 GUID = b"0123456789ABCDEF0123456789ABCDEF"
-NAMESPACES = (
-    b'xmlns:x="adobe:ns:meta/" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" '
-    b'xmlns:tiff="http://ns.adobe.com/tiff/1.0/" xmlns:dc="http://purl.org/dc/elements/1.1/"'
-)
-
-
-def doc(body: bytes, attributes: bytes = b"", *, head: bytes = b"") -> bytes:
-    """A packet: ``head`` (declaration, DTD), then one description with ``body`` inside."""
-    return (
-        head + b"<x:xmpmeta " + NAMESPACES + b"><rdf:RDF><rdf:Description " + attributes + b">"
-        b"" + body + b"</rdf:Description></rdf:RDF></x:xmpmeta>"
-    )
-
-
 # -- (1) a DTD can build or supply an Orientation -----------------------------------------------
 ENTITY_BUILT = doc(
     b"&e;",

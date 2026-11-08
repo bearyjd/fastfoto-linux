@@ -99,7 +99,8 @@ means and improvements (so a tiny group cannot reveal one item). Every automated
 whose group is smaller is `insufficient_data` and fails the gate. The wb `cast_items` group is
 judged on its own count. Zero-event criteria (`wrong_direction`, `colour_loss`) are judged on
 the count `k == 0`, not on the rounded rate. Every criterion is judged on the unrounded
-metrics; only the copy written to `report.json` is rounded.
+metrics, with a relative slack of 1e-9 at inclusive limits for float error; only the copy
+written to `report.json` is rounded.
 
 | feature | constants | design note | harness | criterion | metric | op | value | automated | label |
 |---|---|---|---|---|---|---|---|---|---|

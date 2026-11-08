@@ -17,6 +17,7 @@ NOT_APPLICABLE = "not_applicable"
 NO_HARNESS = "none"
 MIN_N = 5  # a proposal, not a roadmap number: below it a group reports no statistics
 PROPOSAL = "proposal"
+FLOAT_SLACK = 1e-9  # relative: absorbs float error at an inclusive limit, nothing measurable
 _OPS: dict[str, Callable[[object, object], bool]] = {
     "<=": operator.le,
     ">=": operator.ge,
@@ -162,7 +163,18 @@ def _verdict(criterion: Criterion, metrics: Mapping[str, object]) -> str:
     value = _lookup(metrics, criterion.metric)
     if type(value) not in (int, float):
         return INSUFFICIENT
-    return PASS if _OPS[criterion.op](value, criterion.value) else FAIL
+    return PASS if _OPS[criterion.op](value, _slackened(criterion)) else FAIL
+
+
+def _slackened(criterion: Criterion) -> float:
+    """The limit widened by ``FLOAT_SLACK`` in the inclusive direction, so a mean that is
+    mathematically on the limit (0.30000000000000004 for 0.3) is not failed by float error."""
+    slack = FLOAT_SLACK * max(1.0, abs(criterion.value))
+    if criterion.op == "<=":
+        return criterion.value + slack
+    if criterion.op == ">=":
+        return criterion.value - slack
+    return criterion.value
 
 
 def judge(feature: str, metrics: Mapping[str, object]) -> dict[str, str]:

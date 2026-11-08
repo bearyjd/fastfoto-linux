@@ -103,13 +103,14 @@ chore, perf, ci. PR bodies have a summary, the design, a test plan and a privacy
   order or on state left in `os.environ` (use `monkeypatch`).
 - The OCR language tests (`tests/documents/test_ocr_language*.py`) need no Tesseract and no
   language data: they fake both. They do need a temp folder the OCR model cache trusts, one whose
-  parent folders belong to root or to you (or are read-only, or shared with the sticky bit).
+  parent folders belong to root or to you and are not writable by others unless they have the
+  sticky bit (read-only mounts are fine).
   Rootless containers (toolbox, distrobox, podman) show the host's root-owned `/tmp` as owned by
   uid 65534 (`nobody`), which the cache rightly refuses. The tests then move themselves to a
   private folder in `$XDG_RUNTIME_DIR`. If that is unset or untrusted too, they are skipped
   locally with the reason (and fail under `CI`): rerun them with
-  `--basetemp=<a folder under your home>`. Do not remove the cache's ownership check to make them
-  pass.
+  `--basetemp=<a folder under your home that only you can write to>`. Do not remove the cache's
+  ownership check to make them pass.
 - Several tests in `tests/documents/test_docs_*_claims.py` check statements in `README.md` and
   `docs/design/documents.md`. If you edit those files, run the full suite.
 

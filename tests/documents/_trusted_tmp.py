@@ -42,20 +42,23 @@ def _runtime_dir() -> Path | None:
     configured = Path(os.environ.get("XDG_RUNTIME_DIR", ""))
     if not configured.is_absolute() or not configured.is_dir():
         return None
-    return configured if untrusted_ancestor(configured) is None else None
+    resolved = configured.resolve()  # the cache compares resolved paths, so the tests must too
+    return resolved if untrusted_ancestor(resolved) is None else None
 
 
 def _remove(folder: Path) -> None:
-    """Delete ``folder`` even if a test left read-only folders inside it."""
+    """Delete ``folder`` even if a test left folders inside it that you cannot read or write.
 
-    def unlock(_function: object, failed: str, _error: BaseException) -> None:
-        os.chmod(Path(failed).parent, stat.S_IRWXU)
-        if os.path.isdir(failed):
-            shutil.rmtree(failed, onexc=unlock)
-        else:
-            os.unlink(failed)
-
-    shutil.rmtree(folder, onexc=unlock)
+    Only real folders inside ``folder`` are unlocked (never a symlink's target, never the
+    runtime dir itself); anything still in the way afterwards raises.
+    """
+    folder.chmod(stat.S_IRWXU)
+    for parent, children, _files in os.walk(folder):
+        for child in children:  # unlocked before os.walk descends into it
+            path = Path(parent, child)
+            if stat.S_ISDIR(path.lstat().st_mode):
+                path.chmod(stat.S_IRWXU)
+    shutil.rmtree(folder)
 
 
 def trusted_tmp_path(tmp_path: Path) -> Iterator[Path]:

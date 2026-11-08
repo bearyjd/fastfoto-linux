@@ -111,7 +111,8 @@ def test_a_multi_line_binding_is_read_to_its_end() -> None:
     }"""
     assert problems(good) == []
     assert problems(
-        "Label {\n  color: Qt.tint(Kirigami.Theme.neutralTextColor,\n    Qt.alpha(Kirigami.Theme.textColor, 0.02))\n}"
+        "Label {\n  color: Qt.tint(Kirigami.Theme.neutralTextColor,\n"
+        "    Qt.alpha(Kirigami.Theme.textColor, 0.02))\n}"
     )
 
 

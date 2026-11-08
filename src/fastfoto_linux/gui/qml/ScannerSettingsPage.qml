@@ -47,6 +47,7 @@ Kirigami.ScrollablePage {
             }
             QQC2.BusyIndicator {
                 running: bridge.power.busy
+                Accessible.name: qsTr("Working")
                 visible: running
             }
         }

@@ -310,7 +310,7 @@ Kirigami.Page {
                 enabled: editor.canReset
                 onClicked: editor.reset()
             }
-            QQC2.BusyIndicator { running: editor.busy; visible: running }
+            QQC2.BusyIndicator { running: editor.busy; visible: running; Accessible.name: qsTr("Working") }
             Item { Layout.fillWidth: true }
             QQC2.Button {
                 objectName: "photoOpenSaved"

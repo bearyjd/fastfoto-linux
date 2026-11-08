@@ -7,11 +7,12 @@ what only a person can check (the Orca script at the end).
 
 | Check | Test | What it pins |
 | --- | --- | --- |
-| Every named control has an accessible name | `tests/gui/qt/test_qml_accessibility.py` | The accessibility tree Qt builds (the one Orca reads) is walked on the scan page, the scanner settings page, the document page review and the photo editor. Any control with an `objectName` and an operable or status role (button, check box, combo box, text field, slider, spin box, tab, list, progress bar, busy indicator, message) must have a non-empty name. Controls that exist only in some states (the banners, the busy indicator, the language download progress bar) are included even while hidden. |
+| Every control has an accessible name | `tests/gui/qt/test_qml_accessibility.py` | The accessibility tree Qt builds (the one Orca reads) is walked on the scan page, the scanner settings page, the document page review and the photo editor. Every item with an operable or status role (button, check box, combo box, text field, slider, spin box, tab, list, progress bar, busy indicator, message) must have a name with a letter or digit in it (an arrow glyph is a button's text, not its name), in every delegate instance of every list on the page, not only the first. Kirigami's own text parts inside labels and combo boxes, and the hidden action button of a placeholder message, are skipped. Controls that exist only in some states (banners, busy indicators, the language progress bar) are in the tree while hidden. A static check also requires a name on every busy indicator and progress bar in the QML, including those in dialogs, which the window sweep cannot reach. |
 | A disabled Scan button says why | same | Its accessible description is the same sentence the window shows beside it. |
 | The scanner chip says the state in words | same | Its description is the scanner message. |
 | The selected page in the review is "selected" | same | `Accessible.selected` follows the current page, so the selection is not only a border colour. |
-| Eye markers say accepted or rejected with a symbol | same | A check mark or a cross sits on each marker next to its colour. |
+| Eye markers say accepted or rejected with a symbol | same | A check mark or a cross sits on each marker next to its colour. It is placed above the marker, below it where the canvas (which clips) has no room above, and kept inside the canvas sideways; the tests put markers on all four edges. Its size is the system font size (it is not a fixed pixel size), checked by doubling the application font. |
+| Tab order | same | The photo grid and document list take Tab focus (asserted as a property). The review page's grid cannot be tested that way: Qt keeps it on the Tab chain even with `activeFocusOnTab: false`, so its Tab focus is only covered by the manual script. |
 | Tab order | same | The photo form is visited in reading order (mode tabs, folder, album, date, notes, loaded, backs, resolution, file size, options, enhanced switch, photo grid, scanner chip, Check again); the review visits the page grid then Back then Save; every visible, enabled control with an object name on the scan page is on the Tab chain. |
 | Text contrast | `tests/gui/test_accessibility_contrast.py` | See below. |
 | Keyboard position in the lists | same | The photo grid and the document list draw a 2 px outline in the text colour around the current item while they have focus (before, it was only a faint tint). The selected page in the review has a 2 px text-colour border. |
@@ -39,12 +40,31 @@ Found and fixed (colour changes only, no layout):
 Breeze Dark passes with the raw colours except error text (3.3 to 4.3), which the blend lifts
 to 5.0 and above.
 
+Non-text cues (WCAG 1.4.11, 3 to 1), worst of the four backgrounds on Breeze Light: the
+outline of the current item and the selected review page (the text colour) is 12.0; the
+unselected review page outline (the `disabledTextColor` role) is 3.33 on the window alternate
+background, only 0.33 above the minimum. That margin is thin; it is kept because the page
+boundary is also given by the cell layout. The pinned Breeze Light view background is the real
+`[Colors:View]` value, 252, 252, 252.
+
+How the contrast test reads the QML (it fails closed). `tests/gui/qml_colours.py` reads every
+`color:`, `border.color:` and `property color` binding in `src/fastfoto_linux/gui/qml/*.qml`,
+multi-line ones included, and evaluates each in both pinned schemes on the four backgrounds. A
+binding it cannot read is a failure, not a pass: `palette` bindings, `Qt.rgba`, `Qt.darker`,
+functions, unknown theme roles, a quoted colour name or hex literal, a colour assigned from
+JavaScript (`item.color = ...`). The only exceptions are in `ALLOWED` in that file, keyed by
+file and exact expression, each with its reason (the colours drawn over photos, and two places
+that pass a control's own palette on). Remaining limits: the scan reads text, so a colour built
+in a function the QML calls is seen only as an unreadable expression; a `color:` on a fill is
+not told apart from text (fill roles are skipped, everything else must reach 4.5); and the text
+colour is checked on the four standard backgrounds, not on whatever a control happens to sit on.
+
 Not covered by a computed ratio, and why:
 
 - The eye markers and the crop rectangle are drawn over the photo, so their contrast depends on
   the picture. They keep a fixed colour plus a symbol (markers) or a white outline.
 - The focus ring of buttons, fields and check boxes is drawn by the Qt style. In Breeze Light
-  the focus colour is 2.0 to 2.5 to 1 against the window, below the 3 to 1 of WCAG 1.4.11.
+  the focus colour is 2.0 to 2.4 to 1 against the backgrounds, below the 3 to 1 of WCAG 1.4.11.
   This is the system style, not something the app can change here.
 - `negativeBackgroundColor` (the badge fill) is derived by KDE at run time from the scheme, so
   it is not pinned.

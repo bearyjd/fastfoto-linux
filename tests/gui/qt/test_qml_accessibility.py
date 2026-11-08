@@ -392,3 +392,12 @@ def test_qt_tint_is_the_per_channel_blend_the_contrast_test_computes(
     )
     got = (value.red(), value.green(), value.blue())
     assert got == pytest.approx(tint((218, 68, 83), (35, 38, 41), 0.3), abs=1.01)
+
+
+def test_the_lists_take_the_tab_focus_so_the_keyboard_can_enter_them(
+    make_bridge: Any, open_window: Any
+) -> None:
+    window, _ = open_window(make_bridge())
+    settle()
+    for name in ("photosGrid", "documentsList"):
+        assert child(window, name).property("activeFocusOnTab") is True, name

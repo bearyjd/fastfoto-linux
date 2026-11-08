@@ -317,6 +317,7 @@ QQC2.Dialog {
             QQC2.BusyIndicator {
                 anchors.centerIn: parent
                 running: dialog.visible && bridge.review.previewUrl === ""
+                Accessible.name: qsTr("Working")
                 visible: running
             }
         }

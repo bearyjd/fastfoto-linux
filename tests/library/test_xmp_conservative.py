@@ -160,6 +160,21 @@ def test_chunks_with_a_gap_stop_the_turn(tmp_path: Path) -> None:
     assert decided(tmp_path, insert_after_jfif(sideways(90), chunks)) == (Action.SKIP, REASON)
 
 
+def test_chunks_with_a_gap_that_the_declared_length_hides_stop_the_turn(tmp_path: Path) -> None:
+    chunks = extended(b"<d/>", 0, 8) + extended(b"<e/>", 8 + 4, 8)
+    assert decided(tmp_path, insert_after_jfif(sideways(90), chunks)) == (Action.SKIP, REASON)
+
+
+def test_chunks_that_disagree_about_the_length_stop_the_turn(tmp_path: Path) -> None:
+    chunks = extended(b"<d/>", 0, 8) + extended(b"<e/>", 4, 9)
+    assert decided(tmp_path, insert_after_jfif(sideways(90), chunks)) == (Action.SKIP, REASON)
+
+
+def test_chunks_that_tile_the_declared_length_exactly_do_not_stop_the_turn(tmp_path: Path) -> None:
+    chunks = extended(b"<d/>", 0, 8) + extended(b"<e/>", 4, 8)
+    assert decided(tmp_path, insert_after_jfif(sideways(90), chunks))[0] is Action.ROTATE
+
+
 def test_chunks_that_do_not_add_up_to_the_declared_length_stop_the_turn(tmp_path: Path) -> None:
     chunks = extended(b"<d/>", 0, 99)
     assert decided(tmp_path, insert_after_jfif(sideways(90), chunks)) == (Action.SKIP, REASON)

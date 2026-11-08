@@ -98,8 +98,12 @@ def test_the_source_array_is_not_modified() -> None:
     assert np.array_equal(source, before)
 
 
-@pytest.mark.parametrize("preset", [None, ExportPreset.HIGH_QUALITY, ExportPreset.LOSSLESS], ids=str)
-def test_other_paths_never_sharpen(preset: ExportPreset | None, monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize(
+    "preset", [None, ExportPreset.HIGH_QUALITY, ExportPreset.LOSSLESS], ids=str
+)
+def test_other_paths_never_sharpen(
+    preset: ExportPreset | None, monkeypatch: pytest.MonkeyPatch
+) -> None:
     def fail(*_args: object) -> None:
         raise AssertionError("sharpened")
 

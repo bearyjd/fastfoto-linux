@@ -25,7 +25,7 @@ white balance or tone. One pass serves every preview image. The cost is that are
 are denoised too. Sharpen runs last, after every resample and after tone, because it reads
 neighbours and so does not commute with a crop; the preview therefore crops before it sharpens, and
 its "after" image equals the export. This differs from the roadmap hypothesis of denoising after
-geometry; it does keep "sharpen only after geometry and denoise". Render has no resize; a follow-up "small" export must sharpen after its own downscale or say it does not.
+geometry; it does keep "sharpen only after geometry and denoise". Render has no resize; the "small" export preset sharpens after its own downscale (see `export-presets.md`).
 
 ## Math
 

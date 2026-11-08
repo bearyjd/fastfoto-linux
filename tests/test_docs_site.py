@@ -259,6 +259,16 @@ MUST_FAIL = {
     },
     "css escape": {"css/a.css": "a{background:url(\\68 ttps://evil.example/a.png)}"},
     "css import comment": {"css/a.css": '@import/**/"https://evil.example/a.css";'},
+    "plain css url": {"css/a.css": "a{background:url(https://evil.example/a.png)}"},
+    "css url after a property": {
+        "css/a.css": "a{background-image:url('https://evil.example/a.png')}"
+    },
+    "css url after a property in a style tag": {
+        "index.html": "<style>a{background:url(https://evil.example/a.png)}</style>"
+    },
+    "css url in a style attribute": {
+        "index.html": '<p style="background:url(https://evil.example/a.png)">x</p>'
+    },
     "css url in string": {"css/a.css": 'a::after{content:"url(https://evil.example/a.png)"}'},
     "css protocol relative": {"css/a.css": "a{background:url(//evil.example/a.png)}"},
     "tab in scheme": {"index.html": '<img src="ht&#9;tps://evil.example/a.png">'},

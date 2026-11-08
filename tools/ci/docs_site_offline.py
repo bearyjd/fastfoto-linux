@@ -8,7 +8,10 @@ normalised the way a browser would (character references, CSS escapes, tabs and 
 EXCEPT in these places:
   * the href of an <a> element (a link is fetched only when a visitor clicks it); javascript: and
     other script-bearing schemes there still fail;
-  * the exact namespace names in NAMESPACES (labels, not requests);
+  * the exact namespace names in NAMESPACES, but only as the value of an xmlns or xmlns:* attribute
+    (a declaration, not a request; anywhere else a browser may fetch it);
+  * inert attributes (title, alt, aria-label, aria-description, lang, id, class, name, data-*, and
+    the content of a meta description or keywords), which are shown or matched, never fetched;
   * text between tags outside <script> and <style> (displayed, never fetched);
   * CSS comments (stripped), and data:image/... URLs;
   * search/search_index.json, the page text for the search box, which holds URLs written in prose;
@@ -24,7 +27,7 @@ import sys
 from html.parser import HTMLParser
 from pathlib import Path
 
-# Labels that are compared with strings, never fetched.
+# Names that are compared with strings, never fetched, when they are an xmlns declaration.
 NAMESPACES = (
     "http://www.w3.org/2000/svg",
     "http://www.w3.org/1999/xlink",
@@ -39,6 +42,10 @@ VENDOR_HOSTS = {
     "www.mozilla.org": "MPL licence header of a bundled library",
     "developer.mozilla.org": "documentation link in a comment or an error message",
     "github.com": "source and issue links in comments and deprecation messages",
+    # The next two are dead code in the bundle: api.github.com is reached only when mkdocs.yml sets
+    # repo_url, and unpkg.com only for a mermaid diagram. tests/test_docs_site.py::
+    # test_mkdocs_config_has_nothing_that_would_wake_the_third_party_code_in_the_theme keeps both
+    # out of the config, so the code stays dead.
     "api.github.com": "dead code: repository facts, only used when repo_url is set (it is not)",
     "unpkg.com": "dead code: loads mermaid and a polyfill only for pages that use them (none)",
     "${e}": "dead code: GitLab facts, only used when repo_url is set (it is not)",
@@ -64,6 +71,8 @@ VENDOR_HOSTS = {
     "msdn.microsoft.com": "link in a comment",
     "narwhaljs.org": "link in a comment",
 }
+INERT_ATTRS = {"title", "alt", "aria-label", "aria-description", "lang", "id", "class", "name"}
+INERT_META = {"description", "keywords"}
 DATA_ONLY = ("search/search_index.json",)
 BINARY = {".png", ".gz", ".ico", ".jpg", ".jpeg", ".gif", ".webp", ".woff", ".woff2"}
 MARKUP = {".html", ".htm", ".svg", ".xml"}
@@ -79,7 +88,8 @@ SCRIPT_SCHEMES = {
     "vbscript",
     "blob",
 }
-SCHEME = re.compile(r"(?<![\w.+-])([A-Za-z][A-Za-z0-9+.-]*):(//)?([^\s'\"`)<>]*)")
+# The part after the colon is a lookahead so that "background:url(https://x)" is seen twice.
+SCHEME = re.compile(r"(?<![\w.+-])([A-Za-z][A-Za-z0-9+.-]*):(?=(//)?([^\s'\"`)<>]*))")
 RELATIVE = re.compile(r"""(?:^|['"(=,;\s])(//[^\s/*'")<>][^\s'")<>]*)""")
 HOST = re.compile(r"(?:https?|ftps?|wss?)://([^/\s'\"`)<>?#\\]+)", re.IGNORECASE)
 CSS_COMMENT = re.compile(r"/\*.*?\*/", re.DOTALL)
@@ -96,8 +106,6 @@ def normalise(text: str) -> str:
 
 def scan_text(text: str, css: bool = False) -> list[str]:
     """The URL-like strings in text that a browser could fetch."""
-    for label in NAMESPACES:
-        text = re.sub(re.escape(label) + r"(?![\w./~%-])", "", text)
     if css:
         text = CSS_COMMENT.sub("", text)
     found: list[str] = []
@@ -106,9 +114,9 @@ def scan_text(text: str, css: bool = False) -> list[str]:
             scheme, slashes, rest = m[1].lower(), m[2], m[3]
             if scheme == "data":
                 if not rest.lower().startswith("image/"):
-                    found.append(m[0])
+                    found.append(m[0] + (m[2] or "") + m[3][:60])
             elif scheme in SCRIPT_SCHEMES or slashes:
-                found.append(m[0])
+                found.append(m[0] + (m[2] or "") + m[3][:60])
         found.extend(m[1] for m in RELATIVE.finditer(variant))
     return sorted(set(found))
 
@@ -125,15 +133,26 @@ class _Page(HTMLParser):
         for name in ("src", "href", "srcset"):
             if names.count(name) > 1:
                 self.found.append(f"<{tag}> repeats {name}=")
+        meta = dict(attrs).get("name") if tag == "meta" and "http-equiv" not in names else None
         seen: set[str] = set()
         for name, value in attrs:
             if name in seen:
                 continue
             seen.add(name)
+            if self._is_inert(name, value, meta):
+                continue
             hits = scan_text(value or "", css=name == "style")
             if tag == "a" and name == "href":
                 hits = [h for h in hits if not re.match(r"(?i)(https?:)?//", h)]
             self.found.extend(f"<{tag} {name}=...> {hit}" for hit in hits)
+
+    @staticmethod
+    def _is_inert(name: str, value: str | None, meta: str | None) -> bool:
+        if name == "content" and (meta or "").lower() in INERT_META:
+            return True
+        if name.startswith("xmlns"):
+            return (value or "").strip() in NAMESPACES
+        return name in INERT_ATTRS or name.startswith("data-")
 
     handle_startendtag = handle_starttag
 

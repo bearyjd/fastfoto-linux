@@ -14,6 +14,9 @@
 
 ## In the desktop app
 
+The desktop app needs the USB connection; to scan over Wi-Fi without USB, use the command line
+with --net HOST. The commands are below.
+
 1. Open **fastfoto**.
 2. Pick an output folder, an album name and a date.
 3. Press **Scan**. Photos appear in the window as they are saved, each back beside its front.

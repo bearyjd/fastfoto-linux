@@ -35,6 +35,7 @@ ocr = [
 
 [dependency-groups]
 dev = [
+    "hypothesis>=6.150",
     "pypdf>=6.20.1",
     "pytest>=8.3",
     "pytest-cov>=6.0",

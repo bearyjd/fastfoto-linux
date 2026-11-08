@@ -11,6 +11,7 @@ from fastfoto_linux.library import png_exif
 from fastfoto_linux.library.exif_errors import (
     ExifMalformedError,
     ExifTooLargeError,
+    ImageTooLargeError,
     JpegExifError,
     NotAPngError,
     TooManySegmentsError,
@@ -21,8 +22,8 @@ from fastfoto_linux.library.png_exif import Layout, decoder_copy, read_orientati
 from tests.face_images import load_astronaut
 from tests.library.jpeg_helpers import exif_bytes
 from tests.library.png_helpers import (
+    COMPETING_XMP,
     ORIENTATION_XMP,
-    OTHER_NAMESPACE_XMP,
     PLAIN_XMP,
     SIGNATURE,
     assemble,
@@ -101,6 +102,11 @@ MALFORMED = {
     "depth-16-palette": rebuilt(BASE, ihdr(8, 6, depth=16, colour=3)),
     "bad-interlace": rebuilt(BASE, ihdr(8, 6, interlace=2)),
     "bad-compression-method": rebuilt(BASE, ihdr(8, 6)[:10] + b"\x01\x00\x00"),
+    "palette-not-a-multiple-of-three": with_before_idat(
+        without(PALETTE, b"PLTE"), (b"PLTE", palette_chunk(PALETTE)[1] + b"\x00")
+    ),
+    "palette-empty": with_before_idat(without(PALETTE, b"PLTE"), (b"PLTE", b"")),
+    "palette-over-256-entries": with_before_idat(without(PALETTE, b"PLTE"), (b"PLTE", bytes(771))),
     "second-palette": with_before_idat(PALETTE, palette_chunk(PALETTE)),
     "idat-before-ihdr": assemble(image_data_first(BASE)),
     "chunk-type-not-letters": with_before_idat(BASE, (b"a1cd", b"")),
@@ -134,11 +140,27 @@ def test_a_unknown_ancillary_chunk_is_tolerated_and_kept() -> None:
     assert (b"zzZz", b"private") in split(edited)
 
 
-def test_every_chunk_type_a_png_can_use_passes_the_structure_check() -> None:
-    png = with_before_idat(
-        PALETTE, (b"gAMA", b"\x00\x00\xb1\x8f"), (b"tRNS", b"\x00"), (b"pHYs", bytes(9))
+def ordered_palette_png(*, gamma_after_palette: bool) -> bytes:
+    chunks = split(PALETTE)
+    at = kinds(PALETTE).index(b"PLTE")
+    gamma = (b"gAMA", b"\x00\x00\xb1\x8f")
+    around = [chunks[at], gamma] if gamma_after_palette else [gamma, chunks[at]]
+    return assemble(
+        [*chunks[:at], *around, (b"tRNS", b"\x00"), (b"pHYs", bytes(9)), *chunks[at + 1 :]]
     )
-    Layout.of(png)
+
+
+def test_a_png_with_the_usual_ancillary_chunks_in_spec_order_passes() -> None:
+    png = ordered_palette_png(gamma_after_palette=False)
+    assert read_orientation(set_orientation(png, 6)) == 6
+
+
+def test_ancillary_chunk_order_is_not_policed_and_the_chunks_stay_where_they_were() -> None:
+    # gAMA must precede PLTE in the spec; this tool rewrites no colour chunk and Pillow reads such
+    # files, so the order is accepted and left exactly as found.
+    png = ordered_palette_png(gamma_after_palette=True)
+    edited = set_orientation(png, 6)
+    assert [k for k in kinds(edited) if k != b"eXIf"] == kinds(png)
 
 
 def test_too_many_chunks_before_the_image_are_refused() -> None:
@@ -205,6 +227,20 @@ def test_an_xmp_orientation_in_any_carrier_blocks_the_edit(carrier: str) -> None
         set_orientation(png, 6)
 
 
+@pytest.mark.parametrize("name", COMPETING_XMP)
+def test_any_xmp_orientation_under_any_spelling_blocks_the_edit(name: str) -> None:
+    png = with_before_idat(BASE, xmp_packet(COMPETING_XMP[name], "itxt"))
+    with pytest.raises(XmpOrientationError):
+        set_orientation(png, 6)
+
+
+def test_an_xmp_orientation_spelled_with_a_character_reference_is_blocked_when_compressed() -> None:
+    packet = COMPETING_XMP["character-reference-in-namespace"]
+    png = with_before_idat(BASE, xmp_packet(packet, "ztxt"))
+    with pytest.raises(XmpOrientationError):
+        set_orientation(png, 6)
+
+
 def test_an_xmp_orientation_in_the_second_of_two_packets_blocks_the_edit() -> None:
     png = with_before_idat(
         BASE, xmp_packet(PLAIN_XMP, "itxt"), xmp_packet(ORIENTATION_XMP, "itxt-compressed")
@@ -214,7 +250,7 @@ def test_an_xmp_orientation_in_the_second_of_two_packets_blocks_the_edit() -> No
 
 
 @pytest.mark.parametrize("carrier", CARRIERS)
-@pytest.mark.parametrize("packet", [PLAIN_XMP, OTHER_NAMESPACE_XMP])
+@pytest.mark.parametrize("packet", [PLAIN_XMP])
 def test_xmp_without_a_tiff_orientation_does_not_block_the_edit(
     carrier: str, packet: bytes
 ) -> None:
@@ -305,3 +341,10 @@ def test_the_decoder_copy_checks_the_exif_block_first() -> None:
     bad = with_before_idat(make_png(pixels()), (b"eXIf", b"MM\x00*\xff\xff\xff\xff"))
     with pytest.raises(JpegExifError):
         decoder_copy(bad)
+
+
+def test_the_edited_file_is_size_checked_before_pillow_opens_it(monkeypatch) -> None:
+    monkeypatch.setattr(png_exif, "MAX_IMAGE_PIXELS", 10)
+    monkeypatch.setattr(png_exif.Image, "open", lambda *a, **k: pytest.fail("opened"))
+    with pytest.raises(ImageTooLargeError):
+        set_orientation(BASE, 6)

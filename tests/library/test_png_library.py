@@ -14,6 +14,8 @@ from fastfoto_linux.enhance.orient import WORKING_LONG_SIDE_PX
 from fastfoto_linux.library import decide as decide_module
 from fastfoto_linux.library.apply import STATUS_FAILED, STATUS_STALE, STATUS_WRITTEN, apply_plan
 from fastfoto_linux.library.decide import decide_file, decide_files, load_working_image
+from fastfoto_linux.library.exif_errors import UnsupportedFormatError
+from fastfoto_linux.library.image_format import codec_for
 from fastfoto_linux.library.plan import Action
 from fastfoto_linux.library.png_exif import read_orientation
 from tests.face_images import load_astronaut
@@ -161,11 +163,20 @@ def test_a_big_png_is_brought_down_to_the_working_size() -> None:
     assert max(image.shape[:2]) < 2 * WORKING_LONG_SIDE_PX
 
 
-def test_a_png_working_image_has_its_tag_applied() -> None:
-    data = make_png(load_astronaut())
-    upright = load_working_image(data, None)
-    turned = load_working_image(data, 6)
-    assert turned.shape[:2] == upright.shape[:2][::-1]
+def asymmetric_pixels() -> np.ndarray:
+    """40 rows by 64 columns, every pixel different from its mirror images."""
+    values = (np.arange(40 * 64 * 3) * 7 % 251).astype(np.uint8)
+    return values.reshape(40, 64, 3)
+
+
+@pytest.mark.parametrize(("tag", "quarter_turns_ccw"), [(1, 0), (6, -1), (3, 2), (8, 1)])
+def test_a_png_working_image_is_the_stored_pixels_turned_as_the_tag_says(
+    tag: int, quarter_turns_ccw: int
+) -> None:
+    stored = asymmetric_pixels()
+    shown = load_working_image(make_png(stored), tag)
+    assert np.array_equal(shown, np.rot90(stored, k=quarter_turns_ccw))
+    assert shown.shape[:2] == (stored.shape[:2] if tag in (1, 3) else stored.shape[1::-1][:2])
 
 
 def test_a_pool_decides_pngs_and_jpegs_together(tmp_path: Path) -> None:
@@ -239,6 +250,52 @@ def test_fix_refuses_a_png_with_a_conflicting_xmp_orientation(tmp_path: Path) ->
     result = apply_plan([png_row(lib, FRONT, 1, 6)], lib, dest)
     assert [(o.status, o.reason) for o in result.outcomes] == [(STATUS_FAILED, "xmp-orientation")]
     assert list(dest.iterdir()) == []
+
+
+# --- rows whose names or bytes do not fit -----------------------------------------------------
+
+
+def fix_rows(tmp_path: Path, files: dict[str, bytes]) -> dict[str, tuple[str, str]]:
+    lib, dest = tmp_path / "lib", tmp_path / "dest"
+    dest.mkdir()
+    for name, data in files.items():
+        write_file(lib, name, data)
+    rows = [png_row(lib, name, 1, 6) for name in files]
+    result = apply_plan(rows, lib, dest)
+    return {o.path: (o.status, o.reason) for o in result.outcomes}
+
+
+@pytest.mark.parametrize("name", ["notes.txt", "noext", "a.gif", "a.png.bak"])
+def test_a_row_with_an_unsupported_name_fails_alone_and_the_run_goes_on(
+    tmp_path: Path, name: str
+) -> None:
+    outcomes = fix_rows(tmp_path, {name: b"not an image", FRONT: sideways_png(90, None)})
+    assert outcomes[name] == (STATUS_FAILED, "unsupported-format")
+    assert outcomes[FRONT] == (STATUS_WRITTEN, "")
+
+
+def test_a_jpeg_with_the_jpe_suffix_is_fixed(tmp_path: Path) -> None:
+    outcomes = fix_rows(
+        tmp_path, {"photo.jpe": sideways_jpeg(90, None), FRONT: sideways_png(90, None)}
+    )
+    assert outcomes == {"photo.jpe": (STATUS_WRITTEN, ""), FRONT: (STATUS_WRITTEN, "")}
+
+
+@pytest.mark.parametrize("name", ["scan.dat", "noext"])
+def test_an_unknown_suffix_falls_back_to_the_bytes(tmp_path: Path, name: str) -> None:
+    outcomes = fix_rows(tmp_path, {name: sideways_png(90, None)})
+    assert outcomes == {name: (STATUS_WRITTEN, "")}
+
+
+def test_a_jpe_suffix_over_png_bytes_is_a_mismatch(tmp_path: Path) -> None:
+    outcomes = fix_rows(tmp_path, {"photo.jpe": sideways_png(90, None)})
+    assert outcomes == {"photo.jpe": (STATUS_FAILED, "wrong-format")}
+
+
+def test_the_unsupported_name_error_does_not_carry_the_path(tmp_path: Path) -> None:
+    with pytest.raises(UnsupportedFormatError) as caught:
+        codec_for("secret-folder/notes.txt", b"hello")
+    assert "secret" not in str(caught.value)
 
 
 # --- the command line -----------------------------------------------------------------------

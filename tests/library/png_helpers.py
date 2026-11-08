@@ -40,10 +40,6 @@ ORIENTATION_XMP = (
     b"</rdf:RDF></x:xmpmeta>"
 )
 PLAIN_XMP = ORIENTATION_XMP.replace(b"tiff:Orientation='1'", b"tiff:Make='Cam'")
-OTHER_NAMESPACE_XMP = ORIENTATION_XMP.replace(
-    b"xmlns:tiff='http://ns.adobe.com/tiff/1.0/' tiff:Orientation='1'",
-    b"xmlns:ex='http://example.com/ns/' ex:Orientation='1'",
-)
 
 
 def make_png(pixels: np.ndarray, *, exif: bytes | None = None, mode: str | None = None) -> bytes:
@@ -111,3 +107,43 @@ def corrupt_crc(png: bytes, kind: bytes) -> bytes:
             return png[:end] + bytes(b ^ 0xFF for b in png[end : end + 4]) + png[end + 4 :]
         pos += 12 + length
     raise AssertionError(f"no {kind!r} chunk")
+
+
+def _description(attributes: str, body: str = "") -> bytes:
+    return (
+        "<x:xmpmeta xmlns:x='adobe:ns:meta/'><rdf:RDF "
+        "xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>"
+        f"<rdf:Description {attributes}>{body}</rdf:Description></rdf:RDF></x:xmpmeta>"
+    ).encode()
+
+
+# Each of these names an orientation a viewer might prefer to the Exif one.
+COMPETING_XMP = {
+    "character-reference-in-namespace": _description(
+        'xmlns:foo="http://ns.adobe.com/tiff/1.0&#x2f;" foo:Orientation="1"'
+    ),
+    "decimal-reference": _description(
+        'xmlns:foo="http://ns.adobe.com/tiff/1.0&#47;" foo:Orientation="1"'
+    ),
+    "named-entity-namespace": _description('xmlns:foo="&tiffns;" foo:Orientation="1"'),
+    "other-prefix": _description('xmlns:zz="http://ns.adobe.com/tiff/1.0/" zz:Orientation="6"'),
+    "single-quotes": _description(
+        "xmlns:tiff='http://ns.adobe.com/tiff/1.0/' tiff:Orientation='6'"
+    ),
+    "spaced-equals": _description(
+        'xmlns:tiff="http://ns.adobe.com/tiff/1.0/" tiff:Orientation = "6"'
+    ),
+    "element-form": _description(
+        'xmlns:tiff="http://ns.adobe.com/tiff/1.0/"', "<tiff:Orientation>6</tiff:Orientation>"
+    ),
+    "element-other-prefix": _description(
+        'xmlns:q="http://ns.adobe.com/tiff/1.0/"', "<q:Orientation>6</q:Orientation>"
+    ),
+    "default-namespace-element": _description(
+        "", '<Orientation xmlns="http://ns.adobe.com/tiff/1.0/">6</Orientation>'
+    ),
+    "default-namespace-attribute-less-prefix": _description('Orientation="6"'),
+    "empty-element": _description("", "<tiff:Orientation/>"),
+    "another-namespace": _description('xmlns:ex="http://example.com/ns/" ex:Orientation="1"'),
+    "utf-16": ORIENTATION_XMP.decode().encode("utf-16"),
+}

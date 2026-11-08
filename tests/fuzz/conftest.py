@@ -6,13 +6,23 @@ Python), their number is capped, no example database is read or written, and the
 deadline is explicit instead of left to Hypothesis's default.
 """
 
+import atexit
+import shutil
+import tempfile
 from datetime import timedelta
 
 from hypothesis import HealthCheck, settings
+from hypothesis.configuration import set_hypothesis_home_dir
 
 PROFILE = "fastfoto"
 MAX_EXAMPLES = 60
 DEADLINE = timedelta(seconds=5)  # an example that takes longer is a time-bound bug
+
+# Hypothesis keeps its caches (unicode tables, constants) in a home directory, by default
+# ``.hypothesis/`` in the current directory, which is the checkout. Keep them in a temporary one.
+HOME_DIR = tempfile.mkdtemp(prefix="hypothesis-home-")
+set_hypothesis_home_dir(HOME_DIR)
+atexit.register(shutil.rmtree, HOME_DIR, ignore_errors=True)
 
 settings.register_profile(
     PROFILE,

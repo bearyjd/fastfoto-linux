@@ -98,7 +98,8 @@ def test_untrusted_tmp_path_moves_to_the_runtime_dir_and_is_removed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, locked_mode: int
 ) -> None:
     runtime = tmp_path / "runtime"
-    runtime.mkdir(mode=0o711)
+    runtime.mkdir()
+    runtime.chmod(0o711)  # explicit: a umask would mask mkdir(mode=...)
     link = tmp_path / "runtime-link"
     link.symlink_to(runtime)  # production compares resolved paths, so the stand-in must be one
     work = tmp_path / "work"

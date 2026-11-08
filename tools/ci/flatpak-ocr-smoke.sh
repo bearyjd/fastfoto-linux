@@ -11,7 +11,7 @@
 # is shared with the sandbox, and the page holds no data but the words below.
 set -eu
 
-APP="${1:-io.github.bearyjd.FastFotoLinux}"
+APP="${1:-io.github.bearyjd.Feedshot}"
 work=$(mktemp -d)
 trap 'rm -r "$work"' EXIT
 

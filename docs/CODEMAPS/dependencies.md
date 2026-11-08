@@ -18,8 +18,8 @@
 
 ## Packaging
 - `tools/install-desktop.sh`: user-level install (venv seeing system PySide6, shim build, menu entry, `fastfoto`/`ffscan` in `~/.local/bin`); hashed pins `packaging/requirements-{desktop,ocr,build}.txt` (desktop/ocr are `uv export` of uv.lock)
-- Flatpak: `packaging/flatpak/io.github.bearyjd.FastFotoLinux.yml` (org.kde.Platform, command `fastfoto`; modules sane-backends, usb-gap-shim, leptonica, tesseract, tessdata, Python wheels from `python-deps.json`); `tools/flatpak/gen_wheel_sources.py`
-- Desktop files: `packaging/io.github.bearyjd.FastFotoLinux.{desktop,metainfo.xml,svg}`
+- Flatpak: `packaging/flatpak/io.github.bearyjd.Feedshot.yml` (org.kde.Platform, command `fastfoto`; modules sane-backends, usb-gap-shim, leptonica, tesseract, tessdata, Python wheels from `python-deps.json`); `tools/flatpak/gen_wheel_sources.py`
+- Desktop files: `packaging/io.github.bearyjd.Feedshot.{desktop,metainfo.xml,svg}`
 
 ## CI (.github/workflows/ci.yml): 5 required checks (lint, test on 3.13 and 3.14, gui (fedora), flatpak)
 - `lint`: no committed scans/captures, `ruff check`, `ruff format --check`, requirements files match `uv export`

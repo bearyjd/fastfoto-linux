@@ -99,7 +99,7 @@ def test_ocrmypdf_and_its_native_wheels_are_installed_from_the_hashed_ocr_requir
 
 
 def test_no_ghostscript_is_needed_because_ocrmypdf_rasterizes_with_pdfium() -> None:
-    manifest_text = (FLATPAK_DIR / "io.github.bearyjd.FastFotoLinux.yml").read_text()
+    manifest_text = (FLATPAK_DIR / "io.github.bearyjd.Feedshot.yml").read_text()
     assert "ghostscript" not in manifest_text.lower()
 
 

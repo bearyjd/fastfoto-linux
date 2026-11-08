@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://example.invalid/fastfoto-linux/corpus/MANIFEST.schema.json",
-  "title": "FastFoto Linux corpus manifest",
+  "title": "Feedshot corpus manifest",
   "description": "Documentation of the manifest. The loader (corpus_manifest.py) is hand-written and is the authority; a test keeps this file in step with its constants. Per-feature annotation payloads are validated by the harnesses that use them.",
   "type": "object",
   "additionalProperties": false,

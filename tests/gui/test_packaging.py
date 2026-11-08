@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-APP_ID = "io.github.bearyjd.FastFotoLinux"
+APP_ID = "io.github.bearyjd.Feedshot"
 DESKTOP = ROOT / "packaging" / f"{APP_ID}.desktop"
 ICON = ROOT / "packaging" / f"{APP_ID}.svg"
 QML_FILES = (
@@ -115,7 +115,7 @@ def test_the_desktop_file_launches_the_app_with_its_icon() -> None:
     assert entries["TryExec"] == "fastfoto"
     assert entries["Icon"] == APP_ID
     assert "Graphics" in entries["Categories"]
-    assert entries["Name"] == "FastFoto Linux"
+    assert entries["Name"] == "Feedshot"
 
 
 def test_the_icon_is_a_scalable_svg() -> None:

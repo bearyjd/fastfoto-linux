@@ -12,7 +12,7 @@ How to read the status column: **checked** means we confirmed it from a primary 
 shown. **vendor claim** means the vendor says so and we have not confirmed it. **unverified** means
 we have not confirmed it and you should check yourself before relying on it.
 
-## What fastfoto-linux is for
+## What Feedshot is for
 
 It targets one scanner, the Epson FastFoto FF-680W, and one workflow: scan a shoebox of prints
 with the backs paired to the fronts, turn pictures upright, keep every edit reversible, and also turn
@@ -24,7 +24,7 @@ accurate OCR than anything else.
 
 | Option | What we know | Status |
 |---|---|---|
-| fastfoto-linux (this project) | Open source (GPL-3.0-or-later). Includes a workaround for the FF-680W's USB stall; a patch for SANE is being prepared and is not upstream. Tested on one unit. | checked (our own repository) |
+| Feedshot (this project) | Open source (GPL-3.0-or-later). Includes a workaround for the FF-680W's USB stall; a patch for SANE is being prepared and is not upstream. Tested on one unit. | checked (our own repository) |
 | SANE `epsonds` backend | A 2026 blog says SANE lists the FF-680W as "Complete". Whether it works without a workaround on your USB host is a separate question. | unverified: single blog, not checked against the SANE device list |
 | Epson Scan 2 for Linux | Epson publishes it for Linux. Whether it supports the FF-680W, and whether it hits the same USB stall, is not confirmed. | unverified |
 | VueScan | Paid, closed-source. Its vendor page claims FF-680W support on Linux. | vendor claim |

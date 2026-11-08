@@ -1,4 +1,4 @@
-# Photo enhancement research for FastFoto Linux
+# Photo enhancement research for Feedshot
 
 Research date and source access date: 2026-10-18.
 Scope: planning and source comparison; no application implementation or private-image evaluation.

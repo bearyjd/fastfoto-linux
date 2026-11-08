@@ -1,6 +1,6 @@
 # Contributing
 
-fastfoto-linux is a Python 3.13+ project managed with [uv](https://docs.astral.sh/uv/). CI runs
+Feedshot is a Python 3.13+ project managed with [uv](https://docs.astral.sh/uv/). CI runs
 on Python 3.13 and 3.14. See `README.md` for what the tool does and `docs/design/` for the design
 notes.
 
@@ -53,7 +53,7 @@ uv export --locked --no-dev --no-emit-project --extra ocr --hashes --no-header -
 | `test (3.13)` | `pytest -n auto --cov` (80%), `gui/` coverage (85%), wheel contents (face model and licence, QML files, `fastfoto` launcher, no PySide dependency) |
 | `test (3.14)` | The same on Python 3.14 |
 | `gui (fedora)` | Fedora container with the distribution's PySide6 and Kirigami; Qt and QML tests with `FASTFOTO_REQUIRE_QT=1`, Qt layer coverage at least 80% |
-| `flatpak` | Builds `packaging/flatpak/io.github.bearyjd.FastFotoLinux.yml`, installs the bundle, runs `tools/ci/flatpak-ocr-smoke.sh` in the sandbox |
+| `flatpak` | Builds `packaging/flatpak/io.github.bearyjd.Feedshot.yml`, installs the bundle, runs `tools/ci/flatpak-ocr-smoke.sh` in the sandbox |
 <!-- END AUTO-GENERATED -->
 
 All five must pass before a PR is merged. Docs-only changes still run all five.

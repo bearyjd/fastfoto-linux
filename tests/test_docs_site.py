@@ -375,7 +375,7 @@ def test_native_install_lists_the_sane_prerequisite() -> None:
 
 def test_flatpak_only_users_get_the_ffscan_command_through_flatpak_run() -> None:
     text = squashed("first-scan.md")
-    assert "flatpak run --command=ffscan io.github.bearyjd.FastFotoLinux devices" in text
+    assert "flatpak run --command=ffscan io.github.bearyjd.Feedshot devices" in text
 
 
 def test_wifi_scanning_uses_net_and_devices_is_not_a_reachability_test() -> None:

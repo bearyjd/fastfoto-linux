@@ -58,7 +58,7 @@ class Library:
             count = self.unlisted_folders
             raise UnreadableLibraryError(
                 f"{count} {'folder' if count == 1 else 'folders'} in the library could not be "
-                "read, so FastFoto can't prove the output folder is outside it; fix their "
+                "read, so Feedshot can't prove the output folder is outside it; fix their "
                 "permissions or pick an output folder on another drive"
             )
 

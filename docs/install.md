@@ -44,18 +44,18 @@ The Flatpak brings its own Qt, Kirigami, the SANE `epsonds` backend, the USB gap
 
 ```sh
 flatpak-builder --user --install-deps-from=flathub --force-clean --repo=repo build-dir \
-  packaging/flatpak/io.github.bearyjd.FastFotoLinux.yml
+  packaging/flatpak/io.github.bearyjd.Feedshot.yml
 flatpak build-bundle --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo repo \
-  fastfoto-linux.flatpak io.github.bearyjd.FastFotoLinux
+  fastfoto-linux.flatpak io.github.bearyjd.Feedshot
 flatpak --user install fastfoto-linux.flatpak
-flatpak run io.github.bearyjd.FastFotoLinux
+flatpak run io.github.bearyjd.Feedshot
 ```
 
 What the sandbox may do: use every device node of the host (`--device=all`, which includes the GPU
 and not only the scanner; it is needed because libusb and SANE open `/dev/bus/usb/...` themselves
 and do not use the USB portal), use the network (for the command line's `--net HOST` Wi-Fi option), read and write your Pictures
 folder, and show windows on Wayland or X11. Other output folders are granted through the desktop
-portal. Settings are kept in `~/.var/app/io.github.bearyjd.FastFotoLinux/`.
+portal. Settings are kept in `~/.var/app/io.github.bearyjd.Feedshot/`.
 
 ## Command line only
 

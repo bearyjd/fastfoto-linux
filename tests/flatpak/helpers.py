@@ -10,7 +10,7 @@ from typing import Any
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
-APP_ID = "io.github.bearyjd.FastFotoLinux"
+APP_ID = "io.github.bearyjd.Feedshot"
 PACKAGING = ROOT / "packaging"
 FLATPAK_DIR = PACKAGING / "flatpak"
 MANIFEST = FLATPAK_DIR / f"{APP_ID}.yml"

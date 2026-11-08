@@ -26,6 +26,7 @@ from fastfoto_linux.library.exif_errors import (
 )
 from fastfoto_linux.library.tags import MAX_TAG, MIN_TAG, ORIENTATION_TAG
 from fastfoto_linux.library.tiff import inspect_tiff, new_block, with_orientation
+from fastfoto_linux.library.xmp_scan import names_any_orientation
 
 SOI = b"\xff\xd8"
 MARKER_PREFIX = 0xFF
@@ -52,25 +53,9 @@ XMP_EXTENSION_HEADER = b"http://ns.adobe.com/xmp/extension/\x00"  # Extended XMP
 XMP_GUID_SIZE = 32  # names the packet a chunk belongs to
 XMP_LENGTH_FIELD_SIZE = 4  # the packet's total length
 XMP_OFFSET_FIELD_SIZE = 4  # where this chunk's bytes belong in the packet
-XMP_TIFF_NAMESPACE = rb"http://ns\.adobe\.com/tiff/1\.0/"  # as a pattern
-XMP_TIFF_PREFIX = b"tiff"  # the usual prefix: counted even where a packet forgets to bind it
 ADOBE_HEADER = b"Adobe"  # tells the decoder how the colours are stored, so it is kept
 MAX_ADOBE_PAYLOAD = 64
 _FILL = re.compile(rb"\xff+")  # fill bytes may precede any marker
-_QUOTE = rb"""(["'])"""
-# An XML name: ASCII word characters, ``.`` and ``-``, and any non-ASCII character (UTF-8 bytes
-# from 0x80 on); a colon is not part of one.
-_XML_NAME = rb"[\w.\x80-\xff-]+"
-# ``xmlns:P="<tiff namespace>"``: P is a prefix for the tiff namespace, whatever its spelling.
-_TIFF_BINDING = re.compile(
-    rb"\sxmlns:(" + _XML_NAME + rb")\s*=\s*" + _QUOTE + XMP_TIFF_NAMESPACE + rb"\2"
-)
-_TIFF_DEFAULT = re.compile(rb"\sxmlns\s*=\s*" + _QUOTE + XMP_TIFF_NAMESPACE + rb"\1")
-# ``<P:Orientation>`` or ``P:Orientation=`` (group 1 or 2 is P); not ``ex:Orientation`` for P = x.
-_PREFIXED_ORIENTATION = re.compile(
-    rb"<(" + _XML_NAME + rb"):Orientation(?=[\s/>])|\s(" + _XML_NAME + rb"):Orientation\s*="
-)
-_BARE_ORIENTATION = re.compile(rb"<Orientation(?=[\s/>])")
 
 
 @dataclass(frozen=True)
@@ -160,60 +145,58 @@ def read_orientation(data: bytes, layout: Layout | None = None) -> int | None:
     return None if entry is None else entry.value
 
 
-def _names_orientation(data: bytes, start: int, end: int) -> bool:
-    """Whether ``data[start:end]`` has an XMP Orientation in the tiff namespace.
-
-    That is ``Orientation`` under a prefix bound to the namespace (``tiff`` and any other), or,
-    where the namespace is the default one, an element without a prefix. The word elsewhere (a
-    caption, a property of another namespace) is no orientation a viewer would prefer to the
-    Exif one. One pass finds the bound prefixes and one the prefixes in use, so a hostile packet
-    with thousands of them costs no more than a long one.
-    """
-    bound = {XMP_TIFF_PREFIX, *(m[1] for m in _TIFF_BINDING.finditer(data, start, end))}
-    if any((m[1] or m[2]) in bound for m in _PREFIXED_ORIENTATION.finditer(data, start, end)):
-        return True
-    return (
-        _TIFF_DEFAULT.search(data, start, end) is not None
-        and _BARE_ORIENTATION.search(data, start, end) is not None
-    )
-
-
-def _extended_packets(data: bytes, segments: list[_Segment]) -> list[bytes]:
+def _extended_packets(data: bytes, segments: list[_Segment]) -> list[bytes | None]:
     """The Extended XMP packets, each put together from its chunks by their offsets.
 
     A chunk is the extension signature, the packet's GUID, its total length, the chunk's offset
     and then the packet's own bytes; only those bytes are joined, so a name cut in two by a chunk
-    boundary is whole again.
+    boundary is whole again. A packet whose chunks do not tile it exactly (a gap, an overlap, a
+    length that differs from the declared one) is ``None``: a viewer may lay the chunks out
+    otherwise than in order, so no reading of it can be trusted.
     """
-    packets: dict[bytes, list[tuple[int, bytes]]] = {}
+    packets: dict[bytes, list[tuple[int, int, bytes]]] = {}
     for segment in segments:
         if segment.marker != MARKER_APP1:
             continue
         if not data.startswith(XMP_EXTENSION_HEADER, segment.payload_start):
             continue
         guid_at = segment.payload_start + len(XMP_EXTENSION_HEADER)
-        offset_at = guid_at + XMP_GUID_SIZE + XMP_LENGTH_FIELD_SIZE
+        length_at = guid_at + XMP_GUID_SIZE
+        offset_at = length_at + XMP_LENGTH_FIELD_SIZE
         body_at = offset_at + XMP_OFFSET_FIELD_SIZE
         if body_at > segment.end:
             continue  # too short to hold the fields: it holds none of the packet
+        (total,) = struct.unpack_from(">I", data, length_at)
         (offset,) = struct.unpack_from(">I", data, offset_at)
-        packets.setdefault(data[guid_at : guid_at + XMP_GUID_SIZE], []).append(
-            (offset, data[body_at : segment.end])
+        packets.setdefault(data[guid_at:length_at], []).append(
+            (offset, total, data[body_at : segment.end])
         )
-    return [b"".join(chunk for _, chunk in sorted(parts)) for parts in packets.values()]
+    return [_tiled(sorted(parts)) for parts in packets.values()]
+
+
+def _tiled(parts: list[tuple[int, int, bytes]]) -> bytes | None:
+    """The chunks (sorted by offset) joined, or ``None`` if they are not a whole packet exactly."""
+    position = 0
+    for offset, total, chunk in parts:
+        if offset != position or total != parts[0][1]:
+            return None
+        position += len(chunk)
+    return b"".join(chunk for _, _, chunk in parts) if position == parts[0][1] else None
 
 
 def _xmp_has_orientation(data: bytes, segments: list[_Segment]) -> bool:
-    """Whether an XMP packet, or an Extended XMP packet, names an Orientation."""
+    """Whether an XMP packet, or an Extended XMP packet, might name an Orientation."""
     if any(
         segment.marker == MARKER_APP1
         and data.startswith(XMP_HEADER, segment.payload_start)
-        and _names_orientation(data, segment.payload_start, segment.end)
+        and names_any_orientation(data[segment.payload_start + len(XMP_HEADER) : segment.end])
         for segment in segments
     ):
         return True
-    packets = _extended_packets(data, segments)
-    return any(_names_orientation(packet, 0, len(packet)) for packet in packets)
+    return any(
+        packet is None or names_any_orientation(packet)
+        for packet in _extended_packets(data, segments)
+    )
 
 
 def _segment_bytes(payload: bytes) -> bytes:

@@ -1,4 +1,4 @@
-"""An XMP orientation is found by its namespace and name, whatever prefix the packet gives it.
+"""An XMP orientation is found by its name, whatever prefix the packet gives it.
 
 The tiff namespace can be bound to any prefix, and a large packet is split into Extended XMP
 chunks; either way a viewer may still prefer that orientation to the Exif one.
@@ -32,10 +32,6 @@ OTHER_PREFIX_ELEMENT = (
 TIFF_WITHOUT_ORIENTATION = (
     b"<x:xmpmeta><rdf:RDF><rdf:Description " + TIFF_NS + b' t:Make="TestCam"/>'
     b"</rdf:RDF></x:xmpmeta>"
-)
-ORIENTATION_ELSEWHERE = (
-    b'<x:xmpmeta><rdf:RDF><rdf:Description xmlns:ex="http://example.com/ns/" '
-    b'ex:Orientation="portrait"/></rdf:RDF></x:xmpmeta>'
 )
 
 
@@ -93,13 +89,12 @@ def test_an_orientation_split_across_extended_xmp_chunks_is_found(
 
 def test_chunks_of_different_packets_are_not_joined(tmp_path: Path) -> None:
     other_guid = b"F" * len(GUID)
-    cut = CUTS["at a space"]  # the namespace is in one packet, the Orientation in the other
-    first, second = OTHER_PREFIX_ATTRIBUTE[:cut], OTHER_PREFIX_ATTRIBUTE[cut:]
+    first, second = b"<d t:Orie", b"ntation/>"  # whole packets of their own, not one name
     foreign = segment(
         APP1,
         EXTENSION_HEADER + other_guid + struct.pack(">II", len(second), 0) + second,
     )
-    chunks = extended(first, 0, len(OTHER_PREFIX_ATTRIBUTE)) + foreign
+    chunks = extended(first, 0, len(first)) + foreign
     write_file(tmp_path, "a.jpg", insert_after_jfif(sideways(90), chunks))
     assert decide_file(tmp_path, "a.jpg").action is Action.ROTATE
 
@@ -114,9 +109,7 @@ def test_the_edit_itself_refuses_these_files() -> None:
         assert caught.value.reason == REASON
 
 
-@pytest.mark.parametrize(
-    "packet", [TIFF_WITHOUT_ORIENTATION, ORIENTATION_ELSEWHERE], ids=["tiff-make", "other-name"]
-)
+@pytest.mark.parametrize("packet", [TIFF_WITHOUT_ORIENTATION], ids=["tiff-make"])
 def test_a_packet_without_an_xmp_orientation_does_not_stop_the_turn(
     tmp_path: Path, packet: bytes
 ) -> None:
@@ -153,9 +146,9 @@ def test_a_non_ascii_prefix_bound_to_the_tiff_namespace_is_found(
 
 @pytest.mark.parametrize("element", [True, False], ids=["element", "attribute"])
 @pytest.mark.parametrize("prefix", NON_ASCII_PREFIXES)
-def test_a_non_ascii_prefix_bound_to_another_namespace_is_not(
+def test_a_non_ascii_prefix_bound_to_another_namespace_is_found_too(
     tmp_path: Path, prefix: str, element: bool
 ) -> None:
+    """The namespace is not looked at: an Orientation under any prefix counts."""
     packet = packet_with_prefix(prefix, b"http://example.com/ns/", element=element)
-    write_file(tmp_path, "a.jpg", with_xmp(sideways(90), packet))
-    assert decide_file(tmp_path, "a.jpg").action is Action.ROTATE
+    assert skipped_for_xmp(tmp_path, with_xmp(sideways(90), packet))

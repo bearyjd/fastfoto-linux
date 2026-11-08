@@ -2,7 +2,7 @@
 
 The tiff namespace can be spelled with character references, entities and any prefix; a viewer's
 XML parser resolves them, a byte scan does not. So any ``Orientation`` element or attribute, under
-any prefix, counts, and so does a packet that is not ASCII-compatible (UTF-16) or too large to check.
+any prefix, counts, and so does a packet that is UTF-16 or too large to check.
 """
 
 import struct

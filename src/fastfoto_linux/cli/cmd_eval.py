@@ -4,6 +4,7 @@ import argparse
 import os
 from pathlib import Path
 
+from fastfoto_linux.cli import cmd_eval_calib
 from fastfoto_linux.cli.errors import EXIT_GATE_FAILED, EXIT_OK, EXIT_USAGE, CliError
 from fastfoto_linux.cli.options import common_parent
 from fastfoto_linux.enhance.faces import FaceDetector
@@ -59,6 +60,7 @@ def add_parser(subparsers: "argparse._SubParsersAction[argparse.ArgumentParser]"
     redeye.add_argument("--min-recall", type=float, metavar="F", help="Wilson lower bound")
     redeye.add_argument("--no-perf", action="store_true", help="skip perf.json")
     redeye.set_defaults(handler=run)
+    cmd_eval_calib.add_parsers(kinds)
 
 
 def make_detector() -> FaceDetector | None:

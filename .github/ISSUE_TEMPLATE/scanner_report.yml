@@ -1,0 +1,65 @@
+name: Scanner report
+description: A problem talking to the scanner (discovery, USB stalls, feeder, Wi-Fi).
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The project targets one model, the Epson FastFoto FF-680W, and supports it over USB and
+        Wi-Fi through SANE. Reports for other models are welcome but are not supported.
+
+        **Sanitise before you post.** Remove or replace the scanner serial number (use `SERIAL`),
+        IP and MAC addresses, host names and your user name. Do not attach USB captures, pcaps or
+        scans. If a log line contains any of these, edit it first.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what the scanner did (lights, sounds, feeder), and what the app or `ffscan` reported.
+    validations:
+      required: true
+  - type: dropdown
+    id: connection
+    attributes:
+      label: Connection
+      options: [USB, Wi-Fi, Both tried]
+    validations:
+      required: true
+  - type: dropdown
+    id: shim
+    attributes:
+      label: USB gap shim
+      description: "The workaround in `tools/usb-gap-shim` that inserts a delay between commands."
+      options: [In use, Not in use, Not sure]
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: fastfoto-linux version or commit
+    validations:
+      required: true
+  - type: input
+    id: sane
+    attributes:
+      label: SANE version and backend
+      description: e.g. output of `scanimage --version`, and whether the `epsonds` backend was used.
+  - type: input
+    id: system
+    attributes:
+      label: Distribution and kernel
+  - type: input
+    id: firmware
+    attributes:
+      label: Scanner firmware version, if you know it
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitised `scanimage -L` / log lines
+      render: text
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy check
+      options:
+        - label: I removed the serial number, network addresses, host name and personal paths, and attached no scans or captures.
+          required: true

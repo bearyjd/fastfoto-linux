@@ -39,8 +39,14 @@ write re-read the raw pages (`on_page` fires); slower, but correct (`EncodedPage
 ## Decisions
 
 - Resampling is `cv2.INTER_AREA` (`output/resample.py`); never up, one scale for both sides.
-- No sharpening after the small downscale (follow-up; reuse `photo_edits/detail.apply_sharpen`
-  and apply only when a resize happened).
+- **Photo `small` sharpens after its downscale**, only when a resize happened, with the editor's
+  `apply_sharpen` at strength `SMALL_SHARPEN` = 30 (`output/presets.py`) and the DPI after the
+  downscale (so the Gaussian sigma follows the new resolution, per `photo-detail.md`). Lossless,
+  high-quality and the no-preset path never sharpen and stay byte-identical. Whole `_unprocessed`
+  pages follow the same rule. Document pages are not sharpened. **The amount is UNCALIBRATED**:
+  it rests on a synthetic edge-width proxy only. Calibrating it on a real scan corpus (edge
+  width / MTF not worse than high-quality at equal viewing size) is a follow-up; no quality
+  claim is made.
 - Metadata is never stripped: EXIF and XMP stay (app-generated, no GPS). No ICC is embedded,
   no Orientation tag is written, pixels stay upright. PNG carries EXIF in `eXIf` and XMP in one
   iTXt chunk (`XML:com.adobe.xmp`) built from our own `build_xmp` bytes.

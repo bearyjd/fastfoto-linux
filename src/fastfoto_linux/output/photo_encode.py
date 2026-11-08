@@ -1,12 +1,15 @@
 """Encode one photo for the scan and process writer, with or without an export preset."""
 
 import io
+from threading import Event
 
 import numpy as np
 from PIL import Image, PngImagePlugin
 
 from fastfoto_linux.output.presets import CHROMA_444, PHOTO_EXPORTS, ExportPreset
 from fastfoto_linux.output.resample import downscale
+from fastfoto_linux.photo_edits.detail import apply_sharpen
+from fastfoto_linux.photo_edits.model import PhotoDetail
 
 PNG_COMPRESS_LEVEL = 6
 XMP_KEY = "XML:com.adobe.xmp"
@@ -30,7 +33,8 @@ def encode_photo(  # noqa: PLR0913 - one call site; the pieces are the interface
     """``array`` (HxWx3 uint8 RGB) as JPEG or PNG bytes carrying ``exif`` and ``xmp``.
 
     Without a preset: JPEG at ``quality``, 4:4:4, ``dpi``. With one, the row of ``PHOTO_EXPORTS``
-    decides; ``small`` also shrinks the picture and scales the dpi tag to match.
+    decides; ``small`` also shrinks the picture, sharpens it (only if it shrank), and scales the
+    dpi tag to match.
     """
     buffer = io.BytesIO()
     if preset is None:
@@ -47,6 +51,8 @@ def encode_photo(  # noqa: PLR0913 - one call site; the pieces are the interface
     export = PHOTO_EXPORTS[preset]
     if export.max_edge is not None:
         array, scale = downscale(array, export.max_edge)
+        if export.sharpen and scale < 1.0:  # a resize made a fresh array; sharpen it in place
+            apply_sharpen(array, PhotoDetail(sharpen=export.sharpen), dpi * scale, Event())
         dpi = max(1, round(dpi * scale))
     if export.quality is None:
         info = PngImagePlugin.PngInfo()

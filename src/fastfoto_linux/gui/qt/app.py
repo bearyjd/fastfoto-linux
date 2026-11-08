@@ -242,8 +242,11 @@ def _run(run_loop: Callable[[], int]) -> int:
 
 
 def _run_with_engine(run_loop: Callable[[], int]) -> int:
+    from fastfoto_linux.gui.prefs import load_ui_language  # noqa: PLC0415
     from fastfoto_linux.gui.qt.bridge import Bridge  # noqa: PLC0415
+    from fastfoto_linux.gui.qt.translation import activate  # noqa: PLC0415
 
+    activate(load_ui_language())  # before the window: English stays when this cannot be done
     bridge = Bridge()
     engine, warnings = create_engine(bridge)
     if not engine.rootObjects():

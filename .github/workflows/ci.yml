@@ -22,7 +22,7 @@ jobs:
           persist-credentials: false
       - name: Private scans and captures must never be committed
         run: test -z "$(git ls-files test-scans captures '*.pcap' '*.pcapng')"
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
       - run: uv sync --locked --only-dev --python 3.13
       - run: uv run --no-sync ruff check .
       - run: uv run --no-sync ruff format --check .
@@ -42,7 +42,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
       - run: uv sync --locked --python ${{ matrix.python }}
       # One worker per CPU of the runner (pytest-xdist). Each worker is told to use one thread,
       # as OpenCV and NumPy would otherwise start a thread per CPU in every worker and the
@@ -68,8 +68,37 @@ jobs:
             grep -q "fastfoto_linux/gui/qml/$(basename "$qml")" "$RUNNER_TEMP/wheel-files.txt"
           done
           python3 -m zipfile -e "$RUNNER_TEMP"/wheel/*.whl "$RUNNER_TEMP/unpacked"
+          grep -q 'fastfoto_linux/gui/translations/fastfoto_de\.qm' "$RUNNER_TEMP/wheel-files.txt"
           grep -q 'fastfoto = fastfoto_linux.gui.qt.app:main' "$RUNNER_TEMP"/unpacked/*.dist-info/entry_points.txt
           ! grep -qi '^Requires-Dist:.*pyside' "$RUNNER_TEMP"/unpacked/*.dist-info/METADATA
+
+  # The docs site (mkdocs.yml renders docs/). Build only: nothing is published and GitHub Pages is
+  # not enabled. NOT a required check (it is not in the branch protection), so a docs failure
+  # cannot block a merge. The tools come from packaging/requirements-docs.txt, pinned by hash.
+  docs:
+    name: docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - name: Install the pinned docs tools (hashes required, wheels only)
+        run: |
+          uv venv --python 3.13 "$RUNNER_TEMP/docs-venv"
+          VIRTUAL_ENV="$RUNNER_TEMP/docs-venv" uv pip install --require-hashes --no-build \
+            -r packaging/requirements-docs.txt
+      - name: Build the site, failing on any warning
+        env:
+          # Material for MkDocs reaches end of life on 2027-05-05 and prints a banner about it.
+          # TODO: revisit the docs toolchain (Zensical, its successor) before that date.
+          NO_MKDOCS_2_WARNING: "1"
+        run: "$RUNNER_TEMP/docs-venv/bin/mkdocs build --strict --site-dir \"$RUNNER_TEMP/site\""
+      - name: The built site loads nothing from another host
+        run: python3 tools/ci/docs_site_offline.py "$RUNNER_TEMP/site"
 
   # The desktop app needs the distribution's PySide6 and Kirigami (the PyPI PySide6 wheel bundles
   # its own Qt and cannot load the system Kirigami plugin), so it is tested in a Fedora container.
@@ -111,6 +140,34 @@ jobs:
           pytest tests/gui/qt tests/gui/test_packaging.py tests/gui/test_install_script.py \
             tests/gui/test_app_guard.py --cov --cov-config=tools/ci/coveragerc-gui-qt \
             --cov-report=term-missing --cov-fail-under=80
+
+  # The translation catalogs (tools/i18n.sh, docs/translating.md): the messages in the QML and the
+  # Python still match gui/translations/*.ts. INFORMATIONAL, on purpose: the job is not in the
+  # branch protection, and the step has continue-on-error, so this job is always green and a pull
+  # request that adds a message without running `tools/i18n.sh update` is told so in the log (and
+  # in an annotation) instead of being blocked. Several branches touch the QML at the same time,
+  # and lupdate's output can differ a little between Qt versions, so a hard failure here would
+  # stop unrelated pull requests. It is installed apart from gui (fedora), a required job, so that
+  # a mirror problem with qt6-linguist cannot break that one. Same image as gui (fedora).
+  i18n:
+    name: translations (informational)
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    container: fedora:44@sha256:43b29f65a41eb9c35e1cd5323e3bdf3b655c2357a9f4f1ff2f9c2798e5045d80
+    steps:
+      - name: Install Qt's linguist tools
+        run: dnf install -y --setopt=install_weak_deps=False qt6-linguist diffutils
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: The .ts files are up to date (informational)
+        continue-on-error: true
+        run: |
+          if ! tools/i18n.sh check; then
+            echo "::warning::gui/translations/*.ts is out of date: run tools/i18n.sh update and commit it"
+            exit 1
+          fi
 
   # The Flatpak bundle of the desktop app (packaging/flatpak), then a smoke test of the OCR that it
   # brings (Tesseract with English and orientation data, and OCRmyPDF), run in its own sandbox. The

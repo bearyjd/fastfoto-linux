@@ -81,8 +81,9 @@ ColumnLayout {
             // Shows where the keyboard is, only while the grid has the focus.
             highlight: Rectangle {
                 visible: grid.activeFocus
-                color: Kirigami.Theme.highlightColor
-                opacity: 0.25
+                color: "transparent"
+                border.width: 2
+                border.color: Kirigami.Theme.textColor
                 radius: Kirigami.Units.smallSpacing
             }
 

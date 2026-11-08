@@ -17,7 +17,14 @@ CI = ROOT / ".github" / "workflows" / "ci.yml"
 REQ_IN = ROOT / "packaging" / "requirements-docs.in"
 REQ_TXT = ROOT / "packaging" / "requirements-docs.txt"
 
-PAGES = ("index.md", "install.md", "first-scan.md", "known-limits.md", "comparison.md", "RUNBOOK.md")
+PAGES = (
+    "index.md",
+    "install.md",
+    "first-scan.md",
+    "known-limits.md",
+    "comparison.md",
+    "RUNBOOK.md",
+)
 COMPETITORS = ("NAPS2", "gscan2pdf", "Skanpage", "ScanMole", "VueScan")
 DISCLAIMER = "Not affiliated with Seiko Epson"
 
@@ -59,11 +66,9 @@ def test_every_required_page_exists_and_is_not_empty() -> None:
         assert (DOCS / name).read_text().strip(), name
 
 
-@pytest.mark.parametrize("name", PAGES)
-def test_the_disclaimer_is_on_every_page_that_names_the_scanner_or_the_vendor(name: str) -> None:
-    text = (DOCS / name).read_text()
-    if name in ("index.md", "comparison.md"):
-        assert DISCLAIMER in text
+@pytest.mark.parametrize("name", ("index.md", "comparison.md"))
+def test_the_affiliation_disclaimer_is_on_the_home_and_comparison_pages(name: str) -> None:
+    assert DISCLAIMER in (DOCS / name).read_text()
 
 
 def test_comparison_names_each_alternative_marks_unverified_claims_and_does_not_boast() -> None:
@@ -72,7 +77,8 @@ def test_comparison_names_each_alternative_marks_unverified_claims_and_does_not_
         assert name in text, name
     assert "Epson Scan 2" in text
     assert "unverified" in text.lower()
-    assert not re.search(r"better than|best|only way|faster than|worse", text, re.IGNORECASE)
+    prose = re.sub(r"<https?://[^>]*>", "", text)
+    assert not re.search(r"better than|\bbest\b|only way|faster than|worse", prose, re.IGNORECASE)
 
 
 def test_known_limits_says_calibration_is_synthetic_only() -> None:

@@ -334,8 +334,10 @@ def test_german_does_not_move_a_single_control_of_the_documents_form(
         settle()
         return collapsed, geometry(window, DOCUMENT_CONTROLS)
 
-    measured()  # the first window loads icons; later ones are alike
+    measured()  # the first windows load icons and settle; later ones are alike
+    measured()
     english = measured()
+    assert measured() == english  # the baseline is stable, so a difference is the language
     assert len(english[0]) >= 15
     assert "docLanguageToggle" in english[0]
     assert translation.activate("de")

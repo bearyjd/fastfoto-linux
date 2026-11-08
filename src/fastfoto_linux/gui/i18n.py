@@ -62,3 +62,8 @@ def catalog_path(code: object) -> Path | None:
 def source_path(code: str) -> Path:
     """The ``.ts`` file the catalog of ``code`` is compiled from (translators edit this one)."""
     return catalog_dir() / f"{CATALOG_PREFIX}{ui_language_code(code)}.ts"
+
+
+def pin_path(code: str) -> Path:
+    """The file pinning the SHA-256 of the compiled catalog (``tools/i18n.sh release`` writes it)."""
+    return catalog_dir() / f"{CATALOG_PREFIX}{ui_language_code(code)}.qm.sha256"

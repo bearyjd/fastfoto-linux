@@ -74,7 +74,12 @@ def test_a_wrong_magic_number_or_an_empty_file_is_refused() -> None:
 
 def test_every_truncation_is_refused_cleanly_never_with_another_error() -> None:
     data = qm_helpers.shipped()
-    for cut in range(0, len(data) - 1, 7):
+    boundaries = {qm_helpers.HEADER}
+    for _tag, payload in qm_helpers.sections(data):
+        boundaries.add(max(boundaries) + qm_helpers.SECTION_HEAD + len(payload))
+    for cut in range(len(data)):
+        if cut in boundaries:
+            continue  # ends between two sections: a shorter, well-formed catalog
         with pytest.raises(qmformat.CatalogError):
             qmformat.read_catalog(data[:cut])
 

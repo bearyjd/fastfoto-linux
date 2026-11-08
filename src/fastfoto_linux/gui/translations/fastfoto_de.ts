@@ -1306,11 +1306,11 @@
     </message>
     <message>
         <source>Press Check again to look for the scanner.</source>
-        <translation>Drücken Sie „Neu prüfen“.</translation>
+        <translation>Zum Suchen „Neu prüfen“ drücken.</translation>
     </message>
     <message>
         <source>Cancelling…</source>
-        <translation>Abbruch …</translation>
+        <translation>Abbruch läuft …</translation>
     </message>
     <message>
         <source>The scanner is not available; the message above says why.</source>

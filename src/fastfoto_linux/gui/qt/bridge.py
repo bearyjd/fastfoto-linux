@@ -29,7 +29,6 @@ from fastfoto_linux.gui.prefs import (
     load_document_form,
     load_form,
     load_mode,
-    load_ui_language,
     save_document_form,
     save_form,
     save_mode,
@@ -130,7 +129,7 @@ class Bridge(QObject):
     ) -> None:
         super().__init__()
         self._remember = remember
-        self._ui_language = load_ui_language() if remember else active_code()
+        self._ui_language = active_code()  # what really loaded, not what gui.json says
         self._photos = PhotosModel(self)
         tools = documents or DocumentTools()
         photo_cache_dir = new_cache_dir()

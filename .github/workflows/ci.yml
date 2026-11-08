@@ -123,6 +123,7 @@ jobs:
   # a mirror problem with qt6-linguist cannot break that one. Same image as gui (fedora).
   i18n:
     name: translations (informational)
+    continue-on-error: true
     runs-on: ubuntu-latest
     timeout-minutes: 10
     container: fedora:44@sha256:43b29f65a41eb9c35e1cd5323e3bdf3b655c2357a9f4f1ff2f9c2798e5045d80

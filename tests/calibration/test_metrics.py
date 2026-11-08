@@ -133,10 +133,11 @@ def test_an_edge_must_start_low_and_end_high() -> None:
     assert edge_width(ok, box, "h") is not None
 
 
-def test_a_uniform_patch_has_exactly_zero_sigma() -> None:
+def test_a_uniform_patch_is_far_below_the_noise_floor() -> None:
     rgb = np.empty((7, 7, 3), dtype=np.uint8)
     rgb[...] = (100, 110, 120)
-    assert flat_sigmas(luma(rgb), [(0, 0, 7, 7)]) == [0.0]
+    # float32 luma may differ by SIMD path (~1e-6), never by a measurable fraction of MIN_SIGMA
+    assert flat_sigmas(luma(rgb), [(0, 0, 7, 7)])[0] < MIN_SIGMA / 1000
 
 
 def test_a_noise_free_patch_is_not_a_noise_reduction() -> None:

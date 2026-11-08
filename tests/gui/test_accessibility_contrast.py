@@ -1,75 +1,31 @@
 """WCAG 2.x contrast of the colours the QML draws text and keyboard cues with.
 
 The QML takes its colours from the Kirigami theme, which follows the user's colour scheme, so
-the check pins two real schemes (the values in KDE's ``BreezeLight.colors`` and
-``BreezeDark.colors``, sections ``[Colors:Window]`` and ``[Colors:View]``) and computes the
-ratio of every text colour the QML can use against every background it can sit on. Colours of
-the QML source are read from the files, so a new raw ``disabledTextColor`` text fails here.
+the check pins two real schemes (see ``tests/gui/qml_colours.py``), reads every colour binding
+of every ``.qml`` file, and computes the ratio against every background it can sit on.
 
-Not covered, and said so in docs/accessibility.md: the eye markers on a photo (their colour
-sits on the photo, which is unknown here), the system focus ring of the controls (drawn by the
-style), and the theme's derived ``negativeBackgroundColor`` (computed by KDE at run time).
+The scan fails closed: a colour binding it cannot read (a multi-line expression it does not
+understand, ``palette.*``, a colour set from JavaScript, ``Qt.rgba``, a literal) is a failure,
+unless it is on the documented allow-list in ``qml_colours.ALLOWED``.
 """
 
 import re
-from pathlib import Path
 
 import pytest
 
-QML_DIR = Path(__file__).resolve().parents[2] / "src/fastfoto_linux/gui/qml"
-Rgb = tuple[float, float, float]
-
-# BreezeLight.colors / BreezeDark.colors from KDE Plasma (RGB 0-255).
-SCHEMES: dict[str, dict[str, Rgb]] = {
-    "Breeze Light": {
-        "window": (239, 240, 241),
-        "window_alt": (227, 229, 231),
-        "view": (255, 255, 255),
-        "view_alt": (247, 247, 247),
-        "text": (35, 38, 41),
-        "inactive": (112, 125, 138),
-        "negative": (218, 68, 83),
-        "neutral": (246, 116, 0),
-    },
-    "Breeze Dark": {
-        "window": (32, 35, 38),
-        "window_alt": (41, 44, 48),
-        "view": (20, 22, 24),
-        "view_alt": (29, 31, 34),
-        "text": (252, 252, 252),
-        "inactive": (161, 169, 177),
-        "negative": (218, 68, 83),
-        "neutral": (246, 116, 0),
-    },
-}
-BACKGROUNDS = ("window", "window_alt", "view", "view_alt")
-TEXT_MINIMUM = 4.5  # WCAG 1.4.3, normal text
-NON_TEXT_MINIMUM = 3.0  # WCAG 1.4.11, borders and focus cues
-RAW_ROLES = ("disabledTextColor", "negativeTextColor", "neutralTextColor", "positiveTextColor")
-
-
-def luminance(color: Rgb) -> float:
-    def channel(value: float) -> float:
-        v = value / 255
-        return v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4
-
-    r, g, b = (channel(c) for c in color)
-    return 0.2126 * r + 0.7152 * g + 0.0722 * b
-
-
-def contrast(a: Rgb, b: Rgb) -> float:
-    high, low = sorted((luminance(a), luminance(b)), reverse=True)
-    return (high + 0.05) / (low + 0.05)
-
-
-def blend(front: Rgb, back: Rgb, alpha: float) -> Rgb:
-    """``front`` at ``alpha`` over ``back`` (what the renderer shows for a translucent colour)."""
-    return tuple(f * alpha + b * (1 - alpha) for f, b in zip(front, back, strict=True))  # type: ignore[return-value]
-
-
-def tint(base: Rgb, front: Rgb, alpha: float) -> Rgb:
-    """``Qt.tint(base, Qt.alpha(front, alpha))``: per channel, ``base`` at 0 and ``front`` at 1."""
-    return blend(front, base, alpha)
+from tests.gui.qml_colours import (
+    ALLOWED,
+    BACKGROUNDS,
+    NON_TEXT_MINIMUM,
+    QML_DIR,
+    SCHEMES,
+    TEXT_MINIMUM,
+    check_directory,
+    check_source,
+    contrast,
+    scan_directory,
+    scan_source,
+)
 
 
 def test_the_contrast_formula_matches_the_wcag_reference_values() -> None:
@@ -78,105 +34,185 @@ def test_the_contrast_formula_matches_the_wcag_reference_values() -> None:
     assert contrast((255, 255, 255), (255, 255, 255)) == pytest.approx(1.0)
 
 
-HINT = re.compile(r"Qt\.alpha\(Kirigami\.Theme\.textColor,\s*([\d.]+)\)")
-MIXED = re.compile(
-    r"Qt\.tint\(Kirigami\.Theme\.(negative|neutral)TextColor,\s*"
-    r"Qt\.alpha\(Kirigami\.Theme\.textColor,\s*([\d.]+)\)\)"
+def test_the_pinned_schemes_are_the_real_breeze_values() -> None:
+    light = SCHEMES["Breeze Light"]
+    assert light["view"] == (252, 252, 252)  # [Colors:View] BackgroundNormal in BreezeLight.colors
+    assert light["window"] == (239, 240, 241)
+    assert SCHEMES["Breeze Dark"]["view"] == (20, 22, 24)
+
+
+def test_the_qml_files_have_no_unsupported_or_too_faint_colour() -> None:
+    assert check_directory() == []
+
+
+def test_the_scan_finds_every_kind_of_binding() -> None:
+    found = scan_directory()
+    assert len(found) > 45
+    assert {b.prop for b in found} >= {"color", "border.color"}
+    assert any("Qt.tint" in b.expression for b in found)
+    assert any("Qt.alpha" in b.expression for b in found)
+    assert any(b.expression.startswith('"#') for b in found)
+
+
+def test_every_allow_list_entry_still_exists_and_says_why() -> None:
+    present = {(b.file, b.expression) for b in scan_directory()}
+    for key, reason in ALLOWED.items():
+        assert key in present, f"stale allow-list entry {key}"
+        assert len(reason) > 20, f"{key} needs a reason"
+
+
+def problems(source: str, name: str = "Sample.qml") -> list[str]:
+    return check_source(name, source)
+
+
+GOOD_HINT = "Label { color: Qt.alpha(Kirigami.Theme.textColor, 0.75) }"
+
+
+def test_a_supported_binding_passes() -> None:
+    assert problems(GOOD_HINT) == []
+    assert problems("Label { color: Kirigami.Theme.textColor }") == []
+    assert problems("Rectangle { color: Kirigami.Theme.backgroundColor }") == []
+    assert (
+        problems('Rectangle { color: "transparent"; border.color: Kirigami.Theme.textColor }') == []
+    )
+    assert problems("property color hint: Kirigami.Theme.textColor") == []
+
+
+def test_a_literal_colour_instead_of_the_hint_is_a_failure() -> None:
+    """The mutation Codex found: the hint of ReviewPage.qml replaced by white."""
+    assert problems('Label { color: "#ffffff" }', "ReviewPage.qml")
+    assert problems("Label { color: 'white' }")
+
+
+def test_a_raw_theme_colour_as_text_is_a_failure_by_its_ratio() -> None:
+    for role in ("disabledTextColor", "negativeTextColor", "neutralTextColor"):
+        assert problems(f"Label {{ color: Kirigami.Theme.{role} }}"), role
+
+
+def test_a_faint_blend_is_a_failure() -> None:
+    assert problems("Label { color: Qt.alpha(Kirigami.Theme.textColor, 0.4) }")
+    assert problems(
+        "Label { color: Qt.tint(Kirigami.Theme.negativeTextColor,"
+        " Qt.alpha(Kirigami.Theme.textColor, 0.02)) }"
+    )
+
+
+def test_a_multi_line_binding_is_read_to_its_end() -> None:
+    bad = """Label {
+        color: row.warning
+            ? Kirigami.Theme.textColor
+            : Kirigami.Theme.disabledTextColor
+    }"""
+    assert problems(bad)
+    good = """Label {
+        color: row.warning
+            ? Qt.alpha(Kirigami.Theme.textColor, 0.75)
+            : Kirigami.Theme.textColor
+    }"""
+    assert problems(good) == []
+    assert problems(
+        "Label {\n  color: Qt.tint(Kirigami.Theme.neutralTextColor,\n    Qt.alpha(Kirigami.Theme.textColor, 0.02))\n}"
+    )
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "Label { color: Qt.rgba(1, 1, 1, 1) }",
+        "Label { color: Qt.darker(Kirigami.Theme.textColor) }",
+        "Label { color: someFunction() }",
+        "Label { color: Kirigami.Theme.unknownColor }",
+        'Label { palette.buttonText: "red" }',
+        "Label { palette: control.palette }",
+        'Label { Component.onCompleted: label.color = "#ffffff" }',
+        'Label { onClicked: { parent.border.color = "#fff" } }',
+        "property color hint: Qt.rgba(0, 0, 0, 1)",
+        "Label { textColor: 'red' }",
+    ],
 )
-APPROVED_BLEND = re.compile(f"{MIXED.pattern}|{HINT.pattern}")
+def test_a_binding_the_scan_cannot_read_is_a_failure_not_skipped(source: str) -> None:
+    assert problems(source), source
 
 
-def qml_colour_lines() -> list[tuple[str, int, str]]:
-    """``color:`` bindings (not ``border.color``) of every QML file: (file, line, expression)."""
-    found = []
-    for path in sorted(QML_DIR.glob("*.qml")):
-        for number, line in enumerate(path.read_text().splitlines(), 1):
-            match = re.match(r"\s*color:\s*(.+?)\s*$", line)
-            if match:
-                found.append((path.name, number, match.group(1)))
-    return found
+def test_the_allow_list_is_keyed_by_file_and_exact_expression() -> None:
+    literal = 'Rectangle { border.color: "#ffffff" }'
+    assert problems(literal, "PhotoEditCanvas.qml") == []
+    assert problems(literal, "ReviewPage.qml")
+    assert problems('Rectangle { border.color: "#fffffe" }', "PhotoEditCanvas.qml")
 
 
-def test_the_qml_has_colour_bindings_to_check() -> None:
-    assert len(qml_colour_lines()) > 20
+def test_the_focus_colour_is_not_enough_for_a_border_on_breeze_light() -> None:
+    assert problems("Rectangle { border.color: Kirigami.Theme.highlightColor }")
 
 
-def test_no_text_uses_a_raw_theme_colour_that_misses_the_contrast_minimum() -> None:
-    """disabled/negative/neutral theme text is 2.5-4.3:1 on Breeze Light; only blends are used."""
-    offenders = []
-    for name, number, expression in qml_colour_lines():
-        rest = APPROVED_BLEND.sub("", expression)
-        if any(role in rest for role in RAW_ROLES):
-            offenders.append(f"{name}:{number}: {expression}")
-    assert offenders == []
-
-
-def used_text_colours(scheme: dict[str, Rgb], background: str) -> dict[str, Rgb]:
-    """Every text colour the QML draws, resolved in ``scheme`` over ``background``."""
-    base = scheme[background]
-    colours: dict[str, Rgb] = {"textColor": scheme["text"]}
-    for name, number, expression in qml_colour_lines():
-        for match in HINT.finditer(MIXED.sub("", expression)):
-            alpha = float(match.group(1))
-            colours[f"{name}:{number} hint"] = blend(scheme["text"], base, alpha)
-        for match in MIXED.finditer(expression):
-            role, ratio = match.group(1), float(match.group(2))
-            colours[f"{name}:{number} {role}"] = tint(scheme[role], scheme["text"], ratio)
-    return colours
+def test_scan_source_gives_line_numbers() -> None:
+    (binding,) = scan_source("A.qml", "Item {\n\n  Label { color: Kirigami.Theme.textColor }\n}")
+    assert (binding.file, binding.line, binding.prop) == ("A.qml", 3, "color")
 
 
 @pytest.mark.parametrize("scheme_name", sorted(SCHEMES))
-@pytest.mark.parametrize("background", BACKGROUNDS)
-def test_every_text_colour_reaches_4_5_to_1_on_every_background(
-    scheme_name: str, background: str
-) -> None:
-    scheme = SCHEMES[scheme_name]
-    colours = used_text_colours(scheme, background)
-    assert len(colours) > 5, "the hint and the status blends are found in the QML"
-    low = {
-        label: round(contrast(colour, scheme[background]), 2)
-        for label, colour in colours.items()
-        if contrast(colour, scheme[background]) < TEXT_MINIMUM
-    }
-    assert low == {}
-
-
-@pytest.mark.parametrize("scheme_name", sorted(SCHEMES))
-def test_the_raw_theme_colours_this_change_replaced_really_were_too_faint(
+def test_the_raw_theme_roles_this_change_replaced_are_computed_to_be_too_faint(
     scheme_name: str,
 ) -> None:
-    """Keeps the check honest: at least one raw role fails on Breeze Light (so it can fail)."""
+    """The ratios of the raw roles, from the pinned palette (so the check can really fail)."""
     scheme = SCHEMES[scheme_name]
-    raw = [scheme["inactive"], scheme["negative"], scheme["neutral"]]
-    worst = min(contrast(c, scheme[b]) for c in raw for b in BACKGROUNDS)
+    ratios = {
+        role: min(contrast(scheme[role], scheme[b]) for b in BACKGROUNDS)
+        for role in ("inactive", "negative", "neutral")
+    }
+    assert min(ratios.values()) > 1.0
     if scheme_name == "Breeze Light":
-        assert worst < TEXT_MINIMUM
-    assert worst > 1.0
-
-
-def border_expressions(file_name: str) -> list[str]:
-    text = (QML_DIR / file_name).read_text()
-    return re.findall(r"^\s*border\.color:\s*(.+?)\s*$", text, re.MULTILINE)
+        assert all(ratio < TEXT_MINIMUM for ratio in ratios.values()), ratios
+    else:
+        assert ratios["negative"] < TEXT_MINIMUM, ratios
 
 
 @pytest.mark.parametrize("scheme_name", sorted(SCHEMES))
 def test_the_selected_review_page_border_is_a_3_to_1_cue(scheme_name: str) -> None:
     scheme = SCHEMES[scheme_name]
-    selected = "Kirigami.Theme.textColor"
-    expressions = border_expressions("ReviewCell.qml")
-    assert any(e.startswith(f"cell.selected ? {selected} :") for e in expressions)
+    expressions = [b.expression for b in scan_source("ReviewCell.qml", read("ReviewCell.qml"))]
+    assert any(e.startswith("cell.selected ? Kirigami.Theme.textColor :") for e in expressions)
     for background in BACKGROUNDS:
         assert contrast(scheme["text"], scheme[background]) >= NON_TEXT_MINIMUM
-        # the unselected outline (inactive text) is also a visible edge
+        # the unselected outline (the inactive text role) is a visible edge too, with less room
         assert contrast(scheme["inactive"], scheme[background]) >= NON_TEXT_MINIMUM
+
+
+def read(file_name: str) -> str:
+    return (QML_DIR / file_name).read_text()
+
+
+def block_after(text: str, opener: str) -> str:
+    """The brace-matched body of the first ``opener {`` in ``text`` (any indentation)."""
+    start = re.search(opener + r"\s*\{", text)
+    assert start, opener
+    depth, index = 1, start.end()
+    while depth:
+        depth += {"{": 1, "}": -1}.get(text[index], 0)
+        index += 1
+    return text[start.end() : index - 1]
+
+
+def test_block_after_finds_the_body_at_any_indentation() -> None:
+    assert "b" in block_after(
+        "x {\n  highlight: Rectangle {\n a { } b\n }\n}", "highlight: Rectangle"
+    )
+    assert "b" in block_after("highlight: Rectangle { a { } b }", "highlight: Rectangle")
 
 
 @pytest.mark.parametrize("file_name", ["ResultsView.qml", "DocumentsView.qml"])
 def test_the_keyboard_position_in_a_list_is_outlined_not_only_tinted(file_name: str) -> None:
-    text = (QML_DIR / file_name).read_text()
-    match = re.search(r"highlight:\s*Rectangle\s*\{(.*?)\n\s{12}\}", text, re.DOTALL)
-    assert match, f"{file_name} marks the current item"
-    block = match.group(1)
+    block = block_after(read(file_name), r"highlight:\s*Rectangle")
     width = re.search(r"border\.width:\s*(\d+)", block)
     assert width and int(width.group(1)) >= 2
     assert "border.color: Kirigami.Theme.textColor" in block
+
+
+@pytest.mark.parametrize("file_name", sorted(p.name for p in QML_DIR.glob("*.qml")))
+def test_every_busy_indicator_and_progress_bar_is_named(file_name: str) -> None:
+    """Includes those inside dialogs, which the window-level sweep cannot reach."""
+    text = read(file_name)
+    for kind in ("BusyIndicator", "ProgressBar"):
+        for match in re.finditer(rf"QQC2\.{kind}\s*\{{", text):
+            body = block_after(text[match.start() :], rf"QQC2\.{kind}")
+            assert "Accessible.name:" in body, f"{file_name}: unnamed {kind}"

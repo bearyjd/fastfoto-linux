@@ -99,12 +99,36 @@ def named_objects(window: Any) -> dict[str, tuple[Any, Any]]:
     return found
 
 
+def tree(iface: Any) -> Iterator[Any]:
+    """Every accessible interface under ``iface``: each delegate instance of every list."""
+    yield iface
+    for index in range(iface.childCount()):
+        kid = iface.child(index)
+        if kid is not None:
+            yield from tree(kid)
+
+
 def unnamed(window: Any) -> list[str]:
-    return sorted(
-        f"{name} ({iface.role().name})"
-        for name, (_item, iface) in named_objects(window).items()
-        if iface.role() in NAMED_ROLES and not iface.text(QAccessible.Text.Name).strip()
-    )
+    """Operable or status controls with no readable name, in every instance on every page.
+
+    A name needs a letter or digit: an arrow glyph is the text of a button, not its name.
+    Kirigami's own parts are skipped: the text parts inside a label or a combo box, and the
+    hidden action button of a placeholder message.
+    """
+    found = []
+    for iface in tree(QAccessible.queryAccessibleInterface(window)):
+        if iface.role() not in NAMED_ROLES:
+            continue
+        if any(ch.isalnum() for ch in iface.text(QAccessible.Text.Name)):
+            continue
+        obj = iface.object()
+        kind = obj.metaObject().className()
+        if kind.startswith(("QQuickTextEdit", "QQuickTextField")):
+            continue
+        if iface.role() == ROLE.Button and iface.state().invisible and not obj.objectName():
+            continue
+        found.append(f"{obj.objectName() or kind} ({iface.role().name})")
+    return found
 
 
 def test_every_control_of_the_scan_page_has_an_accessible_name(
@@ -264,24 +288,41 @@ def test_every_enabled_visible_control_can_be_reached_with_tab(
     assert missing == []
 
 
-def eye_marker_glyphs(accepted_flags: tuple[bool, ...], out: Path) -> list[str]:
-    """The status symbol of each eye marker drawn by the real canvas, in order."""
+GLYPHS = """(function glyphs(item, root, found) {
+    for (let i = 0; i < item.children.length; i++) {
+        const kid = item.children[i];
+        if (kid.objectName === "photoEyeMarkerGlyph") {
+            const a = kid.mapToItem(root, 0, 0);
+            const b = kid.mapToItem(root, kid.width, kid.height);
+            found.push({text: kid.text, x0: Math.min(a.x, b.x), y0: Math.min(a.y, b.y),
+                        x1: Math.max(a.x, b.x), y1: Math.max(a.y, b.y),
+                        point: kid.font.pointSize, pixel: kid.font.pixelSize});
+        }
+        glyphs(kid, root, found);
+    }
+    return found;
+})"""
+CANVAS = (200, 100)
+
+
+def eye_marker_glyphs(rois: list[tuple[bool, list[int]]], out: Path) -> list[dict[str, Any]]:
+    """Status symbol, text size and place (in canvas coordinates) of each eye marker drawn."""
     image = out / "marker-preview.png"
-    Image.new("RGB", (200, 100), (90, 90, 90)).save(image)
+    Image.new("RGB", CANVAS, (90, 90, 90)).save(image)
     engine = QQmlEngine()
     component = QQmlComponent(engine, QUrl.fromLocalFile(str(QML / "PhotoEditCanvas.qml")))
     assert component.isReady(), [error.toString() for error in component.errors()]
     candidates = [
-        {"id": f"eye{n}", "accepted": flag, "roi": [20 + 40 * n, 20, 40 + 40 * n, 40]}
-        for n, flag in enumerate(accepted_flags)
+        {"id": f"eye{n}", "accepted": accepted, "roi": roi}
+        for n, (accepted, roi) in enumerate(rois)
     ]
     canvas = component.createWithInitialProperties(
         dict(
-            width=200.0,
-            height=100.0,
+            width=float(CANVAS[0]),
+            height=float(CANVAS[1]),
             imageUrl=QUrl.fromLocalFile(str(image)).toString(),
-            sourceWidth=200,
-            sourceHeight=100,
+            sourceWidth=CANVAS[0],
+            sourceHeight=CANVAS[1],
             candidates=candidates,
             selectedId="",
         )
@@ -289,35 +330,57 @@ def eye_marker_glyphs(accepted_flags: tuple[bool, ...], out: Path) -> list[str]:
     assert canvas is not None
     try:
         settle()
-        return list(evaluate(canvas, f"{GLYPHS}(this, [])"))
+        return list(evaluate(canvas, f"{GLYPHS}(this, this, [])"))
     finally:
         canvas.deleteLater()
         engine.deleteLater()
         settle()
 
 
-GLYPHS = """(function glyphs(item, found) {
-    for (let i = 0; i < item.children.length; i++) {
-        const kid = item.children[i];
-        if (kid.objectName === "photoEyeMarkerGlyph") found.push(kid.text);
-        glyphs(kid, found);
-    }
-    return found;
-})"""
+MIDDLE = [20, 40, 40, 60]
 
 
 def test_an_eye_marker_says_accepted_or_rejected_by_a_symbol_not_only_by_colour(
     out: Path,
 ) -> None:
-    glyphs = eye_marker_glyphs((True, False), out)
-    assert len(glyphs) == 2 and glyphs[0] != glyphs[1] and all(glyphs)
+    glyphs = eye_marker_glyphs([(True, MIDDLE), (False, [60, 40, 80, 60])], out)
+    texts = [g["text"] for g in glyphs]
+    assert len(texts) == 2 and texts[0] != texts[1] and all(texts)
+
+
+@pytest.mark.parametrize(
+    "roi", [[20, 0, 40, 8], [20, 92, 40, 100], [0, 40, 8, 60], [192, 40, 200, 60]]
+)
+def test_the_marker_symbol_stays_inside_the_canvas_for_a_marker_at_any_edge(
+    roi: list[int], out: Path
+) -> None:
+    """The canvas clips: a symbol above a top-edge marker would be cut off."""
+    (glyph,) = eye_marker_glyphs([(True, roi)], out)
+    assert glyph["x0"] >= 0 and glyph["x1"] <= CANVAS[0], glyph
+    assert glyph["y0"] >= 0 and glyph["y1"] <= CANVAS[1], glyph
+
+
+def test_the_marker_symbol_follows_the_system_font_size(out: Path) -> None:
+    from PySide6.QtGui import QFont, QGuiApplication
+
+    original = QGuiApplication.font()
+    big = QFont(original)
+    big.setPointSizeF(original.pointSizeF() * 2)
+    try:
+        QGuiApplication.setFont(big)
+        (glyph,) = eye_marker_glyphs([(True, MIDDLE)], out)
+    finally:
+        QGuiApplication.setFont(original)
+    assert glyph["point"] == pytest.approx(big.pointSizeF())
+    (normal,) = eye_marker_glyphs([(True, MIDDLE)], out)
+    assert normal["point"] == pytest.approx(original.pointSizeF())
 
 
 def test_qt_tint_is_the_per_channel_blend_the_contrast_test_computes(
     make_bridge: Any, open_window: Any
 ) -> None:
     """The contrast test mirrors ``Qt.tint`` in Python; check it on the real one."""
-    from tests.gui.test_accessibility_contrast import tint
+    from tests.gui.qml_colours import tint
 
     window, _ = open_window(make_bridge())
     settle()

@@ -273,6 +273,17 @@ MUST_FAIL = {
     "form action": {"index.html": f'<form action="{EVIL}"></form>'},
     "protocol relative script": {"index.html": "<script src=//evil.example/x.js></script>"},
     "comment": {"index.html": f"<!-- {EVIL} -->"},
+    "namespace as an image": {"index.html": '<img src="http://www.w3.org/2000/svg">'},
+    "namespace as a link element": {"index.html": '<link href="http://www.w3.org/1999/xlink">'},
+    "namespace in a script": {"index.html": '<script>fetch("http://www.w3.org/2000/svg")</script>'},
+    "namespace in css": {"css/a.css": "a{background:url(http://www.w3.org/2000/svg)}"},
+    "namespace in srcset": {"index.html": '<img srcset="a.png 1x, http://www.w3.org/2000/svg 2x">'},
+    "meta refresh content": {
+        "index.html": '<meta http-equiv="refresh" name="description" content="0;url=https://evil.example/">'
+    },
+    "link with title is still checked": {
+        "index.html": f'<a title="x" href="javascript:{EVIL}">x</a>'
+    },
     "look-alike namespace": {"a.svg": '<svg xmlns="http://www.w3.org/2000/svg.evil.example/"/>'},
     "unlisted vendor host": {"assets/javascripts/b.js": "//" + " see https://evil.example/x"},
     "weird file type": {"x.webmanifest": f'{{"icons":[{{"src":"{EVIL}"}}]}}'},
@@ -293,6 +304,16 @@ MUST_PASS = {
         "index.html": '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">'
         '<math xmlns="http://www.w3.org/1998/Math/MathML"></math></svg>',
         "sitemap.xml": '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></urlset>',
+    },
+    "svg declaration": {
+        "index.html": '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"></svg>'
+    },
+    "inert attributes": {
+        "index.html": f'<a href="first-scan/" title="See {EVIL}">x</a>'
+        f'<img src="a.png" alt="{EVIL}">'
+        f'<button aria-label="{EVIL}" aria-description="{EVIL}" id="{EVIL}" class="{EVIL}" '
+        f'name="{EVIL}" lang="{EVIL}" data-x="{EVIL}"></button>'
+        f'<meta name="description" content="See {EVIL}"><meta name="keywords" content="{EVIL}">'
     },
     "css comment": {"css/a.css": "/* see https://example.com/license */ a{color:red}"},
     "image data urls": {
@@ -353,3 +374,39 @@ def test_wifi_scanning_uses_net_and_devices_is_not_a_reachability_test() -> None
     assert "ffscan devices --net HOST" in text
     assert "does not contact" in text
     assert "USB" in text.split("ffscan devices")[1]
+
+
+DESKTOP_WIFI = (
+    "The desktop app needs the USB connection; to scan over Wi-Fi without USB, "
+    "use the command line with --net HOST."
+)
+
+
+def test_the_desktop_app_is_documented_as_usb_only_and_wifi_users_get_the_cli() -> None:
+    assert DESKTOP_WIFI in squashed("first-scan.md")
+    for name in ("index.md", "install.md"):
+        text = squashed(name)
+        assert "(for Wi-Fi scanners)" not in text
+        assert "scans over USB or Wi-Fi" not in text
+
+
+def test_mkdocs_config_has_nothing_that_would_wake_the_third_party_code_in_the_theme() -> None:
+    cfg = config()
+    for key in ("repo_url", "repo_name", "plugins", "extra_javascript", "extra_css", "hooks"):
+        assert key not in cfg, key
+    assert "analytics" not in cfg.get("extra", {})
+    assert "social" not in cfg.get("extra", {})
+    lines = [x for x in CONFIG.read_text().lower().splitlines() if not x.lstrip().startswith("#")]
+    text = "\n".join(lines)
+    for word in ("mermaid", "analytics", "privacy", "social", "unpkg", "repo_url", "superfences"):
+        assert word not in text, word
+
+
+def test_the_dead_code_hosts_are_explained_and_point_at_the_config_test() -> None:
+    text = CHECKER.read_text()
+    assert (
+        "test_mkdocs_config_has_nothing_that_would_wake_the_third_party_code_in_the_theme" in text
+    )
+    for host in ("api.github.com", "unpkg.com"):
+        [line] = [x for x in text.splitlines() if f'"{host}"' in x]
+        assert "dead code" in line

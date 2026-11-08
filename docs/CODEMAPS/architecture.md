@@ -31,7 +31,7 @@ Flatpak (`packaging/flatpak/*.yml`) bundles app, SANE, shim, tesseract. `tools/i
 - `enhance/` `orient`, `restore`/`restore_cast`, `redeye`, `faces` (YuNet), `fullres`
 - `output/` `writer.write_photo/write_unprocessed`, `naming`, `metadata` (EXIF/XMP), `files`, `errors`
 - `documents/` PDF pipeline (see documents.md)
-- `library/` existing-library tools for `ffscan library`: `plan`, `decide`, `apply`, `jpeg_exif`, `tiff`, `safety`, `confine`, `walk`, `manifest`, `fdio`
+- `library/` existing-library tools for `ffscan library`: `plan`, `decide`, `apply`, `jpeg_exif`, `png_exif` (PNG `eXIf` patching), `image_format` (suffix/magic dispatch), `tiff`, `safety`, `confine`, `walk`, `manifest`, `fdio`
 - `cli/` `app` (parser, exit codes), `cmd_*`, `options`, `doc_options`, `*_summary`, `errors`
 - `gui/` see gui.md; `models/` YuNet ONNX + licence; `imaging.py` shared image helpers
 <!-- /AUTO-GENERATED -->

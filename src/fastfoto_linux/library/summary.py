@@ -3,6 +3,7 @@
 from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import PurePosixPath
 
 from fastfoto_linux.library.apply import (
     STATUS_DONE,
@@ -19,6 +20,7 @@ from fastfoto_linux.library.decide import (
     REASON_UNDECIDED,
     REASON_UPRIGHT,
 )
+from fastfoto_linux.library.image_format import PNG_SUFFIX
 from fastfoto_linux.library.plan import Action, PlanRow
 from fastfoto_linux.library.tags import QUARTER_TURNS
 from fastfoto_linux.library.walk import WalkResult
@@ -36,14 +38,17 @@ class CheckSummary:
     skipped_by_reason: dict[str, int]
     backs_like_fronts: int
     skipped_folders: int = 0
+    pngs: int = 0  # of the files seen; ``jpegs`` counts the JPEGs among them
 
 
 def summarize_check(walk: WalkResult, rows: Sequence[PlanRow]) -> CheckSummary:
     angles = Counter(row.rotate_cw for row in rows if row.action is Action.ROTATE)
     keeps = Counter(row.reason for row in rows if row.action is Action.KEEP)
     skips = Counter(row.reason for row in rows if row.action is Action.SKIP)
+    pngs = sum(1 for path in walk.jpegs if PurePosixPath(path).suffix.lower() == PNG_SUFFIX)
     return CheckSummary(
-        jpegs=len(walk.jpegs),
+        jpegs=len(walk.jpegs) - pngs,
+        pngs=pngs,
         other_formats=walk.other_formats,
         symlinks=walk.symlinks,
         unreadable_folders=walk.unreadable_folders,
@@ -64,9 +69,10 @@ def format_check(summary: CheckSummary, plan_name: str) -> str:
     """The text ``check`` prints; lines for symlinks and unreadable folders only when needed."""
     rotate = sum(summary.rotate_by_angle.values())
     skipped = sum(summary.skipped_by_reason.values())
+    kinds = f"JPEG: {summary.jpegs}" + (f", PNG: {summary.pngs}" if summary.pngs else "")
     lines = [
-        f"files seen: {summary.jpegs + summary.other_formats} "
-        f"(JPEG: {summary.jpegs}, other formats ignored: {summary.other_formats})"
+        f"files seen: {summary.jpegs + summary.pngs + summary.other_formats} "
+        f"({kinds}, other formats ignored: {summary.other_formats})"
     ]
     if summary.symlinks:
         lines.append(f"symlinks ignored: {summary.symlinks}")

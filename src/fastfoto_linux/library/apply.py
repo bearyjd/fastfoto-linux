@@ -11,10 +11,9 @@ from contextlib import ExitStack
 from dataclasses import dataclass, replace
 from pathlib import Path, PurePosixPath
 
-from fastfoto_linux.library import confine, fdio
+from fastfoto_linux.library import confine, fdio, image_format
 from fastfoto_linux.library.exif_errors import JpegExifError
 from fastfoto_linux.library.fdio import SourceFile
-from fastfoto_linux.library.jpeg_exif import Layout, read_orientation, set_orientation
 from fastfoto_linux.library.manifest import Manifest
 from fastfoto_linux.library.plan import Action, PlanRow
 from fastfoto_linux.library.safety import (
@@ -122,11 +121,12 @@ def _new_content(row: PlanRow, data: bytes) -> bytes:
     """``data`` with the planned tag; ``_Stale`` if the plan does not fit the file."""
     if row.old_tag is None or row.new_tag is None or not MIN_TAG <= row.new_tag <= MAX_TAG:
         raise _Stale("the plan row has no usable old_tag and new_tag")
-    layout = Layout.of(data)
-    current = read_orientation(data, layout)
+    codec = image_format.codec_for(row.path, data)
+    layout = codec.Layout.of(data)
+    current = codec.read_orientation(data, layout)
     if (TAG_UPRIGHT if current is None else current) != row.old_tag:
         raise _Stale("the file's orientation tag is not the one in the plan")
-    return set_orientation(data, row.new_tag, layout)
+    return codec.set_orientation(data, row.new_tag, layout)
 
 
 def _folder_modes(src: Path, relative: str) -> tuple[int, ...]:

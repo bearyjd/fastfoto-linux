@@ -1,4 +1,4 @@
-"""The plan file: one row per JPEG saying what ``fix`` should do, written by ``check``."""
+"""The plan file: one row per JPEG or PNG saying what ``fix`` should do, written by ``check``."""
 
 import csv
 import errno

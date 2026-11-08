@@ -8,15 +8,26 @@ import subprocess
 import threading
 import time
 import urllib.request
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
 
 from fastfoto_linux.documents import ocr_downloads, ocr_languages, ocr_tools
 from fastfoto_linux.documents.errors import OcrCancelledError, OcrMissingError
+from tests.documents._trusted_tmp import trusted_tmp_path
 
 REVISION = "a" * 40
 MODELS = {"eng": b"english", "spa": b"spanish", "deu": b"german", "osd": b"orientation"}
+
+
+@pytest.fixture
+def tmp_path(tmp_path: Path) -> Iterator[Path]:
+    """pytest's tmp_path, moved when its parents are ones the model cache rightly refuses.
+
+    The cache lives under XDG_DATA_HOME, which these tests point into tmp_path. See _trusted_tmp.
+    """
+    yield from trusted_tmp_path(tmp_path)
 
 
 def blob_id(data: bytes) -> str:

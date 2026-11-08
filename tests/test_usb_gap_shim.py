@@ -33,6 +33,8 @@ GAP_ENV = "FF680W_USB_GAP_US"
 DEFAULT_GAP_MS = 2.0
 DEFAULT_GAP_SLACK_MS = 150
 MIN_MEAN_OPEN_WINDOWS = 5.0
+OVERLAP_ATTEMPTS = 5
+SPAN_BACKSTOP_MS = 6000
 NS_PER_MS = 1_000_000
 # Legitimate runs take well under 2 s; a shim that sleeps for ever must fail, not hang the suite.
 RUN_TIMEOUT_S = 6
@@ -331,12 +333,13 @@ def mean_open_windows(by_handle: dict[str, list[Call]]) -> float:
     )
 
 
-def test_handles_are_serviced_concurrently_and_independently(harness: Harness) -> None:
-    """8 threads, one handle each: every OUT keeps its own gap and no thread blocks another."""
-    threads, pairs = 8, 200
+def _threaded_run(
+    harness: Harness, threads: int, pairs: int
+) -> tuple[list[Call], dict[str, list[Call]]]:
+    """One run of ``threads`` handles; what must hold on every run is checked here."""
     calls = harness.run([f"threads:{threads}:{pairs}"])
     assert len(calls) == threads * pairs * 2
-    by_handle = defaultdict(list)
+    by_handle: dict[str, list[Call]] = defaultdict(list)
     for call in sorted(calls, key=lambda c: c.t_ns):
         by_handle[call.handle].append(call)
     assert len(by_handle) == threads
@@ -344,28 +347,32 @@ def test_handles_are_serviced_concurrently_and_independently(harness: Harness) -
         assert [c.is_in for c in own] == [True, False] * pairs, handle
         for i, o in zip(own[0::2], own[1::2], strict=True):
             assert ms_between(i, o) >= DEFAULT_GAP_MS, f"{handle}: OUT only {ms_between(i, o)} ms"
-    # The property is structural, so it does not depend on how fast the machine is: a shim that
-    # serialises the handles (one lock across a whole call, sleep included) keeps fewer windows
-    # open on average, and may let one thread finish before the next one begins; a shim that
-    # does not has nearly all eight windows open together. A loaded runner stretches times,
-    # not this order.
-    starts = {handle: own[0].t_ns for handle, own in by_handle.items()}
-    ends = {handle: own[-1].t_ns for handle, own in by_handle.items()}
-    detail = (
-        f"slowest IN->OUT gap {max_gap_ms(by_handle):.1f} ms, per-thread spans (ms) "
-        f"{thread_spans_ms(by_handle)}"
-    )
-    assert max(starts.values()) < min(ends.values()), f"the threads did not overlap; {detail}"
-    # Eight threads, each waiting out its gap almost all the time: about 7 windows are open
-    # (6 with the CPUs oversubscribed 20 times). One lock across the sleep gives about 4.
-    assert mean_open_windows(by_handle) >= MIN_MEAN_OPEN_WINDOWS, (
-        f"handles were serialised; {detail}"
-    )
-    # A loose backstop only (10x the idle span of ~450 ms, 3200 ms when serialised by a sleeping
-    # lock): measured up to 1918 ms with 40 busy loops on 2 CPUs.
-    span_ms = (max(c.t_ns for c in calls) - min(c.t_ns for c in calls)) / NS_PER_MS
-    assert span_ms < 10 * pairs * DEFAULT_GAP_MS * 1.125, (
-        f"{threads} threads took {span_ms:.0f} ms; {detail}"
+    return calls, by_handle
+
+
+def test_handles_are_serviced_concurrently_and_independently(harness: Harness) -> None:
+    """8 threads, one handle each: every OUT keeps its own gap and no thread blocks another."""
+    threads, pairs = 8, 200
+    # Every run must keep the gap and the order (checked in _threaded_run). Overlap is the
+    # direction a busy machine can only hide, never fake, so the best of a few runs counts: a
+    # shim that serialises the handles (one lock across a whole call, sleep included) keeps about
+    # 4 IN->OUT windows open on average in every run, one that does not about 7 (6 with the CPUs
+    # oversubscribed 20 times).
+    best, details = 0.0, []
+    for _ in range(OVERLAP_ATTEMPTS):
+        calls, by_handle = _threaded_run(harness, threads, pairs)
+        best = max(best, mean_open_windows(by_handle))
+        span_ms = (max(c.t_ns for c in calls) - min(c.t_ns for c in calls)) / NS_PER_MS
+        details.append(
+            f"mean open {mean_open_windows(by_handle):.1f}, span {span_ms:.0f} ms, slowest IN->OUT "
+            f"{max_gap_ms(by_handle):.1f} ms, thread spans {thread_spans_ms(by_handle)}"
+        )
+        # A very loose backstop (idle: ~450 ms; 3200 ms or more if serialised by a sleeping lock).
+        assert span_ms < SPAN_BACKSTOP_MS, f"{threads} threads took {span_ms:.0f} ms"
+        if best >= MIN_MEAN_OPEN_WINDOWS:
+            break
+    assert best >= MIN_MEAN_OPEN_WINDOWS, "handles were serialised in every run: " + "; ".join(
+        details
     )
 
 

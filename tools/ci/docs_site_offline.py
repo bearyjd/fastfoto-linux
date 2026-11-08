@@ -15,6 +15,7 @@ CSS_EXTERNAL = re.compile(
     r"(?:@import\s+(?:url\()?\s*|url\(\s*)['\"]?\s*((?:https?:)?//[^'\")\s]+)", re.IGNORECASE
 )
 LOADED_ATTRS = {"src", "href", "data", "poster", "srcset", "action"}
+EXPECTED_ARGS = 2
 SAFE_LINK_RELS = {"canonical", "alternate", "next", "prev", "author", "license"}
 
 
@@ -52,7 +53,7 @@ def external_references(html: str) -> list[str]:
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) != 2 or not Path(argv[1]).is_dir():
+    if len(argv) != EXPECTED_ARGS or not Path(argv[1]).is_dir():
         print("usage: docs_site_offline.py SITE_DIR", file=sys.stderr)
         return 2
     problems: list[str] = []

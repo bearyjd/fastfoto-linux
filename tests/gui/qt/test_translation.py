@@ -184,25 +184,28 @@ def test_a_code_that_climbs_out_of_the_folder_never_reaches_a_good_catalog(tmp_p
     assert translation.active_code() == "en"
 
 
-@pytest.mark.parametrize("target", ["/etc/hostname", "../fastfoto_de", "other"])
+@pytest.mark.parametrize("kind", ["absolute", "relative", "traversal"])
 def test_a_catalog_that_names_a_dependency_is_refused_not_followed(
-    tmp_path: Path, target: str, caplog: pytest.LogCaptureFixture
+    tmp_path: Path, kind: str, caplog: pytest.LogCaptureFixture
 ) -> None:
-    (tmp_path / "fastfoto_de.qm").write_bytes(qm_helpers.with_dependency(target))
-    assert not translation.activate("de", directory=tmp_path)
+    """Qt loads an absolute dependency of an in-memory catalog (a good file is the proof)."""
+    folder = tmp_path / "catalogs"
+    folder.mkdir()
+    other = tmp_path / "other.qm"
+    other.write_bytes(qm_helpers.shipped())
+    target = {"absolute": str(other), "relative": "other.qm", "traversal": "../other.qm"}[kind]
+    (folder / "fastfoto_de.qm").write_bytes(qm_helpers.with_dependency(target))
+    assert not translation.activate("de", directory=folder)
     assert translation.active_code() == "en"
     assert translation.translate_message("Scanner found.") == "Scanner found."
     assert str(tmp_path) not in caplog.text
     assert target not in caplog.text
 
 
-def test_a_catalog_with_markup_added_after_compiling_is_refused() -> None:
+def test_a_catalog_with_markup_added_after_compiling_is_refused(tmp_path: Path) -> None:
     """The .ts checks cannot see a .qm edited by hand: the loader reads the .qm itself."""
-    import tempfile
-
-    with tempfile.TemporaryDirectory() as work:
-        (Path(work) / "fastfoto_de.qm").write_bytes(qm_helpers.with_translation("Fotos", "<b>xx"))
-        assert not translation.activate("de", directory=Path(work))
+    (tmp_path / "fastfoto_de.qm").write_bytes(qm_helpers.with_translation("Fotos", "<b>xx"))
+    assert not translation.activate("de", directory=tmp_path)
     assert translation.active_code() == "en"
 
 

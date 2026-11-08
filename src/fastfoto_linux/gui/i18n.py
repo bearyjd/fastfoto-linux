@@ -65,5 +65,5 @@ def source_path(code: str) -> Path:
 
 
 def pin_path(code: str) -> Path:
-    """The file pinning the SHA-256 of the compiled catalog (``tools/i18n.sh release`` writes it)."""
+    """The file pinning the SHA-256 of the compiled catalog (written by ``i18n.sh release``)."""
     return catalog_dir() / f"{CATALOG_PREFIX}{ui_language_code(code)}.qm.sha256"

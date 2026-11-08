@@ -15,6 +15,7 @@ from PySide6.QtTest import QTest
 
 from fastfoto_linux.documents import CleanupPolicy, ColourMode, ColourPolicy, DespeckleStatus
 from fastfoto_linux.documents.auto_colour import ColourDecision, ColourReason
+from fastfoto_linux.gui.qt.review_view import DOCUMENT_FILE_ERROR
 from fastfoto_linux.gui.review import ReviewState
 from fastfoto_linux.gui.reviewjobs import PreviewCompletion
 from tests.gui.qt import test_qml_documents, test_qml_review_window
@@ -265,6 +266,23 @@ def test_the_slot_refuses_a_value_that_is_not_a_bool(despeckle_window):
     bridge.review.setDocumentDespeckle("false")
     assert draft_of(bridge).despeckle is False
     assert "despeckle must be true or false" in bridge.controller.banner.text
+
+
+def test_an_os_error_in_a_review_action_shows_no_path_in_the_banner(
+    despeckle_window, monkeypatch, caplog
+):
+    _window, bridge, _worker, _source, _warnings = despeckle_window
+
+    def fail(*_args):
+        raise OSError(13, "Permission denied", "/private/place/page-0001.png")
+
+    monkeypatch.setattr(bridge.controller.review, "edit", fail)
+    with caplog.at_level("WARNING"):
+        bridge.review.toggle(1)
+    assert bridge.bannerKind == "error"
+    assert bridge.controller.banner.text == DOCUMENT_FILE_ERROR
+    assert "private" not in bridge.bannerText and "Permission" not in bridge.bannerText
+    assert "/private/place/page-0001.png" in caplog.text
 
 
 def test_the_label_is_unchanged_with_the_switch_off(despeckle_window):

@@ -4,7 +4,14 @@ import math
 
 
 def micro(v: float) -> float:
-    """``v`` to six decimals, half up: what the canvas's ``Math.round(v * 1e6) / 1e6`` does."""
+    """``v`` to six decimals, half up: ``floor(v * 1e6 + 0.5) / 1e6``.
+
+    This matches the canvas's ``Math.round(v * 1e6) / 1e6`` for every value a pointer can give,
+    but not exactly: where adding 0.5 itself rounds in floating point the two differ. JS
+    ``Math.round(0.49999999999999994)`` is 0 while ``floor(0.49999999999999994 + 0.5)`` is 1 (no
+    ``v`` makes the product that value); for products from 2**52 up this gives the next integer
+    (``micro(4503599627.370497)`` is ``4503599627.370498``, JS gives back ``.370497``). A test
+    pins that."""
     return math.floor(v * 1e6 + 0.5) / 1e6
 
 

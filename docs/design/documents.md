@@ -1006,13 +1006,25 @@ document level for this run only, a page's own level still wins, and `--fresh` d
   within one work cell (about 1 mm) of the frame edge may make a page `would_clip` (safe), as
   can a single dark speck there. The residual limit: a mark closer to the paper than the margin
   (under 12 levels, or under 8 noise spreads on a noisy scan) is not content and can still be cut by the turn. A narrow second peak that is not among the three highest outer samples can still be missed;
-  the limit is accepted. Known false abstention (fails safe, the page is left as scanned):
-  heavily noisy, evenly lit scans (about sigma 5 or more, no vignette) measure a noise spread
-  of only about 2 from the cell medians, so ordinary noise pixels near the frame edge can cross
-  the floor and make the page `would_clip`. The measurements above include a vignette, which
-  inflates the spread and hid this. Typical scans (sigma 1 to 3) are unaffected. Follow-up: take
-  the noise from pixel statistics of the paper background instead of the cell medians, and add
-  no-vignette noisy fixtures.
+  the limit is accepted.
+  Known false abstention (accepted, fails safe, the page is left as scanned): on evenly lit noisy
+  scans (no vignette) the noise spread measured from the cell medians can be only about 2 levels,
+  so ordinary noise pixels near the frame edge cross the floor and the page is `would_clip`. Measured
+  on the generated pages (12 tilts, 15 mm margins, 300 dpi, no vignette): noise sigma 6 abstained
+  on 9 of 12 and sigma 3, 4, 5, 7, 8, 10 and 12 on none (the result is not monotone in sigma: the
+  spread is a whole number of levels); with the mild vignette none abstained, because it inflates the spread.
+  Loosening the floor to cure this was tried (noise measured on the background cells) and was
+  rejected: it let a 9 x 12 px footer mark 25 levels under the paper pass at sigma 4 (the turn
+  cuts 21 of its 108 pixel centres).
+  How far under the paper a mark must be before the floor takes it for content, on one generated
+  evenly lit page at 300 dpi (kept estimate, then the rejected change): sigma 2, 16 and 16 levels
+  (8.0 sigma); sigma 4, 23 (5.8 sigma) and 27 (6.8); sigma 6, 26 (4.3) and 40 (6.7); sigma 10, 48
+  (4.8) and 66 (6.6). So the kept floor is the tighter one at every noise level, by 4 to 18
+  levels; the rejected one needed marks about 7 sigma deep. One synthetic page per level: not a
+  calibration on real scans. `tests/documents/test_deskew_adversarial.py` pins 42 such
+  pages; a future improvement must keep every pin except `evenly_lit6`. Typical scans (sigma 1 to
+  3) are unaffected. Re-running `--deskew` after such a change could give different verdicts; only
+  the angle is stored.
 - **When it abstains.** The first reason that applies is the status, and the page is left as
   scanned:
 

@@ -202,9 +202,19 @@ def test_a_catalog_that_names_a_dependency_is_refused_not_followed(
     assert target not in caplog.text
 
 
-def test_a_catalog_with_markup_added_after_compiling_is_refused(tmp_path: Path) -> None:
-    """The .ts checks cannot see a .qm edited by hand: the loader reads the .qm itself."""
-    (tmp_path / "fastfoto_de.qm").write_bytes(qm_helpers.with_translation("Fotos", "<b>xx"))
+def test_a_zero_length_section_before_the_real_ones_is_refused(tmp_path: Path) -> None:
+    """Qt stops reading at such a section; the loader must not report German for it."""
+    parts = qm_helpers.sections(qm_helpers.shipped())
+    (tmp_path / "fastfoto_de.qm").write_bytes(qm_helpers.build([(0xA7, b""), *parts]))
+    assert not translation.activate("de", directory=tmp_path)
+    assert translation.active_code() == "en"
+
+
+def test_a_context_table_of_two_zero_bytes_is_refused_before_qt_divides_by_zero(
+    tmp_path: Path,
+) -> None:
+    parts = qm_helpers.sections(qm_helpers.shipped())
+    (tmp_path / "fastfoto_de.qm").write_bytes(qm_helpers.build([(0x2F, b"\x00\x00"), *parts]))
     assert not translation.activate("de", directory=tmp_path)
     assert translation.active_code() == "en"
 
@@ -221,23 +231,47 @@ def test_a_symlinked_folder_above_the_catalog_is_refused(tmp_path: Path) -> None
     assert translation.active_code() == "en"
 
 
-def test_the_catalog_is_read_through_the_descriptor_it_was_checked_on(
+def test_the_folder_and_the_file_are_opened_one_step_at_a_time_without_following_links(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A file swapped in after the check is never loaded: the bytes read are the bytes loaded."""
+    """Every open after the first is relative to a descriptor and refuses a link."""
     (tmp_path / "fastfoto_de.qm").write_bytes(qm_helpers.shipped())
-    opened: list[int] = []
+    calls: list[tuple[int, Any]] = []
     real_open = translation.os.open
 
     def spy(path: Any, flags: int, *args: Any, **kwargs: Any) -> int:
-        opened.append(flags)
+        calls.append((flags, kwargs.get("dir_fd")))
         return real_open(path, flags, *args, **kwargs)
 
     monkeypatch.setattr(translation.os, "open", spy)
     assert translation.activate("de", directory=tmp_path)
-    assert opened
-    assert opened[-1] & translation.os.O_NOFOLLOW
-    assert opened[-1] & translation.os.O_CLOEXEC
+    assert len(calls) == len(tmp_path.parts) + 1  # "/", each folder, the file
+    for flags, dir_fd in calls[1:]:
+        assert dir_fd is not None
+        assert flags & translation.os.O_NOFOLLOW
+        assert flags & translation.os.O_CLOEXEC
+    assert all(flags & translation.os.O_DIRECTORY for flags, _ in calls[:-1])
+
+
+def test_a_catalog_swapped_for_a_link_after_a_good_one_was_seen_is_refused(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "fastfoto_de.qm").write_bytes(qm_helpers.shipped())
+    assert translation.activate("de", directory=tmp_path)
+    translation.deactivate()
+    (tmp_path / "fastfoto_de.qm").unlink()
+    (tmp_path / "elsewhere.qm").write_bytes(qm_helpers.shipped())
+    (tmp_path / "fastfoto_de.qm").symlink_to(tmp_path / "elsewhere.qm")
+    assert not translation.activate("de", directory=tmp_path)
+
+
+def test_a_relative_folder_or_one_with_dots_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "fastfoto_de.qm").write_bytes(qm_helpers.shipped())
+    monkeypatch.chdir(tmp_path)
+    assert not translation.activate("de", directory=Path("."))
+    assert not translation.activate("de", directory=tmp_path / "x" / "..")
 
 
 def test_unfinished_and_absent_messages_have_no_translation_at_run_time() -> None:

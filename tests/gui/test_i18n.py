@@ -11,26 +11,48 @@ import pytest
 
 from fastfoto_linux.gui import form, i18n, report
 
-PLACEHOLDER = re.compile(r"%(?:L?\d+|n)")
+PLACEHOLDER = re.compile(r"%L?(?:\d+|n)")
 CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
 
-def messages() -> list[tuple[str, str, str, str | None]]:
-    """(context, source, translation, type) of every message of the German catalog."""
+def messages() -> list[tuple[str, str, tuple[str, ...], str | None]]:
+    """(context, source, every form of the translation, type) of each message of the German .ts.
+
+    A message with plural forms has one text per ``<numerusform>``; any other has one text.
+    """
     root = ET.parse(i18n.source_path("de")).getroot()
     found = []
     for context in root.iter("context"):
         for message in context.iter("message"):
             translation = message.find("translation")
             assert translation is not None
+            forms = translation.findall("numerusform")
+            texts = tuple(form.text or "" for form in forms) or (translation.text or "",)
             found.append(
                 (
                     context.findtext("name") or "",
                     message.findtext("source") or "",
-                    translation.text or "",
+                    texts,
                     translation.get("type"),
                 )
             )
+    return found
+
+
+def problems(source: str, forms: tuple[str, ...]) -> list[str]:
+    """What is wrong with the forms of a translation; each one must pass every rule."""
+    found = []
+    for form_text in forms:
+        if not form_text.strip():
+            found.append("empty")
+        if re.search(r"[<>&]", form_text):
+            found.append("markup")
+        if CONTROL.search(form_text):
+            found.append("control character")
+        if sorted(PLACEHOLDER.findall(form_text)) != sorted(PLACEHOLDER.findall(source)):
+            found.append("placeholders")
+        if source.endswith((".", "…")) and not form_text.endswith((".", "…")):
+            found.append("sentence end")
     return found
 
 
@@ -86,7 +108,7 @@ def test_the_german_source_file_is_next_to_the_compiled_one() -> None:
 def test_the_german_catalog_names_its_language_and_has_some_finished_messages() -> None:
     root = ET.parse(i18n.source_path("de")).getroot()
     assert root.get("language") == "de"
-    finished = [item for item in messages() if item[3] is None and item[2]]
+    finished = [item for item in messages() if item[3] is None and any(item[2])]
     assert len(finished) >= 10
 
 
@@ -95,31 +117,33 @@ def test_the_german_catalog_is_partial_not_complete() -> None:
     assert unfinished, "the pilot is partial: untranslated messages stay listed as unfinished"
 
 
-def test_every_translation_has_the_placeholders_of_its_source() -> None:
-    for _, source, translation, kind in messages():
+def test_every_finished_translation_passes_every_rule() -> None:
+    """Markup, control characters, placeholders (%1..%9, %n, %Ln), blank text, sentence end."""
+    for _, source, forms, kind in messages():
         if kind is None:
-            assert sorted(PLACEHOLDER.findall(translation)) == sorted(
-                PLACEHOLDER.findall(source)
-            ), source
+            assert problems(source, forms) == [], source
 
 
-def test_no_translation_has_markup_an_ampersand_or_a_control_character() -> None:
-    for _, source, translation, _kind in messages():
-        assert not re.search(r"[<>&]", translation), source
-        assert not CONTROL.search(translation), source
+def test_unfinished_suggestions_are_free_of_markup_too() -> None:
+    for _, source, forms, kind in messages():
+        if kind == "unfinished" and any(forms):
+            found = problems(source, tuple(text for text in forms if text))
+            assert "markup" not in found and "control character" not in found, source
 
 
-def test_no_translation_is_empty_or_blank_when_finished() -> None:
-    for _, source, translation, kind in messages():
-        if kind is None:
-            assert translation.strip(), source
-
-
-def test_every_translation_keeps_the_end_of_its_sentence() -> None:
-    """A source that ends in a full stop or an ellipsis is translated to one that does too."""
-    for _, source, translation, kind in messages():
-        if kind is None and source.endswith((".", "…")):
-            assert translation.endswith((".", "…")), source
+def test_the_rules_catch_each_kind_of_fault_in_any_plural_form() -> None:
+    assert problems("Done.", ("Fertig.",)) == []
+    assert problems("%n page(s)", ("%n Seite", "%n Seiten")) == []
+    assert problems("%Ln file(s)", ("%Ln Datei", "%Ln Dateien")) == []
+    assert "placeholders" in problems("%Ln file(s)", ("%Ln Datei", "%n Dateien"))
+    assert "placeholders" in problems("%n page(s)", ("%n Seite", "Seiten"))
+    assert "placeholders" in problems("About %1", ("Zu",))
+    assert "placeholders" in problems("About", ("Zu %1",))
+    assert "markup" in problems("Page", ("Seite", "<b>Seiten</b>"))
+    assert "markup" in problems("Page", ("a & b",))
+    assert "control character" in problems("Page", ("Sei\x07te",))
+    assert "empty" in problems("Page", ("Seite", " "))
+    assert "sentence end" in problems("Done.", ("Fertig",))
 
 
 def test_the_marked_python_messages_stay_the_english_they_always_were() -> None:
@@ -146,9 +170,9 @@ def test_a_translated_python_message_is_not_longer_than_the_english_one() -> Non
     A longer one wraps and makes the bar taller, which squeezes the form above it (a longer label
     once displaced a form control that way).
     """
-    for context, source, translation, kind in messages():
+    for context, source, forms, kind in messages():
         if context == i18n.MESSAGES_CONTEXT and kind is None:
-            assert len(translation) <= len(source) + 4, source
+            assert all(len(text) <= len(source) + 4 for text in forms), source
 
 
 QML_DIR = Path(__file__).resolve().parents[2] / "src" / "fastfoto_linux" / "gui" / "qml"
@@ -207,6 +231,6 @@ def test_the_compiled_catalog_is_what_lrelease_makes_of_the_source_file() -> Non
 
 
 def test_two_german_messages_read_as_the_state_they_describe() -> None:
-    by_source = {source: translation for _, source, translation, _ in messages()}
+    by_source = {source: forms[0] for _, source, forms, _ in messages()}
     assert by_source["Cancelling…"] == "Abbruch läuft …"
     assert "Neu prüfen" in by_source["Press Check again to look for the scanner."]

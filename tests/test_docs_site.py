@@ -229,33 +229,127 @@ def load_checker() -> Any:
     return module
 
 
-@pytest.mark.parametrize(
-    "html",
-    [
-        '<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto">',
-        '<link rel="preconnect" href="https://fonts.gstatic.com/" crossorigin>',
-        '<script src="https://cdn.jsdelivr.net/x.js"></script>',
-        '<script src="//unpkg.com/x.js"></script>',
-        '<img src="http://example.com/a.png">',
-        '<style>@import url("https://fonts.googleapis.com/x");</style>',
-        '<div style="background:url(https://example.com/a.png)"></div>',
-        '<iframe src="https://example.com"></iframe>',
-        '<link rel="icon" href="https://example.com/i.png">',
-    ],
-)
-def test_the_checker_flags_every_kind_of_external_load(html: str) -> None:
-    assert load_checker().external_references(html)
+def problems(tmp_path: Path, files: dict[str, str]) -> list[str]:
+    for name, text in files.items():
+        target = tmp_path / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text, encoding="utf-8")
+    return load_checker().check_site(tmp_path)
 
 
-@pytest.mark.parametrize(
-    "html",
-    [
-        '<a href="https://example.com/page">a plain link</a>',
-        '<link rel="stylesheet" href="assets/css/main.css">',
-        '<script src="../assets/js/bundle.js"></script>',
-        '<img src="data:image/png;base64,AAAA">',
-        "<p>https://example.com is text, not a load</p>",
-    ],
-)
-def test_the_checker_allows_plain_links_and_local_assets(html: str) -> None:
-    assert load_checker().external_references(html) == []
+EVIL = "https://evil.example/x"
+TAB = "\t"
+
+MUST_FAIL = {
+    "script src": {"index.html": f'<script src="{EVIL}.js"></script>'},
+    "fetch in a js file": {"js/app.js": f'fetch("{EVIL}")'},
+    "inline script fetch": {"index.html": f'<script>fetch("{EVIL}")</script>'},
+    "srcset second candidate": {"index.html": f'<img srcset="a.png 1x, {EVIL}.png 2x">'},
+    "canonical stylesheet": {"index.html": f'<link rel="canonical stylesheet" href="{EVIL}.css">'},
+    "meta refresh": {"index.html": f'<meta http-equiv="refresh" content="0;url={EVIL}">'},
+    "meta refresh protocol relative": {
+        "index.html": '<meta http-equiv=refresh content="0;url=//evil.example/">'
+    },
+    "iframe srcdoc": {"index.html": f'<iframe srcdoc="<img src={EVIL}>"></iframe>'},
+    "iframe data html": {"index.html": '<iframe src="data:text/html,<p>x</p>"></iframe>'},
+    "inline svg xlink": {"index.html": f'<svg><use xlink:href="{EVIL}.svg#a"/></svg>'},
+    "object data": {"index.html": f'<object data="{EVIL}.svg"></object>'},
+    "svg file image": {
+        "a.svg": f'<svg xmlns="http://www.w3.org/2000/svg"><image href="{EVIL}.png"/></svg>'
+    },
+    "css escape": {"css/a.css": "a{background:url(\\68 ttps://evil.example/a.png)}"},
+    "css import comment": {"css/a.css": '@import/**/"https://evil.example/a.css";'},
+    "css url in string": {"css/a.css": 'a::after{content:"url(https://evil.example/a.png)"}'},
+    "css protocol relative": {"css/a.css": "a{background:url(//evil.example/a.png)}"},
+    "tab in scheme": {"index.html": '<img src="ht&#9;tps://evil.example/a.png">'},
+    "named colon": {"index.html": '<img src="https&colon;//evil.example/a.png">'},
+    "hex slashes": {"index.html": '<img src="&#x2f;&#x2f;evil.example/a.png">'},
+    "base with tab": {"index.html": f'<base href="ht{TAB}tps://evil.example/">'},
+    "duplicate src": {"index.html": '<img src="a.png" src="b.png">'},
+    "duplicate src external second": {"index.html": f'<img src="a.png" src="{EVIL}">'},
+    "javascript url": {"index.html": '<a href="javascript:alert(1)">x</a>'},
+    "javascript url with tab": {"index.html": '<a href="java&#9;script:alert(1)">x</a>'},
+    "data html in img": {"index.html": '<img src="data:text/html;base64,AAAA">'},
+    "form action": {"index.html": f'<form action="{EVIL}"></form>'},
+    "protocol relative script": {"index.html": "<script src=//evil.example/x.js></script>"},
+    "comment": {"index.html": f"<!-- {EVIL} -->"},
+    "look-alike namespace": {"a.svg": '<svg xmlns="http://www.w3.org/2000/svg.evil.example/"/>'},
+    "unlisted vendor host": {"assets/javascripts/b.js": "//" + " see https://evil.example/x"},
+    "weird file type": {"x.webmanifest": f'{{"icons":[{{"src":"{EVIL}"}}]}}'},
+}
+
+MUST_PASS = {
+    "relative everything": {
+        "index.html": '<a href="a/">a</a><img src="i.png" srcset="i.png 1x, j.png 2x">'
+        '<link rel="stylesheet" href="assets/c.css"><script src="../b.js"></script>'
+        '<base href="/docs/">',
+        "css/a.css": "@import 'b.css'; a{background:url(i.png)}",
+        "js/app.js": 'fetch("data.json")',
+    },
+    "external anchor": {
+        "index.html": '<a href="https://example.com/page">x</a><a href="//example.com/">y</a>'
+    },
+    "namespaces": {
+        "index.html": '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">'
+        '<math xmlns="http://www.w3.org/1998/Math/MathML"></math></svg>',
+        "sitemap.xml": '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></urlset>',
+    },
+    "css comment": {"css/a.css": "/* see https://example.com/license */ a{color:red}"},
+    "image data urls": {
+        "index.html": '<img src="data:image/png;base64,AAAA">',
+        "css/a.css": 'a{background:url("data:image/svg+xml;charset=utf-8,%3Csvg%3E")}',
+    },
+    "prose text and code": {"index.html": "<p>See https://example.com and <code>//x</code></p>"},
+    "css pseudo classes": {"css/a.css": "a:hover{color:red}b::after{content:'x'}"},
+    "allowed vendor host in a comment": {"assets/javascripts/b.js": "/* https://github.com/x */"},
+    "search index is data": {"search/search_index.json": f'{{"text":"{EVIL}"}}'},
+    "binary files": {"assets/i.png": "\x89PNG https://evil.example/"},
+}
+
+
+@pytest.mark.parametrize("name", MUST_FAIL)
+def test_the_checker_fails_every_way_to_load_from_elsewhere(name: str, tmp_path: Path) -> None:
+    assert problems(tmp_path, MUST_FAIL[name])
+
+
+@pytest.mark.parametrize("name", MUST_PASS)
+def test_the_checker_allows_local_assets_plain_links_and_namespaces(
+    name: str, tmp_path: Path
+) -> None:
+    assert problems(tmp_path, MUST_PASS[name]) == []
+
+
+def test_the_checker_names_the_file_and_the_string(tmp_path: Path) -> None:
+    [found] = problems(tmp_path, {"js/app.js": f'fetch("{EVIL}")'})
+    assert "js/app.js" in found
+    assert "evil.example" in found
+
+
+def test_the_theme_assets_are_not_excluded_from_the_build() -> None:
+    # exclude_docs also drops the theme's own assets/ folder, which would leave pages unstyled.
+    lines = [line.strip() for line in config()["exclude_docs"].splitlines()]
+    assert not [x for x in lines if x.strip("/") == "assets"]
+
+
+def squashed(name: str) -> str:
+    return " ".join((DOCS / name).read_text().split())
+
+
+def test_native_install_lists_the_sane_prerequisite() -> None:
+    text = squashed("install.md")
+    assert "scanimage" in text
+    assert "epsonds" in text
+    assert text.index("scanimage") < text.index("tools/install-desktop.sh")
+
+
+def test_flatpak_only_users_get_the_ffscan_command_through_flatpak_run() -> None:
+    text = squashed("first-scan.md")
+    assert "flatpak run --command=ffscan io.github.bearyjd.FastFotoLinux devices" in text
+
+
+def test_wifi_scanning_uses_net_and_devices_is_not_a_reachability_test() -> None:
+    text = squashed("first-scan.md")
+    assert "--net HOST" in text
+    assert "ffscan devices --net HOST" in text
+    assert "does not contact" in text
+    assert "USB" in text.split("ffscan devices")[1]

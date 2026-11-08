@@ -271,6 +271,7 @@ def test_a_relative_folder_or_one_with_dots_is_refused(
     (tmp_path / "fastfoto_de.qm").write_bytes(qm_helpers.shipped())
     monkeypatch.chdir(tmp_path)
     assert not translation.activate("de", directory=Path("."))
+    (tmp_path / "x").mkdir()
     assert not translation.activate("de", directory=tmp_path / "x" / "..")
 
 

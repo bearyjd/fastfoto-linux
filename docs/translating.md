@@ -66,41 +66,58 @@ To add a language, add its code and name to `UI_LANGUAGES` in `gui/i18n.py` (mar
 `partial=True` until every message is translated and reviewed), add the code to `languages` in
 `tools/i18n.sh`, run `tools/i18n.sh update` and `release`, and add the same checks as for `de`.
 
-## Safety of the translation files
+## Trust model and safety of the translation files
 
-Translation files are data read at run time, so:
+Translation files are data read at run time. What is and is not guaranteed:
+
+**The compiled catalog is trusted because of where it comes from, not because the app reads it.**
+It is the file packaged with the app; its SHA-256 is pinned in `fastfoto_<code>.qm.sha256`
+(a required test fails when they differ); it is byte-identical to a fresh
+`lrelease -nounfinished` of the reviewed `.ts` wherever `lrelease` runs (see below); and the
+loader checks its layout. The loader does **not** validate what the messages say: Qt reads
+them, and a partial reader of the format in Python would be a false boundary.
 
 - The app loads only `fastfoto_<code>.qm` for an allowlisted code (`en` or `de`) from the folder
   inside the installed package. Never the working directory, a settings value, an environment
   variable or another user-writable folder.
-- The file is opened without following links, in a folder whose path holds no link, and checked
-  on the open descriptor (a regular file, at most 1 MiB); the bytes read are the bytes loaded.
-- The loader reads the `.qm` itself before Qt does (`gui/qmformat.py`) and refuses a catalog with
-  a *dependencies* section (Qt would load the catalogs it names, by path), an unknown section, a
-  translation with `<`, `>`, `&` or a control character, or placeholders that differ from the
-  source.
-- A file that is missing, not a regular file (a link, a folder, a device), over 1 MiB or not a
-  valid catalog leaves the interface in English (a warning without paths is logged); it never
-  stops the app. The window shows the language that really loaded, not the one saved: if the
-  saved German cannot load, it shows English and no restart note.
-- A translation is shown as text and never used as a format string. The new QML labels use
-  `Text.PlainText`. Qt's own buttons and chips cannot be told to ignore markup, so the rule
-  above (no `<`, `>`, `&`) is checked on the `.ts`, and the committed `.qm` is checked against it
-  message by message.
+- The folder is opened from `/` one path component at a time, each step relative to the
+  descriptor before it and refusing links, and the file is opened the same way and checked on
+  the open descriptor (a regular file, at most 1 MiB). The bytes read are the bytes loaded, so
+  nothing can be swapped for a link between a check and the open.
+- Before Qt sees the bytes, `gui/qmformat.py` walks the section layout and refuses a catalog with
+  a *dependencies* section (Qt follows an absolute path named there), an empty, unknown, repeated
+  or out-of-order section (Qt stops reading at an empty one), a context table (a two-byte one
+  makes Qt divide by zero), or a hash table that is not a whole number of records.
+- Anything else wrong (missing, too big, refused, an exception, Qt cannot load it) leaves the
+  interface in English and logs a warning without paths; it never stops the app. The window shows
+  the language that really loaded, not the one saved: if the saved German cannot load, it shows
+  English and no restart note.
+- The rules for the text of a translation are checked on the reviewed `.ts` file, in
+  `tests/gui/test_i18n.py`, for every plural form of a finished message: no `<`, `>`, `&` or
+  control character, the same placeholders as the source (`%1` to `%9`, `%n`, `%Ln`), not blank,
+  and a sentence end kept.
+- The app's Python code never uses a translation as a format string: `translate_message` returns
+  it as it is. QML does fill placeholders: `qsTr("... %1 ...").arg(value)` puts a value into the
+  translated text, so the placeholders of a translation must match its source (tested). The
+  new QML labels use `Text.PlainText`; Qt's own buttons and chips cannot be told to ignore
+  markup, which is why the `.ts` rule against `<`, `>` and `&` matters.
+
+**Rule for contributors and reviewers:** never accept a change to a `.qm` without the matching
+change to its `.ts` and a passing recompare (`tools/i18n.sh check`, or the `lrelease` test below).
 
 ## Checks in CI
 
 `tools/i18n.sh check` runs in the `translations (informational)` job. It is **not** a required
-check and its step has `continue-on-error`, so the job is always green: several branches change
-QML at the same time and `lupdate` output can differ a little between Qt versions, so a hard
-failure would stop unrelated pull requests. A stale `.ts` shows up as a warning annotation. The job itself has `continue-on-error`, so even
-a failed install keeps it green.
+check; its step and the job have `continue-on-error`, so the job is always green: several
+branches change QML at the same time and `lupdate` output can differ a little between Qt
+versions, so a hard failure would stop unrelated pull requests. A stale `.ts` shows up as a
+warning annotation. The script always recompiles the `.ts` and compares the bytes with the
+committed `.qm`, whatever the Qt version; with a different Qt it can report a difference that the
+version causes (the committed file was made with Qt 6.10.3).
 
-Why the `.qm` is committed, and what keeps it honest: a build hook that compiles it at wheel time
-would need `lrelease` in every wheel build and in the Ubuntu jobs, which have no Qt. So the
-compiled file is committed, and instead of trusting it, the required test jobs (which need no Qt
-tools) read it in Python and require that it holds exactly the finished messages of the `.ts`
-(`tests/gui/test_qmformat.py`), that its SHA-256 equals the pin file, and that every Label and
-Heading in the QML shows plain text. The check that `lrelease` reproduces the exact bytes
-(`tests/gui/test_i18n.py`, and `tools/i18n.sh check`) runs only where `lrelease` exists at the Qt
-version the file was made with (6.10.3), not in the required jobs; elsewhere it is skipped.
+Why the `.qm` is committed: a build hook that compiles it at wheel time would need `lrelease` in
+every wheel build and in the Ubuntu jobs, which have no Qt. The required test jobs (which need no
+Qt tools) check that the SHA-256 of the file equals the pin, that its layout is sound, that the
+`.ts` rules above hold, and that every Label and Heading in the QML shows plain text. The test
+that `lrelease` reproduces the exact bytes (`tests/gui/test_i18n.py`) runs only where `lrelease`
+exists **and** is Qt 6.10.3, so it is not enforced by the required jobs; elsewhere it is skipped.

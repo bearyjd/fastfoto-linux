@@ -3,14 +3,15 @@
 Translation files are data that is read at run time, so they are held to a few rules:
 
 * only ``fastfoto_<code>.qm`` of an allowlisted code is read, from the folder inside the package
-  (never the working directory, a settings value, or the environment), through a descriptor
-  opened without following links, in a folder whose path holds no link;
-* the bytes are read in Python first (``gui.qmformat``): a catalog with a dependencies section
-  (Qt would load the catalogs it names), an unknown section, markup, control characters or other
-  placeholders than its source is refused;
-* a file that is missing, not a regular file, too big or not a catalog leaves the app in English;
-* the text of a translation is shown as text (the QML labels use ``Text.PlainText``) and is never
-  used as a format string: ``translate_message`` returns it as it is.
+  (never the working directory, a settings value, or the environment); the folder is reached one
+  component at a time through descriptors that refuse links, and the file is opened the same way;
+* the file must be a regular file of at most 1 MiB, and its layout must be sound
+  (``gui.qmformat``: no dependencies section, no empty or unknown section);
+* anything else (missing, too big, refused, not loadable, an exception) leaves the app in English
+  and logs a warning without paths;
+* what the messages say is not checked here: the packaged file is trusted because its SHA-256 is
+  pinned and it is byte-identical to a fresh compile of the reviewed ``.ts`` (docs/translating.md);
+* ``translate_message`` returns a translation as it is, and the QML labels use ``Text.PlainText``.
 """
 
 import logging
@@ -28,7 +29,7 @@ from fastfoto_linux.gui.i18n import (
     catalog_dir,
     ui_language_code,
 )
-from fastfoto_linux.gui.qmformat import CatalogError, read_catalog
+from fastfoto_linux.gui.qmformat import check_catalog
 
 logger = logging.getLogger(__name__)
 
@@ -46,12 +47,40 @@ def active_code() -> str:
     return _active["code"]
 
 
-def _read_catalog(path: Path) -> bytes | None:
-    """The bytes of a regular, small file: opened without following a link, checked on the opened
-    descriptor (so a file swapped in afterwards is not the one read), at most ``MAX_CATALOG_BYTES``.
+def _open_folder(directory: Path) -> int | None:
+    """A descriptor for the folder, opened one path component at a time from ``/``.
+
+    Each step is relative to the descriptor before it and refuses a link, so no part of the path
+    can be swapped for a link between a check and the open. A relative path, or one with ``..``,
+    is refused.
     """
+    if not directory.is_absolute() or ".." in directory.parts:
+        return None
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
     try:
-        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK)
+        current = os.open("/", flags)
+    except OSError:
+        return None
+    for part in directory.parts[1:]:
+        try:
+            following = os.open(part, flags, dir_fd=current)
+        except OSError:
+            os.close(current)
+            return None
+        os.close(current)
+        current = following
+    return current
+
+
+def _read_catalog(folder: int, name: str) -> bytes | None:
+    """The bytes of a regular, small file in the folder: opened without following a link and
+    checked on the open descriptor, at most ``MAX_CATALOG_BYTES``."""
+    try:
+        descriptor = os.open(
+            name,
+            os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK,
+            dir_fd=folder,
+        )
     except OSError:
         return None
     try:
@@ -66,26 +95,28 @@ def _read_catalog(path: Path) -> bytes | None:
     return data if len(data) <= MAX_CATALOG_BYTES else None
 
 
-def _plain_folder(directory: Path) -> bool:
-    """True when no part of the folder's path is a link: it is its own real path."""
-    return os.path.realpath(directory) == os.fspath(directory)
-
-
 def _load(code: str, directory: Path) -> tuple[QTranslator, bytes] | None:
-    if not _plain_folder(directory):
-        logger.warning("the translation folder is reached through a link; staying English")
+    folder = _open_folder(directory)
+    if folder is None:
+        logger.warning(
+            "the translation folder cannot be opened safely; the interface stays English"
+        )
         return None
-    data = _read_catalog(directory / f"{CATALOG_PREFIX}{code}.qm")
+    try:
+        data = _read_catalog(folder, f"{CATALOG_PREFIX}{code}.qm")
+    finally:
+        os.close(folder)
     if data is None:
         logger.warning("no usable translation file for %r; the interface stays English", code)
         return None
     try:
-        read_catalog(data)  # no dependencies, no markup, no odd sections: before Qt sees it
-    except CatalogError as error:
+        check_catalog(data)  # the layout only: see gui/qmformat.py
+        translator = QTranslator()
+        loaded = translator.load(data)
+    except Exception as error:  # a catalog must never stop the app
         logger.warning("the translation file for %r is refused (%s); staying English", code, error)
         return None
-    translator = QTranslator()
-    if not translator.load(data):
+    if not loaded:
         logger.warning("the translation file for %r cannot be loaded; staying English", code)
         return None
     return translator, data

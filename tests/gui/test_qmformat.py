@@ -61,7 +61,7 @@ def test_an_empty_or_misshapen_hash_table_is_refused() -> None:
             qm_helpers.build(
                 [(LANGUAGE, parts[LANGUAGE]), (HASHES, table), (MESSAGES, parts[MESSAGES])]
             ),
-            "hash",
+            "hash|empty",
         )
 
 
@@ -79,6 +79,7 @@ def test_sections_out_of_order_or_repeated_are_refused() -> None:
     parts = qm_helpers.sections(qm_helpers.shipped())
     refused(qm_helpers.build(list(reversed(parts))), "order")
     refused(qm_helpers.build([*parts, parts[0]]), "order|twice")
+    refused(qm_helpers.build([parts[0], parts[0], *parts[1:]]), "twice")
 
 
 def test_a_catalog_without_messages_or_hashes_is_refused() -> None:
@@ -94,7 +95,15 @@ def test_a_wrong_magic_number_or_an_empty_file_is_refused() -> None:
 
 def test_every_truncation_is_refused_cleanly_never_with_another_error() -> None:
     data = qm_helpers.shipped()
+    ends = {qm_helpers.HEADER}
+    messages_end = 0
+    for tag, payload in qm_helpers.sections(data):
+        ends.add(max(ends) + qm_helpers.SECTION_HEAD + len(payload))
+        if tag == MESSAGES:
+            messages_end = max(ends)
     for cut in range(len(data)):
+        if cut in ends and cut >= messages_end:
+            continue  # ends after the messages: a shorter, well-formed catalog
         with pytest.raises(qmformat.CatalogError):
             qmformat.check_catalog(data[:cut])
 

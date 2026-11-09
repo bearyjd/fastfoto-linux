@@ -19,8 +19,8 @@
     </p>
   </description>
   <launchable type="desktop-id">io.github.bearyjd.Feedshot.desktop</launchable>
-  <url type="homepage">https://github.com/bearyjd/fastfoto-linux</url>
-  <url type="bugtracker">https://github.com/bearyjd/fastfoto-linux/issues</url>
+  <url type="homepage">https://github.com/bearyjd/feedshot</url>
+  <url type="bugtracker">https://github.com/bearyjd/feedshot/issues</url>
   <keywords>
     <keyword>scanner</keyword>
     <keyword>photo</keyword>

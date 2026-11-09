@@ -34,9 +34,9 @@ trust the software with irreplaceable originals. Keep your prints.
 - **Red-eye** is experimental and off by default, and its suggestions start unaccepted in the editor.
 - **Deskew** may abstain on difficult pages (sideways pages, very noisy scans) and is calibrated on
   synthetic pages only; see the
-  [photo geometry design note](https://github.com/bearyjd/fastfoto-linux/blob/main/docs/design/photo-geometry.md)
+  [photo geometry design note](https://github.com/bearyjd/feedshot/blob/main/docs/design/photo-geometry.md)
   and the
-  [document design note](https://github.com/bearyjd/fastfoto-linux/blob/main/docs/design/documents.md).
+  [document design note](https://github.com/bearyjd/feedshot/blob/main/docs/design/documents.md).
 - **Straighten** in the photo editor resamples pixels and needs equal horizontal and vertical
   resolution.
 - **Detail** (noise reduction, sharpening) is computed at full resolution and can take seconds on a

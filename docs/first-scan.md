@@ -29,7 +29,7 @@ with --net HOST. The commands are below.
 
 With the native install, `ffscan` is in `~/.local/bin`. With the Flatpak there is no host `ffscan`:
 run it through Flatpak, for example
-`flatpak run --command=ffscan io.github.bearyjd.FastFotoLinux devices`, and use that in place of
+`flatpak run --command=ffscan io.github.bearyjd.Feedshot devices`, and use that in place of
 `ffscan` in the commands below. Inside the Flatpak, choose an output folder under your Pictures
 folder.
 

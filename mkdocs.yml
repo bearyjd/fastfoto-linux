@@ -1,4 +1,4 @@
-site_name: fastfoto-linux
+site_name: Feedshot
 site_description: Open-source Linux app for the Epson FastFoto FF-680W photo scanner. Not affiliated with Seiko Epson.
 docs_dir: docs
 strict: true

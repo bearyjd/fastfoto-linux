@@ -158,7 +158,7 @@ Kirigami.ScrollablePage {
             objectName: "uiLanguageRestartNote"
             Layout.fillWidth: true
             visible: bridge.uiLanguageRestart
-            text: qsTr("Restart FastFoto Linux to apply the language.")
+            text: qsTr("Restart Feedshot to apply the language.")
             textFormat: Text.PlainText
             wrapMode: Text.WordWrap
         }

@@ -1,4 +1,4 @@
-# fastfoto-linux
+# Feedshot
 
 An open-source Linux app for the Epson FastFoto FF-680W photo scanner. It scans through SANE (the desktop
 app over USB; the command line also over Wi-Fi), pairs photo backs with their fronts, turns pictures upright, and lets you review

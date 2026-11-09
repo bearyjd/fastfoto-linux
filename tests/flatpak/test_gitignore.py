@@ -38,7 +38,7 @@ def ignored(path: str) -> bool:
         "repo/summary",  # --repo=repo
         ".flatpak-builder/cache/objects",  # the builder's state folder
         "fastfoto-linux.flatpak",  # flatpak build-bundle
-        "io.github.bearyjd.FastFotoLinux.flatpak",  # the CI job's bundle name
+        "io.github.bearyjd.Feedshot.flatpak",  # the CI job's bundle name
     ],
 )
 def test_the_files_of_a_local_flatpak_build_are_ignored(path: str) -> None:
@@ -49,7 +49,7 @@ def test_the_files_of_a_local_flatpak_build_are_ignored(path: str) -> None:
     "path",
     [
         "packaging/flatpak/python-deps.json",
-        "packaging/flatpak/io.github.bearyjd.FastFotoLinux.yml",
+        "packaging/flatpak/io.github.bearyjd.Feedshot.yml",
         "src/fastfoto_linux/repo/x.py",  # the folders are ignored at the top level only
         "tools/flatpak/gen_wheel_sources.py",
         "tests/flatpak/helpers.py",

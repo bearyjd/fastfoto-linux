@@ -3,7 +3,7 @@
 <h1>
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="docs/assets/banner.svg">
-    <img src="docs/assets/banner-light.svg" alt="fastfoto-linux" width="880">
+    <img src="docs/assets/banner-light.svg" alt="Feedshot" width="880">
   </picture>
 </h1>
 
@@ -17,13 +17,17 @@
 </div>
 <!-- glowup:hero end -->
 
-# fastfoto-linux
+# Feedshot
+
+*formerly FastFoto Linux*
 
 Native Linux support for the **Epson FastFoto FF-680W** photo scanner — scanning over USB or
 Wi-Fi via SANE, plus the FastFoto-style features people actually buy it for: photo backs with
 handwriting, auto-upright, colour restore, red-eye, albums and dates.
 
-> Status: early development. Not affiliated with Seiko Epson.
+> Status: early development.
+
+Feedshot is an independent, community-developed project. It is not affiliated with, authorised, sponsored or endorsed by Seiko Epson Corporation. Epson and FastFoto are trademarks or registered trademarks of Seiko Epson Corporation (or its affiliates), used here only to identify the compatible scanner. All other trademarks belong to their owners.
 
 ## Why
 
@@ -763,18 +767,18 @@ Preparing a Flathub submission: see [docs/flathub-submission.md](docs/flathub-su
 
 The Flatpak brings its own Qt and Kirigami, so it needs no distribution packages, and carries
 the SANE `epsonds` backend and the USB gap shim, built from this checkout (x86_64 only). The
-manifest is `packaging/flatpak/io.github.bearyjd.FastFotoLinux.yml`. You need `flatpak` and
+manifest is `packaging/flatpak/io.github.bearyjd.Feedshot.yml`. You need `flatpak` and
 `flatpak-builder` and the Flathub remote, which has the KDE 6.11 runtime and the PySide6 base app.
 
 ```sh
 flatpak-builder --user --install-deps-from=flathub --force-clean --repo=repo build-dir \
-  packaging/flatpak/io.github.bearyjd.FastFotoLinux.yml
+  packaging/flatpak/io.github.bearyjd.Feedshot.yml
 flatpak build-bundle --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo repo \
-  fastfoto-linux.flatpak io.github.bearyjd.FastFotoLinux
+  fastfoto-linux.flatpak io.github.bearyjd.Feedshot
 flatpak --user install fastfoto-linux.flatpak                  # install
-flatpak run io.github.bearyjd.FastFotoLinux                    # the desktop app
-flatpak run --command=ffscan io.github.bearyjd.FastFotoLinux devices   # the developer CLI
-flatpak uninstall --user io.github.bearyjd.FastFotoLinux      # remove it again
+flatpak run io.github.bearyjd.Feedshot                    # the desktop app
+flatpak run --command=ffscan io.github.bearyjd.Feedshot devices   # the developer CLI
+flatpak uninstall --user io.github.bearyjd.Feedshot      # remove it again
 ```
 
 The Flatpak also brings **searchable text**, so the Documents box needs nothing installed:
@@ -813,7 +817,7 @@ sandbox may do:
   (`org.kde.KGlobalSettings`, `org.kde.kconfig.notify`, `com.canonical.AppMenu.Registrar`) and
   read-only access to the KDE settings file (`--filesystem=xdg-config/kdeglobals:ro`).
 
-The settings are kept in `~/.var/app/io.github.bearyjd.FastFotoLinux/`.
+The settings are kept in `~/.var/app/io.github.bearyjd.Feedshot/`.
 
 ## Planned interfaces
 

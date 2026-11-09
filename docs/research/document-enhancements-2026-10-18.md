@@ -1,4 +1,4 @@
-# Document enhancement research for FastFoto Linux
+# Document enhancement research for Feedshot
 
 Accessed: 2026-10-18. Roadmap research only; no product changes or hardware measurements.
 Baseline supplied for this research: `main` at `39910afd`; bounded source checks below, not a complete feature audit.

@@ -17,7 +17,7 @@ def section() -> str:
 def test_the_flatpak_section_has_build_install_run_and_uninstall_commands() -> None:
     text = section()
     assert "flatpak-builder" in text
-    assert "packaging/flatpak/io.github.bearyjd.FastFotoLinux.yml" in text
+    assert "packaging/flatpak/io.github.bearyjd.Feedshot.yml" in text
     assert "flatpak --user install" in text or "flatpak install --user" in text
     assert f"flatpak run {APP_ID}" in text
     assert f"--command=ffscan {APP_ID}" in text or f"{APP_ID} --command=ffscan" in text

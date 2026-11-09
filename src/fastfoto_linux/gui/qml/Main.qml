@@ -6,7 +6,7 @@ Kirigami.ApplicationWindow {
     id: root
 
     objectName: "mainWindow"
-    title: qsTr("FastFoto Linux")
+    title: qsTr("Feedshot")
     width: Kirigami.Units.gridUnit * 64
     height: Kirigami.Units.gridUnit * 40
     minimumWidth: Kirigami.Units.gridUnit * 40

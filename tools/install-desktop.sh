@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install FastFoto Linux for the current user, without root:
+# Install Feedshot for the current user, without root:
 #   - a virtual environment that sees the system PySide6 and Kirigami,
 #   - the USB gap shim the scanner needs, built from this checkout,
 #   - an application menu entry with its icon, and `fastfoto` / `ffscan` in ~/.local/bin.
@@ -19,7 +19,7 @@
 set -euo pipefail
 umask 022 # files are readable by others whatever the user's umask is
 
-APP_ID="io.github.bearyjd.FastFotoLinux"
+APP_ID="io.github.bearyjd.Feedshot"
 LAUNCHERS=(fastfoto ffscan)
 
 usage() {
@@ -348,7 +348,7 @@ install_all() {
   tesseract_step
   if ((!DRY_RUN)); then
     check_qt
-    echo "Installed. Start FastFoto Linux from the application menu, or run: fastfoto"
+    echo "Installed. Start Feedshot from the application menu, or run: fastfoto"
     echo "(make sure $BIN_DIR is in your PATH to use the commands from a terminal)"
   fi
 }

@@ -18,7 +18,7 @@ from fastfoto_linux.documents.ocr_tools import (
 )
 
 ROOT = Path(__file__).resolve().parents[2]
-APP_ID = "io.github.bearyjd.FastFotoLinux"
+APP_ID = "io.github.bearyjd.Feedshot"
 SHIM = "ff680w_usb_gap.so"
 
 STUB_PYTHON = """#!/bin/sh

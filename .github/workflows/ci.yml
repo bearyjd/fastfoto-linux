@@ -189,12 +189,12 @@ jobs:
           persist-credentials: false
       - uses: flatpak/flatpak-github-actions/flatpak-builder@79327416609af08178ad73b352877e51450790b3 # v6.8
         with:
-          bundle: io.github.bearyjd.FastFotoLinux.flatpak
-          manifest-path: packaging/flatpak/io.github.bearyjd.FastFotoLinux.yml
+          bundle: io.github.bearyjd.Feedshot.flatpak
+          manifest-path: packaging/flatpak/io.github.bearyjd.Feedshot.yml
           upload-artifact: true
       # The action leaves the bundle in the workspace. The runtime is installed by the build.
       - name: Install the bundle for the user
-        run: flatpak install --user --noninteractive --bundle io.github.bearyjd.FastFotoLinux.flatpak
+        run: flatpak install --user --noninteractive --bundle io.github.bearyjd.Feedshot.flatpak
       - name: OCR inside the sandbox
         timeout-minutes: 5
         run: tools/ci/flatpak-ocr-smoke.sh
@@ -205,5 +205,5 @@ jobs:
         continue-on-error: true
         timeout-minutes: 3
         run: |
-          appstreamcli validate --pedantic --explain --no-net packaging/io.github.bearyjd.FastFotoLinux.metainfo.xml
-          desktop-file-validate packaging/io.github.bearyjd.FastFotoLinux.desktop
+          appstreamcli validate --pedantic --explain --no-net packaging/io.github.bearyjd.Feedshot.metainfo.xml
+          desktop-file-validate packaging/io.github.bearyjd.Feedshot.desktop

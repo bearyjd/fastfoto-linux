@@ -13,10 +13,10 @@ reviewer will want for each permission. Requirements pages:
   builds (`packaging/flatpak/`) uses the local checkout. `tests/flatpak/test_flathub_variant.py`
   keeps the two in step (same sandbox permissions, same modules; only the app and shim sources
   differ).
-- Metainfo (`packaging/io.github.bearyjd.FastFotoLinux.metainfo.xml`): licence, OARS content
+- Metainfo (`packaging/io.github.bearyjd.Feedshot.metainfo.xml`): licence, OARS content
   rating, release entry, URLs, developer, branding colours, keywords, display requirement.
 - Python dependencies are hashed wheels listed as sources (no network at build time).
-- The app ID `io.github.bearyjd.FastFotoLinux` is on the code-hosting pattern
+- The app ID `io.github.bearyjd.Feedshot` is on the code-hosting pattern
   `io.github.<user>.<App>` that Flathub accepts for a repository owned by that user (but see the
   linter finding below).
 
@@ -29,15 +29,15 @@ repository is `github.com/bearyjd/fastfoto-linux`, so the URL the linter tried d
 the current linter before submitting.)
 
 Decision: the repository stays `github.com/bearyjd/fastfoto-linux` and the ID stays
-`io.github.bearyjd.FastFotoLinux`; request an exception in the submission PR (Flathub says one can
-be granted after a manual check). Fallbacks if refused: rename the repository to `FastFotoLinux`
+`io.github.bearyjd.Feedshot`; request an exception in the submission PR (Flathub says one can
+be granted after a manual check). Fallbacks if refused: rename the repository to `Feedshot`
 (GitHub redirects the old name; update the URLs in the metainfo, manifest and README), or change
 the ID to `io.github.bearyjd.fastfoto-linux` (a dash is allowed in the last component; the ID is
 permanent once published).
 
 Paragraph to paste into the submission PR:
 
-> The linter reports `appid-url-not-reachable` for `io.github.bearyjd.FastFotoLinux`. The project
+> The linter reports `appid-url-not-reachable` for `io.github.bearyjd.Feedshot`. The project
 > lives at https://github.com/bearyjd/fastfoto-linux (the name with a hyphen), owned by the same
 > account `bearyjd` that the ID names, and the metainfo, the manifest sources and the release tags
 > all point there. We would like to keep this repository name and ID; could you check this
@@ -50,7 +50,7 @@ ID has capitals. It cannot be fixed without changing the ID, which is the decisi
 
 1. Cut the release tag (for example `v0.0.1`, matching `version` in `pyproject.toml` and the
    `<release>` in the metainfo; set the release date to the real day).
-2. In `packaging/flatpak/flathub/io.github.bearyjd.FastFotoLinux.yml`, set `tag:` and `commit:` of
+2. In `packaging/flatpak/flathub/io.github.bearyjd.Feedshot.yml`, set `tag:` and `commit:` of
    both git sources (`usb-gap-shim` and `fastfoto-linux`) to that tag and
    `git rev-parse <tag>^{commit}`.
 3. Take real screenshots of the released app and add a `<screenshots>` block to the metainfo (https
@@ -61,14 +61,14 @@ ID has capitals. It cannot be fixed without changing the ID, which is the decisi
 
 ```sh
 flatpak install --user flathub org.flatpak.Builder
-appstreamcli validate --pedantic --explain packaging/io.github.bearyjd.FastFotoLinux.metainfo.xml
-desktop-file-validate packaging/io.github.bearyjd.FastFotoLinux.desktop
+appstreamcli validate --pedantic --explain packaging/io.github.bearyjd.Feedshot.metainfo.xml
+desktop-file-validate packaging/io.github.bearyjd.Feedshot.desktop
 cd packaging/flatpak/flathub
-flatpak run --command=flatpak-builder-lint org.flatpak.Builder manifest io.github.bearyjd.FastFotoLinux.yml
+flatpak run --command=flatpak-builder-lint org.flatpak.Builder manifest io.github.bearyjd.Feedshot.yml
 flatpak run --command=flatpak-builder-lint org.flatpak.Builder appstream \
-  ../../io.github.bearyjd.FastFotoLinux.metainfo.xml
+  ../../io.github.bearyjd.Feedshot.metainfo.xml
 flatpak run org.flatpak.Builder --user --install-deps-from=flathub --force-clean \
-  --repo=repo build-dir io.github.bearyjd.FastFotoLinux.yml
+  --repo=repo build-dir io.github.bearyjd.Feedshot.yml
 flatpak run --command=flatpak-builder-lint org.flatpak.Builder repo repo
 ```
 
@@ -96,7 +96,7 @@ flatpak run --command=flatpak-builder-lint org.flatpak.Builder repo repo
 
 ## After acceptance
 
-- Flathub creates `github.com/flathub/io.github.bearyjd.FastFotoLinux`; the maintainer gets
+- Flathub creates `github.com/flathub/io.github.bearyjd.Feedshot`; the maintainer gets
   write access to it by accepting the invitation. Later changes are PRs against that repository.
 - `x-checker-data` on the two git sources lets the flathub bot (flatpak-external-data-checker)
   open a PR when a newer `vX.Y.Z` tag exists; the tarball and wheel sources have no checker, so
@@ -112,5 +112,5 @@ flatpak run --command=flatpak-builder-lint org.flatpak.Builder repo repo
 1. Fork `flathub/flathub` and uncheck "Copy the master branch only" (the submission page's wording), so that the `new-pr` branch is copied too.
 2. Create a branch from `new-pr`, copy the contents of `packaging/flatpak/flathub/` into the
    branch root, and open a PR against the `new-pr` base branch titled
-   `Add io.github.bearyjd.FastFotoLinux`.
+   `Add io.github.bearyjd.Feedshot`.
 3. Answer the review; the bot builds a test build when a maintainer comments `bot, build`.

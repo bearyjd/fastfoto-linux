@@ -385,7 +385,7 @@
 <context>
     <name>Main</name>
     <message>
-        <source>FastFoto Linux</source>
+        <source>Feedshot</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
@@ -1282,8 +1282,8 @@
         <translation>Diese Übersetzung ist unvollständig: Text, der nicht übersetzt ist, bleibt englisch.</translation>
     </message>
     <message>
-        <source>Restart FastFoto Linux to apply the language.</source>
-        <translation>Starten Sie FastFoto Linux neu, um die Sprache zu übernehmen.</translation>
+        <source>Restart Feedshot to apply the language.</source>
+        <translation>Starten Sie Feedshot neu, um die Sprache zu übernehmen.</translation>
     </message>
 </context>
 <context>

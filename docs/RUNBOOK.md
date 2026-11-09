@@ -1,6 +1,6 @@
 # Runbook
 
-fastfoto-linux is a desktop and command-line tool, not a deployed service, so this is a
+Feedshot is a desktop and command-line tool, not a deployed service, so this is a
 troubleshooting and operations guide for the person running it. Everything here is checked
 against the README, `docs/design/documents.md` and the code. Commands use `ffscan`; from a
 checkout, prefix them with `uv run`.
@@ -153,9 +153,9 @@ needs neither.
 ## Flatpak
 
 Build, install and run (needs `flatpak`, `flatpak-builder` and the Flathub remote); the commands
-are in the README section "Flatpak". Manifest: `packaging/flatpak/io.github.bearyjd.FastFotoLinux.yml`.
+are in the README section "Flatpak". Manifest: `packaging/flatpak/io.github.bearyjd.Feedshot.yml`.
 
-- Settings live in `~/.var/app/io.github.bearyjd.FastFotoLinux/`.
+- Settings live in `~/.var/app/io.github.bearyjd.Feedshot/`.
 - The CI job `flatpak` builds the bundle in a pinned builder image (`kde-6.11`), installs it,
   and runs `tools/ci/flatpak-ocr-smoke.sh` inside the sandbox: Tesseract lists `eng` and `osd`,
   OCRmyPDF runs, and a generated page of text becomes a PDF whose text layer holds the words.
@@ -163,4 +163,4 @@ are in the README section "Flatpak". Manifest: `packaging/flatpak/io.github.bear
   to update it, look up the new digest of the tag and edit `.github/workflows/ci.yml`.
 - The sandbox has `--device=all` for USB, network access, and your Pictures folder; any other
   output folder is granted through the desktop portal.
-- CLI inside the Flatpak: `flatpak run --command=ffscan io.github.bearyjd.FastFotoLinux devices`.
+- CLI inside the Flatpak: `flatpak run --command=ffscan io.github.bearyjd.Feedshot devices`.

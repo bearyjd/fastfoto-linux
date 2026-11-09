@@ -112,7 +112,7 @@ modules:
       - install -Dm755 tools/usb-gap-shim/ff680w_usb_gap.so /app/lib/feedshot/ff680w_usb_gap.so
     sources:
       - type: git
-        url: https://github.com/bearyjd/fastfoto-linux.git
+        url: https://github.com/bearyjd/feedshot.git
         tag: v0.0.1  # TODO(release): the tag that is cut for the submission (same as the app's)
         commit: TODO(release)  # the 40-hex commit that tag points to (git rev-parse v0.0.1^{commit})
         x-checker-data:
@@ -202,7 +202,7 @@ modules:
       - install -Dm644 packaging/io.github.bearyjd.Feedshot.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/io.github.bearyjd.Feedshot.svg
     sources:
       - type: git
-        url: https://github.com/bearyjd/fastfoto-linux.git
+        url: https://github.com/bearyjd/feedshot.git
         tag: v0.0.1  # TODO(release): the tag that is cut for the submission (same as the shim's)
         commit: TODO(release)  # the 40-hex commit that tag points to (git rev-parse v0.0.1^{commit})
         x-checker-data:

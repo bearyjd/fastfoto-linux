@@ -43,7 +43,7 @@ def test_the_metainfo_names_the_licences_and_the_project_page() -> None:
     assert root.findtext("metadata_license") == "CC0-1.0"
     url = root.find("url[@type='homepage']")
     assert url is not None
-    assert url.text == "https://github.com/bearyjd/fastfoto-linux"
+    assert url.text == "https://github.com/bearyjd/feedshot"
 
 
 def test_the_metainfo_has_the_current_release_and_a_content_rating() -> None:

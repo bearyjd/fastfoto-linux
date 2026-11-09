@@ -20,28 +20,14 @@ reviewer will want for each permission. Requirements pages:
   `io.github.<user>.<App>` that Flathub accepts for a repository owned by that user (but see the
   linter finding below).
 
-## Known linter finding: the app ID and the repository name
+## Linter finding `appid-url-not-reachable`: resolved by the repository rename
 
-`flatpak-builder-lint manifest` reports `appid-url-not-reachable`. Its message, verbatim from the
-run on this manifest: `Tried https://github.com/bearyjd/fastfotolinux | Status: 404`. The
-repository is `github.com/bearyjd/fastfoto-linux`, so the URL the linter tried does not exist.
-(Flathub's requirements page describes the URL as derived from the ID; recheck the message with
-the current linter before submitting.)
-
-Decision: the repository stays `github.com/bearyjd/fastfoto-linux` and the ID stays
-`io.github.bearyjd.Feedshot`; request an exception in the submission PR (Flathub says one can
-be granted after a manual check). Fallbacks if refused: rename the repository to `Feedshot`
-(GitHub redirects the old name; update the URLs in the metainfo, manifest and README), or change
-the ID to `io.github.bearyjd.fastfoto-linux` (a dash is allowed in the last component; the ID is
-permanent once published).
-
-Paragraph to paste into the submission PR:
-
-> The linter reports `appid-url-not-reachable` for `io.github.bearyjd.Feedshot`. The project
-> lives at https://github.com/bearyjd/fastfoto-linux (the name with a hyphen), owned by the same
-> account `bearyjd` that the ID names, and the metainfo, the manifest sources and the release tags
-> all point there. We would like to keep this repository name and ID; could you check this
-> manually and grant the exception?
+Before the rename, `flatpak-builder-lint manifest` reported `appid-url-not-reachable`: the URL it
+derives from the old ID (`https://github.com/bearyjd/fastfotolinux`) did not exist, because the
+repository was `bearyjd/fastfoto-linux`. The repository is now `github.com/bearyjd/feedshot` and
+the ID is `io.github.bearyjd.Feedshot`, so the derived URL (`https://github.com/bearyjd/feedshot`)
+exists. Not re-run since the rename: recheck the message with the current linter before
+submitting, and only request an exception in the submission PR if it still reports the finding.
 
 Pedantic appstream note (not an error; validation succeeds): `cid-contains-uppercase-letter`, the
 ID has capitals. It cannot be fixed without changing the ID, which is the decision above.

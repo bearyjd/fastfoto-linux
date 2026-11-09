@@ -7,7 +7,7 @@ import pytest
 
 from fastfoto_linux.documents.publish import publish_pdf, publish_pdfs
 from fastfoto_linux.output.errors import InvalidPrefixError, OutputRootMissingError
-from fastfoto_linux.output.files import LOCK_NAME, locked_folder
+from fastfoto_linux.output.files import LOCK_NAMES, locked_folder
 
 
 def _names(folder: Path) -> list[str]:
@@ -75,7 +75,7 @@ def test_a_failure_part_way_leaves_none_of_the_parts(
     monkeypatch.setattr(files, "_publish", failing)
     with pytest.raises(OSError, match="disk full"):
         publish_pdfs([("A", b"1"), ("B", b"2")], tmp_path)
-    assert [p.name for p in tmp_path.iterdir() if p.name != LOCK_NAME] == []
+    assert [p.name for p in tmp_path.iterdir() if p.name not in LOCK_NAMES] == []
 
 
 def test_the_folder_lock_is_held_while_the_parts_are_numbered_and_written(tmp_path: Path) -> None:

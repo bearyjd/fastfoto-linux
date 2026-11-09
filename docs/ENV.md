@@ -8,11 +8,11 @@ by you except that the install script stops if `HOME` is unset; everything else 
 
 | Variable | Required | Description | Default |
 | --- | --- | --- | --- |
-| `FF680W_SHIM` | no | Path to the USB gap shim (`ff680w_usb_gap.so`). A leading `~/` is expanded from `HOME`. Inside a Flatpak it is the only place looked at (the manifest sets it to the bundled shim). | unset: `~/.local/lib/fastfoto-linux/`, then the in-repo build |
+| `FF680W_SHIM` | no | Path to the USB gap shim (`ff680w_usb_gap.so`). A leading `~/` is expanded from `HOME`. Inside a Flatpak it is the only place looked at (the manifest sets it to the bundled shim). | unset: `~/.local/lib/feedshot/`, then the in-repo build |
 | `FF680W_NO_PRECHECK` | no | `1` skips the check that a USB scanner answers before each scan. | unset (check runs) |
 | `FF680W_FORCE_UNSTICK` | no | `1` sends the padding that frees a stuck scanner even without a note about an unclean end. Last resort. | unset |
 | `XDG_STATE_HOME` | no | Base folder for the `scanner-unclean` note (`$XDG_STATE_HOME/fastfoto-linux`). Ignored if not absolute. | `~/.local/state` |
-| `XDG_CONFIG_HOME` | no | Base folder for the desktop app's settings (`fastfoto-linux/gui.json`). Ignored if not absolute. The file (or a link to a regular file) is read only if it is a regular file of at most 1 MiB, not a pipe or a device; otherwise the defaults are used. | `~/.config` |
+| `XDG_CONFIG_HOME` | no | Base folder for the desktop app's settings (`feedshot/gui.json`). Ignored if not absolute. The file (or a link to a regular file) is read only if it is a regular file of at most 1 MiB, not a pipe or a device; otherwise the defaults are used. On the first start under the name Feedshot, `fastfoto-linux/gui.json` in the same base folder is copied once if `feedshot/gui.json` does not exist yet (the old file is kept). | `~/.config` |
 | `HOME` | no | Home folder, used for the defaults above; the app falls back to the account's home folder without it. | set by the login |
 | `PATH` | no | Searched for `scanimage`, Tesseract and `brew`; OCR also adds the Flatpak's own folder, the interpreter's folder and Homebrew's. | the system's |
 | `TESSDATA_PREFIX` | no | Not read by the app's code. The Flatpak manifest sets it to `/app/share/tessdata`, and it reaches Tesseract through the inherited environment. | set by the Flatpak only |

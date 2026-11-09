@@ -50,7 +50,7 @@ cat > "$dir/bin/python" <<'INNER'
 #!/bin/sh
 # Stands in for the venv's python: `-m pip install ...` leaves the two console scripts.
 dir=$(dirname "$0")
-for name in fastfoto ffscan; do
+for name in feedshot ffscan; do
   printf '#!/bin/sh\necho %s\n' "$name" > "$dir/$name"
   chmod +x "$dir/$name"
 done
@@ -131,13 +131,13 @@ def test_dry_run_lists_every_action_and_touches_nothing(
     assert all(line.startswith("would ") for line in lines)
     text = done.stdout
     for expected in (
-        f"{home}/.local/share/fastfoto-linux/venv",
+        f"{home}/.local/share/feedshot/venv",
         "--system-site-packages",
         "make -C",
-        f"{home}/.local/lib/fastfoto-linux/{SHIM}",
+        f"{home}/.local/lib/feedshot/{SHIM}",
         f"{home}/.local/share/applications/{APP_ID}.desktop",
         f"{home}/.local/share/icons/hicolor/scalable/apps/{APP_ID}.svg",
-        f"{home}/.local/bin/fastfoto",
+        f"{home}/.local/bin/feedshot",
         f"{home}/.local/bin/ffscan",
     ):
         assert expected in text
@@ -150,7 +150,7 @@ def test_dry_run_respects_xdg_data_home(
     data = tmp_path / "xdg-data"
     done = run(checkout, {**env, "XDG_DATA_HOME": str(data)}, "--dry-run")
     assert done.returncode == 0, done.stderr
-    assert f"{data}/fastfoto-linux/venv" in done.stdout
+    assert f"{data}/feedshot/venv" in done.stdout
     assert f"{data}/applications/{APP_ID}.desktop" in done.stdout
     assert f"{home}/.local/share" not in done.stdout
 
@@ -160,19 +160,19 @@ def test_install_makes_the_venv_shim_launcher_icon_and_links(
 ) -> None:
     done = run(checkout, env)
     assert done.returncode == 0, done.stderr
-    venv = home / ".local" / "share" / "fastfoto-linux" / "venv"
+    venv = home / ".local" / "share" / "feedshot" / "venv"
     assert (venv / "bin" / "python").is_file()
     assert "install" in (venv / "bin" / "pip.log").read_text()
-    for name in ("fastfoto", "ffscan"):
+    for name in ("feedshot", "ffscan"):
         link = home / ".local" / "bin" / name
         assert link.is_symlink()
         assert link.resolve() == (venv / "bin" / name).resolve()
-    assert (home / ".local" / "lib" / "fastfoto-linux" / SHIM).is_file()
+    assert (home / ".local" / "lib" / "feedshot" / SHIM).is_file()
     assert (
         home / ".local" / "share" / "icons" / "hicolor" / "scalable" / "apps" / f"{APP_ID}.svg"
     ).is_file()
     desktop = home / ".local" / "share" / "applications" / f"{APP_ID}.desktop"
-    assert f'Exec="{venv}/bin/fastfoto"' in desktop.read_text().splitlines()
+    assert f'Exec="{venv}/bin/feedshot"' in desktop.read_text().splitlines()
 
 
 @pytest.mark.skipif(shutil.which("desktop-file-validate") is None, reason="desktop-file-utils")
@@ -200,18 +200,18 @@ def test_uninstall_removes_what_install_made_and_nothing_else(
 ) -> None:
     (home / ".local" / "bin").mkdir(parents=True)
     (home / ".local" / "bin" / "other-tool").write_text("x")
-    config = home / ".config" / "fastfoto-linux" / "gui.json"
+    config = home / ".config" / "feedshot" / "gui.json"
     config.parent.mkdir(parents=True)
     config.write_text("{}")
     assert run(checkout, env).returncode == 0
     planned = run(checkout, env, "--uninstall", "--dry-run")
     assert planned.returncode == 0, planned.stderr
     assert all(line.startswith("would remove") for line in planned.stdout.splitlines())
-    assert (home / ".local" / "bin" / "fastfoto").is_symlink()
+    assert (home / ".local" / "bin" / "feedshot").is_symlink()
     done = run(checkout, env, "--uninstall")
     assert done.returncode == 0, done.stderr
     remaining = tree(home)
-    installed = ("venv", ".desktop", ".svg", SHIM, "ffscan", ".local/bin/fastfoto")
+    installed = ("venv", ".desktop", ".svg", SHIM, "ffscan", ".local/bin/feedshot")
     assert not [path for path in remaining if any(mark in path for mark in installed)]
     assert (home / ".local" / "bin" / "other-tool").is_file()
     assert config.is_file()
@@ -221,7 +221,7 @@ def test_uninstall_leaves_a_foreign_file_with_our_name_alone(
     checkout: Path, env: dict[str, str], home: Path
 ) -> None:
     (home / ".local" / "bin").mkdir(parents=True)
-    foreign = home / ".local" / "bin" / "fastfoto"
+    foreign = home / ".local" / "bin" / "feedshot"
     foreign.write_text("someone else's")
     done = run(checkout, env, "--uninstall")
     assert done.returncode == 0, done.stderr
@@ -255,11 +255,11 @@ OCR_REQUIREMENTS = "packaging/requirements-ocr.txt"
 
 
 def lib_dir(home: Path) -> Path:
-    return home / ".local" / "lib" / "fastfoto-linux"
+    return home / ".local" / "lib" / "feedshot"
 
 
 def pip_lines(home: Path) -> list[str]:
-    log = home / ".local" / "share" / "fastfoto-linux" / "venv" / "bin" / "pip.log"
+    log = home / ".local" / "share" / "feedshot" / "venv" / "bin" / "pip.log"
     return [line for line in log.read_text().splitlines() if line.startswith("-I -m pip install")]
 
 
@@ -359,7 +359,7 @@ def test_the_install_is_recorded_and_uninstall_removes_only_what_is_recorded(
     checkout: Path, env: dict[str, str], home: Path
 ) -> None:
     assert run(checkout, env).returncode == 0
-    record = home / ".local" / "share" / "fastfoto-linux" / "installed.txt"
+    record = home / ".local" / "share" / "feedshot" / "installed.txt"
     listed = record.read_text().splitlines()
     assert str(lib_dir(home) / SHIM) in listed
     assert all(Path(line).is_absolute() for line in listed)
@@ -390,13 +390,13 @@ def test_uninstall_refuses_an_environment_that_is_not_one_and_removes_nothing(
     checkout: Path, env: dict[str, str], home: Path
 ) -> None:
     assert run(checkout, env).returncode == 0
-    venv = home / ".local" / "share" / "fastfoto-linux" / "venv"
+    venv = home / ".local" / "share" / "feedshot" / "venv"
     (venv / "pyvenv.cfg").unlink()
     done = run(checkout, env, "--uninstall")
     assert done.returncode != 0
     assert "pyvenv.cfg" in done.stderr
     assert (lib_dir(home) / SHIM).is_file()
-    assert (home / ".local" / "bin" / "fastfoto").is_symlink()
+    assert (home / ".local" / "bin" / "feedshot").is_symlink()
     assert venv.is_dir()
 
 
@@ -406,7 +406,7 @@ def test_a_relative_xdg_data_home_is_ignored(
 ) -> None:
     done = run(checkout, {**env, "XDG_DATA_HOME": relative}, "--dry-run")
     assert done.returncode == 0, done.stderr
-    assert f"{home}/.local/share/fastfoto-linux/venv" in done.stdout
+    assert f"{home}/.local/share/feedshot/venv" in done.stdout
 
 
 # -- the launcher: the path goes in as data, not as awk or shell syntax -----------------------
@@ -448,11 +448,11 @@ def test_a_home_full_of_special_characters_is_launched_as_one_argument(
     done = run(checkout, {**env, "HOME": str(nasty)})
     assert done.returncode == 0, done.stderr
     desktop = nasty / ".local" / "share" / "applications" / f"{APP_ID}.desktop"
-    venv = nasty / ".local" / "share" / "fastfoto-linux" / "venv"
+    venv = nasty / ".local" / "share" / "feedshot" / "venv"
     entries = dict(line.split("=", 1) for line in desktop.read_text().splitlines() if "=" in line)
-    assert exec_arguments(entries["Exec"]) == [f"{venv}/bin/fastfoto"]
+    assert exec_arguments(entries["Exec"]) == [f"{venv}/bin/feedshot"]
     assert "%%" in entries["Exec"]
-    assert entries["TryExec"].replace("\\\\", "\\") == f"{venv}/bin/fastfoto"
+    assert entries["TryExec"].replace("\\\\", "\\") == f"{venv}/bin/feedshot"
     if shutil.which("desktop-file-validate"):
         checked = subprocess.run(
             ["desktop-file-validate", str(desktop)], capture_output=True, text=True, check=False
@@ -465,15 +465,15 @@ def test_the_installed_launcher_checks_that_the_program_is_there(
 ) -> None:
     assert run(checkout, env).returncode == 0
     desktop = home / ".local" / "share" / "applications" / f"{APP_ID}.desktop"
-    venv = home / ".local" / "share" / "fastfoto-linux" / "venv"
-    assert f"TryExec={venv}/bin/fastfoto" in desktop.read_text().splitlines()
+    venv = home / ".local" / "share" / "feedshot" / "venv"
+    assert f"TryExec={venv}/bin/feedshot" in desktop.read_text().splitlines()
 
 
 # -- review round 2: the installer's own hygiene ------------------------------------------------
 
 
 def venv_log(home: Path, name: str) -> list[str]:
-    log = home / ".local" / "share" / "fastfoto-linux" / "venv" / "bin" / name
+    log = home / ".local" / "share" / "feedshot" / "venv" / "bin" / name
     return log.read_text().splitlines()
 
 
@@ -540,7 +540,7 @@ def test_each_file_is_recorded_as_it_is_installed_so_a_failed_run_can_be_undone(
     (icons / "apps").write_text("a file where the icon folder should be")
     done = run(checkout, env)
     assert done.returncode != 0
-    record = home / ".local" / "share" / "fastfoto-linux" / "installed.txt"
+    record = home / ".local" / "share" / "feedshot" / "installed.txt"
     listed = record.read_text().splitlines()
     assert str(lib_dir(home) / SHIM) in listed
     assert str(home / ".local" / "share" / "applications" / f"{APP_ID}.desktop") in listed
@@ -584,8 +584,8 @@ def test_the_launcher_survives_a_round_trip_through_glib(
     keys.load_from_file(str(desktop), GLib.KeyFileFlags.NONE)
     exec_line = keys.get_string("Desktop Entry", "Exec").replace("%%", "%")  # the field codes
     argv = GLib.shell_parse_argv(exec_line)[1]
-    venv = nasty / ".local" / "share" / "fastfoto-linux" / "venv"
-    assert argv == [f"{venv}/bin/fastfoto"]
+    venv = nasty / ".local" / "share" / "feedshot" / "venv"
+    assert argv == [f"{venv}/bin/feedshot"]
 
 
 # -- OCR: ocrmypdf comes with the app, Tesseract (a program) comes from Homebrew or dnf ----------

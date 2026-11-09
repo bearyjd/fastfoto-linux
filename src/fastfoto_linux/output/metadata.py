@@ -16,7 +16,7 @@ MAX_NOTES_CHARS = 10_000
 MIN_YEAR = 1
 MAX_YEAR = 9999
 MONTHS_PER_YEAR = 12
-CREATOR_TOOL = f"fastfoto-linux {__version__}"
+CREATOR_TOOL = f"Feedshot {__version__}"
 
 _DATE = re.compile(r"([0-9]{4})(?:-([0-9]{2})(?:-([0-9]{2}))?)?")
 _EXIF_CLOCK = "%Y:%m:%d %H:%M:%S"

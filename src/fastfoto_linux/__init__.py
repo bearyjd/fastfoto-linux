@@ -2,4 +2,4 @@
 
 from importlib.metadata import version
 
-__version__ = version("fastfoto-linux")
+__version__ = version("feedshot")

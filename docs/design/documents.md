@@ -60,7 +60,7 @@ ffscan doc process PAGE.png ... --out DIR [--mkdir] [same output options]
 5. **Black-and-white**: adaptive threshold (window scaled to dpi) to 1 bit.
 6. **Encode**: colour/grey → JPEG embedded as-is (DCTDecode, quality ~85); black-and-white → lossless
    1-bit (CCITT G4 or Flate). Page size from pixels and dpi. Metadata: title = NAME, creation date,
-   producer `fastfoto-linux`.
+   producer `Feedshot`.
 7. **OCR**: `ocrmypdf --output-type pdf --rotate-pages -l LANGS --rasterizer pypdfium in.pdf out.pdf` on a
    staging file, with a time limit, cancellable. `--output-type pdf` avoids a Ghostscript re-encode of
    the images, and `--rasterizer pypdfium` keeps Ghostscript (the host's 10.06 is in OCRmyPDF's
@@ -83,7 +83,7 @@ two image kinds. Tests parse every PDF with a dev-only library (pypdf).
 A **Photos | Documents** switch at the top of the form. Documents shows: name, colour (Colour / Grey /
 Black and white), resolution, "Both sides (drop blank pages)", "Searchable text" (disabled with
 "Install Tesseract: `sudo dnf install tesseract tesseract-osd`", or `brew install tesseract` on a Homebrew
-system, when missing; "Install OCRmyPDF: run the installer again, or `pip install 'fastfoto-linux[ocr]'`
+system, when missing; "Install OCRmyPDF: run the installer again, or `pip install 'feedshot[ocr]'`
 when it is OCRmyPDF that is missing, or both, Tesseract's first). Results list each PDF with its page count,
 dropped pages and an Open button. Settings are remembered per mode.
 

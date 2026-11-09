@@ -51,7 +51,7 @@ ID has capitals. It cannot be fixed without changing the ID, which is the decisi
 1. Cut the release tag (for example `v0.0.1`, matching `version` in `pyproject.toml` and the
    `<release>` in the metainfo; set the release date to the real day).
 2. In `packaging/flatpak/flathub/io.github.bearyjd.Feedshot.yml`, set `tag:` and `commit:` of
-   both git sources (`usb-gap-shim` and `fastfoto-linux`) to that tag and
+   both git sources (`usb-gap-shim` and `feedshot`) to that tag and
    `git rev-parse <tag>^{commit}`.
 3. Take real screenshots of the released app and add a `<screenshots>` block to the metainfo (https
    URLs that resolve; Flathub requires at least one).
@@ -79,7 +79,7 @@ flatpak run --command=flatpak-builder-lint org.flatpak.Builder repo repo
   devices to an app that asks for one by ID through D-Bus, and SANE does not use it), so the
   device nodes must be visible in the sandbox. `--device=all` is the only way to expose them;
   `--device=dri` is not requested because `all` already includes it.
-- `LD_PRELOAD` USB gap shim (`FF680W_SHIM=/app/lib/fastfoto-linux/ff680w_usb_gap.so`): the
+- `LD_PRELOAD` USB gap shim (`FF680W_SHIM=/app/lib/feedshot/ff680w_usb_gap.so`): the
   FF-680W firmware ignores a command that is sent right after its reply. The shim enforces a small gap
   before a USB write that follows a reply, only for that scanner, and is preloaded only into the `scanimage` child process, by the app.
   It is built from source in the manifest (`tools/usb-gap-shim/`); no prebuilt binary is used.

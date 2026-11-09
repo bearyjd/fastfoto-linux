@@ -70,7 +70,7 @@ def test_main_runs_the_event_loop_and_remembers_the_form(
         return 7
 
     assert app.main(run_loop=run_loop) == 7
-    assert loops == ["fastfoto-linux"]
+    assert loops == ["feedshot"]
     assert QApplication.desktopFileName() == app.APP_ID
     assert (config / PREFS_DIR / PREFS_FILE).is_file()
     settle()

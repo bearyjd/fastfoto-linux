@@ -13,7 +13,7 @@ FLATHUB_DIR = FLATPAK_DIR / "flathub"
 FLATHUB_MANIFEST = FLATHUB_DIR / f"{APP_ID}.yml"
 REPO_URL = "https://github.com/bearyjd/fastfoto-linux.git"
 # Modules whose sources differ on purpose: Flathub builds from the tagged release, not a folder.
-RELEASE_MODULES = {"usb-gap-shim", "fastfoto-linux"}
+RELEASE_MODULES = {"usb-gap-shim", "feedshot"}
 PLACEHOLDER = "TODO(release)"
 JSON_MODULES = ("python-deps.json", "python-build-deps.json")
 

@@ -40,7 +40,7 @@
     <category>Scanning</category>
   </categories>
   <provides>
-    <binary>fastfoto</binary>
+    <binary>feedshot</binary>
     <binary>ffscan</binary>
   </provides>
   <requires>

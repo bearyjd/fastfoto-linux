@@ -13,8 +13,8 @@ names, under the manifest's own directory. Each path is opened component by comp
 without following symlinks, so a symlinked directory or file is refused and a late swap cannot
 redirect the read; FIFOs and other non-regular files are refused too. There are no default
 corpus paths and no automatic ingestion of anyone's photos. Results go to `--out DIR` (default
-`$XDG_CACHE_HOME/fastfoto-linux/redeye-eval/<manifest sha256[:12]>/`), which is refused inside
-the manifest directory or inside a fastfoto-linux checkout. Reports hold opaque ids, sha256
+`$XDG_CACHE_HOME/feedshot/redeye-eval/<manifest sha256[:12]>/`), which is refused inside
+the manifest directory or inside a feedshot checkout. Reports hold opaque ids, sha256
 prefixes, numbers and categories: never paths, pixels or the rights `source` text. Use opaque
 ids, not names of people.
 
@@ -110,7 +110,7 @@ made and again after the last file, the walk goes up from its descriptor with `o
 refuses if it or any ancestor has the (device, inode) of a corpus root (taken from descriptors
 held since the manifests were read) or is a checkout; a refusal after the last file removes what
 this call made. A checkout is recognised by name: a `.git` entry and a `pyproject.toml` whose
-`project.name` is `fastfoto-linux`, so a renamed fork is not recognised. An unparseable
+`project.name` is `feedshot`, so a renamed fork is not recognised. An unparseable
 `pyproject.toml` is someone else's; one that cannot be read (EIO, EACCES), in the location or
 an ancestor, makes the check refuse (fail closed) with "cannot verify the output location".
 Residual windows: a rename that lands after that last check cannot be closed by user-space code,

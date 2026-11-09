@@ -65,7 +65,7 @@ def test_the_default_out_dir_is_the_cache(corpus, tmp_path, monkeypatch) -> None
     cache = tmp_path / "cache"
     monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
     assert main(["eval", "redeye", str(corpus[0]), "--no-perf"]) == 0
-    out = cache / "fastfoto-linux" / "redeye-eval" / corpus[2][:12]
+    out = cache / "feedshot" / "redeye-eval" / corpus[2][:12]
     assert (run_dir(out) / "report.json").is_file()
 
 

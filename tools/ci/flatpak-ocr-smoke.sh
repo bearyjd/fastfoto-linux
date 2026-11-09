@@ -1,7 +1,7 @@
 #!/bin/sh
 # Smoke test of the OCR that the Flatpak brings, run inside its sandbox on an installed bundle.
 # CI runs it after the flatpak job has installed the bundle for the user; by hand: install the
-# bundle with `flatpak --user install fastfoto-linux.flatpak`, then run this script.
+# bundle with `flatpak --user install feedshot.flatpak`, then run this script.
 #
 # It shows that the programs the manifest builds are the ones the app finds and uses: Tesseract
 # lists English and the orientation data, OCRmyPDF runs as the app's module, and the app's own
@@ -41,7 +41,7 @@ from fastfoto_linux.documents.ocr_languages import _cache_root, _catalog, discov
 
 catalog = _catalog()
 root = _cache_root(catalog, create=True)
-expected = Path(os.environ["XDG_DATA_HOME"]).resolve() / "fastfoto-linux" / "tessdata"
+expected = Path(os.environ["XDG_DATA_HOME"]).resolve() / "feedshot" / "tessdata"
 assert root == expected / catalog.revision
 assert root.stat().st_uid == os.getuid()
 assert stat.S_IMODE(root.stat().st_mode) == 0o700

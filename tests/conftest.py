@@ -62,7 +62,7 @@ def classic_machine_without_ocr(monkeypatch: pytest.MonkeyPatch) -> None:
     of them; a test that needs one sets ``BREW_BIN``, ``OSTREE_MARKER``, ``BREW`` or ``OCR_MODULE``
     itself. The version of the app's own ocrmypdf is unknown (``metadata_version``), and the
     versions asked of a program are not remembered from one test to the next."""
-    monkeypatch.setattr(ocr_tools, "BREW", "fastfoto-linux-no-such-brew")
+    monkeypatch.setattr(ocr_tools, "BREW", "feedshot-no-such-brew")
     monkeypatch.setattr(ocr_tools, "BREW_BIN", Path("/nonexistent/linuxbrew/bin"))
     monkeypatch.setattr(ocr_tools, "OSTREE_MARKER", Path("/nonexistent/ostree-booted"))
     monkeypatch.setattr(ocr_tools, "OCR_MODULE", "fastfoto_linux_no_such_module")

@@ -12,7 +12,8 @@ from pathlib import Path
 from fastfoto_linux.evaluation.redeye_images import ImageError, read_regular_fd
 from fastfoto_linux.evaluation.redeye_manifest import Manifest, ManifestError
 
-PROJECT_NAME = "fastfoto-linux"
+PROJECT_NAME = "feedshot"
+LEGACY_PROJECT_NAMES = ("fastfoto-linux",)  # a checkout from before the rename is still ours
 MAX_PYPROJECT_BYTES = 1_000_000
 DIR_MODE = 0o700
 FILE_MODE = 0o600
@@ -20,7 +21,7 @@ _CLOEXEC = getattr(os, "O_CLOEXEC", 0)
 _DIR_FLAGS = os.O_RDONLY | os.O_NOFOLLOW | os.O_DIRECTORY | _CLOEXEC
 _CREATE_FLAGS = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | _CLOEXEC
 _OUTSIDE_MANIFEST = "the output directory must be outside the manifest directory"
-_OUTSIDE_CHECKOUT = "the output directory must be outside the fastfoto-linux checkout"
+_OUTSIDE_CHECKOUT = "the output directory must be outside the feedshot checkout"
 _UNVERIFIED = "cannot verify the output location"
 _ABSENT = (errno.ENOENT, errno.ENOTDIR, errno.ELOOP)  # no such entry, or a symlink in its place
 REPORT = "report.json"
@@ -36,11 +37,14 @@ def _is_our_pyproject(data: bytes) -> bool:
         project = tomllib.loads(data.decode()).get("project")
     except (ValueError, RecursionError):  # TOMLDecodeError and UnicodeDecodeError are ValueErrors
         return False
-    return isinstance(project, dict) and project.get("name") == PROJECT_NAME
+    return isinstance(project, dict) and project.get("name") in (
+        PROJECT_NAME,
+        *LEGACY_PROJECT_NAMES,
+    )
 
 
 def _fd_is_checkout(fd: int) -> bool:
-    """The directory open on ``fd`` is a fastfoto-linux checkout (a ``.git`` and our pyproject).
+    """The directory open on ``fd`` is a feedshot checkout (a ``.git`` and our pyproject).
 
     A missing or symlinked entry means no. A failure to look (EIO, EACCES, ...) is a
     ``ManifestError``: what cannot be seen cannot be called safe.
@@ -82,11 +86,11 @@ def _default_out(manifest: Manifest, env: Mapping[str, str]) -> Path:
     if cache and not Path(cache).is_absolute():
         raise ManifestError("XDG_CACHE_HOME must be an absolute path")
     base = Path(cache) if cache else Path(env.get("HOME") or Path.home()) / ".cache"
-    return base / "fastfoto-linux" / "redeye-eval" / manifest.sha256[:12]
+    return base / "feedshot" / "redeye-eval" / manifest.sha256[:12]
 
 
 def check_out_allowed(path: Path, forbidden: Sequence[Path]) -> None:
-    """Refuse ``path`` inside (or equal to) a forbidden root or a fastfoto-linux checkout (an early,
+    """Refuse ``path`` inside (or equal to) a forbidden root or a feedshot checkout (an early,
     friendly check by name; ``write_outputs`` repeats it by identity)."""
     for root in forbidden:
         if root == path or root in path.parents:

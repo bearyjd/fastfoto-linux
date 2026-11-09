@@ -13,7 +13,7 @@ body:
   - type: input
     id: version
     attributes:
-      label: fastfoto-linux version, tag or commit
+      label: Feedshot version, tag or commit
     validations:
       required: true
   - type: input

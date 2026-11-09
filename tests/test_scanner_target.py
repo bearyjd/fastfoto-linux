@@ -56,7 +56,7 @@ def test_candidates_start_with_the_ff680w_shim_env_var(tmp_path: Path) -> None:
 
     assert candidates == (
         tmp_path / "custom.so",
-        tmp_path / "home" / ".local" / "lib" / "fastfoto-linux" / SHIM_NAME,
+        tmp_path / "home" / ".local" / "lib" / "feedshot" / SHIM_NAME,
     )
 
 
@@ -90,7 +90,7 @@ def test_candidates_end_with_the_repo_build_only_when_it_exists(tmp_path: Path) 
     env = {"HOME": str(tmp_path / "home")}
 
     assert default_shim_candidates(env, repo_root=repo) == (
-        tmp_path / "home" / ".local" / "lib" / "fastfoto-linux" / SHIM_NAME,
+        tmp_path / "home" / ".local" / "lib" / "feedshot" / SHIM_NAME,
     )
 
     built.write_bytes(b"")

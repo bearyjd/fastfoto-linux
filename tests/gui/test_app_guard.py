@@ -1,4 +1,4 @@
-"""``fastfoto`` without the Qt stack says how to get it instead of showing a traceback."""
+"""``feedshot`` without the Qt stack says how to get it instead of showing a traceback."""
 
 import sys
 from pathlib import Path

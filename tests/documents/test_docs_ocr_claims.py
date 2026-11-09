@@ -87,5 +87,5 @@ def test_the_design_note_gives_the_order_of_the_folders_and_when_brews_is_truste
 
 
 def test_the_readme_says_what_to_do_when_ocrmypdf_is_the_missing_part() -> None:
-    assert "pip install 'fastfoto-linux[ocr]'" in README
+    assert "pip install 'feedshot[ocr]'" in README
     assert "Install OCRmyPDF:" in README

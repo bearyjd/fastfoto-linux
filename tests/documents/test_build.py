@@ -26,7 +26,7 @@ from fastfoto_linux.documents import (
     build_document,
     write,
 )
-from fastfoto_linux.output.files import LOCK_NAME
+from fastfoto_linux.output.files import LOCK_NAME, LOCK_NAMES
 from tests import _fake_ocrmypdf as fake
 from tests.doc_synth import LEGAL_MM, write_png
 from tests.documents.helpers import (
@@ -51,7 +51,7 @@ def visible(folder: Path) -> list[str]:
 
 def hidden(folder: Path) -> list[str]:
     return sorted(
-        p.name for p in folder.iterdir() if p.name.startswith(".") and p.name != LOCK_NAME
+        p.name for p in folder.iterdir() if p.name.startswith(".") and p.name not in LOCK_NAMES
     )
 
 
@@ -136,7 +136,7 @@ def test_metadata_carries_the_creation_time_and_producer(raw: Path, out: Path) -
     result = build_document(pages, settings(out), clock=lambda: FIXED_TIME)
     info = reader(result.pdf.read_bytes()).metadata
     assert info.creation_date == FIXED_TIME
-    assert info.producer == "fastfoto-linux"
+    assert info.producer == "Feedshot"
 
 
 def test_pages_without_a_resolution_use_the_fallback_or_stop(raw: Path, out: Path) -> None:

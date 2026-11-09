@@ -28,7 +28,7 @@ def corpus_root(explicit: Path | None, env: Mapping[str, str]) -> Path:
     """The corpus directory: ``explicit``, else ``$FASTFOTO_CORPUS_DIR``.
 
     Refused when it is not absolute, has a symlink in its path, does not exist, or is (or is
-    inside) a fastfoto-linux checkout, so no corpus file can end up committed by accident.
+    inside) a feedshot checkout, so no corpus file can end up committed by accident.
     """
     root = Path(_requested(explicit, env))
     try:

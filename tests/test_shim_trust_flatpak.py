@@ -26,8 +26,8 @@ READ_ONLY = os.ST_RDONLY
 
 @pytest.fixture
 def app(tmp_path: Path) -> Path:
-    """tmp_path/app: a stand-in for /app, with the shim in lib/fastfoto-linux."""
-    shim = tmp_path / "app" / "lib" / "fastfoto-linux" / NAME
+    """tmp_path/app: a stand-in for /app, with the shim in lib/feedshot."""
+    shim = tmp_path / "app" / "lib" / "feedshot" / NAME
     shim.parent.mkdir(parents=True)
     shim.write_bytes(b"")
     shim.chmod(0o755)
@@ -36,7 +36,7 @@ def app(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def shim(app: Path) -> Path:
-    return app / "lib" / "fastfoto-linux" / NAME
+    return app / "lib" / "feedshot" / NAME
 
 
 def sandbox(  # noqa: PLR0913 - the knobs of one stand-in for /app
@@ -161,7 +161,7 @@ def test_a_link_in_app_to_a_file_outside_it_is_judged_by_where_it_leads(
     outside = tmp_path / "outside" / NAME
     outside.parent.mkdir()
     outside.write_bytes(b"")
-    link = app / "lib" / "fastfoto-linux" / "link.so"
+    link = app / "lib" / "feedshot" / "link.so"
     link.symlink_to(outside)
     sandbox(monkeypatch, app)
     real_lstat = os.lstat
@@ -265,7 +265,7 @@ def test_a_named_user_whose_write_the_mask_removes_is_no_reason_to_refuse(
     [
         ("..", "elsewhere"),  # /app/../home/u/x.so
         ("lib", "..", "..", "elsewhere"),  # /app/lib/../../tmp/x.so
-        ("lib", "fastfoto-linux", "..", "..", "..", "elsewhere"),
+        ("lib", "feedshot", "..", "..", "..", "elsewhere"),
     ],
 )
 def test_a_path_with_dot_dot_is_judged_by_where_it_really_leads(
@@ -287,7 +287,7 @@ def test_a_path_with_dot_dot_that_stays_in_app_is_trusted_as_the_path_it_leads_t
     shim: Path, app: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     sandbox(monkeypatch, app)
-    candidate = app / "lib" / "fastfoto-linux" / ".." / "fastfoto-linux" / NAME
+    candidate = app / "lib" / "feedshot" / ".." / "feedshot" / NAME
     assert select_shim([candidate]).path == shim
 
 

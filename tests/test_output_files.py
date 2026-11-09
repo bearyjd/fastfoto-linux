@@ -498,7 +498,9 @@ def test_the_lock_is_polled_without_blocking_and_released_before_closing(
     with locked_folder(tmp_path):
         pass
 
-    assert operations == [fcntl.LOCK_EX | fcntl.LOCK_NB, fcntl.LOCK_UN]
+    poll = fcntl.LOCK_EX | fcntl.LOCK_NB
+    # the new lock and the old-name lock (kept for one release) are polled, then released
+    assert operations == [poll, poll, fcntl.LOCK_UN, fcntl.LOCK_UN]
 
 
 def test_a_filesystem_without_locks_is_never_asked_to_unlock(
@@ -515,7 +517,7 @@ def test_a_filesystem_without_locks_is_never_asked_to_unlock(
     with locked_folder(tmp_path):
         pass
 
-    assert operations == [fcntl.LOCK_EX | fcntl.LOCK_NB]
+    assert operations == [fcntl.LOCK_EX | fcntl.LOCK_NB] * 2  # new lock, then the old-name lock
 
 
 def test_a_lock_held_too_long_times_out_naming_the_folder(
@@ -596,3 +598,105 @@ def test_a_symlinked_lock_file_is_refused_and_its_target_left_alone(tmp_path: Pa
 
     assert raised.value.errno == errno.ELOOP
     assert target.read_bytes() == b"keep"
+
+
+# --- the lock file of the old name (.feedshot.lock), honoured for one release ----------------
+
+OLD_LOCK_NAME = ".fastfoto-linux.lock"
+
+
+def test_the_lock_file_has_the_new_name() -> None:
+    assert LOCK_NAME == ".feedshot.lock"
+
+
+def test_an_old_lock_held_by_an_old_build_blocks_a_new_writer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(files_module, "LOCK_TIMEOUT_S", 0.3)
+    monkeypatch.setattr(files_module, "LOCK_POLL_S", 0.02)
+    holder = os.open(tmp_path / OLD_LOCK_NAME, os.O_RDWR | os.O_CREAT, 0o666)
+    fcntl.flock(holder, fcntl.LOCK_EX)
+    try:
+        with pytest.raises(OutputLockTimeoutError), locked_folder(tmp_path):
+            pytest.fail("the old lock was ignored")
+    finally:
+        os.close(holder)
+
+
+def test_a_new_writer_holds_the_old_lock_too(tmp_path: Path) -> None:
+    old = tmp_path / OLD_LOCK_NAME
+    old.write_bytes(b"")
+    with locked_folder(tmp_path):
+        probe = os.open(old, os.O_RDWR)
+        try:
+            with pytest.raises(BlockingIOError):
+                fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        finally:
+            os.close(probe)
+    probe = os.open(old, os.O_RDWR)
+    try:
+        fcntl.flock(probe, fcntl.LOCK_EX | fcntl.LOCK_NB)  # released afterwards
+    finally:
+        os.close(probe)
+
+
+def test_a_stale_old_lock_is_not_a_problem_and_is_never_deleted(tmp_path: Path) -> None:
+    old = tmp_path / OLD_LOCK_NAME
+    old.write_bytes(b"")
+    with locked_folder(tmp_path):
+        pass
+    assert old.exists()
+
+
+def test_the_old_lock_is_created_so_a_later_old_build_is_excluded(tmp_path: Path) -> None:
+    with locked_folder(tmp_path):
+        old = tmp_path / OLD_LOCK_NAME
+        assert old.exists()
+        fd = os.open(old, os.O_RDWR)
+        try:
+            with pytest.raises(BlockingIOError):
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        finally:
+            os.close(fd)
+    assert (tmp_path / OLD_LOCK_NAME).exists()  # kept, like the new lock
+
+
+def test_an_old_lock_that_cannot_be_opened_is_skipped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / OLD_LOCK_NAME).write_bytes(b"")
+    real_open = os.open
+
+    def deny(path: str | Path, flags: int, mode: int = 0o777, **kw: object) -> int:
+        if Path(str(path)).name == OLD_LOCK_NAME:
+            raise PermissionError(errno.EACCES, "denied")
+        return real_open(path, flags, mode)
+
+    monkeypatch.setattr(files_module.os, "open", deny)
+    with locked_folder(tmp_path):
+        assert (tmp_path / LOCK_NAME).exists()
+
+
+def test_an_old_lock_that_cannot_be_opened_is_logged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    (tmp_path / OLD_LOCK_NAME).write_bytes(b"")
+    real_open = os.open
+
+    def deny(path: str | Path, flags: int, mode: int = 0o777, **kw: object) -> int:
+        if Path(str(path)).name == OLD_LOCK_NAME:
+            raise PermissionError(errno.EACCES, "denied")
+        return real_open(path, flags, mode)
+
+    monkeypatch.setattr(files_module.os, "open", deny)
+    with caplog.at_level("WARNING"), locked_folder(tmp_path):
+        pass
+    assert any(OLD_LOCK_NAME in r.getMessage() for r in caplog.records)
+
+
+def test_a_missing_old_lock_is_created_without_a_warning(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level("WARNING"), locked_folder(tmp_path):
+        pass
+    assert not [r for r in caplog.records if OLD_LOCK_NAME in r.getMessage()]

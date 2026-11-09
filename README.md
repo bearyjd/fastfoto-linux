@@ -575,7 +575,7 @@ uv run ffscan library fix ~/Documents/library-plan.csv \
 
 ## Desktop app (preview)
 
-`fastfoto` is a KDE desktop app over the same scan session as `ffscan`: pick an output folder, album
+`feedshot` is a KDE desktop app over the same scan session as `ffscan`: pick an output folder, album
 and date, press **Scan**, and the photos appear in the window as they are saved (originals or
 enhanced copies, with each back beside its front; a sheet whose photo could not be found is shown
 as a "Not processed" page with the reason). **Cancel** stops the scan; the pages scanned
@@ -681,7 +681,7 @@ scanning. If page-orientation data is missing, it is shown separately and must a
 downloaded. Opening the picker, selecting a language, installing the app, or starting OCR never
 starts a model download. Downloads use pinned official `tessdata_fast` models, checked against
 expected sizes and Git blob identities before installation in the app's private data directory
-under `$XDG_DATA_HOME/fastfoto-linux/tessdata/<revision>/` (`$XDG_DATA_HOME` normally defaults
+under `$XDG_DATA_HOME/feedshot/tessdata/<revision>/` (`$XDG_DATA_HOME` normally defaults
 to `~/.local/share`; Flatpak uses its own app data directory).
 Once the required models are installed, recognition works offline. Bundled or system models can
 be combined with downloaded models in native and Flatpak installs; downloaded models are also
@@ -700,7 +700,7 @@ or `Install Tesseract: brew install tesseract` on systems with Homebrew (Bazzite
 `Install Tesseract: rpm-ostree install tesseract tesseract-osd (then reboot), or install Homebrew
 and run brew install tesseract` on an immutable system without it. If OCRmyPDF is the part that
 is missing (a checkout without the OCR extra), the box says `Install OCRmyPDF: run the installer again,
-or pip install 'fastfoto-linux[ocr]' for a development install` instead, and when both are missing it
+or pip install 'feedshot[ocr]' for a development install` instead, and when both are missing it
 gives both, Tesseract's first; the command line says the same in its message. In the Flatpak the OCR
 is built in, so the box is on; if it is off there the installation is damaged, and the box says
 `The OCR that comes with this Flatpak is missing, so the installation is broken: reinstall the
@@ -733,11 +733,11 @@ dependencies into it from `packaging/requirements-desktop.txt`, which pins every
 `packaging/requirements-ocr.txt` (the `ocr` extra, pinned the same way), after the build backend
 from `packaging/requirements-build.txt` (also pinned by hash); only wheels are installed, and the
 checkout is built with that backend. It builds the USB gap shim (`make` and `gcc` are needed) into
-`~/.local/lib/fastfoto-linux/` (a folder only you can use), adds an application menu entry and
-icon, and links `fastfoto` and `ffscan` into `~/.local/bin`. What it installed is listed in
-`~/.local/share/fastfoto-linux/installed.txt`; `--uninstall` removes only that. PySide6 is not a pip
+`~/.local/lib/feedshot/` (a folder only you can use), adds an application menu entry and
+icon, and links `feedshot` and `ffscan` into `~/.local/bin`. What it installed is listed in
+`~/.local/share/feedshot/installed.txt`; `--uninstall` removes only that. PySide6 is not a pip
 dependency on purpose: the PyPI wheel bundles its own Qt and cannot load the system Kirigami
-plugin. Without PySide6 and Kirigami, `fastfoto` says what to install and exits with status 3.
+plugin. Without PySide6 and Kirigami, `feedshot` says what to install and exits with status 3.
 
 Tesseract, which searchable text needs, is a program and not a Python package. When it is not
 found the installer prints the command to run (`brew install tesseract` wherever Homebrew is
@@ -753,7 +753,7 @@ Not done yet: further photo edits (rotate, fix the date, re-run the enhancement)
 scanner's Start button, and processing while still scanning. A scan through the app on real
 hardware is still to be tried.
 
-Started from a terminal, `fastfoto` hides two lines that KDE's own code prints and that do no harm:
+Started from a terminal, `feedshot` hides two lines that KDE's own code prints and that do no harm:
 `QML Shortcut: ... Only binding to one of multiple key bindings` from KDE's menu items (the context
 menu of every text field; its Copy and Paste shortcuts each have several key bindings), and
 `kf.kio.widgets.kdirmodel: No node found for item that was just removed` for the hidden
@@ -774,8 +774,8 @@ manifest is `packaging/flatpak/io.github.bearyjd.Feedshot.yml`. You need `flatpa
 flatpak-builder --user --install-deps-from=flathub --force-clean --repo=repo build-dir \
   packaging/flatpak/io.github.bearyjd.Feedshot.yml
 flatpak build-bundle --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo repo \
-  fastfoto-linux.flatpak io.github.bearyjd.Feedshot
-flatpak --user install fastfoto-linux.flatpak                  # install
+  feedshot.flatpak io.github.bearyjd.Feedshot
+flatpak --user install feedshot.flatpak                  # install
 flatpak run io.github.bearyjd.Feedshot                    # the desktop app
 flatpak run --command=ffscan io.github.bearyjd.Feedshot devices   # the developer CLI
 flatpak uninstall --user io.github.bearyjd.Feedshot      # remove it again

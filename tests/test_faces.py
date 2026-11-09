@@ -138,7 +138,7 @@ def test_licence_file_ends_with_a_newline() -> None:
 
 
 def test_yunet_licence_is_listed_in_the_distribution_metadata() -> None:
-    files = metadata.distribution("fastfoto-linux").files or []
+    files = metadata.distribution("feedshot").files or []
     assert any(path.name == LICENSE_FILENAME for path in files)
 
 

@@ -2,6 +2,7 @@
 
 import pytest
 
+from fastfoto_linux.output.files import LOCK_NAMES
 from fastfoto_linux.scanner import MAX_LENGTH_MM, Mode, Source
 from tests.cli.doc_scan_helpers import (
     doc_scan,
@@ -47,9 +48,7 @@ def test_after_a_clean_run_the_raw_pages_are_gone_and_the_summary_says_so(
     lines = capsys.readouterr().out.splitlines()
     assert "raw pages: deleted (--keep-raw keeps them)" in lines
     assert not (out / ".raw").exists()
-    assert [p.name for p in out.iterdir() if p.name != ".fastfoto-linux.lock"] == [
-        "Document_0001.pdf"
-    ]
+    assert [p.name for p in out.iterdir() if p.name not in LOCK_NAMES] == ["Document_0001.pdf"]
 
 
 def test_keep_raw_keeps_the_pages_and_says_where(out, doc_transport, capsys) -> None:

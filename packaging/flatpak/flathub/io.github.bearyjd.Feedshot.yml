@@ -1,4 +1,4 @@
-# Feedshot as a Flatpak: the desktop app (`fastfoto`) and the developer CLI (`ffscan`, run
+# Feedshot as a Flatpak: the desktop app (`feedshot`) and the developer CLI (`ffscan`, run
 # with `--command=ffscan`), scanning over USB with the epsonds backend plus the USB gap shim, and
 # searchable text: Tesseract (English and page-orientation data) with OCRmyPDF.
 # Build and install instructions are in README.md ("Flatpak").
@@ -12,7 +12,7 @@ runtime-version: "6.11"
 sdk: org.kde.Sdk
 base: io.qt.PySide.BaseApp
 base-version: "6.11"
-command: fastfoto
+command: feedshot
 
 finish-args:
   - --socket=wayland
@@ -29,7 +29,7 @@ finish-args:
   # not serialised.
   - --filesystem=xdg-pictures
   # Always the shim built into this Flatpak, never one built on the host under ~/.local.
-  - --env=FF680W_SHIM=/app/lib/fastfoto-linux/ff680w_usb_gap.so
+  - --env=FF680W_SHIM=/app/lib/feedshot/ff680w_usb_gap.so
   # Since Tesseract 4 this is the folder that holds the .traineddata files themselves.
   - --env=TESSDATA_PREFIX=/app/share/tessdata
 
@@ -109,7 +109,7 @@ modules:
     buildsystem: simple
     build-commands:
       - make -C tools/usb-gap-shim CC=gcc
-      - install -Dm755 tools/usb-gap-shim/ff680w_usb_gap.so /app/lib/fastfoto-linux/ff680w_usb_gap.so
+      - install -Dm755 tools/usb-gap-shim/ff680w_usb_gap.so /app/lib/feedshot/ff680w_usb_gap.so
     sources:
       - type: git
         url: https://github.com/bearyjd/fastfoto-linux.git
@@ -191,7 +191,7 @@ modules:
   - python-deps.json
   - python-build-deps.json
 
-  - name: fastfoto-linux
+  - name: feedshot
     buildsystem: simple
     build-commands:
       - >-

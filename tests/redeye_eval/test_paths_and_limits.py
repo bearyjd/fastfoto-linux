@@ -175,11 +175,11 @@ def test_default_out_dir_is_in_the_cache_and_keyed_by_the_manifest_hash(
 ) -> None:
     manifest = load_manifest(write_corpus(tmp_path / "corpus", [positive("a")]))
     cache = tmp_path / "cache"
-    expected = cache / "fastfoto-linux" / "redeye-eval" / manifest.sha256[:12]
+    expected = cache / "feedshot" / "redeye-eval" / manifest.sha256[:12]
     assert resolve_out_dir(manifest, None, {"XDG_CACHE_HOME": str(cache)}) == expected
     home = tmp_path / "home"
     fallback = resolve_out_dir(manifest, None, {"HOME": str(home)})
-    assert fallback == home / ".cache" / "fastfoto-linux" / "redeye-eval" / manifest.sha256[:12]
+    assert fallback == home / ".cache" / "feedshot" / "redeye-eval" / manifest.sha256[:12]
 
 
 @pytest.mark.usefixtures("outside_checkout")

@@ -33,7 +33,8 @@ from fastfoto_linux.session import DOCUMENT_DPI
 
 logger = logging.getLogger(__name__)
 
-PREFS_DIR = "fastfoto-linux"
+PREFS_DIR = "feedshot"
+OLD_PREFS_DIR = "fastfoto-linux"  # the folder before the rename; read once, never changed
 PREFS_FILE = "gui.json"
 MAX_PREFS_BYTES = 1 << 20  # the file holds a few dozen short values; a larger one is not ours
 NOT_REMEMBERED = ("date", "notes")  # they belong to one batch, not to the next
@@ -61,16 +62,42 @@ _DOCUMENT_CHOICES = {
 _DOCUMENT_TYPES = {field.name: field.type for field in fields(DocumentForm)}
 
 
+def _prefs_file(env: Mapping[str, str], folder: str) -> Path:
+    configured = env.get("XDG_CONFIG_HOME") or ""
+    if configured and Path(configured).is_absolute():
+        return Path(configured) / folder / PREFS_FILE
+    return Path(env.get("HOME") or Path.home()) / ".config" / folder / PREFS_FILE
+
+
 def prefs_path(env: Mapping[str, str] = os.environ) -> Path:
-    """``$XDG_CONFIG_HOME/fastfoto-linux/gui.json`` (``~/.config`` when it is unset or relative).
+    """``$XDG_CONFIG_HOME/feedshot/gui.json`` (``~/.config`` when it is unset or relative).
 
     The XDG specification says a base directory that is not an absolute path is invalid and
     must be ignored.
     """
-    configured = env.get("XDG_CONFIG_HOME") or ""
-    if configured and Path(configured).is_absolute():
-        return Path(configured) / PREFS_DIR / PREFS_FILE
-    return Path(env.get("HOME") or Path.home()) / ".config" / PREFS_DIR / PREFS_FILE
+    return _prefs_file(env, PREFS_DIR)
+
+
+def migrate_old_prefs(env: Mapping[str, str] = os.environ) -> bool:
+    """Copy the settings of the old name once; True when this call made the new file.
+
+    Only when the new folder has no settings file yet and the old one has a usable one (read by
+    the same loader, so the same limits apply). The old file is never changed or deleted, and a
+    failure is logged and leaves the app on its defaults.
+    """
+    new, old = _prefs_file(env, PREFS_DIR), _prefs_file(env, OLD_PREFS_DIR)
+    if os.path.lexists(new):
+        return False
+    data = _read_object(old)
+    if data is None:
+        return False
+    try:
+        _update(new, data)
+    except OSError as error:
+        logger.warning("could not copy the settings of the old name (%s)", error.strerror)
+        return False
+    logger.info("copied the settings from the old folder %s", OLD_PREFS_DIR)
+    return True
 
 
 def _read_bytes(path: Path) -> bytes | None:

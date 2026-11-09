@@ -60,7 +60,7 @@ def unsplit(item: dict) -> dict:
 
 
 def fake_checkout(path: Path) -> Path:
-    """Make ``path`` look like a fastfoto-linux checkout (a .git entry and our pyproject)."""
+    """Make ``path`` look like a feedshot checkout (a .git entry and our pyproject)."""
     (path / ".git").mkdir(parents=True)
-    (path / "pyproject.toml").write_text('[project]\nname = "fastfoto-linux"\n')
+    (path / "pyproject.toml").write_text('[project]\nname = "feedshot"\n')
     return path

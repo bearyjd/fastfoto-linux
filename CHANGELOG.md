@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to fastfoto-linux are recorded here. The format follows
+All notable changes to Feedshot are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project follows
 [Semantic Versioning](https://semver.org/) (see `docs/release-process.md`; before 1.0 any minor
 version may change behaviour).
@@ -57,6 +57,20 @@ calibrated on real scans, and no entry here is an image-quality or OCR-quality c
 
 ### Changed
 
+- **Renamed from FastFoto Linux to Feedshot.** The desktop command is now `feedshot` (`ffscan` is
+  unchanged, and there is no `fastfoto` alias), the Python distribution is `feedshot` (the import
+  package is still `fastfoto_linux`), and the settings, cache and install folders are named
+  `feedshot` instead of `fastfoto-linux`. The scanner safety notes (`scanner-unclean` and the
+  maintenance recovery markers) stay under `~/.local/state/fastfoto-linux` for now, so a note left
+  by an older build is never hidden. Written metadata now says "Feedshot" (EXIF Software,
+  `xmp:CreatorTool`, PDF Producer); output files are still named `FastFoto_NNNN`. Upgrade notes
+  for beta testers: run `flatpak uninstall io.github.bearyjd.FastFotoLinux` (the app ID changed in
+  an earlier step); the settings in `~/.config/fastfoto-linux/gui.json` are copied once to
+  `~/.config/feedshot/` on first start and the old file is kept; the output folder lock is now
+  `.feedshot.lock`, and for one release the old `.fastfoto-linux.lock` is also created and held so
+  an older build and this one still exclude each other; `tools/install-desktop.sh` removes an old user install it can prove is its own (the old
+  environment, menu entry, icon and `fastfoto`/`ffscan` links); the old OCR language data and the
+  old shim folder are left where they are and are not moved.
 - Dependency updates: pypdf 6.20.1 to 6.21.0 (#48), pluggy 1.6.0 to 1.7.0 (#50), ruff 0.17.0 to
   0.17.1 (#51), Pillow 12.3.0 to 13.0.0 (#59).
 

@@ -63,7 +63,7 @@ def all_sources() -> list[tuple[Path, dict[str, Any]]]:
 def test_the_application_has_the_reverse_dns_id_and_launches_the_gui() -> None:
     manifest = load_manifest()
     assert manifest["app-id"] == APP_ID
-    assert manifest["command"] == "fastfoto"
+    assert manifest["command"] == "feedshot"
     assert MANIFEST.name == f"{APP_ID}.yml"
 
 
@@ -204,13 +204,13 @@ def test_python_comes_from_the_two_generated_modules_before_the_project_is_built
     ]
     assert RUNTIME_MODULE.name in names
     assert BUILD_MODULE.name in names
-    project = names.index("fastfoto-linux")
+    project = names.index("feedshot")
     assert names.index(RUNTIME_MODULE.name) < project
     assert names.index(BUILD_MODULE.name) < project
 
 
 def test_the_project_is_installed_as_a_wheel_without_network_or_dependency_resolution() -> None:
-    steps = commands(module("fastfoto-linux"))
+    steps = commands(module("feedshot"))
     for flag in ("--no-index", "--no-build-isolation", "--no-deps"):
         assert flag in steps
     assert "PYTHONPATH=${FLATPAK_DEST}/build-backend" in steps
@@ -231,7 +231,7 @@ def test_the_base_app_is_trimmed_of_web_engine_and_keeps_the_numpy_pip_installs(
 
 
 def test_the_desktop_file_metainfo_and_icon_are_installed_under_the_app_id() -> None:
-    steps = commands(module("fastfoto-linux"))
+    steps = commands(module("feedshot"))
     for template, target in (
         (f"packaging/{APP_ID}.desktop", f"share/applications/{APP_ID}.desktop"),
         (f"packaging/{APP_ID}.metainfo.xml", f"share/metainfo/{APP_ID}.metainfo.xml"),

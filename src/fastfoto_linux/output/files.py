@@ -26,7 +26,9 @@ from fastfoto_linux.output.errors import OutputCollisionError, OutputLockTimeout
 
 logger = logging.getLogger(__name__)
 
-LOCK_NAME = ".fastfoto-linux.lock"
+LOCK_NAME = ".feedshot.lock"
+OLD_LOCK_NAME = ".fastfoto-linux.lock"  # the name before the rename; honoured for one release
+LOCK_NAMES = (LOCK_NAME, OLD_LOCK_NAME)  # both are kept in an output folder, never deleted
 LOCK_FILE_MODE = 0o666  # before the umask
 LOCK_TIMEOUT_S = 60.0
 LOCK_POLL_S = 0.05
@@ -222,6 +224,29 @@ def _acquire_lock(fd: int, directory: Path) -> bool:
         time.sleep(LOCK_POLL_S)
 
 
+def _open_old_lock(directory: Path) -> int | None:
+    """Open (creating if needed) the lock file of the old name; None if that is not possible.
+
+    A build from before the rename takes only that lock. Creating it here as well, for this one
+    compatibility release, makes such a build and this one wait for each other even when the old
+    build starts after this one. Any problem opening it is logged and means it is skipped.
+    """
+    flags = os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
+    try:
+        return os.open(directory / OLD_LOCK_NAME, flags, LOCK_FILE_MODE)
+    except OSError as error:
+        logger.warning("not excluding builds from before the rename (%s: %s)", OLD_LOCK_NAME, error)
+        return None
+
+
+def _release(fd: int, locked: bool) -> None:
+    try:
+        if locked:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
+
+
 @contextmanager
 def locked_folder(directory: Path) -> Iterator[None]:
     """Hold an exclusive lock on ``directory`` while numbering and publishing a photo.
@@ -232,17 +257,24 @@ def locked_folder(directory: Path) -> Iterator[None]:
     OutputLockTimeoutError. Filesystems without locks, or a lock file this user cannot open,
     are tolerated with a warning: the writer then runs unserialised, and the retry on
     collision in the writer only protects against overwriting the same file.
+
+    A lock file of the old name (``OLD_LOCK_NAME``) is created and held as well, and never
+    deleted, so a build from before the rename still excludes this one (one release only).
     """
     fd = _open_lock(directory)
-    locked = False
+    old_fd = None
+    locked = old_locked = False
     try:
         if fd is not None:
             locked = _acquire_lock(fd, directory)
+        old_fd = _open_old_lock(directory)
+        if old_fd is not None:
+            old_locked = _acquire_lock(old_fd, directory)
         yield
     finally:
-        if fd is not None:
-            try:
-                if locked:
-                    fcntl.flock(fd, fcntl.LOCK_UN)
-            finally:
-                os.close(fd)
+        try:
+            if old_fd is not None:
+                _release(old_fd, old_locked)
+        finally:
+            if fd is not None:
+                _release(fd, locked)

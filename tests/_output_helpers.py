@@ -4,7 +4,7 @@ from pathlib import Path
 
 import numpy as np
 
-from fastfoto_linux.output.files import LOCK_NAME
+from fastfoto_linux.output.files import LOCK_NAMES
 
 HEIGHT, WIDTH = 40, 60
 DPI = 300
@@ -28,4 +28,4 @@ def make_root(parent: Path, name: str = "out") -> Path:
 
 
 def names(directory: Path) -> list[str]:
-    return sorted(p.name for p in directory.iterdir() if p.name != LOCK_NAME)
+    return sorted(p.name for p in directory.iterdir() if p.name not in LOCK_NAMES)

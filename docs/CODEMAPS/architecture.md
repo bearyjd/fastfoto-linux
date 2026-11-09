@@ -3,7 +3,7 @@
 # Architecture
 
 ```
- ffscan (cli.app:main)            fastfoto (gui.qt.app:main)
+ ffscan (cli.app:main)            feedshot (gui.qt.app:main)
    cmd_devices|scan|process|doc|library     Qt/QML -> gui.qt.bridge -> gui.controller
         \                                    /        (worker thread: gui.worker)
          +--------------+-------------------+

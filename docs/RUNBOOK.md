@@ -57,9 +57,9 @@ sending a transfer that timed out part-way (`FF680W_OUT_FINISH_MS`). Details:
 `tools/usb-gap-shim/README.md`; variables: `docs/ENV.md`.
 
 - Build from a checkout: `make -C tools/usb-gap-shim` (needs `gcc` and `make`).
-- The app looks for it in `$FF680W_SHIM`, then `~/.local/lib/fastfoto-linux/`, then the in-repo
+- The app looks for it in `$FF680W_SHIM`, then `~/.local/lib/feedshot/`, then the in-repo
   build. Inside the Flatpak only `$FF680W_SHIM` counts, and the manifest points it at the bundled copy.
-- `tools/install-desktop.sh` builds it and copies it to `~/.local/lib/fastfoto-linux/`. If a shim
+- `tools/install-desktop.sh` builds it and copies it to `~/.local/lib/feedshot/`. If a shim
   is already there that the installer did not put there, it leaves it alone and tells you; remove
   that file and run the installer again to use the one from the checkout.
 - The shim must be loaded by the process that talks to the scanner. Setting `LD_PRELOAD` in a
@@ -143,11 +143,11 @@ Use the command the error printed if there is one: it has the right file names. 
 
 It needs the distribution's PySide6 and Kirigami (`sudo dnf install python3-pyside6
 kf6-kirigami` on Fedora), plus `make` and `gcc` for the shim. It creates a virtual environment under
-`$XDG_DATA_HOME/fastfoto-linux/venv` (default `~/.local/share`), installs hashed wheels only, adds a menu
-entry and icon, and links `fastfoto` and `ffscan` into `~/.local/bin` (put that on `PATH`). What
+`$XDG_DATA_HOME/feedshot/venv` (default `~/.local/share`), installs hashed wheels only, adds a menu
+entry and icon, and links `feedshot` and `ffscan` into `~/.local/bin` (put that on `PATH`). What
 it installed is listed in `installed.txt` in the same folder. It never uses `sudo`, and it keeps your
-settings in `~/.config/fastfoto-linux` and your photos. Environment variables it reads: `docs/ENV.md`.
-Without PySide6 and Kirigami, `fastfoto` says what to install and exits with status 3; `ffscan`
+settings in `~/.config/feedshot` and your photos. Running it again after an upgrade from the old name (FastFoto Linux) also removes the old environment, menu entry, icon and `fastfoto`/`ffscan` links it can prove are its own; the old OCR language data (`$XDG_DATA_HOME/fastfoto-linux/tessdata`) and shim folder (`~/.local/lib/fastfoto-linux`) are left alone. Environment variables it reads: `docs/ENV.md`.
+Without PySide6 and Kirigami, `feedshot` says what to install and exits with status 3; `ffscan`
 needs neither.
 
 ## Flatpak

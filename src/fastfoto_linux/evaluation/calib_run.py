@@ -168,7 +168,7 @@ def resolve_out(
         if cache and not Path(cache).is_absolute():
             raise ManifestError("XDG_CACHE_HOME must be an absolute path")
         base = Path(cache) if cache else Path(env.get("HOME") or Path.home()) / ".cache"
-        out = base / "fastfoto-linux" / "calibration-eval" / feature / manifest.sha256[:12]
+        out = base / "feedshot" / "calibration-eval" / feature / manifest.sha256[:12]
     resolved = out.expanduser().resolve()
     if manifest.root is None:
         raise CorpusError("the manifest has no directory")

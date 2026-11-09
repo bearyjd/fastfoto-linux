@@ -44,7 +44,7 @@ def default_shim_candidates(
     """Where to look for the USB gap shim, best first.
 
     ``$FF680W_SHIM`` (a leading ``~`` or ``~/`` is expanded from ``$HOME``; ``~user`` is not),
-    then ``~/.local/lib/fastfoto-linux/``, then the in-repo build (only listed when it exists,
+    then ``~/.local/lib/feedshot/``, then the in-repo build (only listed when it exists,
     so an installed package does not point at some unrelated directory).
 
     Inside a Flatpak sandbox only ``$FF680W_SHIM`` counts (the manifest sets it to the shim that
@@ -60,7 +60,7 @@ def default_shim_candidates(
     if inside_flatpak():
         return tuple(candidates)
     if home:
-        candidates.append(Path(home) / ".local" / "lib" / "fastfoto-linux" / SHIM_FILENAME)
+        candidates.append(Path(home) / ".local" / "lib" / "feedshot" / SHIM_FILENAME)
     in_repo = repo_root / "tools" / "usb-gap-shim" / SHIM_FILENAME
     if in_repo.is_file():
         candidates.append(in_repo)

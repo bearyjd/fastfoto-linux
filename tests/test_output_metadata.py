@@ -24,7 +24,7 @@ NS = {
     "xmp": "http://ns.adobe.com/xap/1.0/",
 }
 XML_LANG = "{http://www.w3.org/XML/1998/namespace}lang"
-SOFTWARE = f"fastfoto-linux {__version__}"
+SOFTWARE = f"Feedshot {__version__}"
 SCANNED = datetime(2026, 10, 12, 9, 5, 7)
 WRITTEN = datetime(2026, 10, 13, 20, 15, 30)
 APP1_LIMIT = 65_000

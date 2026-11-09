@@ -1,4 +1,4 @@
-"""``fastfoto``: start the desktop app."""
+"""``feedshot``: start the desktop app."""
 
 import logging
 import os
@@ -17,13 +17,13 @@ STOP_SIGNALS = (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)  # kill, Ctrl+C, l
 SIGNAL_SETTLE_SECONDS = 10.0  # how long a signalled app waits for the scan to stop
 SIGNAL_READ_BYTES = 4096
 APP_ID = "io.github.bearyjd.Feedshot"
-APP_NAME = "fastfoto-linux"
+APP_NAME = "feedshot"
 DISPLAY_NAME = "Feedshot"
 TEARDOWN_INCUBATE_MS = 20  # finish small asynchronous toolbar delegates before engine deletion
 STYLE = "org.kde.desktop"
 STYLE_ENV_VAR = "QT_QUICK_CONTROLS_STYLE"
 MISSING_QT_MESSAGE = (
-    "fastfoto: the desktop app needs the distribution's PySide6 and Kirigami (the PyPI PySide6 "
+    "feedshot: the desktop app needs the distribution's PySide6 and Kirigami (the PyPI PySide6 "
     "wheel bundles its own Qt and cannot load Kirigami).\n"
     "On Fedora: sudo dnf install python3-pyside6 kf6-kirigami\n"
     "Or build the Flatpak (see the README), which has them built in. `ffscan` needs neither."
@@ -242,15 +242,16 @@ def _run(run_loop: Callable[[], int]) -> int:
 
 
 def _run_with_engine(run_loop: Callable[[], int]) -> int:
-    from fastfoto_linux.gui.prefs import load_ui_language  # noqa: PLC0415
+    from fastfoto_linux.gui.prefs import load_ui_language, migrate_old_prefs  # noqa: PLC0415
     from fastfoto_linux.gui.qt.bridge import Bridge  # noqa: PLC0415
     from fastfoto_linux.gui.qt.translation import activate  # noqa: PLC0415
 
+    migrate_old_prefs()  # the settings of the old name, once, before anything reads them
     activate(load_ui_language())  # before the window: English stays when this cannot be done
     bridge = Bridge()
     engine, warnings = create_engine(bridge)
     if not engine.rootObjects():
-        print(f"fastfoto: the window could not be loaded: {'; '.join(warnings)}", file=sys.stderr)
+        print(f"feedshot: the window could not be loaded: {'; '.join(warnings)}", file=sys.stderr)
         bridge.shutdown()  # closed before it is deleted: its threads may still be reporting
         destroy_now(engine)
         release_bridge(bridge)

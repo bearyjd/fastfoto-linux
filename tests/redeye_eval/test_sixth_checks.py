@@ -15,7 +15,7 @@ from fastfoto_linux.evaluation.redeye_output import _refuse_if_contained
 from fastfoto_linux.evaluation.redeye_run import run_eval
 from tests.redeye_eval.synth import KeyedDetector, positive, with_split, write_corpus
 
-OURS = b'[project]\nname = "fastfoto-linux"\n'
+OURS = b'[project]\nname = "feedshot"\n'
 _DIR = os.O_RDONLY | os.O_DIRECTORY
 
 

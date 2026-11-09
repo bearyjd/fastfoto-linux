@@ -1,5 +1,5 @@
 name: Bug report
-description: Something in fastfoto-linux does not work as documented.
+description: Something in Feedshot does not work as documented.
 body:
   - type: markdown
     attributes:

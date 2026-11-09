@@ -2,13 +2,14 @@
 # Install Feedshot for the current user, without root:
 #   - a virtual environment that sees the system PySide6 and Kirigami,
 #   - the USB gap shim the scanner needs, built from this checkout,
-#   - an application menu entry with its icon, and `fastfoto` / `ffscan` in ~/.local/bin.
+#   - an application menu entry with its icon, and `feedshot` / `ffscan` in ~/.local/bin.
 # Safe to run again (it updates what it installed). --uninstall removes what it installed (it
-# keeps a list in installed.txt); the settings in ~/.config/fastfoto-linux and your photos are
+# keeps a list in installed.txt); the settings in ~/.config/feedshot and your photos are
 # never touched. Everything pip fetches is pinned by hash and installed as a wheel: the
 # dependencies from packaging/requirements-desktop.txt (generated from uv.lock; a test keeps the
 # two in step), the OCR extra (ocrmypdf and its wheels) from packaging/requirements-ocr.txt, and
 # the build backend from packaging/requirements-build.txt.
+# An install made under the old name (fastfoto-linux) is cleaned up on the way (cleanup_old_install).
 # Tesseract, which searchable text also needs, is a program, not a wheel: if it is missing the
 # installer says how to get it (Homebrew on an immutable system such as Bazzite, dnf otherwise) and
 # runs `brew install tesseract` only when asked (--with-tesseract, or "y" on a terminal). It never
@@ -20,7 +21,7 @@ set -euo pipefail
 umask 022 # files are readable by others whatever the user's umask is
 
 APP_ID="io.github.bearyjd.Feedshot"
-LAUNCHERS=(fastfoto ffscan)
+LAUNCHERS=(feedshot ffscan)
 
 usage() {
   cat <<USAGE
@@ -83,7 +84,7 @@ case "${XDG_DATA_HOME:-}" in
   *) DATA_HOME=$HOME/.local/share ;;
 esac
 PYTHON="${FASTFOTO_PYTHON:-/usr/bin/python3}"
-APP_DATA="$DATA_HOME/fastfoto-linux"
+APP_DATA="$DATA_HOME/feedshot"
 VENV="$APP_DATA/venv"
 RECORD="$APP_DATA/installed.txt"
 REQUIREMENTS="$REPO/packaging/requirements-desktop.txt"
@@ -97,11 +98,20 @@ BREW_LANG_HINT="brew install tesseract-lang"
 DNF_INSTALL_HINT="sudo dnf install tesseract tesseract-osd"
 RPM_OSTREE_INSTALL_HINT="rpm-ostree install tesseract tesseract-osd"
 OSTREE_NO_BREW_HINT="$RPM_OSTREE_INSTALL_HINT (then reboot), or install Homebrew and run $BREW_INSTALL_HINT"
-LIB_DIR="$HOME/.local/lib/fastfoto-linux"
+LIB_DIR="$HOME/.local/lib/feedshot"
 SHIM="$LIB_DIR/ff680w_usb_gap.so"
 BIN_DIR="$HOME/.local/bin"
 DESKTOP="$DATA_HOME/applications/$APP_ID.desktop"
 ICON="$DATA_HOME/icons/hicolor/scalable/apps/$APP_ID.svg"
+# What an install under the old name (fastfoto-linux) left; see cleanup_old_install.
+OLD_APP_DATA="$DATA_HOME/fastfoto-linux"
+OLD_VENV="$OLD_APP_DATA/venv"
+OLD_RECORD="$OLD_APP_DATA/installed.txt"
+OLD_LIB_DIR="$HOME/.local/lib/fastfoto-linux"
+OLD_APP_ID="io.github.bearyjd.FastFotoLinux"
+OLD_DESKTOP="$DATA_HOME/applications/$OLD_APP_ID.desktop"
+OLD_ICON="$DATA_HOME/icons/hicolor/scalable/apps/$OLD_APP_ID.svg"
+OLD_LAUNCHERS=(fastfoto ffscan)
 
 # act "what it does" command...: say it (dry run) or do it.
 act() {
@@ -194,7 +204,7 @@ copy_shim() {
 # backslash and % doubled; the file format then wants every backslash doubled again.
 write_desktop() {
   mkdir -p "$(dirname "$DESKTOP")"
-  EXEC_PATH="$VENV/bin/fastfoto" awk '
+  EXEC_PATH="$VENV/bin/feedshot" awk '
     function quoted(path,   out, i, c) {
       out = ""
       for (i = 1; i <= length(path); i++) {
@@ -334,6 +344,45 @@ tesseract_step() {
   fi
 }
 
+# A one-time cleanup of an install made under the old name (fastfoto-linux), and only what is
+# provably ours: the desktop entry and icon only when the old installed.txt lists them, the old
+# launcher links only when they point into the old environment, and that environment only when it
+# is one (pyvenv.cfg) and either the record or such a link vouches for it. The old OCR language data
+# and the old shim folder are never touched.
+cleanup_old_install() {
+  local name link proof=0
+  [[ -f "$OLD_RECORD" ]] && proof=1
+  for name in "${OLD_LAUNCHERS[@]}"; do
+    [[ -L "$BIN_DIR/$name" && "$(readlink "$BIN_DIR/$name")" == "$OLD_VENV/bin/"* ]] && proof=1
+  done
+  REMOVED=0
+  for name in "${OLD_LAUNCHERS[@]}"; do
+    link="$BIN_DIR/$name"
+    if [[ -L "$link" && "$(readlink "$link")" == "$OLD_VENV/bin/"* ]]; then
+      remove "old link" "$link"
+    fi
+  done
+  old_recorded "$OLD_DESKTOP" && remove "old launcher" "$OLD_DESKTOP"
+  old_recorded "$OLD_ICON" && remove "old icon" "$OLD_ICON"
+  if [[ ! -e "$OLD_VENV" && ! -L "$OLD_VENV" ]]; then
+    :
+  elif [[ -L "$OLD_VENV" || ! -f "$OLD_VENV/pyvenv.cfg" || ! -e "$OLD_VENV/bin/python" ]]; then
+    echo "install-desktop.sh: leaving $OLD_VENV alone: it is not an environment this installer made (no pyvenv.cfg or bin/python)" >&2
+  elif ((proof)); then
+    remove "old environment" "$OLD_VENV"
+  fi
+  if ((REMOVED)) && [[ -e "$OLD_APP_DATA" || -e "$OLD_LIB_DIR" ]]; then
+    local verb="note: leaving"
+    ((!DRY_RUN)) || verb="would leave"
+    echo "$verb $OLD_APP_DATA (old OCR language data) and $OLD_LIB_DIR (old shim) alone; they are not moved, delete them yourself when you no longer need them"
+  fi
+  REMOVED=0
+}
+
+old_recorded() {
+  [[ -f "$OLD_RECORD" ]] && grep -qxF -- "$1" "$OLD_RECORD"
+}
+
 install_all() {
   act "create the environment $VENV ($PYTHON -I -m venv --system-site-packages)" make_venv
   act "install the build backend from $BUILD_REQUIREMENTS, the dependencies from $REQUIREMENTS and the OCR dependencies (ocrmypdf and its wheels) from $OCR_REQUIREMENTS (hashes checked, wheels only), then $REPO without them" install_package
@@ -341,6 +390,7 @@ install_all() {
   act "copy the shim to $SHIM (a private folder, replaced atomically)" copy_shim
   act "write the launcher $DESKTOP" write_desktop
   act "copy the icon to $ICON" copy_icon
+  cleanup_old_install
   local name
   for name in "${LAUNCHERS[@]}"; do
     act "link $BIN_DIR/$name -> $VENV/bin/$name" link_launcher "$name"
@@ -348,7 +398,7 @@ install_all() {
   tesseract_step
   if ((!DRY_RUN)); then
     check_qt
-    echo "Installed. Start Feedshot from the application menu, or run: fastfoto"
+    echo "Installed. Start Feedshot from the application menu, or run: feedshot"
     echo "(make sure $BIN_DIR is in your PATH to use the commands from a terminal)"
   fi
 }

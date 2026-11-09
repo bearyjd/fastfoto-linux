@@ -156,4 +156,4 @@ def _check_cancel(cancel: Event) -> None:
 def new_cache_dir() -> Path:
     """Choose one editor's private cache namespace without touching the filesystem."""
     base = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
-    return base / "fastfoto-linux" / "photo-edits" / uuid.uuid4().hex
+    return base / "feedshot" / "photo-edits" / uuid.uuid4().hex

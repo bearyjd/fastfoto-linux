@@ -58,7 +58,7 @@ def test_pyside6_is_not_a_pip_dependency_anywhere() -> None:
 
 
 def test_fastfoto_is_a_gui_script() -> None:
-    assert pyproject()["project"]["gui-scripts"] == {"fastfoto": "fastfoto_linux.gui.qt.app:main"}
+    assert pyproject()["project"]["gui-scripts"] == {"feedshot": "fastfoto_linux.gui.qt.app:main"}
     assert pyproject()["project"]["scripts"]["ffscan"] == "fastfoto_linux.cli:main"
 
 
@@ -111,8 +111,8 @@ def test_the_desktop_file_is_valid() -> None:
 def test_the_desktop_file_launches_the_app_with_its_icon() -> None:
     entries = dict(line.split("=", 1) for line in DESKTOP.read_text().splitlines() if "=" in line)
     assert entries["Type"] == "Application"
-    assert entries["Exec"] == "fastfoto"
-    assert entries["TryExec"] == "fastfoto"
+    assert entries["Exec"] == "feedshot"
+    assert entries["TryExec"] == "feedshot"
     assert entries["Icon"] == APP_ID
     assert "Graphics" in entries["Categories"]
     assert entries["Name"] == "Feedshot"

@@ -51,7 +51,7 @@ OSTREE_NO_BREW_HINT = (
 )
 OCRMYPDF_NAME = "OCRmyPDF"
 OCRMYPDF_FIX_HINT = (
-    "run the installer again, or pip install 'fastfoto-linux[ocr]' for a development install"
+    "run the installer again, or pip install 'feedshot[ocr]' for a development install"
 )
 TESSERACT_NAME = "Tesseract"
 OCR_NEEDS = f"{OCRMYPDF_NAME} and {TESSERACT_NAME}"  # what searchable text needs

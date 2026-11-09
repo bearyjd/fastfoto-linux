@@ -8,6 +8,7 @@ import pytest
 
 from fastfoto_linux.cli import main
 from fastfoto_linux.documents import ocr_tools
+from fastfoto_linux.output.files import LOCK_NAMES
 from tests import _fake_ocrmypdf as fake
 from tests.documents.helpers import reader, text_scene, write_pages
 
@@ -92,7 +93,7 @@ def test_ocr_that_fails_is_exit_1_with_a_warning_and_the_plain_pdf(
     pdf = out / "Document_0001.pdf"
     assert len(reader(pdf.read_bytes()).pages) == 2
     assert fake.MARKER not in pdf.read_bytes()
-    assert sorted(p.name for p in out.iterdir() if p.name != ".fastfoto-linux.lock") == [pdf.name]
+    assert sorted(p.name for p in out.iterdir() if p.name not in LOCK_NAMES) == [pdf.name]
 
 
 @pytest.mark.parametrize("verbosity", [[], ["-v"]], ids=["default", "verbose"])
@@ -131,7 +132,7 @@ def test_ctrl_c_during_ocr_is_exit_130_with_nothing_published_and_nothing_left_r
     seen = fake.read_record(record)
     assert fake.wait_until_gone(seen["pid"])
     assert fake.wait_until_gone(seen["child"])
-    assert [p.name for p in out.iterdir() if p.name != ".fastfoto-linux.lock"] == []
+    assert [p.name for p in out.iterdir() if p.name not in LOCK_NAMES] == []
     assert all(p.exists() for p in pages)
 
 
@@ -178,7 +179,7 @@ def test_required_ocr_without_tesseract_is_exit_3_with_the_hint_and_no_traceback
 
 # -- the hint names what is missing: Tesseract, OCRmyPDF or both -------------------------------
 
-PIP = "pip install 'fastfoto-linux[ocr]'"
+PIP = "pip install 'feedshot[ocr]'"
 MISSING = [  # ocrmypdf is there, tesseract is there, what the hint says, what it must not say
     pytest.param((False, True, [PIP, "installer"], [HINT, "dnf"]), id="ocrmypdf"),
     pytest.param((True, False, [HINT], [PIP]), id="tesseract"),

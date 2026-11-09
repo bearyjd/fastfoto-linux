@@ -22,7 +22,7 @@ def test_the_launcher_runs_the_bare_command_so_flatpak_can_wrap_it() -> None:
     parser.optionxform = str  # type: ignore[assignment,method-assign]
     parser.read(DESKTOP, encoding="utf-8")
     entry = parser["Desktop Entry"]
-    assert entry["Exec"] == "fastfoto"
+    assert entry["Exec"] == "feedshot"
     assert entry["Icon"] == APP_ID
     assert "/" not in entry["Exec"]
     assert ICON.is_file()

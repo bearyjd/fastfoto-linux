@@ -45,7 +45,7 @@ def test_exif_and_xmp_round_trip_through_the_written_jpeg(tmp_path: Path) -> Non
         exif = image.getexif()
         exif_ifd = exif.get_ifd(ExifTags.IFD.Exif)
     assert exif[ExifTags.Base.ImageDescription] == "Beach day"
-    assert exif[ExifTags.Base.Software] == f"fastfoto-linux {__version__}"
+    assert exif[ExifTags.Base.Software] == f"Feedshot {__version__}"
     assert exif[ExifTags.Base.DateTime] == "2026:10:13 20:15:30"
     assert exif_ifd[ExifTags.Base.DateTimeOriginal] == "1975:06:01 00:00:00"
     assert exif_ifd[ExifTags.Base.DateTimeDigitized] == "2026:10:12 09:05:07"

@@ -227,7 +227,7 @@ def test_each_mode_is_remembered_in_the_one_file(
         wait_until(lambda: bridge.state == "done", "the scan to end")
     finally:
         bridge.shutdown()
-    path = config / "fastfoto-linux" / "gui.json"
+    path = config / "feedshot" / "gui.json"
     assert load_mode(path) is Mode.DOCUMENTS
     assert load_document_form(path) == DocumentForm(name="Lease", colour="bw")
     again = Bridge(discover=lambda: ScanTarget(device=DEVICE), documents=tools)

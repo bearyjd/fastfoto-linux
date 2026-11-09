@@ -12,7 +12,7 @@ example are in `corpus/` (`.json` and `.md` only: a test fails if an image lands
 Never in the repository. `corpus_root(explicit, env)` takes an explicit directory or
 `FASTFOTO_CORPUS_DIR`; there is no default path. The path must be absolute with no `.` or `..`
 component, is opened from `/` without following any symlink, and is refused when it is or sits
-inside a fastfoto-linux checkout. The manifest is `<root>/MANIFEST.json`.
+inside a feedshot checkout. The manifest is `<root>/MANIFEST.json`.
 
 ## Manifest (JSON, version 1)
 
@@ -49,7 +49,7 @@ new item dicts with the split filled in, for authoring. The example manifest's s
 `load_corpus_manifest(path, verify=True)` takes an absolute path with no `.` or `..` component.
 The directory is walked from `/` without following any symlink, the manifest is opened
 `O_NOFOLLOW` (a symlinked manifest or directory is refused), and the directory is refused if it is
-or sits inside a fastfoto-linux checkout (an unreadable `pyproject.toml` is reported as "cannot
+or sits inside a feedshot checkout (an unreadable `pyproject.toml` is reported as "cannot
 verify", not as a checkout). It returns a `CorpusManifest` that holds the directory's file
 descriptor (`root_fd`; use `with` or `close()`). `verify_hashes` streams each file through that
 descriptor, one component at a time without following symlinks, so replacing the directory path

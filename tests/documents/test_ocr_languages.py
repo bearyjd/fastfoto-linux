@@ -53,7 +53,7 @@ def models(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setattr(ocr_languages, "CATALOG_PATH", catalog)
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
     monkeypatch.setattr(ocr_tools, "find_tesseract", lambda: None)
-    return tmp_path / "data" / "fastfoto-linux" / "tessdata" / REVISION
+    return tmp_path / "data" / "feedshot" / "tessdata" / REVISION
 
 
 def install_managed(root: Path, *codes: str) -> None:

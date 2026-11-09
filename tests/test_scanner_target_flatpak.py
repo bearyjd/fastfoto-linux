@@ -1,7 +1,7 @@
 """Inside a Flatpak sandbox the shim comes from ``$FF680W_SHIM`` only (review round 1, item 3).
 
 The manifest sets the variable to the shim built into the Flatpak. A shim in the user's home
-(``~/.local/lib/fastfoto-linux``, which the sandbox sees as its own home) or in a checkout is
+(``~/.local/lib/feedshot``, which the sandbox sees as its own home) or in a checkout is
 something the Flatpak did not ship, so it is not even a candidate there.
 """
 
@@ -12,15 +12,15 @@ import pytest
 from fastfoto_linux.scanner import shim_trust
 from fastfoto_linux.scanner.target import SHIM_FILENAME, default_shim_candidates
 
-SHIM_IN_APP = Path("/app/lib/fastfoto-linux") / SHIM_FILENAME
+SHIM_IN_APP = Path("/app/lib/feedshot") / SHIM_FILENAME
 
 
 @pytest.fixture
 def home_and_checkout(tmp_path: Path) -> tuple[dict[str, str], Path]:
     """An environment with a HOME holding a user-built shim, and a checkout with a built one."""
     home = tmp_path / "home"
-    (home / ".local" / "lib" / "fastfoto-linux").mkdir(parents=True)
-    (home / ".local" / "lib" / "fastfoto-linux" / SHIM_FILENAME).write_bytes(b"")
+    (home / ".local" / "lib" / "feedshot").mkdir(parents=True)
+    (home / ".local" / "lib" / "feedshot" / SHIM_FILENAME).write_bytes(b"")
     repo = tmp_path / "repo"
     (repo / "tools" / "usb-gap-shim").mkdir(parents=True)
     (repo / "tools" / "usb-gap-shim" / SHIM_FILENAME).write_bytes(b"")

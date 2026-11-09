@@ -273,15 +273,15 @@ def assign_splits(items_raw: Sequence[Mapping[str, object]], seed: str) -> list[
 
 
 def check_outside_checkout(path: Path) -> None:
-    """Refuse (``CorpusError``) a ``path`` that is, or is inside, a fastfoto-linux checkout."""
+    """Refuse (``CorpusError``) a ``path`` that is, or is inside, a feedshot checkout."""
     try:
         check_out_allowed(path, [])
     except ManifestError as error:
         if "cannot verify" in str(error):  # fail closed, but say it could not be told
             raise CorpusError(
-                "cannot verify whether the corpus is inside the fastfoto-linux checkout"
+                "cannot verify whether the corpus is inside the feedshot checkout"
             ) from None
-        raise CorpusError("the corpus must be outside the fastfoto-linux checkout") from None
+        raise CorpusError("the corpus must be outside the feedshot checkout") from None
 
 
 def _read_manifest_file(dir_fd: int, name: str) -> bytes:
@@ -312,7 +312,7 @@ def load_corpus_manifest(path: Path, verify: bool = True) -> CorpusManifest:
 
     ``path`` must be absolute with no ``.``/``..``. Its directory is walked from ``/`` without
     following a symlink and the file is opened ``O_NOFOLLOW`` (a symlinked manifest is refused);
-    the directory is refused inside a fastfoto-linux checkout. The directory stays open
+    the directory is refused inside a feedshot checkout. The directory stays open
     (``CorpusManifest.root_fd``) and, with ``verify``, every item is re-hashed through it, so no
     path is resolved twice. The caller closes the manifest.
     """

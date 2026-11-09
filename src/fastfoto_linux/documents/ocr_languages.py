@@ -120,7 +120,7 @@ def _cache_root(catalog: _Catalog, *, create: bool = False) -> Path:
     if create:
         base.mkdir(parents=True, exist_ok=True)
     current = base
-    for part in ("fastfoto-linux", "tessdata", catalog.revision):
+    for part in ("feedshot", "tessdata", catalog.revision):
         current /= part
         if create:
             current.mkdir(mode=PRIVATE_DIRECTORY_MODE, exist_ok=True)

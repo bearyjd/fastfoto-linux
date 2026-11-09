@@ -34,10 +34,10 @@ def ignored(path: str) -> bool:
 @pytest.mark.parametrize(
     "path",
     [
-        "build-dir/files/bin/fastfoto",  # flatpak-builder ... build-dir
+        "build-dir/files/bin/feedshot",  # flatpak-builder ... build-dir
         "repo/summary",  # --repo=repo
         ".flatpak-builder/cache/objects",  # the builder's state folder
-        "fastfoto-linux.flatpak",  # flatpak build-bundle
+        "feedshot.flatpak",  # flatpak build-bundle
         "io.github.bearyjd.Feedshot.flatpak",  # the CI job's bundle name
     ],
 )

@@ -205,7 +205,7 @@ def test_the_default_output_is_under_the_cache_and_the_corpus_comes_from_the_env
     monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
     monkeypatch.setenv("FASTFOTO_CORPUS_DIR", str(corpus.parent))
     assert run_cli(LABEL) == 0
-    target = cache / "fastfoto-linux" / "calibration-eval" / LABEL / manifest_sha(corpus)[:12]
+    target = cache / "feedshot" / "calibration-eval" / LABEL / manifest_sha(corpus)[:12]
     assert len(list(target.glob("run-*/report.json"))) == 1
 
 

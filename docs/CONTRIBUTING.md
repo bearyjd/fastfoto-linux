@@ -12,7 +12,7 @@ uv sync --extra ocr             # also ocrmypdf (searchable PDFs); Tesseract is 
 uv run ffscan --help
 ```
 
-The desktop app (`fastfoto`) needs the distribution's PySide6 and Kirigami, which are not Python
+The desktop app (`feedshot`) needs the distribution's PySide6 and Kirigami, which are not Python
 dependencies on purpose (see the README). Its Qt tests run only where they are installed; the
 `gui (fedora)` CI job runs them in a container.
 
@@ -50,7 +50,7 @@ uv export --locked --no-dev --no-emit-project --extra ocr --hashes --no-header -
 | Check | What it does |
 | --- | --- |
 | `lint` | Refuses tracked `test-scans`, `captures`, `*.pcap`, `*.pcapng`; `ruff check`; `ruff format --check`; the two hashed requirement files match `uv.lock` |
-| `test (3.13)` | `pytest -n auto --cov` (80%), `gui/` coverage (85%), wheel contents (face model and licence, QML files, `fastfoto` launcher, no PySide dependency) |
+| `test (3.13)` | `pytest -n auto --cov` (80%), `gui/` coverage (85%), wheel contents (face model and licence, QML files, `feedshot` launcher, no PySide dependency) |
 | `test (3.14)` | The same on Python 3.14 |
 | `gui (fedora)` | Fedora container with the distribution's PySide6 and Kirigami; Qt and QML tests with `FASTFOTO_REQUIRE_QT=1`, Qt layer coverage at least 80% |
 | `flatpak` | Builds `packaging/flatpak/io.github.bearyjd.Feedshot.yml`, installs the bundle, runs `tools/ci/flatpak-ocr-smoke.sh` in the sandbox |

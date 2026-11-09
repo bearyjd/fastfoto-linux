@@ -98,7 +98,7 @@ def test_missing_ocrmypdf_alone_says_to_run_the_installer_or_pip_and_not_to_inst
     hint = tools(found=None, flatpak=False).ocr_hint
     assert hint.startswith("Install OCRmyPDF: ")
     assert "installer" in hint
-    assert "pip install 'fastfoto-linux[ocr]'" in hint
+    assert "pip install 'feedshot[ocr]'" in hint
     assert "Tesseract" not in hint
     assert "dnf" not in hint
 
@@ -110,7 +110,7 @@ def test_missing_ocrmypdf_and_tesseract_says_both_with_tesseract_first(
     hint = tools(found=None, flatpak=False).ocr_hint
     assert NATIVE_OCR_HINT in hint
     assert "Install OCRmyPDF: " in hint
-    assert "pip install 'fastfoto-linux[ocr]'" in hint
+    assert "pip install 'feedshot[ocr]'" in hint
     assert hint.index(NATIVE_OCR_HINT) < hint.index("Install OCRmyPDF: ")
 
 

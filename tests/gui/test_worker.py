@@ -302,8 +302,7 @@ def test_the_default_discovery_looks_for_the_usb_scanner_and_its_shim(
     (call,) = calls
     assert call["net_host"] is None
     assert (
-        Path("/nonexistent-home/.local/lib/fastfoto-linux/ff680w_usb_gap.so")
-        in call["shim_candidates"]
+        Path("/nonexistent-home/.local/lib/feedshot/ff680w_usb_gap.so") in call["shim_candidates"]
     )
 
 

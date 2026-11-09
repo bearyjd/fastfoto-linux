@@ -63,10 +63,10 @@ def test_a_symlinked_root_or_ancestor_is_refused(root, tmp_path) -> None:
 def test_a_root_inside_or_equal_to_a_checkout_is_refused(tmp_path) -> None:
     repo = tmp_path / "repo"
     (repo / ".git").mkdir(parents=True)
-    (repo / "pyproject.toml").write_text('[project]\nname = "fastfoto-linux"\n')
+    (repo / "pyproject.toml").write_text('[project]\nname = "feedshot"\n')
     (repo / "data" / "deeper").mkdir(parents=True)
     for inside in (repo, repo / "data", repo / "data" / "deeper"):
-        with pytest.raises(CorpusError, match="outside the fastfoto-linux checkout"):
+        with pytest.raises(CorpusError, match="outside the feedshot checkout"):
             corpus_root(inside, {})
 
 

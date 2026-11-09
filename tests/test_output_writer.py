@@ -15,7 +15,7 @@ from fastfoto_linux.output.errors import (
     OutputLockTimeoutError,
     OutputRootMissingError,
 )
-from fastfoto_linux.output.files import LOCK_NAME
+from fastfoto_linux.output.files import LOCK_NAME, LOCK_NAMES
 from fastfoto_linux.output.writer import DEFAULT_QUALITY, MAX_INDEX_ATTEMPTS, write_photo
 from tests._output_helpers import DPI, HEIGHT, WIDTH, make_root, names, rgb
 
@@ -66,7 +66,10 @@ def test_an_output_root_that_is_a_file_is_an_error(tmp_path: Path) -> None:
 def test_the_lock_file_is_the_only_extra_thing_left_in_the_folder(tmp_path: Path) -> None:
     write_photo(rgb(), dpi=DPI, output_root=tmp_path, album="Trip")
 
-    assert sorted(p.name for p in (tmp_path / "Trip").iterdir()) == [LOCK_NAME, "Trip_0001.jpg"]
+    assert sorted(p.name for p in (tmp_path / "Trip").iterdir()) == [
+        *sorted(LOCK_NAMES),
+        "Trip_0001.jpg",
+    ]
 
 
 def test_an_explicit_prefix_overrides_the_album_name(tmp_path: Path) -> None:

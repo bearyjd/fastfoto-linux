@@ -3,7 +3,7 @@ requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project]
-name = "fastfoto-linux"
+name = "feedshot"
 version = "0.0.1"
 description = "Native Linux support for the Epson FastFoto FF-680W photo scanner"
 readme = "README.md"
@@ -24,7 +24,7 @@ ffscan = "fastfoto_linux.cli:main"
 [project.gui-scripts]
 # Needs the distribution's PySide6 and Kirigami, which are deliberately not dependencies:
 # the PyPI PySide6 wheel bundles its own Qt and cannot load the system Kirigami plugin.
-fastfoto = "fastfoto_linux.gui.qt.app:main"
+feedshot = "fastfoto_linux.gui.qt.app:main"
 
 [project.optional-dependencies]
 # Searchable text. The native installer installs it (packaging/requirements-ocr.txt, hashed);

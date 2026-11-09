@@ -156,7 +156,7 @@ def test_a_manifest_under_a_symlinked_directory_is_refused(tmp_path) -> None:
 def test_a_manifest_inside_a_checkout_is_refused(tmp_path) -> None:
     repo = fake_checkout(tmp_path / "repo")
     manifest = write_corpus(repo / "data", {"a.bin": b"alpha"})
-    with pytest.raises(CorpusError, match="outside the fastfoto-linux checkout"):
+    with pytest.raises(CorpusError, match="outside the feedshot checkout"):
         load_corpus_manifest(manifest)
 
 

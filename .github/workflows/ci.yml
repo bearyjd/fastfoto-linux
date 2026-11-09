@@ -62,14 +62,14 @@ jobs:
           grep -q 'fastfoto_linux/models/face_detection_yunet_2023mar\.onnx' "$RUNNER_TEMP/wheel-files.txt"
           grep -q 'fastfoto_linux/models/LICENSE-YuNet' "$RUNNER_TEMP/wheel-files.txt"
           grep -q 'dist-info/licenses/.*LICENSE-YuNet' "$RUNNER_TEMP/wheel-files.txt"
-      - name: Wheel ships the QML and the fastfoto launcher
+      - name: Wheel ships the QML and the feedshot launcher
         run: |
           for qml in src/fastfoto_linux/gui/qml/*.qml; do
             grep -q "fastfoto_linux/gui/qml/$(basename "$qml")" "$RUNNER_TEMP/wheel-files.txt"
           done
           python3 -m zipfile -e "$RUNNER_TEMP"/wheel/*.whl "$RUNNER_TEMP/unpacked"
           grep -q 'fastfoto_linux/gui/translations/fastfoto_de\.qm' "$RUNNER_TEMP/wheel-files.txt"
-          grep -q 'fastfoto = fastfoto_linux.gui.qt.app:main' "$RUNNER_TEMP"/unpacked/*.dist-info/entry_points.txt
+          grep -q 'feedshot = fastfoto_linux.gui.qt.app:main' "$RUNNER_TEMP"/unpacked/*.dist-info/entry_points.txt
           ! grep -qi '^Requires-Dist:.*pyside' "$RUNNER_TEMP"/unpacked/*.dist-info/METADATA
 
   # The docs site (mkdocs.yml renders docs/). Build only: nothing is published and GitHub Pages is

@@ -23,10 +23,10 @@ tools/install-desktop.sh --uninstall   # remove only what it installed
 ```
 
 The installer builds the USB gap shim (it needs `make` and `gcc`), creates a virtual environment
-under `~/.local/share/fastfoto-linux/venv`, installs hashed wheels only, adds a menu entry, and
-links `fastfoto` and `ffscan` into `~/.local/bin`. Put that folder on your `PATH`.
+under `~/.local/share/feedshot/venv`, installs hashed wheels only, adds a menu entry, and
+links `feedshot` and `ffscan` into `~/.local/bin`. Put that folder on your `PATH`.
 
-Without PySide6 and Kirigami, `fastfoto` says what to install and exits with status 3; the
+Without PySide6 and Kirigami, `feedshot` says what to install and exits with status 3; the
 `ffscan` command line needs neither.
 
 ### Searchable text (OCR)
@@ -46,8 +46,8 @@ The Flatpak brings its own Qt, Kirigami, the SANE `epsonds` backend, the USB gap
 flatpak-builder --user --install-deps-from=flathub --force-clean --repo=repo build-dir \
   packaging/flatpak/io.github.bearyjd.Feedshot.yml
 flatpak build-bundle --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo repo \
-  fastfoto-linux.flatpak io.github.bearyjd.Feedshot
-flatpak --user install fastfoto-linux.flatpak
+  feedshot.flatpak io.github.bearyjd.Feedshot
+flatpak --user install feedshot.flatpak
 flatpak run io.github.bearyjd.Feedshot
 ```
 

@@ -31,7 +31,7 @@ ffscan eval detail    ... [--denoise-luma N] [--denoise-chroma N] [--sharpen N] 
   counted as `errored` and does not stop the run. A malformed annotation (unknown key, wrong
   type, out of bounds) refuses the run, naming the item id.
 - `report.json` is written into a new `run-...` directory under `--out` (default
-  `$XDG_CACHE_HOME|~/.cache/fastfoto-linux/calibration-eval/<feature>/<manifest sha256[:12]>/`),
+  `$XDG_CACHE_HOME|~/.cache/feedshot/calibration-eval/<feature>/<manifest sha256[:12]>/`),
   refused inside the corpus directory or a checkout. It is metrics only (`corpus_report`
   allowlist), floats are rounded to 4 places, it holds no timing, and a rerun on the same corpus
   is byte-identical. Errors name item ids, never paths or hashes.

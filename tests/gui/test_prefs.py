@@ -33,20 +33,20 @@ CUSTOM = ScanForm(
 
 def test_the_file_lives_in_the_xdg_config_folder() -> None:
     assert prefs_path({"XDG_CONFIG_HOME": "/x/config", "HOME": "/h"}) == Path(
-        "/x/config/fastfoto-linux/gui.json"
+        "/x/config/feedshot/gui.json"
     )
 
 
 @pytest.mark.parametrize("env", [{"HOME": "/h"}, {"HOME": "/h", "XDG_CONFIG_HOME": ""}])
 def test_without_xdg_config_home_it_is_dot_config(env: dict[str, str]) -> None:
-    assert prefs_path(env) == Path("/h/.config/fastfoto-linux/gui.json")
+    assert prefs_path(env) == Path("/h/.config/feedshot/gui.json")
 
 
 @pytest.mark.parametrize("relative", ["config", "./config", "../x", "~/config"])
 def test_a_relative_xdg_config_home_is_ignored(relative: str) -> None:
     """The XDG spec: a base directory that is not absolute is invalid and must be ignored."""
     env = {"HOME": "/h", "XDG_CONFIG_HOME": relative}
-    assert prefs_path(env) == Path("/h/.config/fastfoto-linux/gui.json")
+    assert prefs_path(env) == Path("/h/.config/feedshot/gui.json")
 
 
 def test_the_output_folder_is_remembered_as_a_full_path(

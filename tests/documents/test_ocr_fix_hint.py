@@ -14,7 +14,7 @@ from fastfoto_linux.documents.ocr_tools import (
 )
 from tests import _fake_ocrmypdf as fake
 
-PIP_HINT = "pip install 'fastfoto-linux[ocr]'"
+PIP_HINT = "pip install 'feedshot[ocr]'"
 
 
 def machine(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, ocrmypdf: bool, tesseract: bool):

@@ -7,7 +7,7 @@
 - Extra `ocr`: `ocrmypdf`
 - Dev group: `pypdf`, `pytest`, `pytest-cov`, `pytest-timeout`, `pytest-xdist`, `pyyaml`, `ruff`
 - Not dependencies: PySide6 and Kirigami (use the distribution's; PyPI wheel cannot load system Kirigami)
-- Scripts: `ffscan` = `fastfoto_linux.cli:main`; `fastfoto` = `fastfoto_linux.gui.qt.app:main`
+- Scripts: `ffscan` = `fastfoto_linux.cli:main`; `feedshot` = `fastfoto_linux.gui.qt.app:main`
 - Build backend: hatchling; wheel ships `models/` (YuNet ONNX + licence) and the QML
 
 ## System tools
@@ -17,8 +17,8 @@
 - OCR: `ocrmypdf` (module of the app's interpreter or on PATH) and `tesseract`; located by `documents/ocr_tools.py`
 
 ## Packaging
-- `tools/install-desktop.sh`: user-level install (venv seeing system PySide6, shim build, menu entry, `fastfoto`/`ffscan` in `~/.local/bin`); hashed pins `packaging/requirements-{desktop,ocr,build}.txt` (desktop/ocr are `uv export` of uv.lock)
-- Flatpak: `packaging/flatpak/io.github.bearyjd.Feedshot.yml` (org.kde.Platform, command `fastfoto`; modules sane-backends, usb-gap-shim, leptonica, tesseract, tessdata, Python wheels from `python-deps.json`); `tools/flatpak/gen_wheel_sources.py`
+- `tools/install-desktop.sh`: user-level install (venv seeing system PySide6, shim build, menu entry, `feedshot`/`ffscan` in `~/.local/bin`); hashed pins `packaging/requirements-{desktop,ocr,build}.txt` (desktop/ocr are `uv export` of uv.lock)
+- Flatpak: `packaging/flatpak/io.github.bearyjd.Feedshot.yml` (org.kde.Platform, command `feedshot`; modules sane-backends, usb-gap-shim, leptonica, tesseract, tessdata, Python wheels from `python-deps.json`); `tools/flatpak/gen_wheel_sources.py`
 - Desktop files: `packaging/io.github.bearyjd.Feedshot.{desktop,metainfo.xml,svg}`
 
 ## CI (.github/workflows/ci.yml): 5 required checks (lint, test on 3.13 and 3.14, gui (fedora), flatpak)

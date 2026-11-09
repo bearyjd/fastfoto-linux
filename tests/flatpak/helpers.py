@@ -21,7 +21,7 @@ DESKTOP = PACKAGING / f"{APP_ID}.desktop"
 ICON = PACKAGING / f"{APP_ID}.svg"
 GENERATOR = ROOT / "tools" / "flatpak" / "gen_wheel_sources.py"
 CI = ROOT / ".github" / "workflows" / "ci.yml"
-SHIM_INSTALL_PATH = "/app/lib/fastfoto-linux/ff680w_usb_gap.so"
+SHIM_INSTALL_PATH = "/app/lib/feedshot/ff680w_usb_gap.so"
 
 
 def generator() -> ModuleType:

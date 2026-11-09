@@ -92,7 +92,7 @@ def test_metadata_has_title_creation_date_and_producer() -> None:
     encoded = encode_page(colour_page(scene()), C)
     info = reader(make([encoded], title="Tax Return")).metadata
     assert info.title == "Tax Return"
-    assert info.producer == PRODUCER == "fastfoto-linux"
+    assert info.producer == PRODUCER == "Feedshot"
     assert info.creation_date == FIXED_TIME
     assert info.modification_date == FIXED_TIME
 

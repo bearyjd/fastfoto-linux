@@ -11,7 +11,7 @@ from tests.flatpak.helpers import APP_ID, FLATPAK_DIR, ROOT, load_manifest
 
 FLATHUB_DIR = FLATPAK_DIR / "flathub"
 FLATHUB_MANIFEST = FLATHUB_DIR / f"{APP_ID}.yml"
-REPO_URL = "https://github.com/bearyjd/fastfoto-linux.git"
+REPO_URL = "https://github.com/bearyjd/feedshot.git"
 # Modules whose sources differ on purpose: Flathub builds from the tagged release, not a folder.
 RELEASE_MODULES = {"usb-gap-shim", "feedshot"}
 PLACEHOLDER = "TODO(release)"

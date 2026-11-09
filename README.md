@@ -7,8 +7,8 @@
   </picture>
 </h1>
 
-[![CI](https://img.shields.io/github/actions/workflow/status/bearyjd/fastfoto-linux/ci.yml?branch=main&style=for-the-badge&logo=githubactions&logoColor=white&label=CI)](https://github.com/bearyjd/fastfoto-linux/actions/workflows/ci.yml)
-[![License](https://img.shields.io/github/license/bearyjd/fastfoto-linux?style=for-the-badge)](LICENSE)
+[![CI](https://img.shields.io/github/actions/workflow/status/bearyjd/feedshot/ci.yml?branch=main&style=for-the-badge&logo=githubactions&logoColor=white&label=CI)](https://github.com/bearyjd/feedshot/actions/workflows/ci.yml)
+[![License](https://img.shields.io/github/license/bearyjd/feedshot?style=for-the-badge)](LICENSE)
 ![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![Qt](https://img.shields.io/badge/Qt%20%2F%20PySide6-41CD52?style=for-the-badge&logo=qt&logoColor=white)
 ![KDE](https://img.shields.io/badge/KDE%20Kirigami-1D99F3?style=for-the-badge&logo=kde&logoColor=white)

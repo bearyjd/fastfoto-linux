@@ -103,9 +103,11 @@ def test_a_pyproject_that_fails_to_read_refuses_the_location(tmp_path, monkeypat
             raise OSError(errno.EIO, "injected")
         return info
 
-    monkeypatch.setattr(redeye_images.os, "fstat", failing)
-    with pytest.raises(ManifestError, match="cannot verify the output location"):
-        _ascend(repo)
+    # Scoped to the call: pytest's own capture teardown also fstat()s regular files.
+    with monkeypatch.context() as patched:
+        patched.setattr(redeye_images.os, "fstat", failing)
+        with pytest.raises(ManifestError, match="cannot verify the output location"):
+            _ascend(repo)
 
 
 # --- Manifest.close -------------------------------------------------------------------------

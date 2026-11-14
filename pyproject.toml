@@ -81,4 +81,4 @@ select = ["E", "F", "W", "I", "B", "UP", "SIM", "PL", "RUF"]
 # Locks only resolve releases published before this date (a week old at the time), so a freshly
 # published, unreviewed release is not picked up by `uv lock`. Move it forward when re-locking.
 [tool.uv]
-exclude-newer = "2026-10-31T00:00:00Z"
+exclude-newer = "2026-11-07T00:00:00Z"
